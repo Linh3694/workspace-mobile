@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="24px" height="24px" viewBox="0 0 24 24" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Pin Icon</title>
+    <g id="Pin-Icon" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <path d="M16,12 L16,4 L17,4 C17.55,4 18,3.55 18,3 C18,2.45 17.55,2 17,2 L7,2 C6.45,2 6,2.45 6,3 C6,3.55 6.45,4 7,4 L8,4 L8,12 C8,12.55 7.55,13 7,13 C6.45,13 6,13.45 6,14 L6,16 L11.5,16 L11.5,22 L12.5,22 L12.5,16 L18,16 L18,14 C18,13.45 17.55,13 17,13 C16.45,13 16,12.55 16,12 Z" id="Path" fill="#444444" fill-rule="nonzero"></path>
+    </g>
+</svg> 

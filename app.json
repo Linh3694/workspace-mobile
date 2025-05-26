@@ -1,0 +1,106 @@
+{
+  "expo": {
+    "name": "Wiswork",
+    "slug": "workspace",
+    "version": "1.1.1",
+    "web": {
+      "favicon": "./src/assets/favicon.png"
+    },
+    "experiments": {
+      "tsconfigPaths": true
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./src/assets/notifications/notification-icon.png",
+          "color": "#ffffff"
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Ứng dụng cần sử dụng FaceID để xác thực đăng nhập an toàn"
+        }
+      ]
+    ],
+    "orientation": "portrait",
+    "icon": "./src/assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./src/assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff",
+      "launchAutoHide": false
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.wellspring.workspace",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
+        "NSCameraUsageDescription": "Ứng dụng cần quyền truy cập camera để chụp ảnh và gửi trong tin nhắn",
+        "NSPhotoLibraryUsageDescription": "Ứng dụng cần quyền truy cập thư viện ảnh để gửi ảnh trong tin nhắn",
+        "NSMicrophoneUsageDescription": "Ứng dụng cần quyền truy cập microphone để ghi âm",
+        "NSFaceIDUsageDescription": "Ứng dụng cần sử dụng FaceID để xác thực đăng nhập an toàn"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.hailinh.n23.workspace",
+      "permissions": [
+        "NOTIFICATIONS",
+        "VIBRATE",
+        "NOTIFICATIONS",
+        "VIBRATE",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "fonts": [
+      {
+        "asset": "./src/assets/fonts/Mulish-Regular.ttf",
+        "family": "Mulish-Regular"
+      },
+      {
+        "asset": "./src/assets/fonts/Mulish-Medium.ttf",
+        "family": "Mulish-Medium"
+      },
+      {
+        "asset": "./src/assets/fonts/Mulish-SemiBold.ttf",
+        "family": "Mulish-SemiBold"
+      },
+      {
+        "asset": "./src/assets/fonts/Mulish-Bold.ttf",
+        "family": "Mulish-Bold"
+      }
+    ],
+    "scheme": "staffportal",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "f6365a6d-3c57-4b54-aaa8-119f05e3698e"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/f6365a6d-3c57-4b54-aaa8-119f05e3698e"
+    }
+  }
+}

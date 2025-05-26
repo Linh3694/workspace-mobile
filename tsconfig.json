@@ -1,0 +1,35 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": false,
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["src/*"]
+    },
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "types": ["nativewind/types"],
+    "noImplicitAny": false,
+    "noImplicitThis": false,
+    "noImplicitReturns": false
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "nativewind-env.d.ts",
+    "types/**/*.d.ts",
+    "src/@types/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
