@@ -20,16 +20,23 @@
     "types": ["nativewind/types"],
     "noImplicitAny": false,
     "noImplicitThis": false,
-    "noImplicitReturns": false
+    "noImplicitReturns": false,
+    "module": "esnext",
+    "target": "es2020",
+    "lib": ["es2020", "dom"]
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
     "nativewind-env.d.ts",
     "types/**/*.d.ts",
-    "src/@types/**/*.d.ts"
+    "src/@types/**/*.d.ts",
+    "node_modules/react-native/types/**/*.d.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "babel.config.js",
+    "metro.config.js",
+    "jest.config.js"
   ]
 }

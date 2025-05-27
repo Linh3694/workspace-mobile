@@ -467,116 +467,56 @@ const DevicesDetailScreen = () => {
 
             console.log('Starting file upload:', { fileUri, fileName, fileType });
 
-            // First, test if the base API is working
             const token = await AsyncStorage.getItem('authToken');
-            const baseUrl = `${API_BASE_URL}/api/${deviceType}s`;
+            const uploadUrl = `${API_BASE_URL}/api/laptops/handover`;
             
-            try {
-                console.log('Testing base endpoint:', baseUrl);
-                const testResponse = await fetch(baseUrl, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                    },
-                });
-                console.log('Base endpoint test status:', testResponse.status);
-                
-                if (testResponse.ok) {
-                    console.log('✅ Base API is working');
-                } else {
-                    console.log('❌ Base API failed');
-                }
-            } catch (testError) {
-                console.error('❌ Base API test failed:', testError);
-            }
-
-            // Test upload endpoint with OPTIONS request
-            const uploadUrl = `${API_BASE_URL}/api/${deviceType}s/upload`;
-            try {
-                console.log('Testing upload endpoint with OPTIONS:', uploadUrl);
-                const optionsResponse = await fetch(uploadUrl, {
-                    method: 'OPTIONS',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                    },
-                });
-                console.log('Upload endpoint OPTIONS status:', optionsResponse.status);
-            } catch (optionsError) {
-                console.error('❌ Upload endpoint OPTIONS failed:', optionsError);
-            }
-
-            // Upload file
             const formData = new FormData();
-            
             formData.append('file', {
                 uri: fileUri,
                 type: fileType,
                 name: fileName,
             } as any);
             
-            // Add device and user info - backend expects specific field names
             formData.append(`${deviceType}Id`, device._id);
             
-            // Get user ID from current assignment
             const currentUser = getCurrentUser();
             if (currentUser) {
                 formData.append('userId', currentUser._id);
                 formData.append('username', currentUser.fullname);
-                console.log('Current user info added:', currentUser);
             } else {
-                console.log('No current user found');
-                // If no current user, we still need to provide some info
-                formData.append('username', 'Unknown');
+                throw new Error('Không tìm thấy thông tin người dùng');
             }
 
-            // uploadUrl already defined above
             console.log('Making upload request to:', uploadUrl);
-            console.log('Device type:', deviceType);
-            console.log('Device ID:', device._id);
-            console.log('File info:', { fileUri, fileName, fileType });
             
             const response = await fetch(uploadUrl, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    // Don't set Content-Type for FormData - let the browser set it with boundary
                 },
                 body: formData
             });
 
             console.log('Upload response status:', response.status);
-            console.log('Upload response headers:', response.headers);
 
             if (!response.ok) {
                 let errorMessage = 'Không thể tải lên biên bản';
                 try {
-                    const error = await response.json();
-                    console.error('Upload error response (JSON):', error);
-                    errorMessage = error.message || errorMessage;
+                    const errorData = await response.json();
+                    errorMessage = errorData.message || errorMessage;
                 } catch (parseError) {
-                    console.error('Could not parse error response as JSON:', parseError);
-                    // If response is not JSON, try to get text
                     try {
                         const errorText = await response.text();
-                        console.error('Upload error response (text):', errorText);
                         errorMessage = `Lỗi server ${response.status}: ${errorText.substring(0, 100)}`;
                     } catch (textError) {
-                        console.error('Could not parse error response as text:', textError);
                         errorMessage = `Lỗi server ${response.status}: Không thể đọc response`;
                     }
                 }
                 throw new Error(errorMessage);
             }
 
-            let result;
-            try {
-                result = await response.json();
-                console.log('Upload success:', result);
-            } catch (parseError) {
-                console.error('Could not parse success response as JSON:', parseError);
-                // If we can't parse as JSON but response was ok, still consider it success
-                result = { success: true };
-            }
+            const result = await response.json();
+            console.log('Upload success:', result);
 
             await fetchDeviceDetail();
             Alert.alert('Thành công', 'Tải lên biên bản thành công!');
