@@ -15,6 +15,7 @@ type AuthContextType = {
     logout: () => Promise<void>;
     checkAuth: () => Promise<boolean>;
     clearBiometricCredentials: () => Promise<void>;
+    refreshUserData: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -60,6 +61,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                     // Nếu không có thông tin user, lấy từ API
                     try {
                         const response = await api.get('/users');
+
                         if (response.data.success) {
                             const userData = response.data.user;
                             setUser(userData);
@@ -69,6 +71,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                             await AsyncStorage.setItem('userRole', userData.role || 'user');
                             await AsyncStorage.setItem('userJobTitle', userData.jobTitle || 'N/A');
                             await AsyncStorage.setItem('userEmployeeCode', userData.employeeCode || '');
+                            await AsyncStorage.setItem('userAvatarUrl', userData.avatarUrl || '');
                             setLoading(false);
                             return true;
                         }
@@ -109,9 +112,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 await AsyncStorage.setItem('userFullname', userData.fullname);
                 await AsyncStorage.setItem('userEmployeeCode', userData.employeeCode || '');
                 const role = userData.role || 'user';
-                console.log('AuthContext - Role being saved:', role);
                 await AsyncStorage.setItem('userRole', role);
-                
+                await AsyncStorage.setItem('userAvatarUrl', userData.avatarUrl || '');
                 setUser(userData);
             }
         } catch (error) {
@@ -132,6 +134,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             await AsyncStorage.removeItem('userFullname');
             await AsyncStorage.removeItem('userRole');
             await AsyncStorage.removeItem('userEmployeeCode');
+            await AsyncStorage.removeItem('userAvatarUrl');
             setUser(null);
         } catch (error) {
             console.error('Lỗi khi đăng xuất:', error);
@@ -150,6 +153,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
     };
 
+    const refreshUserData = async () => {
+        try {
+            console.log('=== Refreshing User Data ===');
+            const response = await api.get('/users');
+            console.log('Refresh API response:', response.data);
+            if (response.data.success) {
+                const userData = response.data.user;
+                console.log('Refreshed user data:', userData);
+                console.log('Refreshed avatar URL:', userData.avatarUrl);
+                setUser(userData);
+                await AsyncStorage.setItem('user', JSON.stringify(userData));
+                await AsyncStorage.setItem('userId', userData._id);
+                await AsyncStorage.setItem('userFullname', userData.fullname);
+                await AsyncStorage.setItem('userRole', userData.role || 'user');
+                await AsyncStorage.setItem('userJobTitle', userData.jobTitle || 'N/A');
+                await AsyncStorage.setItem('userEmployeeCode', userData.employeeCode || '');
+            }
+        } catch (error) {
+            console.error('Lỗi khi lấy thông tin người dùng:', error);
+        }
+    };
+
     return (
         <AuthContext.Provider value={{
             user,
@@ -158,7 +183,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             login,
             logout,
             checkAuth,
-            clearBiometricCredentials
+            clearBiometricCredentials,
+            refreshUserData
         }}>
             {children}
         </AuthContext.Provider>

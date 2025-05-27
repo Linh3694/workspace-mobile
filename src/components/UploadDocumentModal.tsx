@@ -106,7 +106,7 @@ const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
                   <MaterialCommunityIcons
                     name="camera"
                     size={24}
-                    color={isUploading ? '#999999' : '#002855'}
+                    color={isUploading ? '#999999' : '#F05023'}
                   />
                   <Text
                     style={{
@@ -130,7 +130,7 @@ const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
                   <MaterialCommunityIcons
                     name="image"
                     size={24}
-                    color={isUploading ? '#999999' : '#002855'}
+                    color={isUploading ? '#999999' : '#F05023'}
                   />
                   <Text
                     style={{
@@ -154,7 +154,7 @@ const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
                   <MaterialCommunityIcons
                     name="file-document"
                     size={24}
-                    color={isUploading ? '#999999' : '#002855'}
+                    color={isUploading ? '#999999' : '#F05023'}
                   />
                   <Text
                     style={{

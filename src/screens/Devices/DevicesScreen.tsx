@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, SafeAreaView, TouchableOpacity, FlatList, TextInput, ActivityIndicator, Alert, RefreshControl, Modal, ScrollView } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
@@ -9,9 +9,11 @@ import deviceService from '../../services/deviceService';
 import { Device, DeviceType, DeviceFilter } from '../../types/devices';
 
 type DevicesScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, typeof ROUTES.SCREENS.DEVICES>;
+type DevicesScreenRouteProp = RouteProp<RootStackParamList, typeof ROUTES.SCREENS.DEVICES>;
 
 const DevicesScreen = () => {
     const navigation = useNavigation<DevicesScreenNavigationProp>();
+    const route = useRoute<DevicesScreenRouteProp>();
     const [devices, setDevices] = useState<Device[]>([]);
     const [filteredDevices, setFilteredDevices] = useState<Device[]>([]);
     const [loading, setLoading] = useState(false);
@@ -91,6 +93,18 @@ const DevicesScreen = () => {
     useEffect(() => {
         filterDevices();
     }, [devices, searchQuery, filters]);
+
+    // Thêm useEffect để lắng nghe sự thay đổi từ navigation params
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => {
+            // Refresh lại dữ liệu khi màn hình được focus
+            setCurrentPage(1);
+            setHasNextPage(true);
+            fetchDevices(1);
+        });
+
+        return unsubscribe;
+    }, [navigation, selectedType]);
 
     const fetchDevices = async (page: number = 1, isRefresh: boolean = false) => {
         console.log('Fetching devices for type:', selectedType, 'page:', page);

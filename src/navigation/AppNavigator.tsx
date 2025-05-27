@@ -48,7 +48,7 @@ export type RootStackParamList = {
     [ROUTES.SCREENS.TICKET]: undefined;
     [ROUTES.SCREENS.TICKET_ADMIN]: undefined;
     [ROUTES.SCREENS.TICKET_GUEST]: undefined;
-    [ROUTES.SCREENS.DEVICES]: undefined;
+    [ROUTES.SCREENS.DEVICES]: { refresh?: boolean } | undefined;
     [ROUTES.SCREENS.DEVICE_DETAIL]: { deviceId: string; deviceType: 'laptop' | 'monitor' | 'printer' | 'projector' | 'tool' };
     [ROUTES.SCREENS.DEVICE_ASSIGNMENT_HISTORY]: { deviceId: string; deviceType: 'laptop' | 'monitor' | 'printer' | 'projector' | 'tool'; deviceName: string };
 };

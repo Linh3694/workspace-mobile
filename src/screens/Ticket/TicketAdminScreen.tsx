@@ -69,7 +69,7 @@ const TicketAdminScreen = () => {
         try {
             setLoading(true);
             const token = await AsyncStorage.getItem('authToken');
-            const userId = await AsyncStorage.getItem('userId');
+            const currentUserId = await AsyncStorage.getItem('userId');
 
             if (!token) {
                 console.log('Không tìm thấy token');
@@ -80,7 +80,7 @@ const TicketAdminScreen = () => {
             // Xây dựng URL với các tham số lọc
             let url = `${API_BASE_URL}/api/tickets`;
 
-            // Thêm các tham số lọc
+            // Thêm các tham số lọc (chỉ những tham số API hỗ trợ)
             const params = new URLSearchParams();
             if (filterStatus) {
                 params.append('status', filterStatus);
@@ -89,10 +89,11 @@ const TicketAdminScreen = () => {
                 params.append('search', searchTerm);
             }
 
-            // Logic lọc theo tab
-            if (activeTab === 'assigned' && userId) {
-                params.append('userTickets', userId);
-            }
+            // Bỏ phần lọc theo tab ở đây vì sẽ lọc ở frontend
+            // if (activeTab === 'assigned' && userId) {
+            //     params.append('assignedTo', userId);
+            //     params.append('creator', userId);
+            // }
 
             if (params.toString()) {
                 url += `?${params.toString()}`;
@@ -100,7 +101,7 @@ const TicketAdminScreen = () => {
 
             console.log('API URL:', url);
             console.log('Active Tab:', activeTab);
-            console.log('User ID:', userId);
+            console.log('User ID:', currentUserId);
 
             const res = await axios.get(url, {
                 headers: { Authorization: `Bearer ${token}` },
@@ -121,7 +122,16 @@ const TicketAdminScreen = () => {
                     assignedTo: ticket.assignedTo
                 }));
 
-                setTickets(formattedTickets);
+                // Lọc ticket dựa trên activeTab ở frontend
+                let filteredTickets = formattedTickets;
+                if (activeTab === 'assigned' && currentUserId) {
+                    filteredTickets = formattedTickets.filter((ticket: any) =>
+                        ticket.creator?._id === currentUserId ||
+                        ticket.assignedTo?._id === currentUserId
+                    );
+                }
+
+                setTickets(filteredTickets);
             } else {
                 console.error('Lỗi khi lấy danh sách ticket:', res.data.message);
                 setTickets([]);

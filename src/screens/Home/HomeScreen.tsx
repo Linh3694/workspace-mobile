@@ -151,10 +151,10 @@ const HomeScreen = () => {
     };
 
     const menuItems = [
-        { id: 1, title: 'Ticket', component: TicketIcon, description: 'Ứng dụng Ticket', onPress: navigateToTicket },
-        { id: 2, title: 'Devices', component: DevicesIcon, description: 'Quản lý thiết bị', onPress: navigateToDevices },
-        { id: 3, title: 'Document', component: DocumentIcon, description: 'Quản lý tài liệu', onPress: () => { } },
-        { id: 4, title: 'Library', component: LibraryIcon, description: 'Quản lý thư viện', onPress: () => { } },
+        { id: 1, title: 'Tickets', component: TicketIcon, description: 'Ứng dụng Ticket', onPress: navigateToTicket },
+        { id: 2, title: 'Thiết bị', component: DevicesIcon, description: 'Quản lý thiết bị', onPress: navigateToDevices },
+        { id: 3, title: 'Tài liệu', component: DocumentIcon, description: 'Quản lý tài liệu', onPress: () => { } },
+        { id: 4, title: 'Thư viện', component: LibraryIcon, description: 'Quản lý thư viện', onPress: () => { } },
     ];
 
     const [searchQuery, setSearchQuery] = useState('');

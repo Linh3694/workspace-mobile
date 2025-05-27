@@ -7,7 +7,8 @@ import {
     Animated,
     Dimensions,
     TouchableWithoutFeedback,
-    TextInput
+    TextInput,
+    ActivityIndicator
 } from 'react-native';
 
 interface InputModalProps {
@@ -18,6 +19,7 @@ interface InputModalProps {
     onChangeText: (text: string) => void;
     onCancel: () => void;
     onConfirm: () => void;
+    isLoading?: boolean;
 }
 
 const { height } = Dimensions.get('window');
@@ -29,7 +31,8 @@ const InputModal: React.FC<InputModalProps> = ({
     value,
     onChangeText,
     onCancel,
-    onConfirm
+    onConfirm,
+    isLoading = false
 }) => {
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(height)).current;
@@ -97,23 +100,29 @@ const InputModal: React.FC<InputModalProps> = ({
                                     onChangeText={onChangeText}
                                     placeholderTextColor="#999999"
                                 />
-                                <View className="flex-row mt-2.5 -mx-5">
+                                <View className="flex-row -mx-5 my-2">
                                     <TouchableOpacity
-                                        className="flex-1 py-3 items-center justify-center bg-transparent"
+                                        className="flex-1 items-center justify-center bg-transparent"
                                         onPress={onCancel}
+                                        disabled={isLoading}
                                     >
-                                        <Text className="text-[17px] text-[#666666] font-medium">
+                                        <Text className={`text-[17px] font-medium ${isLoading ? 'text-[#CCCCCC]' : 'text-[#666666]'}`}>
                                             Hủy
                                         </Text>
                                     </TouchableOpacity>
                                     <View className="w-[0.5px] bg-[#E5E5E5]" />
                                     <TouchableOpacity
-                                        className="flex-1 py-3 items-center justify-center bg-transparent"
+                                        className="flex-1 items-center justify-center bg-transparent"
                                         onPress={onConfirm}
+                                        disabled={isLoading}
                                     >
-                                        <Text className="text-[17px] text-[#FF3B30] font-semibold">
-                                            Ok
-                                        </Text>
+                                        {isLoading ? (
+                                            <ActivityIndicator size="small" color="#FF3B30" />
+                                        ) : (
+                                                <Text className="text-[17px] text-[#FF3B30] font-semibold">
+                                                    Ok
+                                                </Text>
+                                        )}
                                     </TouchableOpacity>
                                 </View>
                             </View>

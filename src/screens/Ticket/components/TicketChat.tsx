@@ -1,5 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, ScrollView, ActivityIndicator, Image, KeyboardAvoidingView, Platform, Keyboard, SafeAreaView, Dimensions, ActionSheetIOS, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import {
+    View,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    FlatList,
+    ScrollView,
+    ActivityIndicator,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    Keyboard,
+    SafeAreaView,
+    Dimensions,
+    ActionSheetIOS,
+    Alert,
+    InteractionManager
+} from 'react-native';
 import axios from 'axios';
 import { API_BASE_URL } from '../../../config/constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -27,6 +44,12 @@ interface Message {
     type: 'text' | 'image';
 }
 
+interface OptimizedMessage extends Message {
+    isFirst: boolean;
+    isLast: boolean;
+    isMe: boolean;
+}
+
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
@@ -44,103 +67,162 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
     const [imagesToSend, setImagesToSend] = useState<string[]>([]);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
 
+    // Tối ưu: Debounce cho scroll
+    const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>();
+    const messagesRef = useRef<Message[]>(messages);
+    messagesRef.current = messages;
+
+    // Tối ưu: Cache cho optimized messages
+    const optimizedMessages = useMemo(() => {
+        return messages.map((message, index) => {
+            const prevMsg = messages[index - 1];
+            const nextMsg = messages[index + 1];
+            const isMe = message.sender._id === currentUserId;
+            const isPrevSameSender = prevMsg?.sender?._id === message.sender._id;
+            const isNextSameSender = nextMsg?.sender?._id === message.sender._id;
+
+            return {
+                ...message,
+                isFirst: !isPrevSameSender,
+                isLast: !isNextSameSender,
+                isMe
+            } as OptimizedMessage;
+        });
+    }, [messages, currentUserId]);
+
+    // Tối ưu: Debounced scroll to end
+    const scrollToEnd = useCallback((animated = false) => {
+        if (scrollTimeoutRef.current) {
+            clearTimeout(scrollTimeoutRef.current);
+        }
+        
+        scrollTimeoutRef.current = setTimeout(() => {
+            InteractionManager.runAfterInteractions(() => {
+                flatListRef.current?.scrollToEnd({ animated });
+            });
+        }, animated ? 100 : 50);
+    }, []);
+
+    // Tối ưu: Memoized socket setup
+    const setupSocket = useCallback(async () => {
+        try {
+            const token = await AsyncStorage.getItem('authToken');
+            const userId = await AsyncStorage.getItem('userId');
+            if (!token || socketRef.current) return;
+
+            const socket = io(API_BASE_URL, {
+                query: { token },
+                transports: ['websocket'],
+                forceNew: true,
+            });
+
+            socket.on('connect', () => {
+                console.log('🔗 Socket connected to ticket:', ticketId);
+                socket.emit('joinTicketRoom', ticketId);
+            });
+
+            socket.on('newMessage', (message: Message) => {
+                console.log('📨 New message received:', message._id);
+
+                setMessages(prev => {
+                    // Tối ưu: Kiểm tra duplicate nhanh
+                    if (prev.some(m => m._id === message._id)) {
+                        return prev;
+                    }
+
+                    const newMessages = [...prev, message];
+                    scrollToEnd(false);
+                    return newMessages;
+                });
+            });
+
+            socket.on('connect_error', (err: any) => {
+                console.error('❌ Socket connection error:', err);
+            });
+
+            socket.on('disconnect', (reason: string) => {
+                console.log('🔌 Socket disconnected:', reason);
+                if (reason === 'io server disconnect') {
+                    // Server ngắt kết nối, cần reconnect
+                    socket.connect();
+                }
+            });
+
+            socketRef.current = socket;
+        } catch (error) {
+            console.error('Socket setup error:', error);
+        }
+    }, [ticketId, scrollToEnd]);
+
+    // Tối ưu: Cleanup socket
+    const cleanupSocket = useCallback(() => {
+        if (socketRef.current) {
+            socketRef.current.disconnect();
+            socketRef.current = null;
+        }
+    }, []);
+
     // Xử lý bàn phím và socket
     useEffect(() => {
-        // Load userId sớm để sử dụng cho việc kiểm tra thông báo
-        AsyncStorage.getItem('userId').then(userId => {
-            if (userId) setCurrentUserId(userId);
-        });
+        let isMounted = true;
 
-        // Lắng nghe sự kiện bàn phím hiện/ẩn
+        const initializeChat = async () => {
+            try {
+                const userId = await AsyncStorage.getItem('userId');
+                if (userId && isMounted) {
+                    setCurrentUserId(userId);
+                }
+
+                await Promise.all([
+                    fetchMessages(),
+                    fetchCurrentUser(),
+                    setupSocket()
+                ]);
+            } catch (error) {
+                console.error('Chat initialization error:', error);
+            }
+        };
+
+        // Keyboard listeners
         const keyboardWillShowListener = Keyboard.addListener(
             Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
             (e) => {
+                if (!isMounted) return;
                 setKeyboardHeight(e.endCoordinates.height);
                 setKeyboardVisible(true);
-                setTimeout(() => {
-                    flatListRef.current?.scrollToEnd({ animated: false });
-                }, 100);
+                scrollToEnd(false);
             }
         );
-        
+
         const keyboardWillHideListener = Keyboard.addListener(
             Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
             () => {
+                if (!isMounted) return;
                 setKeyboardHeight(0);
                 setKeyboardVisible(false);
             }
         );
 
-        // Thiết lập socket
-        const setupSocket = async () => {
-            try {
-                const token = await AsyncStorage.getItem('authToken');
-                const userId = await AsyncStorage.getItem('userId');
-                if (!token) return;
+        initializeChat();
 
-                const socket = io(API_BASE_URL, {
-                    query: { token },
-                    transports: ['websocket'],
-                });
-
-                socket.on('connect', () => {
-                    console.log('Socket connected to', API_BASE_URL);
-                    socket.emit('joinTicketRoom', ticketId);
-                });
-
-                socket.on('newMessage', (message: Message) => {
-                    console.log('New message received via socket:', message);
-                    
-                    // Chỉ hiển thị tin nhắn mới nếu chưa có trong danh sách
-                    setMessages(prev => {
-                        if (prev.some(m => m._id === message._id)) {
-                            return prev;
-                        }
-                        return [...prev, message];
-                    });
-                    
-                    setTimeout(() => {
-                        flatListRef.current?.scrollToEnd({ animated: false });
-                    }, 100);
-                    
-                    // Quan trọng: So sánh ID người gửi với currentUserId để quyết định xem có gửi thông báo hay không
-                    if (userId && message.sender._id !== userId) {
-                        // Đây là tin nhắn từ người khác, nên cần gửi thông báo
-                        console.log('Should send notification to', userId);
-                        // Thông báo được xử lý ở server, client chỉ cần xử lý hiển thị tin nhắn
-                    } else {
-                        console.log('No notification needed, this is user\'s own message');
-                    }
-                });
-
-                socket.on('connect_error', (err: any) => {
-                    console.error('Socket connection error:', err);
-                });
-
-                socketRef.current = socket;
-            } catch (error) {
-                console.error('Error setting up socket:', error);
+        // Tự động refresh thông minh hơn
+        const refreshInterval = setInterval(() => {
+            if (isMounted && !socketRef.current?.connected) {
+                fetchMessages();
             }
-        };
-
-        fetchMessages();
-        fetchCurrentUser();
-        setupSocket();
-
-        // Tự động làm mới tin nhắn
-        const intervalId = setInterval(() => {
-            fetchMessages();
-        }, 15000); // Cập nhật mỗi 15 giây
+        }, 30000); // Chỉ refresh khi socket disconnect
 
         return () => {
+            isMounted = false;
             keyboardWillShowListener.remove();
             keyboardWillHideListener.remove();
-            clearInterval(intervalId);
-            if (socketRef.current) {
-                socketRef.current.disconnect();
+            clearInterval(refreshInterval);
+            cleanupSocket();
+            if (scrollTimeoutRef.current) {
+                clearTimeout(scrollTimeoutRef.current);
             }
         };
-    }, [ticketId]);
+    }, [ticketId, setupSocket, cleanupSocket, scrollToEnd]);
 
     const fetchCurrentUser = async () => {
         try {
@@ -165,10 +247,7 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
             });
             if (response.data.success) {
                 setMessages(response.data.ticket.messages || []);
-                // Scroll xuống cuối sau khi load tin nhắn
-                setTimeout(() => {
-                    flatListRef.current?.scrollToEnd({ animated: false });
-                }, 200);
+                scrollToEnd(false);
             }
         } catch (error) {
             console.error('Lỗi khi lấy tin nhắn:', error);
@@ -177,74 +256,77 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
         }
     };
 
-    const sendMessage = async () => {
-        if (!newMessage.trim()) {
-            return;
-        }
+    // Tối ưu: Debounced send message
+    const sendMessage = useCallback(async () => {
+        if (!newMessage.trim() || sending) return;
 
+        const messageToSend = newMessage.trim();
+        setNewMessage('');
         setSending(true);
+
         try {
             const token = await AsyncStorage.getItem('authToken');
             const response = await axios.post(`${API_BASE_URL}/api/tickets/${ticketId}/messages`,
-                { text: newMessage },
+                { text: messageToSend },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
             if (response.data.success) {
-                setNewMessage('');
-                fetchMessages();
+                await fetchMessages();
                 if (onRefresh) onRefresh();
             }
         } catch (error) {
             console.error('Lỗi khi gửi tin nhắn:', error);
+            setNewMessage(messageToSend); // Restore message nếu fail
+            Alert.alert('Lỗi', 'Không thể gửi tin nhắn. Vui lòng thử lại.');
         } finally {
             setSending(false);
         }
-    };
+    }, [newMessage, sending, ticketId, onRefresh]);
 
-    const pickImage = async () => {
+    // Tối ưu image handling
+    const pickImage = useCallback(async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
         if (status !== 'granted') {
-            alert('Cần quyền truy cập thư viện ảnh để tải lên hình ảnh');
+            Alert.alert('Quyền truy cập', 'Cần quyền truy cập thư viện ảnh để tải lên hình ảnh');
             return;
         }
 
         let result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.8,
+            allowsEditing: false,
+            quality: 0.7,
+            allowsMultipleSelection: false,
         });
 
         if (!result.canceled && result.assets.length > 0) {
             const asset = result.assets[0];
             setImagesToSend(prev => [...prev, asset.uri]);
         }
-    };
+    }, []);
 
-    const takePhoto = async () => {
+    const takePhoto = useCallback(async () => {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
 
         if (status !== 'granted') {
-            alert('Cần quyền truy cập camera để chụp ảnh');
+            Alert.alert('Quyền truy cập', 'Cần quyền truy cập camera để chụp ảnh');
             return;
         }
 
         let result = await ImagePicker.launchCameraAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.8,
+            allowsEditing: false,
+            quality: 0.7,
         });
 
         if (!result.canceled && result.assets.length > 0) {
             const asset = result.assets[0];
             setImagesToSend(prev => [...prev, asset.uri]);
         }
-    };
+    }, []);
 
-    const handleAttachmentOptions = () => {
+    const handleAttachmentOptions = useCallback(() => {
         if (Platform.OS === 'ios') {
             ActionSheetIOS.showActionSheetWithOptions(
                 {
@@ -262,12 +344,11 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
                 }
             );
         } else {
-            // Fallback cho Android - hiện tại giữ nguyên logic hiện tại
             setShowImageOptions(true);
         }
-    };
+    }, [takePhoto, pickImage]);
 
-    const handlePickDocument = async () => {
+    const handlePickDocument = useCallback(async () => {
         const result = await DocumentPicker.getDocumentAsync({ 
             type: '*/*', 
             copyToCacheDirectory: true 
@@ -277,10 +358,12 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
             const asset = result.assets[0];
             await sendImage(asset.uri);
         }
-    };
+    }, []);
 
-    const sendImage = async (uri: string) => {
+    const sendImage = useCallback(async (uri: string) => {
         try {
+            setSending(true);
+
             // Nén ảnh
             const manipResult = await manipulateAsync(
                 uri,
@@ -291,14 +374,11 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
             const formData = new FormData();
             const filename = uri.split('/').pop() || 'image.jpg';
 
-            // Sử dụng 'photo' thay vì 'file' cho phù hợp với server
             formData.append('file', {
                 uri: manipResult.uri,
                 name: filename,
                 type: 'image/jpeg'
             } as any);
-
-            setSending(true);
 
             const token = await AsyncStorage.getItem('authToken');
             const response = await axios.post(
@@ -309,26 +389,29 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
                         Authorization: `Bearer ${token}`,
                         'Content-Type': 'multipart/form-data',
                     },
+                    timeout: 30000, // 30s timeout
                 }
             );
 
             if (response.data.success) {
-                fetchMessages();
+                await fetchMessages();
                 if (onRefresh) onRefresh();
             }
         } catch (error) {
             console.error('Lỗi khi gửi ảnh:', error);
-            alert('Không thể gửi ảnh. Vui lòng thử lại sau.');
+            Alert.alert('Lỗi', 'Không thể gửi ảnh. Vui lòng thử lại sau.');
         } finally {
             setSending(false);
         }
-    };
+    }, [ticketId, onRefresh]);
 
-    const removeImage = (idx: number) => {
+    const removeImage = useCallback((idx: number) => {
         setImagesToSend(prev => prev.filter((_, i) => i !== idx));
-    };
+    }, []);
 
-    const handleSend = async () => {
+    const handleSend = useCallback(async () => {
+        if (sending) return;
+
         if (imagesToSend.length > 0) {
             for (const uri of imagesToSend) {
                 await sendImage(uri);
@@ -338,50 +421,38 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
         if (newMessage.trim()) {
             await sendMessage();
         }
-    };
+    }, [imagesToSend, newMessage, sending, sendImage, sendMessage]);
 
-    const formatDate = (dateString: string) => {
+    const formatDate = useCallback((dateString: string) => {
         const date = new Date(dateString);
         return date.toLocaleDateString('vi-VN', {
             hour: '2-digit',
             minute: '2-digit'
         });
-    };
+    }, []);
     
-    // Xử lý lỗi hiển thị ảnh
-    const handleImageError = (messageId: string) => {
+    // Tối ưu: Memoized image error handler
+    const handleImageError = useCallback((messageId: string) => {
         console.log("Lỗi hiển thị ảnh cho tin nhắn:", messageId);
         setImageError(prev => ({...prev, [messageId]: true}));
-    };
+    }, []);
 
-    // Tạo URL đầy đủ cho ảnh
-    const getImageUrl = (imagePath: string) => {
-        // Kiểm tra xem imagePath là đường dẫn tương đối hay URL đầy đủ
+    // Tối ưu: Memoized image URL
+    const getImageUrl = useCallback((imagePath: string) => {
         if (imagePath.startsWith('http')) {
-            return imagePath; // Nếu đã là URL đầy đủ thì trả về nguyên vẹn
+            return imagePath;
         }
-        
-        // Kiểm tra nếu imagePath chỉ là tên file hoặc đường dẫn đầy đủ
+
         if (imagePath.includes('/uploads/Messages/')) {
-            // Đã có đường dẫn đầy đủ, chỉ cần thêm API_BASE_URL
             return `${API_BASE_URL}${imagePath.startsWith('/') ? '' : '/'}${imagePath}`;
         }
-        
-        // Trường hợp chỉ là tên file
+
         return `${API_BASE_URL}/uploads/Messages/${imagePath}`;
-    };
+    }, []);
 
-    // Render từng tin nhắn
-    const renderItem = ({ item: message, index }: { item: Message, index: number }) => {
-        const isMe = message.sender._id === currentUserId;
-        const prevMsg = messages[index - 1];
-        const nextMsg = messages[index + 1];
-
-        const isPrevSameSender = prevMsg?.sender?._id === message.sender._id;
-        const isNextSameSender = nextMsg?.sender?._id === message.sender._id;
-
-        const isFirst = !isPrevSameSender;
-        const isLast = !isNextSameSender;
+    // Tối ưu: Memoized render item với keyExtractor
+    const renderItem = useCallback(({ item: message }: { item: OptimizedMessage }) => {
+        const { isFirst, isLast, isMe } = message;
 
         let borderRadiusStyle: any = {};
         if (isMe) {
@@ -411,7 +482,7 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
         const bubbleBg = message.type === 'image' ? 'transparent' : (isMe ? '#002855' : '#F8F8F8');
 
         return (
-            <View style={{ flexDirection: containerDirection, alignItems: 'flex-end', marginBottom: isLast ? 8 : 2 }}>
+            <View className={`flex-row items-end ${isMe ? 'flex-row-reverse' : ''} ${isLast ? 'mb-2' : 'mb-0.5'}`}>
                 {showAvatar ? (
                     <Image
                         source={{
@@ -419,78 +490,97 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
                                 ? `${API_BASE_URL}/uploads/Avatar/${message.sender.avatarUrl}`
                                 : `https://ui-avatars.com/api/?name=${encodeURIComponent(message.sender.fullname)}`
                         }}
-                        style={{ width: 36, height: 36, borderRadius: 18, marginHorizontal: 4 }}
+                        className="w-9 h-9 rounded-full mx-1"
                     />
                 ) : (
-                        <View style={{ width: isMe ? 4 : 44 }} />
+                        <View className={`${isMe ? 'w-1' : 'w-11'}`} />
                 )}
 
-                <View style={{
-                    backgroundColor: bubbleBg,
-                    paddingVertical: message.type === 'image' ? 0 : 8,
-                    paddingHorizontal: message.type === 'image' ? 0 : 14,
-                    maxWidth: '75%',
-                    ...borderRadiusStyle
-                }}>
+                <View
+                    className={`${message.type === 'image' ? 'p-0' : 'py-2 px-3.5'} max-w-[75%]`}
+                    style={{
+                        backgroundColor: bubbleBg,
+                        ...borderRadiusStyle
+                    }}
+                >
                     {message.type === 'image' ? (
                         <Image
                             source={{ uri: getImageUrl(message.text) }}
-                            style={{ width: 200, height: 150, borderRadius: 12 }}
+                            className="w-50 h-37.5 rounded-3"
                             resizeMode="cover"
                             onError={() => handleImageError(message._id)}
                         />
                     ) : (
-                        <Text style={{ color: isMe ? '#ffffff' : '#333' }}>{message.text}</Text>
+                            <Text className={`${isMe ? 'text-white' : 'text-gray-800'}`}>{message.text}</Text>
                     )}
-                    <Text style={{ fontSize: 10, color: isMe ? '#e0e0e0' : '#888', marginTop: 4, textAlign: isMe ? 'right' : 'left' }}>
+                    <Text className={`text-xs ${isMe ? 'text-gray-300' : 'text-gray-500'} mt-1 ${isMe ? 'text-right' : 'text-left'}`}>
                         {formatDate(message.timestamp)}
                     </Text>
                 </View>
             </View>
         );
-    };
+    }, [getImageUrl, handleImageError, formatDate]);
+
+    // Tối ưu: Memoized key extractor
+    const keyExtractor = useCallback((item: OptimizedMessage, index: number) => {
+        return item._id || `temp-${index}`;
+    }, []);
+
+    // Tối ưu: Memoized getItemLayout cho FlatList performance
+    const getItemLayout = useCallback((data: any, index: number) => ({
+        length: 80, // Estimate height
+        offset: 80 * index,
+        index,
+    }), []);
 
     if (loading) {
         return (
-            <View className="flex-1 justify-center items-center">
+            <View className="flex-1 justify-center items-center bg-white">
                 <ActivityIndicator size="large" color="#002855" />
+                <Text className="mt-3 text-base text-gray-600">Đang tải tin nhắn...</Text>
             </View>
         );
     }
 
     return (
-        <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}>
+        <View className="flex-1 bg-white">
             <FlatList
-                data={messages}
+                data={optimizedMessages}
                 renderItem={renderItem}
-                keyExtractor={(item, index) => item._id || index.toString()}
+                keyExtractor={keyExtractor}
                 ref={flatListRef}
-                onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-                onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
-                style={{ flex: 1 }}
+                onContentSizeChange={scrollToEnd}
+                onLayout={scrollToEnd}
+                className="flex-1"
                 contentContainerStyle={{
                     paddingHorizontal: 16,
-                    paddingTop: 8, 
+                    paddingTop: 8,
                     paddingBottom: keyboardVisible ? keyboardHeight + 20 : 80
                 }}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="interactive"
+                removeClippedSubviews={true}
+                initialNumToRender={20}
+                maxToRenderPerBatch={10}
+                windowSize={10}
+                updateCellsBatchingPeriod={50}
+                getItemLayout={getItemLayout}
                 ListEmptyComponent={
                     <View className="flex-1 justify-center items-center py-8">
-                        <Text className="text-gray-500 font-medium">Chưa có tin nhắn nào</Text>
+                        <Text className="text-gray-600 text-base font-medium">Chưa có tin nhắn nào</Text>
                     </View>
                 }
             />
 
             {imagesToSend.length > 0 && (
-                <View style={styles.imagePreviewContainer}>
+                <View className="border-t border-gray-300 bg-white py-2">
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8 }}>
                         {imagesToSend.map((uri, idx) => (
-                            <View key={idx} style={styles.imagePreviewItem}>
-                                <Image source={{ uri }} style={styles.previewImage} />
+                            <View key={idx} className="relative mr-3">
+                                <Image source={{ uri }} className="w-20 h-20 rounded-2" />
                                 <TouchableOpacity
                                     onPress={() => removeImage(idx)}
-                                    style={styles.removeImageButton}
+                                    className="absolute -top-2 -right-2 bg-black/60 rounded-3 p-1"
                                 >
                                     <Ionicons name="close" size={16} color="#ffffff" />
                                 </TouchableOpacity>
@@ -500,44 +590,42 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
                 </View>
             )}
 
-            <View style={[
-                styles.inputContainer,
-                {
+            <View
+                className="flex-row items-center border-t border-gray-300 p-2 px-3 bg-white w-full z-10"
+                style={{
                     position: 'absolute',
                     bottom: keyboardVisible ? keyboardHeight : 0,
                     left: 0,
                     right: 0,
                     paddingBottom: Platform.OS === 'ios' ? 2 : (keyboardVisible ? 2 : 0)
-                }
-            ]}>
+                }}
+            >
                 <TouchableOpacity
                     onPress={handleAttachmentOptions}
-                    style={styles.iconButton}
+                    className="p-2"
+                    activeOpacity={0.7}
                 >
                     <Ionicons name="attach-outline" size={24} color="#002855" />
                 </TouchableOpacity>
 
                 <TextInput
-                    style={styles.textInput}
+                    className="flex-1 bg-gray-100 rounded-3xl px-4 py-2.5 mx-2 text-base max-h-25"
                     placeholder="Nhập tin nhắn..."
                     value={newMessage}
                     onChangeText={setNewMessage}
                     multiline
                     maxLength={500}
-                    onFocus={() => {
-                        setTimeout(() => {
-                            flatListRef.current?.scrollToEnd({ animated: true });
-                        }, 100);
-                    }}
+                    onFocus={scrollToEnd}
+                    returnKeyType="send"
+                    onSubmitEditing={handleSend}
+                    blurOnSubmit={false}
                 />
 
                 <TouchableOpacity
                     onPress={handleSend}
                     disabled={sending || (!newMessage.trim() && imagesToSend.length === 0)}
-                    style={[
-                        styles.sendButton,
-                        (!newMessage.trim() && imagesToSend.length === 0 || sending) && { opacity: 0.5 }
-                    ]}
+                    className={`p-2 rounded-5 ${((!newMessage.trim() && imagesToSend.length === 0) || sending) ? 'opacity-50' : ''}`}
+                    activeOpacity={0.7}
                 >
                     {sending ? (
                         <ActivityIndicator size="small" color="#002855" />
@@ -551,50 +639,50 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
                 <TouchableOpacity
                     activeOpacity={1}
                     onPress={() => setShowImageOptions(false)}
-                    style={[
-                        styles.modalOverlay,
-                        { display: showImageOptions ? 'flex' : 'none' }
-                    ]}
+                    className={`absolute top-0 left-0 right-0 bottom-0 bg-black/30 z-20 ${showImageOptions ? 'flex' : 'hidden'}`}
                 />
             )}
 
             {Platform.OS === 'android' && showImageOptions && (
                 <View
-                    style={[
-                        styles.optionsPanel,
-                        { bottom: keyboardVisible ? keyboardHeight + 60 : 70 }
-                    ]}
+                    className="absolute left-2.5 right-2.5 z-30 items-center"
+                    style={{
+                        bottom: keyboardVisible ? keyboardHeight + 60 : 70
+                    }}
                 >
-                    <View style={styles.optionsPanelContent}>
+                    <View className="bg-white w-full rounded-3 shadow-lg overflow-hidden">
                         <TouchableOpacity
-                            style={styles.optionItem}
+                            className="flex-row items-center p-4 border-b border-gray-100"
                             onPress={() => {
                                 setShowImageOptions(false);
                                 takePhoto();
                             }}
+                            activeOpacity={0.7}
                         >
                             <Ionicons name="camera-outline" size={24} color="#002855" />
-                            <Text style={styles.optionText}>Chụp ảnh mới</Text>
+                            <Text className="ml-3 text-base font-medium">Chụp ảnh mới</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                            style={styles.optionItem}
+                            className="flex-row items-center p-4 border-b border-gray-100"
                             onPress={() => {
                                 setShowImageOptions(false);
                                 pickImage();
                             }}
+                            activeOpacity={0.7}
                         >
                             <Ionicons name="images-outline" size={24} color="#002855" />
-                            <Text style={styles.optionText}>Chọn từ thư viện</Text>
+                            <Text className="ml-3 text-base font-medium">Chọn từ thư viện</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                            style={[styles.optionItem, { borderBottomWidth: 0 }]}
+                            className="flex-row items-center p-4"
                             onPress={() => {
                                 setShowImageOptions(false);
                                 handlePickDocument();
                             }}
+                            activeOpacity={0.7}
                         >
                             <Ionicons name="document-outline" size={24} color="#002855" />
-                            <Text style={styles.optionText}>Chọn tệp</Text>
+                            <Text className="ml-3 text-base font-medium">Chọn tệp</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -602,98 +690,5 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
         </View>
     );
 };
-
-const styles = StyleSheet.create({
-    inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderTopWidth: 1,
-        borderTopColor: '#e1e1e1',
-        padding: 8,
-        paddingHorizontal: 12,
-        backgroundColor: 'white',
-        width: '100%',
-        zIndex: 1,
-    },
-    iconButton: {
-        padding: 8,
-    },
-    textInput: {
-        flex: 1,
-        backgroundColor: '#F5F5F5',
-        borderRadius: 24,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        marginHorizontal: 8,
-        fontSize: 16,
-        maxHeight: 100,
-    },
-    sendButton: {
-        padding: 8,
-        borderRadius: 20,
-    },
-    imagePreviewContainer: {
-        borderTopWidth: 1,
-        borderTopColor: '#e1e1e1',
-        backgroundColor: 'white',
-        paddingVertical: 8,
-    },
-    imagePreviewItem: {
-        position: 'relative',
-        marginRight: 12,
-    },
-    previewImage: {
-        width: 80,
-        height: 80,
-        borderRadius: 8,
-    },
-    removeImageButton: {
-        position: 'absolute',
-        top: -8,
-        right: -8,
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        borderRadius: 12,
-        padding: 4,
-    },
-    modalOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.3)',
-        zIndex: 2,
-    },
-    optionsPanel: {
-        position: 'absolute',
-        left: 10,
-        right: 10,
-        zIndex: 3,
-        alignItems: 'center',
-    },
-    optionsPanelContent: {
-        backgroundColor: 'white',
-        width: '100%',
-        borderRadius: 12,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-        elevation: 5,
-        overflow: 'hidden',
-    },
-    optionItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
-    },
-    optionText: {
-        marginLeft: 12,
-        fontSize: 16,
-        fontWeight: '500',
-    }
-});
 
 export default TicketChat; 

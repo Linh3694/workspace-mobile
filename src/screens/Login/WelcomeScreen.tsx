@@ -59,14 +59,11 @@ const WelcomeScreen = () => {
         <View className="flex-1 bg-white">
             <View className="flex-1 w-full items-center justify-center mt-[5%]">
                 <View>
-                    <Text className="text-xl text-primary text-center mb-3" style={{ fontFamily: 'Mulish-ExtraBold' }}>
-                            Chào mừng Thầy Cô đến với
-                        </Text>
-                    <ApplogoFull width={390} height={40} />
-                    <Text className="text-xl text-primary text-center mt-6" style={{ fontFamily: 'Mulish-SemiBold' }}>
-                        Không cần mò mẫm, làm việc sáng suốt
+                    <ApplogoFull width={390} height={80} />
+                    <Text className="text-lg text-[#00687F] text-center" style={{ fontFamily: 'Mulish-Bold' }}>
+                        Tối ưu vận hành, nâng tầm chất lượng
                     </Text>
-                    </View>
+                </View>
                     {/* Banner động */}
                     <View
                         style={{

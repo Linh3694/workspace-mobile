@@ -159,8 +159,22 @@ const WislifeScreen = () => {
           <View className="flex-row items-center flex-1">
             <View className="w-10 h-10 rounded-full overflow-hidden bg-gray-300">
               <Image 
-                source={{ uri: getAvatar(user) }} 
+                source={{
+                  uri: (() => {
+                    console.log('=== WislifeScreen Avatar Debug ===');
+                    console.log('User object:', JSON.stringify(user, null, 2));
+                    const avatarUri = getAvatar(user);
+                    console.log('Generated avatar URI:', avatarUri);
+                    return avatarUri;
+                  })()
+                }} 
                 className="w-full h-full"
+                onError={(error) => {
+                  console.log('WislifeScreen avatar error:', error.nativeEvent.error);
+                }}
+                onLoad={() => {
+                  console.log('WislifeScreen avatar loaded successfully');
+                }}
               />
             </View>
             <View className="ml-3 flex-1">

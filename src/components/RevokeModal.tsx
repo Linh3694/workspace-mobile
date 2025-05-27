@@ -200,7 +200,7 @@ const RevokeModal: React.FC<RevokeModalProps> = ({
                             </ScrollView>
 
                             {/* Action Buttons */}
-                            <View className="flex-row -mx-5 border-[#E5E5E5]">
+                            <View className="flex-row -mx-5 my-2 border-[#E5E5E5]">
                                 <TouchableOpacity
                                     className="flex-1 py-3 items-center justify-center bg-transparent"
                                     onPress={handleCancel}

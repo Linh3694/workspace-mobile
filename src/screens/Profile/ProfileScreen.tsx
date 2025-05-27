@@ -1,17 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, SafeAreaView, TouchableOpacity, Switch, Alert, Modal, TextInput, Pressable } from 'react-native';
+import { View, Text, SafeAreaView, TouchableOpacity, Switch, Alert, Modal, TextInput, Pressable, Image, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../../context/AuthContext';
 import { useBiometricAuth } from '../../hooks/useBiometricAuth';
-import FaceIdIcon from '../../assets/face-id.svg';
-import VisibilityIcon from '../../assets/visibility.svg';
+import { Ionicons } from '@expo/vector-icons';
 import ConfirmModal from '../../components/ConfirmModal';
+import Wismelogo from '../../assets/wisme.svg';
+import { getAvatar } from '../../utils/avatar';
+import { API_BASE_URL } from '../../config/constants.js';
+import FaceID from '../../assets/faceid-gray.svg'
+import Dot from '../../assets/dot.svg'
+
 
 const ProfileScreen = () => {
     const navigation = useNavigation<NativeStackNavigationProp<any>>();
-    const { logout, user, clearBiometricCredentials } = useAuth();
+    const { logout, user, clearBiometricCredentials, refreshUserData } = useAuth();
     const { isBiometricAvailable, hasSavedCredentials, removeCredentials, saveCredentialsFromProfile } = useBiometricAuth();
     const [biometricEnabled, setBiometricEnabled] = useState(false);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -19,18 +24,42 @@ const ProfileScreen = () => {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [avatarError, setAvatarError] = useState(false);
 
     // Kiểm tra xem sinh trắc học có được bật không
     useEffect(() => {
         setBiometricEnabled(hasSavedCredentials);
     }, [hasSavedCredentials]);
 
+    // Debug avatar URL
+    useEffect(() => {
+        if (user) {
+            const avatarUrl = getAvatar(user);
+            console.log('Avatar URL:', avatarUrl);
+            console.log('User data:', user);
+            console.log('User has avatarUrl:', !!user.avatarUrl);
+
+            // Test if avatar URL is accessible
+            if (user.avatarUrl) {
+                const testUrl = `${API_BASE_URL}/uploads/Avatar/${user.avatarUrl}`;
+                console.log('Testing avatar URL accessibility:', testUrl);
+
+                // Try to load the image to check if it exists
+                Image.prefetch(testUrl).then(() => {
+                    console.log('Avatar image successfully prefetched');
+                }).catch((error) => {
+                    console.log('Avatar image prefetch failed:', error);
+                    setAvatarError(true);
+                });
+            }
+        }
+    }, [user]);
+
     const handleLogout = async () => {
         await logout();
     };
 
     const handleEnableBiometric = () => {
-        // Hiển thị modal để nhập mật khẩu
         setPassword('');
         setShowPasswordModal(true);
     };
@@ -43,7 +72,6 @@ const ProfileScreen = () => {
 
         setIsLoading(true);
         try {
-            // Lưu thông tin đăng nhập sinh trắc học
             const success = await saveCredentialsFromProfile(password);
             if (success) {
                 setBiometricEnabled(true);
@@ -59,10 +87,8 @@ const ProfileScreen = () => {
 
     const toggleBiometricAuth = async (value: boolean) => {
         if (value === false) {
-            // Hiển thị modal xác nhận tắt FaceID/TouchID
             setShowConfirmModal(true);
         } else {
-            // Bật xác thực sinh trắc học - yêu cầu nhập mật khẩu
             handleEnableBiometric();
         }
     };
@@ -75,46 +101,155 @@ const ProfileScreen = () => {
         setShowConfirmModal(false);
     };
 
-    console.log('isBiometricAvailable:', isBiometricAvailable);
+    const handleRefreshAvatar = async () => {
+        console.log('Refreshing user data to get avatar...');
+        await refreshUserData();
+        setAvatarError(false); // Reset avatar error state
+    };
+
+    const handleImageError = () => {
+        console.log('Avatar load error, switching to fallback');
+        setAvatarError(true);
+    };
+
+    const getFallbackAvatar = () => {
+        if (!user) return 'https://ui-avatars.com/api/?name=Unknown&background=F97316&color=ffffff&size=200';
+        return `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullname)}&background=F97316&color=ffffff&size=200&font-size=0.5`;
+    };
 
     return (
         <SafeAreaView className="flex-1 bg-white">
-            <View className="p-4">
-                <Text className="text-2xl font-bold text-gray-800">Thông Tin Cá Nhân</Text>
-                {user && (
-                    <View className="mt-4">
-                        <Text className="text-lg font-medium text-gray-700">Họ tên: {user.fullname}</Text>
-                        <Text className="text-lg font-medium text-gray-700 mt-1">Email: {user.email}</Text>
+            <ScrollView className="flex-1">
+                {/* Header */}
+                <View className=" px-6 pt-4 pb-2">
+                    <Wismelogo width={100} height={30} />
+                </View>
+
+                {/* Profile Section */}
+                <View className="mx-4 mt-6 rounded-2xl p-6 items-center">
+                    {/* Avatar với online status */}
+                    <View className="relative mb-4">
+                        <TouchableOpacity onPress={handleRefreshAvatar}>
+                            <Image
+                                source={{
+                                    uri: avatarError ? getFallbackAvatar() : getAvatar(user)
+                                }}
+                                className="w-24 h-24 rounded-full"
+                                onError={handleImageError}
+                                onLoad={() => setAvatarError(false)}
+                            />
+                        </TouchableOpacity>
+                        <View className="absolute bottom-1 right-1 w-6 h-6 bg-green-500 rounded-full border-3 border-white" />
+                        {/* Refresh icon */}
+                        <TouchableOpacity
+                            onPress={handleRefreshAvatar}
+                            className="absolute top-0 right-0 w-8 h-8 bg-white rounded-full shadow-md items-center justify-center"
+                        >
+                            <Ionicons name="refresh" size={16} color="#666" />
+                        </TouchableOpacity>
                     </View>
-                )}
-            </View>
 
-            {/* Phần cài đặt */}
-            <View className="mt-8 px-4">
-                <Text className="text-xl font-bold text-gray-800 mb-4">Cài đặt</Text>
+                    {/* User Info */}
+                    <Text className="text-3xl font-bold text-primary my-2">
+                        {user?.fullname}
+                    </Text>
+                    <Text className="text-[#757575] font-medium my-2">
+                        {user?.jobTitle}
+                    </Text>
 
-                {/* Tùy chọn FaceID/TouchID */}
-                {isBiometricAvailable && (
-                    <View className="flex-row justify-between items-center py-3 border-b border-gray-200">
-                        <View className="flex-row items-center">
-                            <FaceIdIcon width={24} height={24} style={{ marginRight: 12 }} />
-                            <Text className="text-base font-medium text-gray-700">Đăng nhập bằng FaceID/TouchID</Text>
+                    {/* Employee ID Badge */}
+                    <View className="bg-[#F9FBEB] px-4 py-2 rounded-full">
+                        <Text className="text-black font-semibold text-lg">
+                            {user?.employeeCode}
+                        </Text>
+                    </View>
+                </View>
+
+                {/* Contact Info Section */}
+                <View className="bg-[#f8f8f8] mx-4 mt-4 p-4 rounded-2xl">
+                    <View className="my-2" >
+                        <Text className="text-lg font-semibold text-black">Thông tin liên hệ</Text>
+                    </View>
+                    <View className=" gap-2">
+                        {/* Phone */}
+                        <View className="flex-row items-center my-2">
+                            <Ionicons name="call-outline" size={20} color="#757575" />
+                            <Text className="ml-5 text-black font-medium">
+                                {user?.phone}
+                            </Text>
                         </View>
-                        <Switch
-                            trackColor={{ false: "#D9D9D9", true: "#009483" }}
-                            thumbColor={"#FFFFFF"}
-                            value={biometricEnabled}
-                            onValueChange={toggleBiometricAuth}
-                        />
-                    </View>
-                )}
-            </View>
 
-            <View className="flex-1 justify-end pb-10 px-4">
-                <TouchableOpacity onPress={handleLogout} className="bg-red-500 rounded-full py-3">
-                    <Text className="text-center text-white font-bold text-lg">Đăng xuất</Text>
-                </TouchableOpacity>
-            </View>
+                        {/* Email */}
+                        <View className="flex-row items-center my-2">
+                            <Ionicons name="mail-outline" size={20} color="#757575" />
+                            <Text className="ml-5 text-black font-medium">
+                                {user?.email}
+                            </Text>
+                        </View>
+
+                        {/* Department */}
+                        <View className="flex-row items-center my-2">
+                            <Ionicons name="business-outline" size={20} color="#757575" />
+                            <Text className="ml-5 text-black font-medium">
+                                {user?.department}
+                            </Text>
+                        </View>
+                    </View>
+                </View>
+
+                {/* Settings Section */}
+                <View className="rounded-2xl border-t border-[#E5E5E5] mt-8">
+
+                    <View className="p-5 gap-8">
+                        <Text className="text-base font-semibold text-black">Cài đặt</Text>
+                        {/* Notifications */}
+                        <TouchableOpacity className="flex-row items-center">
+                            <Ionicons name="notifications-outline" size={20} color="#757575" />
+                            <Text className="ml-5 flex-1 text-black font-medium">Thông báo</Text>
+                        </TouchableOpacity>
+
+                        {/* Change Password */}
+                        <TouchableOpacity className="flex-row items-center">
+                            <Dot width={20} height={20} />
+                            <Text className="ml-5 flex-1 text-black font-medium">Đổi mật khẩu</Text>
+                        </TouchableOpacity>
+
+                        <View className="flex-row items-center justify-between">
+                            <View className="flex-row items-center flex-1">
+                                <FaceID width={20} height={20} />
+                                <Text className="ml-5 text-black font-medium">FaceID</Text>
+                            </View>
+                            <Switch
+                                trackColor={{ false: "#D1D5DB", true: "#F97316" }}
+                                thumbColor={"#FFFFFF"}
+                                value={biometricEnabled}
+                                onValueChange={toggleBiometricAuth}
+                            />
+                        </View>
+
+                        {/* Language */}
+                        <TouchableOpacity className="flex-row items-center justify-between">
+                            <View className="flex-row items-center flex-1">
+                                <Ionicons name="language-outline" size={20} color="#757575" />
+                                <Text className="ml-5 text-black font-medium">Ngôn ngữ</Text>
+                            </View>
+                            <View className="flex-row items-center">
+                                <Text className="text-black font-medium mr-2">Tiếng Việt</Text>
+                                <Ionicons name="chevron-down" size={16} color="#757575" />
+                            </View>
+                        </TouchableOpacity>
+
+                        {/* Logout */}
+                        <TouchableOpacity
+                            onPress={handleLogout}
+                            className="flex-row items-center"
+                        >
+                            <Ionicons name="log-out-outline" size={20} color="#EF4444" />
+                            <Text className="ml-5 text-red-500">Đăng xuất</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </ScrollView>
 
             {/* Modal xác nhận tắt FaceID/TouchID */}
             <ConfirmModal
@@ -133,66 +268,49 @@ const ProfileScreen = () => {
                 onRequestClose={() => setShowPasswordModal(false)}
             >
                 <Pressable
-                    style={{
-                        flex: 1,
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        backgroundColor: 'rgba(0,0,0,0.5)'
-                    }}
+                    className="flex-1 justify-center items-center bg-black/50"
                     onPress={() => setShowPasswordModal(false)}
                 >
                     <Pressable
                         onPress={(e) => e.stopPropagation()}
-                        style={{
-                            width: '85%',
-                            backgroundColor: 'white',
-                            borderRadius: 16,
-                            padding: 24,
-                            shadowColor: '#000',
-                            shadowOffset: { width: 0, height: 2 },
-                            shadowOpacity: 0.25,
-                            shadowRadius: 4,
-                            elevation: 5,
-                        }}
+                        className="w-[85%] bg-white rounded-2xl p-6 shadow-lg"
                     >
-                        <Text className="text-xl font-bold text-gray-800 mb-4">Bật Face ID</Text>
+                        <Text className="text-xl font-bold text-gray-800 mb-4">Bật xác thực sinh trắc học</Text>
                         <Text className="text-base text-gray-600 mb-4">
-                            Nhập mật khẩu hiện tại của bạn để bật tính năng đăng nhập bằng FaceID/TouchID
+                            Nhập mật khẩu hiện tại của bạn để bật tính năng đăng nhập bằng Face ID/Touch ID
                         </Text>
 
-                        <View className="relative items-center mb-5">
+                        <View className="relative mb-6">
                             <TextInput
-                                className="w-full h-12 border font-medium rounded-xl px-3 mb-4 bg-white pr-12 border-[#ddd]"
+                                className="w-full h-12 border border-gray-300 rounded-xl px-4 pr-12 bg-white"
                                 placeholder="Nhập mật khẩu"
                                 secureTextEntry={!showPassword}
                                 value={password}
                                 onChangeText={setPassword}
                             />
                             <Pressable
-                                style={{
-                                    position: 'absolute',
-                                    right: 10,
-                                    top: '20%',
-                                    zIndex: 10,
-                                }}
-                                onPress={() => setShowPassword((prev) => !prev)}
-                                hitSlop={8}
+                                className="absolute right-3 top-3"
+                                onPress={() => setShowPassword(!showPassword)}
                             >
-                                <VisibilityIcon width={24} height={24} />
+                                <Ionicons
+                                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                                    size={24}
+                                    color="#666"
+                                />
                             </Pressable>
                         </View>
 
                         <View className="flex-row justify-end space-x-3">
                             <TouchableOpacity
                                 onPress={() => setShowPasswordModal(false)}
-                                className="px-5 py-2 rounded-lg"
+                                className="px-6 py-3"
                             >
-                                <Text className="text-gray-700 font-medium">Hủy</Text>
+                                <Text className="text-gray-600 font-medium">Hủy</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={handleSubmitPassword}
                                 disabled={isLoading}
-                                className="bg-secondary px-5 py-2 rounded-lg"
+                                className="bg-blue-600 px-6 py-3 rounded-lg"
                             >
                                 <Text className="text-white font-medium">
                                     {isLoading ? 'Đang xử lý...' : 'Xác nhận'}

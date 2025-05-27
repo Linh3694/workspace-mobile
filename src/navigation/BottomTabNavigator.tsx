@@ -45,7 +45,7 @@ const BottomTabNavigator = ({ route }: { route: any }) => {
                             <MenuIcon width={28} height={28} />
                         </View>
                     ),
-                    tabBarLabel: ({ focused }) => tabBarLabel('Ứng dụng', focused),
+                    tabBarLabel: ({ focused }) => tabBarLabel('WisWork', focused),
                 }}
             /> 
             <Tab.Screen
@@ -57,7 +57,7 @@ const BottomTabNavigator = ({ route }: { route: any }) => {
                             <ChatIcon width={28} height={28} />
                         </View>
                     ),
-                    tabBarLabel: ({ focused }) => tabBarLabel('Tin nhắn', focused),
+                    tabBarLabel: ({ focused }) => tabBarLabel('WisCom', focused),
                 })}
             />
             <Tab.Screen
@@ -93,7 +93,7 @@ const BottomTabNavigator = ({ route }: { route: any }) => {
                             <ProfileIcon width={28} height={28} />
                         </View>
                     ),
-                    tabBarLabel: ({ focused }) => tabBarLabel('Hồ sơ', focused),
+                    tabBarLabel: ({ focused }) => tabBarLabel('WisMe', focused),
                 }}
             />
         </Tab.Navigator>

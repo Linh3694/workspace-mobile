@@ -9,9 +9,10 @@ import {
     ActivityIndicator, 
     Alert,
     RefreshControl,
-    Modal,
-    TouchableWithoutFeedback,
-    Image
+
+    Image,
+    Linking,
+    Dimensions
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -27,11 +28,14 @@ import { getAvatar } from '../../utils/avatar';
 import RevokeModal from '../../components/RevokeModal';
 import AssignModal from '../../components/AssignModal';
 import ReportBrokenModal from '../../components/ReportBrokenModal';
+import FilePreviewModal from '../../components/FilePreviewModal';
+import AddActivityModal from '../../components/AddActivityModal';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import RevokeIcon from '../../assets/revoke-devices.svg'
 import AssignIcon from '../../assets/assign-devices.svg'
 import BrokenIcon from '../../assets/broken-devices.svg'
+
 
 
 type DeviceDetailScreenRouteProp = RouteProp<RootStackParamList, typeof ROUTES.SCREENS.DEVICE_DETAIL>;
@@ -55,6 +59,8 @@ const DevicesDetailScreen = () => {
     const route = useRoute<DeviceDetailScreenRouteProp>();
     const { deviceId, deviceType } = route.params;
 
+
+
     const [device, setDevice] = useState<Device | null>(null);
     const [logs, setLogs] = useState<DeviceLog[]>([]);
     const [loading, setLoading] = useState(true);
@@ -70,6 +76,14 @@ const DevicesDetailScreen = () => {
     const [uploadDocumentModalVisible, setUploadDocumentModalVisible] = useState(false);
     const [selectedDocumentType, setSelectedDocumentType] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [previewModalVisible, setPreviewModalVisible] = useState(false);
+    const [previewFileUrl, setPreviewFileUrl] = useState<string>('');
+    const [previewFileType, setPreviewFileType] = useState<'pdf' | 'image'>('pdf');
+    const [authToken, setAuthToken] = useState<string>('');
+    const [addActivityModalVisible, setAddActivityModalVisible] = useState(false);
+    const [newActivityType, setNewActivityType] = useState<'repair' | 'software'>('repair');
+    const [newActivityTitle, setNewActivityTitle] = useState('');
+    const [newActivityDescription, setNewActivityDescription] = useState('');
 
     useEffect(() => {
         fetchDeviceDetail();
@@ -95,11 +109,37 @@ const DevicesDetailScreen = () => {
 
     const fetchDeviceLogs = async () => {
         try {
-            const response = await deviceService.getDeviceLogs(deviceType, deviceId);
-            setLogs(response || []);
+            // Sử dụng Activity API thay vì deviceService.getDeviceLogs
+            const token = await AsyncStorage.getItem('authToken');
+            const response = await fetch(`${API_BASE_URL}/api/activities/${deviceType}/${deviceId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            if (response.ok) {
+                const activities = await response.json();
+                // Map activities to logs format
+                const mappedLogs = activities.map((activity: any) => ({
+                    _id: activity._id,
+                    type: activity.type === 'repair' ? 'maintenance' : 'software',
+                    title: activity.description,
+                    description: activity.details || activity.description,
+                    date: activity.date,
+                    user: {
+                        fullname: activity.updatedBy || 'Hệ thống',
+                        department: 'Không xác định'
+                    },
+                    status: 'completed'
+                }));
+                setLogs(mappedLogs);
+            } else {
+                setLogs([]);
+            }
         } catch (error) {
             console.error('Error fetching device logs:', error);
-            // Nếu lỗi, set logs thành mảng rỗng
             setLogs([]);
         }
     };
@@ -160,6 +200,90 @@ const DevicesDetailScreen = () => {
     const getFilteredLogs = () => {
         if (selectedLogTab === 'all') return logs;
         return logs.filter(log => log.type === selectedLogTab);
+    };
+
+    const handleAddActivity = async () => {
+        try {
+            if (!newActivityTitle.trim()) {
+                Alert.alert('Lỗi', 'Vui lòng nhập tiêu đề hoạt động');
+                return;
+            }
+
+            const token = await AsyncStorage.getItem('authToken');
+            const userData = await AsyncStorage.getItem('user');
+
+            console.log('Debug user data:');
+            console.log('userData:', userData);
+
+            let user = null;
+            let userName = 'Người dùng';
+
+            // Lấy thông tin user từ key 'user'
+            if (userData) {
+                try {
+                    user = JSON.parse(userData);
+                    userName = user?.fullname || user?.name || user?.username || 'Người dùng';
+                    console.log('From userData:', userName);
+                } catch (e) {
+                    console.error('Error parsing userData:', e);
+                }
+            }
+
+            // Nếu vẫn không có tên, thử lấy từ userFullname riêng biệt
+            if (!userName || userName === 'Người dùng') {
+                const fullname = await AsyncStorage.getItem('userFullname');
+                if (fullname) {
+                    userName = fullname;
+                    console.log('From userFullname:', userName);
+                }
+            }
+
+            const activityData = {
+                entityType: deviceType,
+                entityId: deviceId,
+                type: newActivityType === 'repair' ? 'repair' : 'update',
+                description: newActivityTitle,
+                details: newActivityDescription,
+                updatedBy: userName
+            };
+
+            console.log('Sending activity data:', activityData);
+            console.log('API URL:', `${API_BASE_URL}/api/activities`);
+
+            const response = await fetch(`${API_BASE_URL}/api/activities`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(activityData)
+            });
+
+            console.log('Response status:', response.status);
+            console.log('Response headers:', response.headers);
+
+            if (response.ok) {
+                setAddActivityModalVisible(false);
+                setNewActivityTitle('');
+                setNewActivityDescription('');
+                setNewActivityType('repair');
+                await fetchDeviceLogs();
+                Alert.alert('Thành công', 'Thêm hoạt động thành công!');
+            } else {
+                let errorMessage = 'Không thể thêm hoạt động';
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.message || errorMessage;
+                } catch (parseError) {
+                    console.error('Error parsing response:', parseError);
+                    errorMessage = `Lỗi server ${response.status}`;
+                }
+                Alert.alert('Lỗi', errorMessage);
+            }
+        } catch (error) {
+            console.error('Error adding activity:', error);
+            Alert.alert('Lỗi', 'Có lỗi xảy ra khi thêm hoạt động');
+        }
     };
 
     const getAssignedByUser = () => {
@@ -401,9 +525,8 @@ const DevicesDetailScreen = () => {
             console.log('Launching image library...');
             const galleryResult = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                allowsEditing: true,
-                aspect: [4, 3],
-                quality: 0.8,
+                allowsEditing: false,
+                quality: 0.7,
             });
 
             console.log('Gallery result:', galleryResult);
@@ -458,6 +581,94 @@ const DevicesDetailScreen = () => {
         }
     };
 
+    const getDeviceEndpoint = (deviceType: DeviceType) => {
+        // Map device types to their correct API endpoints
+        const endpointMap = {
+            'laptop': 'laptops',
+            'monitor': 'monitors',
+            'printer': 'printers',
+            'projector': 'projectors',
+            'tool': 'tools'
+        };
+        return endpointMap[deviceType] || `${deviceType}s`;
+    };
+
+
+
+    const getHandoverDocument = () => {
+        if (!device?.assignmentHistory || device.assignmentHistory.length === 0) {
+            return null;
+        }
+
+        // Tìm record đang mở (chưa có endDate) trong assignmentHistory
+        const openRecord = device.assignmentHistory.find((hist: any) => !hist.endDate);
+
+        if (openRecord && openRecord.document) {
+            return openRecord.document;
+        }
+
+        return null;
+    };
+
+    const getFileType = (fileName: string): 'pdf' | 'image' => {
+        const extension = fileName.toLowerCase().split('.').pop();
+        if (extension === 'pdf') {
+            return 'pdf';
+        } else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(extension || '')) {
+            return 'image';
+        }
+        return 'pdf'; // default to pdf
+    };
+
+    const handleViewHandoverDocument = async () => {
+        try {
+            const documentPath = getHandoverDocument();
+            if (!documentPath) {
+                Alert.alert('Thông báo', 'Chưa có biên bản bàn giao nào được tải lên');
+                return;
+            }
+
+            const token = await AsyncStorage.getItem('authToken');
+            if (!token) {
+                Alert.alert('Lỗi', 'Không tìm thấy token xác thực');
+                return;
+            }
+
+            const endpoint = getDeviceEndpoint(deviceType);
+
+            // Xử lý đường dẫn file
+            let fileName = documentPath;
+            if (documentPath.includes('/')) {
+                // Nếu là đường dẫn đầy đủ, lấy tên file
+                fileName = documentPath.split('/').pop() || documentPath;
+            }
+
+            // Tạo URL để xem file
+            const fileUrl = `${API_BASE_URL}/api/${endpoint}/handover/${fileName}`;
+
+            console.log('Opening handover document:', {
+                documentPath,
+                fileName,
+                fileUrl,
+                endpoint,
+                token: token.substring(0, 20) + '...'
+            });
+
+            // Xác định loại file
+            const fileType = getFileType(fileName);
+
+            // Mở preview trong app
+            setPreviewFileUrl(fileUrl);
+            setPreviewFileType(fileType);
+            setAuthToken(token);
+            setPreviewModalVisible(true);
+
+        } catch (error) {
+            console.error('Error viewing handover document:', error);
+            Alert.alert('Lỗi', 'Có lỗi xảy ra khi mở file biên bản: ' + (error instanceof Error ? error.message : 'Lỗi không xác định'));
+        }
+    };
+
     const uploadFile = async (fileUri: string, fileName: string, fileType: string) => {
         try {
             if (!device) {
@@ -466,9 +677,14 @@ const DevicesDetailScreen = () => {
             }
 
             console.log('Starting file upload:', { fileUri, fileName, fileType });
+            console.log('Device type:', deviceType);
+            console.log('Device ID:', device._id);
 
             const token = await AsyncStorage.getItem('authToken');
-            const uploadUrl = `${API_BASE_URL}/api/laptops/handover`;
+            const endpoint = getDeviceEndpoint(deviceType);
+            const uploadUrl = `${API_BASE_URL}/api/${endpoint}/upload`;
+
+            // Bỏ qua test endpoint vì function đã được xóa
             
             const formData = new FormData();
             formData.append('file', {
@@ -477,7 +693,8 @@ const DevicesDetailScreen = () => {
                 name: fileName,
             } as any);
             
-            formData.append(`${deviceType}Id`, device._id);
+            const deviceIdParam = `${deviceType}Id`;
+            formData.append(deviceIdParam, device._id);
             
             const currentUser = getCurrentUser();
             if (currentUser) {
@@ -488,6 +705,13 @@ const DevicesDetailScreen = () => {
             }
 
             console.log('Making upload request to:', uploadUrl);
+            console.log('Endpoint mapping:', { deviceType, endpoint });
+            console.log('Form data params:', {
+                deviceIdParam,
+                deviceId: device._id,
+                userId: currentUser?._id,
+                username: currentUser?.fullname
+            });
             
             const response = await fetch(uploadUrl, {
                 method: 'POST',
@@ -498,17 +722,24 @@ const DevicesDetailScreen = () => {
             });
 
             console.log('Upload response status:', response.status);
+            console.log('Upload response headers:', response.headers);
 
             if (!response.ok) {
                 let errorMessage = 'Không thể tải lên biên bản';
+                console.log('Upload failed with status:', response.status);
+
                 try {
                     const errorData = await response.json();
+                    console.log('Error response data:', errorData);
                     errorMessage = errorData.message || errorMessage;
                 } catch (parseError) {
+                    console.log('Failed to parse error as JSON, trying text...');
                     try {
                         const errorText = await response.text();
+                        console.log('Error response text:', errorText);
                         errorMessage = `Lỗi server ${response.status}: ${errorText.substring(0, 100)}`;
                     } catch (textError) {
+                        console.log('Failed to parse error as text');
                         errorMessage = `Lỗi server ${response.status}: Không thể đọc response`;
                     }
                 }
@@ -634,6 +865,9 @@ const DevicesDetailScreen = () => {
         if (!device) return;
 
         try {
+            // Hiển thị loading state
+            setLoading(true);
+
             let payload: any = {};
 
             if (['processor', 'ram', 'storage', 'display'].includes(editSpecKey)) {
@@ -646,7 +880,9 @@ const DevicesDetailScreen = () => {
                 payload[editSpecKey] = editSpecKey === 'releaseYear' ? parseInt(editSpecValue) : editSpecValue;
             }
 
-            const response = await fetch(`${API_BASE_URL}/api/laptops/${device._id}/specs`, {
+            // Xác định endpoint đúng cho từng loại thiết bị
+            const endpoint = getDeviceEndpoint(deviceType);
+            const response = await fetch(`${API_BASE_URL}/api/${endpoint}/${device._id}/specs`, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${await AsyncStorage.getItem('authToken')}`,
@@ -656,20 +892,26 @@ const DevicesDetailScreen = () => {
             });
 
             if (response.ok) {
-                const updatedDevice = await response.json();
-                setDevice(updatedDevice);
+                // Gọi lại cả fetchDeviceDetail và fetchDeviceLogs để đảm bảo tất cả thông tin được cập nhật đầy đủ
+                await Promise.all([fetchDeviceDetail(), fetchDeviceLogs()]);
                 setEditModalVisible(false);
                 Alert.alert('Thành công', 'Cập nhật thông số thành công!');
             } else {
-                Alert.alert('Lỗi', 'Không thể cập nhật thông số!');
+                const errorData = await response.json();
+                Alert.alert('Lỗi', errorData.message || 'Không thể cập nhật thông số!');
             }
         } catch (error) {
             console.error('Error updating spec:', error);
             Alert.alert('Lỗi', 'Có lỗi xảy ra khi cập nhật!');
+        } finally {
+            setLoading(false);
         }
     };
 
     const handleCancelEdit = () => {
+        // Không cho phép đóng modal khi đang loading
+        if (loading) return;
+
         setEditModalVisible(false);
         setEditSpecValue('');
         setEditSpecKey('');
@@ -694,29 +936,32 @@ const DevicesDetailScreen = () => {
     );
 
     const renderLogItem = (log: DeviceLog) => (
-        <View key={log._id} className="bg-[#f8f8f8] rounded-xl p-4 mb-3">
-            <View className="flex-row justify-between items-start mb-2">
+        <View key={log._id} className="bg-[#E4E9EF] rounded-xl p-4 mb-3">
+            <View className="flex-row justify-between items-start">
                 <Text className="text-base font-semibold text-gray-800 flex-1 mr-2">
                     {log.title}
                 </Text>
-                <View className="bg-[#FF6B35] px-3 py-1 rounded-full">
-                    <Text className="text-xs text-white font-medium">
-                        {log.status === 'completed' ? 'Sửa chữa' : 'Đang xử lý'}
+                <Text className="text-sm text-primary font-semibold">
+                    {log.user.fullname}
+                </Text>
+            </View>
+
+            <View className="flex-row justify-between items-center my-1">
+                <Text className="text-xs text-[#A5A5A5] font-medium">
+                    {formatDateTime(log.date)}
+                </Text>
+                <View className={`px-3 py-1 rounded-lg ${log.type === 'maintenance' ? 'bg-secondary' : 'bg-primary'}`}>
+                    <Text className="text-xs text-white font-semibold">
+                        {log.type === 'maintenance' ? 'Sửa chữa' : 'Phần mềm'}
                     </Text>
                 </View>
             </View>
-            
-            <Text className="text-sm text-gray-600 mb-3">
-                {log.description}
-            </Text>
-            
+
             <View className="flex-row justify-between items-center">
-                <Text className="text-xs text-white font-medium">
-                    {formatDateTime(log.date)}
+                <Text className="text-sm text-[#757575]">
+                    {log.description}
                 </Text>
-                <Text className="text-xs text-white font-medium">
-                    {log.user.fullname}
-                </Text>
+
             </View>
         </View>
     );
@@ -780,7 +1025,7 @@ const DevicesDetailScreen = () => {
             </View>
 
             {/* Action Buttons Based on Device Status */}
-            <View className="flex-row items-start px-5 py-3 gap-4 bg-white mb-4">
+            <View className="flex-row items-start px-5 py-2 gap-4 bg-white mb-4">
                 {/* Standby Status: Cấp phát và Báo hỏng */}
                 {device.status === 'Standby' && (
                     <>
@@ -793,7 +1038,7 @@ const DevicesDetailScreen = () => {
                         </TouchableOpacity>
                         <TouchableOpacity
                             onPress={() => setReportBrokenModalVisible(true)}
-                            className="w-12 h-12 rounded-full bg-[#EF4444] items-center justify-center"
+                            className="w-12 h-12 rounded-full bg-[#DC0909] items-center justify-center"
                         >
                             <BrokenIcon width={24} height={24} fill="white" />
                         </TouchableOpacity>
@@ -802,12 +1047,26 @@ const DevicesDetailScreen = () => {
 
                 {/* PendingDocumentation Status: Cập nhật biên bản */}
                 {device.status === 'PendingDocumentation' && (
-                    <TouchableOpacity
-                        onPress={() => setUploadDocumentModalVisible(true)}
-                        className="w-12 h-12 rounded-full bg-[#002855] items-center justify-center"
-                    >
-                        <MaterialCommunityIcons name="file-document" size={24} color="white" />
-                    </TouchableOpacity>
+                    <>
+                        <TouchableOpacity
+                            onPress={() => setUploadDocumentModalVisible(true)}
+                            className="w-12 h-12 rounded-full bg-[#002855] items-center justify-center"
+                        >
+                            <MaterialCommunityIcons name="file-document" size={24} color="white" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={() => setRevokeModalVisible(true)}
+                            className="w-12 h-12 rounded-full bg-[#EAA300] items-center justify-center"
+                        >
+                            <RevokeIcon width={24} height={24} fill="white" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={() => setReportBrokenModalVisible(true)}
+                            className="w-12 h-12 rounded-full bg-[#EF4444] items-center justify-center"
+                        >
+                            <BrokenIcon width={24} height={24} fill="white" />
+                        </TouchableOpacity>
+                    </>
                 )}
 
                 {/* Active Status: Thu hồi và Báo hỏng */}
@@ -889,53 +1148,82 @@ const DevicesDetailScreen = () => {
                 {/* Assignment Info */}
                 <View className="px-5 mb-6">
                     <View className="flex-row justify-between items-center mb-4">
-                        <Text className="text-lg font-semibold text-gray-800">Thông tin bàn giao</Text>
+                        <Text className="text-lg font-bold text-gray-800">Thông tin bàn giao</Text>
                         <TouchableOpacity onPress={handleViewAssignmentHistory}>
-                            <Text className="text-[#F05023] font-medium">Xem tất cả</Text>
+                            <Text className="text-[#F05023] font-bold">Xem tất cả</Text>
                         </TouchableOpacity>
                     </View>
-                    <View className="bg-[#002855] rounded-xl p-4">
-                        <View className="flex-row items-center mb-3">
-                            <Image
-                                source={{ uri: getAvatar(getCurrentUser()) }}
-                                className="w-12 h-12 rounded-full mr-3"
-                            />
-                            <View className="flex-1 gap-1">
-                                <Text className="text-white font-semibold text-base">
-                                    {getCurrentUser()?.fullname || 'Chưa phân công'}
-                                </Text>
-                                <Text className="text-[#BEBEBE] text-sm">
-                                    {getCurrentUser()?.jobTitle || 'Không xác định'}
-                                </Text>
-                                <Text className="text-white text-sm">
-                                    {formatAssignmentDuration()}
+                    {getCurrentUser() ? (
+                        <View className="bg-[#002855] rounded-xl p-4">
+                            <View className="flex-row items-center mb-3">
+                                <Image
+                                    source={{ uri: getAvatar(getCurrentUser()) }}
+                                    className="w-16 h-16 rounded-full mr-3"
+                                />
+                                <View className="flex-1 gap-2">
+                                    <Text className="text-white font-bold text-base">
+                                        {getCurrentUser()?.fullname || 'Chưa phân công'}
+                                    </Text>
+                                    <Text className="text-[#BEBEBE] text-sm">
+                                        {getCurrentUser()?.jobTitle || 'Không xác định'}
+                                    </Text>
+                                    <Text className="text-white text-sm font-bold">
+                                        {formatAssignmentDuration()}
+                                    </Text>
+                                </View>
+                                <TouchableOpacity
+                                    className="p-2 items-center"
+                                    onPress={handleViewHandoverDocument}
+                                    disabled={!getHandoverDocument()}
+                                    style={{ opacity: getHandoverDocument() ? 1 : 0.5 }}
+                                >
+                                    <MaterialCommunityIcons
+                                        name={getHandoverDocument() ? "file-document" : "file-document-outline"}
+                                        size={24}
+                                        color="white"
+                                    />
+                                    <Text className="text-white text-xs mt-1">
+                                        {getHandoverDocument() ? 'Biên bản' : 'N/A'}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            <View className="border-t border-gray-300 pt-3 pb-1 space-y-2">
+                                <Text className="text-white text-sm font-bold">
+                                    Người bàn giao: {getAssignedByUser()}
                                 </Text>
                             </View>
-                            <TouchableOpacity className="p-2">
-                                <MaterialCommunityIcons name="file-document-outline" size={24} color="white" />
-                            </TouchableOpacity>
                         </View>
-                        
-                        <View className="border-t border-gray-600 pt-3 space-y-2">
-                            <Text className="text-white text-sm">
-                                Người bàn giao: {getAssignedByUser()}
-                            </Text>
-
+                    ) : (
+                        <View className="bg-gray-100 rounded-xl p-4 border-2 border-dashed border-gray-300">
+                            <View className="items-center py-4">
+                                <MaterialCommunityIcons
+                                    name="account-off-outline"
+                                    size={48}
+                                    color="#9CA3AF"
+                                />
+                                <Text className="text-gray-500 font-bold text-base mt-3 text-center">
+                                    Thiết bị chưa được bàn giao
+                                </Text>
+                                <Text className="text-gray-400 text-sm mt-1 text-center">
+                                    Thiết bị này hiện chưa được cấp phát cho ai
+                                </Text>
+                            </View>
                         </View>
-                    </View>
+                    )}
                 </View>
 
                 {/* Device Logs */}
                 <View className="px-5 mb-6">
                     <View className="flex-row justify-between items-center mb-4">
-                        <Text className="text-lg font-semibold text-gray-800">Nhật ký</Text>
-                        <TouchableOpacity>
-                            <Text className="text-[#F05023] font-medium">Xem tất cả</Text>
+                        <Text className="text-xl font-bold text-primary">Nhật ký</Text>
+                        <TouchableOpacity onPress={() => setAddActivityModalVisible(true)}>
+                            <Text className="text-[#F05023] font-bold">Cập nhật</Text>
                         </TouchableOpacity>
                     </View>
 
                     {/* Log Tabs */}
-                    <View className="flex-row mb-4 bg-gray-100 rounded-xl p-1">
+                    <View className="flex-row mb-4 bg-gray-100 rounded-2xl p-1 gap-1">
                         {[
                             { key: 'all', label: 'Tất cả' },
                             { key: 'maintenance', label: 'Sửa chữa' },
@@ -944,16 +1232,16 @@ const DevicesDetailScreen = () => {
                             <TouchableOpacity
                                 key={tab.key}
                                 onPress={() => setSelectedLogTab(tab.key as any)}
-                                className={`flex-1 py-2 px-4 rounded-lg ${
+                                className={`flex-1 py-2 px-3 rounded-full ${
                                     selectedLogTab === tab.key 
                                         ? 'bg-[#002855]' 
                                         : 'bg-transparent'
                                 }`}
                             >
-                                <Text className={`text-sm font-medium text-center ${
+                                <Text className={`text-sm font-bold text-center ${
                                     selectedLogTab === tab.key 
                                         ? 'text-white' 
-                                        : 'text-gray-600'
+                                    : 'text-[#757575]'
                                 }`}>
                                     {tab.label}
                                 </Text>
@@ -987,6 +1275,7 @@ const DevicesDetailScreen = () => {
                 onChangeText={setEditSpecValue}
                 onCancel={handleCancelEdit}
                 onConfirm={handleSaveSpec}
+                isLoading={loading}
             />
 
             {/* Modals */}
@@ -1018,6 +1307,28 @@ const DevicesDetailScreen = () => {
               onGallery={handleGalleryUpload}
               onDocument={handleDocumentUpload}
               isUploading={isUploading}
+            />
+
+            {/* File Preview Modal */}
+            <FilePreviewModal
+                visible={previewModalVisible}
+                onClose={() => setPreviewModalVisible(false)}
+                fileUrl={previewFileUrl}
+                authToken={authToken}
+                title="Biên bản bàn giao"
+            />
+
+            {/* Add Activity Modal */}
+            <AddActivityModal
+                visible={addActivityModalVisible}
+                onClose={() => setAddActivityModalVisible(false)}
+                onAdd={handleAddActivity}
+                activityType={newActivityType}
+                onActivityTypeChange={setNewActivityType}
+                title={newActivityTitle}
+                onTitleChange={setNewActivityTitle}
+                description={newActivityDescription}
+                onDescriptionChange={setNewActivityDescription}
             />
         </SafeAreaView>
     );

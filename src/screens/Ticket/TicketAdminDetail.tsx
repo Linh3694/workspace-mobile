@@ -266,7 +266,7 @@ const TicketAdminDetail = () => {
                     <View className="px-4 mb-4">
                         <Text className="text-[#E84A37] font-medium text-xl">{ticket.title}</Text>
                     </View>
-                        <View className="flex-row justify-between items-center pr-[65%] pl-5 mb-6">
+                        <View className="flex-row justify-between items-center pr-[60%] pl-5 mb-6">
                             <TouchableOpacity onPress={handleAssignToCurrentUser} className="w-11 h-11 rounded-full bg-green-600 items-center justify-center">
                                 <Ionicons name="checkmark" size={24} color="white" />
                             </TouchableOpacity>

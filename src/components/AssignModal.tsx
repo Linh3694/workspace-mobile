@@ -95,6 +95,7 @@ const AssignModal: React.FC<AssignModalProps> = ({
             );
             setFilteredUsers(filtered);
         }
+        console.log('Filtered users:', filteredUsers.length, 'Search query:', searchQuery); // Debug log
     }, [searchQuery, users]);
 
     const fetchUsers = async () => {
@@ -110,8 +111,13 @@ const AssignModal: React.FC<AssignModalProps> = ({
 
             if (response.ok) {
                 const data = await response.json();
-                setUsers(data.users || []);
-                setFilteredUsers(data.users || []);
+                console.log('Users data received:', data); // Debug log
+                const usersList = data.users || data || [];
+                setUsers(usersList);
+                setFilteredUsers(usersList);
+            } else {
+                console.error('Failed to fetch users:', response.status);
+                Alert.alert('Lỗi', 'Không thể tải danh sách người dùng');
             }
         } catch (error) {
             console.error('Error fetching users:', error);
@@ -155,10 +161,13 @@ const AssignModal: React.FC<AssignModalProps> = ({
         <TouchableOpacity
             key={user._id}
             onPress={() => setSelectedUser(user)}
-            className={`p-3 rounded-lg border ${selectedUser?._id === user._id
-                ? 'border-green-500 bg-green-50'
-                : 'border-gray-200 bg-gray-50'
-                }`}
+            activeOpacity={1}
+            className="p-3 rounded-lg border"
+            style={{
+                borderColor: selectedUser?._id === user._id ? '#F05023' : '#E5E7EB',
+                backgroundColor: selectedUser?._id === user._id ? '#FFF5F0' : '#F9FAFB',
+                opacity: 1
+            }}
         >
             <View className="flex-row items-center">
                 <Image
@@ -166,19 +175,23 @@ const AssignModal: React.FC<AssignModalProps> = ({
                     className="w-10 h-10 rounded-full mr-3"
                 />
                 <View className="flex-1">
-                    <Text className={`text-sm font-medium ${selectedUser?._id === user._id ? 'text-green-700' : 'text-gray-800'
-                        }`}>
+                    <Text
+                        className="text-sm font-medium"
+                        style={{ color: selectedUser?._id === user._id ? '#F05023' : '#1F2937' }}
+                    >
                         {user.fullname}
                     </Text>
-                    <Text className={`text-xs ${selectedUser?._id === user._id ? 'text-green-600' : 'text-gray-600'
-                        }`}>
+                    <Text
+                        className="text-xs"
+                        style={{ color: selectedUser?._id === user._id ? '#F05023' : '#6B7280' }}
+                    >
                         {user.jobTitle} • {user.department}
                     </Text>
                 </View>
                 <MaterialCommunityIcons
                     name={selectedUser?._id === user._id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={20}
-                    color={selectedUser?._id === user._id ? '#22C55E' : '#6B7280'}
+                    color={selectedUser?._id === user._id ? '#F05023' : '#6B7280'}
                 />
             </View>
         </TouchableOpacity>
@@ -212,8 +225,8 @@ const AssignModal: React.FC<AssignModalProps> = ({
                                 </Text>
 
                                 {/* Device Info */}
-                                <View className="bg-green-50 p-3 rounded-lg mb-4">
-                                    <Text className="text-sm text-green-600 text-center">
+                                <View className="p-3 rounded-lg mb-4" style={{ backgroundColor: '#FFF5F0' }}>
+                                    <Text className="text-sm text-center" style={{ color: '#F05023' }}>
                                         Cấp phát <Text className="font-semibold">{deviceName}</Text>
                                     </Text>
                                 </View>
@@ -248,12 +261,16 @@ const AssignModal: React.FC<AssignModalProps> = ({
 
                                 {searchLoading ? (
                                     <View className="items-center py-4">
-                                        <ActivityIndicator size="small" color="#22C55E" />
+                                        <ActivityIndicator size="small" color="#F05023" />
                                     </View>
-                                ) : (
+                                ) : filteredUsers.length > 0 ? (
                                     <View className="gap-2 mb-4">
                                         {filteredUsers.map(renderUserItem)}
                                     </View>
+                                    ) : (
+                                        <View className="items-center py-4">
+                                            <Text className="text-gray-500">Không tìm thấy người dùng nào</Text>
+                                        </View>
                                 )}
 
                                 {/* Notes */}
@@ -273,9 +290,9 @@ const AssignModal: React.FC<AssignModalProps> = ({
                             </ScrollView>
 
                             {/* Action Buttons */}
-                            <View className="flex-row -mx-5 border-[#E5E5E5]">
+                            <View className="flex-row -mx-5 my-5 border-[#E5E5E5]">
                                 <TouchableOpacity
-                                    className="flex-1 py-3 items-center justify-center bg-transparent"
+                                    className="flex-1 items-center justify-center bg-transparent"
                                     onPress={handleCancel}
                                     disabled={isLoading}
                                 >
@@ -285,14 +302,14 @@ const AssignModal: React.FC<AssignModalProps> = ({
                                 </TouchableOpacity>
                                 <View className="w-[0.5px] bg-[#E5E5E5]" />
                                 <TouchableOpacity
-                                    className="flex-1 py-3 items-center justify-center bg-transparent"
+                                    className="flex-1 items-center justify-center bg-transparent"
                                     onPress={handleConfirm}
                                     disabled={isLoading}
                                 >
                                     {isLoading ? (
-                                        <ActivityIndicator size="small" color="#22C55E" />
+                                        <ActivityIndicator size="small" color="#F05023" />
                                     ) : (
-                                        <Text className="text-lg text-[#22C55E] font-semibold">
+                                            <Text className="text-lg font-semibold" style={{ color: '#F05023' }}>
                                             Xác nhận
                                         </Text>
                                     )}

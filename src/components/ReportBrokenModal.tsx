@@ -174,9 +174,9 @@ const ReportBrokenModal: React.FC<ReportBrokenModalProps> = ({
                                                 <MaterialCommunityIcons
                                                     name={selectedReasons.includes(reason) ? 'checkbox-marked' : 'checkbox-blank-outline'}
                                                     size={18}
-                                                    color={selectedReasons.includes(reason) ? '#EF4444' : '#6B7280'}
+                                                    color={selectedReasons.includes(reason) ? '#F05023' : '#6B7280'}
                                                 />
-                                                <Text className={`ml-2 text-sm ${selectedReasons.includes(reason) ? 'text-red-700 font-medium' : 'text-gray-700'
+                                                <Text className={`ml-2 text-sm ${selectedReasons.includes(reason) ? 'text-[#F05023] font-medium' : 'text-gray-700'
                                                     }`}>
                                                     {reason}
                                                 </Text>
@@ -202,7 +202,7 @@ const ReportBrokenModal: React.FC<ReportBrokenModalProps> = ({
                             </ScrollView>
 
                             {/* Action Buttons */}
-                            <View className="flex-row -mx-5">
+                            <View className="flex-row -mx-5 my-2">
                                 <TouchableOpacity
                                     className="flex-1 py-3 items-center justify-center bg-transparent"
                                     onPress={handleCancel}

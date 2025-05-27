@@ -13,6 +13,7 @@ import { API_BASE_URL } from '../../config/constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Avatar from '../../components/Chat/Avatar';
 import { useEmojis } from '../../hooks/useEmojis';
+import WiscomLogo from '../../assets/wiscom.svg';
 
 interface User {
     _id: string;
@@ -521,7 +522,7 @@ const ChatScreen = () => {
     if (loading) return (
         <SafeAreaView className="flex-1 bg-white">
             <View className="p-4 bg-white">
-                <Text className="text-2xl font-medium text-gray-900">Trao đổi</Text>
+                <WiscomLogo width={100} height={100} />
             </View>
             <ActivityIndicator size="large" color="#002855" className="flex-1" />
         </SafeAreaView>
@@ -533,8 +534,8 @@ const ChatScreen = () => {
             style={{ paddingTop: Platform.OS === 'android' ? insets.top : 0 }}
         >
             <View className="p-4 bg-white">
-                <Text className="text-2xl font-medium text-gray-900">Trao đổi</Text>
-                <View className="flex-row items-center mt-3 bg-white border border-gray-200 rounded-full px-4 py-2">
+                <WiscomLogo width={130} height={50} />
+                <View className="flex-row items-center bg-white border border-gray-200 rounded-full px-4 py-2">
                     <MaterialIcons name="search" size={22} color="#BDBDBD" />
                     <TextInput
                         className="flex-1 ml-2 text-base text-gray-400 font-medium"
