@@ -1,4 +1,5 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useRef, useEffect } from 'react';
+// @ts-ignore
 import { View, Text, Image, TouchableOpacity, Animated, Pressable, Linking, StyleSheet, ImageSourcePropType } from 'react-native';
 import { Message, Chat } from '../../types/message';
 import { CustomEmoji } from '../../types/chat';
@@ -34,6 +35,8 @@ type MessageBubbleProps = {
     chat: Chat | null;
     showTime?: boolean;
     prevMsg?: Message;
+    onReplyPress?: (message: Message) => void;
+    highlightedMessageId?: string | null;
 };
 
 // Component hiển thị thông tin chuyển tiếp
@@ -89,7 +92,9 @@ const MessageBubble = memo(({
     isLatestMessage,
     chat,
     showTime = false,
-    prevMsg
+    prevMsg,
+    onReplyPress,
+    highlightedMessageId
 }: MessageBubbleProps) => {
     const isMe = currentUserId && message.sender._id === currentUserId;
     
@@ -101,6 +106,39 @@ const MessageBubble = memo(({
     
     const isCustomEmoji = !!emoji;
     const { isUserOnline, getFormattedLastSeen } = useOnlineStatus();
+
+    // Tạo animation cho highlight effect
+    const highlightAnim = useRef(new Animated.Value(0)).current;
+    const isHighlighted = highlightedMessageId === message._id;
+
+    // Effect để chạy animation khi highlight
+    useEffect(() => {
+        if (isHighlighted) {
+            // Hiệu ứng pulse: fade in -> fade out -> fade in -> fade out
+            Animated.sequence([
+                Animated.timing(highlightAnim, {
+                    toValue: 1,
+                    duration: 300,
+                    useNativeDriver: false,
+                }),
+                Animated.timing(highlightAnim, {
+                    toValue: 0,
+                    duration: 300,
+                    useNativeDriver: false,
+                }),
+                Animated.timing(highlightAnim, {
+                    toValue: 1,
+                    duration: 300,
+                    useNativeDriver: false,
+                }),
+                Animated.timing(highlightAnim, {
+                    toValue: 0,
+                    duration: 500,
+                    useNativeDriver: false,
+                })
+            ]).start();
+        }
+    }, [isHighlighted, highlightAnim]);
 
     // Kiểm tra tin nhắn có hợp lệ không
     if (!message || !message.sender) {
@@ -126,6 +164,7 @@ const MessageBubble = memo(({
             borderBottomLeftRadius: isMe ? 20 : (isFirst ? 20 : 4),
             minWidth: 48,
             minHeight: 36,
+            alignSelf: isMe ? 'flex-end' : 'flex-start',
             justifyContent: 'center' as const,
             alignItems: 'center' as const,
         };
@@ -328,17 +367,21 @@ const MessageBubble = memo(({
                 onPressOut={onLongPressOut}
                 delayLongPress={500}
             >
-                {/* Add spacing at the top of first message in a group */}
-                {isFirst && (
-                    <View style={{ height: 6 }} />
-                )}
+
                 <Animated.View
                     style={[
                         {
                             flexDirection: isMe ? 'row-reverse' : 'row',
                             alignItems: 'flex-end',
                             marginBottom: (message.reactions && message.reactions.length > 0) ? 12 : 2,
-                            transform: [{ scale: messageScaleAnim }]
+                            transform: [{ scale: messageScaleAnim }],
+                            backgroundColor: highlightAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: ['transparent', 'rgba(0, 148, 131, 0.15)']
+                            }),
+                            borderRadius: isHighlighted ? 8 : 0,
+                            paddingHorizontal: isHighlighted ? 4 : 0,
+                            paddingVertical: isHighlighted ? 2 : 0,
                         }
                     ]}
                 >
@@ -347,18 +390,20 @@ const MessageBubble = memo(({
                             <Avatar user={message.sender} size={40} statusSize={12} />
                         </View>
                     ) : (
-                        <View style={{ width: isMe ? 8 : 40, marginLeft: 6, marginRight: 6 }} />
+                            <View style={{ width: isMe ? 8 : 36, marginLeft: 6, marginRight: 6 }} />
                     )}
 
                     {/* Nếu là emoji thì không render bubble, chỉ render emoji to */}
                     {isCustomEmoji ? (
-                        <View style={{ flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', width: '100%' }}>
+                        <View style={{ flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', maxWidth: '95%', alignSelf: isMe ? 'flex-end' : 'flex-start' }}>
                             {renderMessageContent()}
                         </View>
                     ) : (
                         // Nếu là tin nhắn thu hồi thì KHÔNG render bubble ngoài
                         (message as any).isRevoked ? (
-                            renderMessageContent()
+                                <View style={{ alignSelf: isMe ? 'flex-end' : 'flex-start', maxWidth: '95%' }}>
+                                    {renderMessageContent()}
+                                </View>
                         ) : (
                             // Container chứa cả reply và bubble tin nhắn
                             <View style={{
@@ -366,59 +411,92 @@ const MessageBubble = memo(({
                                 paddingTop: 1,
                                 paddingBottom: 1,
                                 paddingLeft: isMe ? 0 : 8,
-                                maxWidth: '75%',
-                                alignItems: isMe ? 'flex-end' : 'flex-start',
-                                alignSelf: isMe ? 'flex-end' : 'flex-start',
+                                         paddingRight: isMe ? 8 : 0,
+                                        alignSelf: isMe ? 'flex-end' : 'flex-start',
+                                        alignItems: isMe ? 'flex-end' : 'flex-start',
                             }}>
                                 {/* Preview tin nhắn reply */}
                                 {message.replyTo && (
                                     <View style={{
-                                        marginBottom: -10,
-                                        marginRight: isMe ? 5 : 0,
-                                        marginLeft: !isMe ? 5 : 0,
-                                        backgroundColor: isMe ? '#F5F5ED' : '#009483',
+                                        marginBottom: -15,
+                                        marginLeft: isMe ? 0 : 10,
+                                        marginRight: isMe ? 10 : 0,
+                                        backgroundColor: isMe ? '#F5F5ED' : '#98D3C6',
                                         borderRadius: 20,
-                                        paddingVertical: 12,
-                                        paddingHorizontal: 12,
-                                        shadowColor: '#000',
-                                        shadowOffset: { width: 0, height: 1 },
-                                        shadowOpacity: 0.05,
-                                        shadowRadius: 1,
-                                        elevation: 1,
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        minHeight: 40,
                                         alignSelf: isMe ? 'flex-end' : 'flex-start',
-                                        maxWidth: '100%'
+                                        paddingVertical: 10,
+                                        paddingHorizontal: 10,
+                                        elevation: 1,
+                                        alignItems: isMe ? 'flex-end' : 'flex-start',
+                                        minHeight: 40,
                                     }}>
-                                        {/* Thumbnail nếu là ảnh hoặc nhiều ảnh */}
-                                        {(message.replyTo.type === 'image' || message.replyTo.type === 'multiple-images') && (
-                                            <Image
-                                                source={{
-                                                    uri: message.replyTo.type === 'image'
-                                                        ? processImageUrl(message.replyTo.fileUrl)
-                                                        : (message.replyTo.fileUrls && message.replyTo.fileUrls.length > 0
-                                                            ? processImageUrl(message.replyTo.fileUrls[0])
-                                                            : undefined)
-                                                }}
-                                                style={{ width: 50, height: 50, borderRadius: 8, marginRight: 8, flexShrink: 0 }}
-                                                resizeMode="cover"
-                                            />
-                                        )}
-                                        <View style={{ minWidth: 0, maxWidth: 150 }}>
-                                            {message.replyTo.type === 'file' && (
-                                                <Text style={{ fontSize: 14, color: '#666' }} numberOfLines={1}>[Tệp đính kèm]</Text>
+                                        <TouchableOpacity
+                                            onPress={() => onReplyPress?.(message.replyTo)}
+                                            style={{
+                                                flexDirection: 'column',
+                                                alignItems: isMe ? 'flex-end' : 'flex-start',
+                                                width: '100%'
+                                            }}
+                                        >
+                                            
+                                            {/* Hiển thị ảnh với kích thước đầy đủ */}
+                                            {message.replyTo.type === 'image' && (
+                                                <Image
+                                                    source={{
+                                                        uri: processImageUrl(message.replyTo.fileUrl)
+                                                    }}
+                                                    style={{
+                                                        width: 200,
+                                                        height: 200,
+                                                        borderRadius: 12,
+                                                        marginTop: 4
+                                                    }}
+                                                    resizeMode="cover"
+                                                />
                                             )}
-                                            {message.replyTo.type !== 'image' && message.replyTo.type !== 'multiple-images' && message.replyTo.type !== 'file' && (
+                                            
+                                            {/* Hiển thị nhiều ảnh với ImageGrid */}
+                                            {message.replyTo.type === 'multiple-images' && message.replyTo.fileUrls && (
+                                                <View style={{ marginTop: 4 }}>
+                                                    <ImageGrid 
+                                                        images={message.replyTo.fileUrls} 
+                                                        onPress={(index) => onImagePress && onImagePress(message.replyTo.fileUrls || [], index)}
+                                                    />
+                                                </View>
+                                            )}
+
+                                            {/* Hiển thị file */}
+                                            {message.replyTo.type === 'file' && (
                                                 <Text style={{
                                                     fontSize: 14,
                                                     color: isMe ? '#757575' : 'white',
-                                                    fontFamily: 'Mulish-Regular'
-                                                }} numberOfLines={1}>
+                                                    textAlign: isMe ? 'right' : 'left',
+                                                    fontFamily: 'Mulish-Regular',
+                                                    marginTop: 4
+                                                }}>
+                                                    [Tệp đính kèm]
+                                                </Text>
+                                            )}
+                                            
+                                            {/* Hiển thị text */}
+                                            {message.replyTo.type !== 'image' && message.replyTo.type !== 'multiple-images' && message.replyTo.type !== 'file' && (
+                                                <Text 
+                                                    style={{
+                                                        fontSize: 14,
+                                                        color: isMe ? '#757575' : 'white',
+                                                        fontFamily: 'Mulish-Regular',
+                                                        textAlign: isMe ? 'right' : 'left',
+                                                        flexWrap: 'wrap',
+                                                        flexShrink: 1,
+                                                        marginTop: 4
+                                                    }}
+                                                    numberOfLines={3}
+                                                    ellipsizeMode="tail"
+                                                >
                                                     {message.replyTo.content}
                                                 </Text>
                                             )}
-                                        </View>
+                                        </TouchableOpacity>
                                     </View>
                                 )}
                                 {/* Forwarded header */}
@@ -561,8 +639,7 @@ const MessageBubble = memo(({
                                 {/* Trạng thái tin nhắn cuối cùng */}
                                 {isMe && isLatestMessage && (
                                     <View style={{
-                                        alignSelf: 'flex-end',
-                                        marginTop: 4,
+                                                alignSelf: isMe ? 'flex-end' : 'flex-start',
                                         marginRight: 4,
                                         flexDirection: 'row',
                                         alignItems: 'center'

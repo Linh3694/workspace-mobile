@@ -1,4 +1,5 @@
 import React from 'react';
+// @ts-ignore
 import { View, Text } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Message, Chat } from '../../types/message';

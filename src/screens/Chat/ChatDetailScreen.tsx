@@ -56,6 +56,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const TypingIndicator = memo(() => {
     const [dots, setDots] = useState('.');
+    const scaleAnim = useRef(new Animated.Value(1)).current;
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -65,10 +66,30 @@ const TypingIndicator = memo(() => {
                 if (prev === '.') return '..';
                 return '.';
             });
-        }, 400); // Slightly slower animation for better UX
+        }, 500); // Tăng từ 400ms lên 500ms để mượt hơn
 
-        return () => clearInterval(interval);
-    }, []);
+        // Thêm animation scale nhẹ cho dots
+        const scaleAnimation = Animated.loop(
+            Animated.sequence([
+                Animated.timing(scaleAnim, {
+                    toValue: 1.1,
+                    duration: 800,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(scaleAnim, {
+                    toValue: 1,
+                    duration: 800,
+                    useNativeDriver: true,
+                }),
+            ])
+        );
+        scaleAnimation.start();
+
+        return () => {
+            clearInterval(interval);
+            scaleAnimation.stop();
+        };
+    }, [scaleAnim]);
 
     return (
         <View style={{ 
@@ -77,30 +98,36 @@ const TypingIndicator = memo(() => {
             paddingHorizontal: 8,
             paddingVertical: 4
         }}>
-            <View style={{
-                width: 6,
-                height: 6,
-                borderRadius: 3,
-                backgroundColor: '#4A4A4A',
-                marginRight: 4,
-                opacity: dots.length >= 1 ? 1 : 0.3
-            }} />
-            <View style={{
-                width: 6,
-                height: 6,
-                borderRadius: 3,
-                backgroundColor: '#4A4A4A',
-                marginRight: 4,
-                opacity: dots.length >= 2 ? 1 : 0.3
-            }} />
-            <View style={{
-                width: 6,
-                height: 6,
-                borderRadius: 3,
-                backgroundColor: '#4A4A4A',
-                marginRight: 8,
-                opacity: dots.length >= 3 ? 1 : 0.3
-            }} />
+            <Animated.View style={{
+                transform: [{ scale: scaleAnim }],
+                flexDirection: 'row',
+                alignItems: 'center',
+            }}>
+                <View style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: 3,
+                    backgroundColor: '#4A4A4A',
+                    marginRight: 4,
+                    opacity: dots.length >= 1 ? 1 : 0.3
+                }} />
+                <View style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: 3,
+                    backgroundColor: '#4A4A4A',
+                    marginRight: 4,
+                    opacity: dots.length >= 2 ? 1 : 0.3
+                }} />
+                <View style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: 3,
+                    backgroundColor: '#4A4A4A',
+                    marginRight: 8,
+                    opacity: dots.length >= 3 ? 1 : 0.3
+                }} />
+            </Animated.View>
             <Text style={{ 
                 color: '#4A4A4A', 
                 fontSize: 12, 
@@ -141,10 +168,13 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
     const navigationProp = useNavigation<NativeStackNavigationProp<{ ChatDetail: ChatDetailParams }, 'ChatDetail'>>();
     const socketRef = useRef<any>(null);
     const flatListRef = useRef<FlatList>(null);
+    const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const debouncedTypingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const insets = useSafeAreaInsets();
     const { isUserOnline, getFormattedLastSeen } = useOnlineStatus();
     const [otherTyping, setOtherTyping] = useState(false);
     let typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const typingOpacityAnim = useRef(new Animated.Value(0)).current;
     const [imagesToSend, setImagesToSend] = useState<any[]>([]);
     const bottomSheetHeight = 60 + (insets.bottom || 10);
     const [viewerVisible, setViewerVisible] = useState(false);
@@ -573,6 +603,8 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
         try {
             const timestamp = new Date().toISOString();
 
+            console.log('🔵 [MARK READ] Starting mark messages as read:', { chatId, userId, timestamp });
+
             // Cập nhật UI ngay lập tức để responsive hơn
             setMessages(prevMessages =>
                 prevMessages.map(msg => {
@@ -588,7 +620,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
 
             // Gửi thông báo qua socket ngay lập tức
             if (socketRef.current && socketRef.current.connected) {
-                console.log('Emitting messageRead event for chat:', chatId);
+                console.log('📤 [MARK READ] Emitting messageRead event for chat:', chatId);
                 socketRef.current.emit('messageRead', {
                     userId: userId,
                     chatId: chatId,
@@ -596,22 +628,39 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                 });
             }
 
-            // Sau đó gọi API để đồng bộ với server
+            // Gọi API để đồng bộ với server
+            console.log('🌐 [MARK READ] Calling API to mark messages as read');
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
             const response = await fetch(`${API_BASE_URL}/api/chats/read-all/${chatId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`
                 },
-                body: JSON.stringify({ timestamp })
+                body: JSON.stringify({ timestamp }),
+                signal: controller.signal
             });
+            
+            clearTimeout(timeoutId);
 
-            if (!response.ok) {
-                console.error('Failed to mark messages as read on server');
-                // Nếu API thất bại, có thể rollback UI state ở đây nếu cần
+            console.log('✅ [MARK READ] API response status:', response.status);
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log('✅ [MARK READ] Successfully marked messages as read:', result);
+            } else {
+                const errorText = await response.text();
+                console.error('❌ [MARK READ] Failed to mark messages as read:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    errorText: errorText
+                });
             }
         } catch (error) {
-            console.error('Error marking messages as read:', error);
+            console.error('❌ [MARK READ] Error marking messages as read:', error);
         }
     };
 
@@ -635,6 +684,15 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
             // Add connection event listeners for debugging
             socket.on('connect', () => {
                 console.log('Socket connected successfully, ID:', socket.id);
+                
+                // Join vào phòng chat ngay sau khi connect
+                console.log('🏠 [SOCKET] Joining chat room:', chatId);
+                socket.emit('joinChat', chatId);
+                
+                // Emit user online
+                if (currentUserId) {
+                    socket.emit('userOnline', { userId: currentUserId, chatId });
+                }
             });
 
             socket.on('disconnect', (reason) => {
@@ -644,10 +702,6 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
             socket.on('connect_error', (error) => {
                 console.error('Socket connection error:', error);
             });
-
-            // Join vào phòng chat
-            console.log('Joining chat room:', chatId);
-            socket.emit('joinChat', chatId);
 
             // Lắng nghe tin nhắn mới với batching và typing reset
             const messageUpdateQueue = new Set<string>();
@@ -933,72 +987,103 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
 
     // Optimized typing indicator with auto-reset
     useEffect(() => {
-        if (!socketRef.current || !chat?._id) return;
+        if (!socketRef.current || !chat?._id) {
+            console.log('❌ [TYPING SETUP] Missing requirements:', {
+                socket: !!socketRef.current,
+                connected: socketRef.current?.connected,
+                chatId: chat?._id
+            });
+            return;
+        }
 
         let typingResetTimeout: ReturnType<typeof setTimeout> | null = null;
 
         // Hàm xử lý sự kiện người dùng đang nhập
         const handleTyping = ({ userId, chatId }: { userId: string, chatId: string }) => {
-            console.log('User typing event received:', userId, 'in chat:', chatId, 'comparing with:', chatPartner._id);
+            console.log('🟢 [TYPING EVENT] Received typing event:', {
+                userId,
+                chatId,
+                chatPartner: chatPartner._id,
+                currentChat: chat._id,
+                match: chatId === chat._id && userId === chatPartner._id,
+                currentOtherTyping: otherTyping
+            });
             
-            // Chỉ xử lý typing event cho chat hiện tại
+            // Chỉ xử lý typing event cho chat hiện tại và từ đúng user
             if (chatId === chat._id && userId === chatPartner._id) {
-                console.log('Setting typing indicator to true');
+                console.log('✅ [TYPING] Setting typing indicator to true');
                 setOtherTyping(true);
                 
-                // Auto-reset typing indicator after 5 seconds (fallback)
+                // Đảm bảo animation value đúng
+                typingOpacityAnim.setValue(1);
+                
+                // Clear existing timeout để reset lại thời gian
                 if (typingResetTimeout) {
                     clearTimeout(typingResetTimeout);
                 }
+                
+                // Auto-reset typing indicator after 4 seconds
                 typingResetTimeout = setTimeout(() => {
-                    console.log('Auto-resetting typing indicator');
+                    console.log('⏰ [TYPING] Auto-resetting typing indicator after timeout');
                     setOtherTyping(false);
-                }, 5000);
+                    typingOpacityAnim.setValue(0);
+                    typingResetTimeout = null;
+                }, 4000);
+            } else {
+                console.log('❌ [TYPING] Ignoring typing event - different chat or user');
             }
         };
 
         // Hàm xử lý sự kiện người dùng ngừng nhập
         const handleStopTyping = ({ userId, chatId }: { userId: string, chatId: string }) => {
-            console.log('User stop typing event received:', userId, 'in chat:', chatId, 'comparing with:', chatPartner._id);
+            console.log('🔴 [STOP TYPING] Received stop typing event:', {
+                userId,
+                chatId,
+                chatPartner: chatPartner._id,
+                currentChat: chat._id,
+                match: chatId === chat._id && userId === chatPartner._id,
+                currentOtherTyping: otherTyping
+            });
             
-            // Chỉ xử lý stop typing event cho chat hiện tại
+            // Chỉ xử lý stop typing event cho chat hiện tại và từ đúng user
             if (chatId === chat._id && userId === chatPartner._id) {
-                console.log('Setting typing indicator to false');
+                console.log('✅ [STOP TYPING] Setting typing indicator to false');
                 setOtherTyping(false);
+                typingOpacityAnim.setValue(0);
                 
                 // Clear auto-reset timeout
                 if (typingResetTimeout) {
                     clearTimeout(typingResetTimeout);
                     typingResetTimeout = null;
                 }
+            } else {
+                console.log('❌ [STOP TYPING] Ignoring stop typing event - different chat or user');
             }
         };
 
+        console.log('🔧 [TYPING SETUP] Setting up typing event listeners for chat:', chat._id);
+        
         // Thiết lập các listeners
         socketRef.current.on('userTyping', handleTyping);
         socketRef.current.on('userStopTyping', handleStopTyping);
 
         return () => {
+            console.log('🧹 [TYPING CLEANUP] Cleaning up typing listeners');
             if (typingResetTimeout) {
                 clearTimeout(typingResetTimeout);
             }
             socketRef.current?.off('userTyping', handleTyping);
             socketRef.current?.off('userStopTyping', handleStopTyping);
         };
-    }, [chatPartner._id, chat?._id]);
+    }, [chatPartner._id, chat?._id, typingOpacityAnim]);
 
     // Debounced typing handler
-    const debouncedTypingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     
     const handleInputChange = useCallback((text: string) => {
         setInput(text);
-        
-        if (!socketRef.current || !chat?._id || !currentUserId) {
-            console.log('Socket conditions not met:', {
-                socket: !!socketRef.current,
-                chatId: chat?._id,
-                currentUserId
-            });
+        const socket = socketRef.current;
+
+        if (!socket || !chat?._id || !currentUserId) {
             return;
         }
         
@@ -1007,31 +1092,17 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
             clearTimeout(debouncedTypingRef.current);
         }
         
-        // Debounce typing events to reduce socket calls - reduce from 300ms to 100ms for better responsiveness
-        debouncedTypingRef.current = setTimeout(() => {
-            if (text.trim() !== '') {
-                console.log('Emitting typing event for chat:', chat._id, 'user:', currentUserId);
-                socketRef.current?.emit('typing', { chatId: chat._id, userId: currentUserId });
-                
-                // Clear existing stop typing timeout
-                if (typingTimeout.current) {
-                    clearTimeout(typingTimeout.current);
-                }
-                
-                // Set stop typing timeout - reduce from 3000ms to 2000ms
-                typingTimeout.current = setTimeout(() => {
-                    console.log('Auto-emitting stopTyping after 2s for chat:', chat._id, 'user:', currentUserId);
-                    socketRef.current?.emit('stopTyping', { chatId: chat._id, userId: currentUserId });
-                }, 2000);
-            } else {
-                // Stop typing immediately if input is empty
-                if (typingTimeout.current) {
-                    clearTimeout(typingTimeout.current);
-                }
-                console.log('Emitting stopTyping (empty input) for chat:', chat._id, 'user:', currentUserId);
-                socketRef.current?.emit('stopTyping', { chatId: chat._id, userId: currentUserId });
-            }
-        }, 100); // Reduce debounce from 300ms to 100ms for better responsiveness
+        // Emit typing event ngay lập tức
+        socketRef.current.emit('typing', { 
+            chatId: chat._id, 
+            userId: currentUserId 
+        });
+        
+        // Debounce stop typing
+        if (debouncedTypingRef.current) clearTimeout(debouncedTypingRef.current);
+    debouncedTypingRef.current = setTimeout(() => {
+        socket.emit('stopTyping', { chatId: chatIdRef.current, userId: currentUserId });
+    }, 2500);
     }, [chat?._id, currentUserId]);
 
     // Hàm upload file/ảnh lên server
@@ -1343,11 +1414,19 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
         // Bắt đầu đếm thời gian nhấn giữ
         longPressTimeoutRef.current = setTimeout(() => {
             setSelectedMessage(message);
-            // Lưu vị trí để hiển thị modal
-            setReactionModalPosition({
-                x: event.nativeEvent.pageX,
-                y: event.nativeEvent.pageY
-            });
+            // Lưu vị trí để hiển thị modal với kiểm tra an toàn
+            if (event?.nativeEvent?.pageX !== undefined && event?.nativeEvent?.pageY !== undefined) {
+                setReactionModalPosition({
+                    x: event.nativeEvent.pageX,
+                    y: event.nativeEvent.pageY
+                });
+            } else {
+                // Fallback position khi event không có pageX/pageY
+                setReactionModalPosition({
+                    x: 200, // vị trí mặc định
+                    y: 400
+                });
+            }
 
             // Hiệu ứng phóng to tin nhắn
             Animated.sequence([
@@ -1450,7 +1529,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
         if (!reaction.isCustom) {
             // Unicode emoji (nếu còn dùng)
             return <Text>{reaction.emojiCode}</Text>;
-        } else {
+            } else {
             // Custom emoji/GIF từ URL
             const emoji = customEmojis.find(e => e.code === reaction.emojiCode);
             if (!emoji) return null;
@@ -1643,19 +1722,22 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
         const isImage = message.type === 'image';
         const isMultipleImages = message.type === 'multiple-images';
         const isFile = message.type === 'file';
-        const imageUrl = isImage ? (message.fileUrl?.startsWith('http') ? message.fileUrl : `${API_BASE_URL}${message.fileUrl}`) :
-            isMultipleImages && message.fileUrls && message.fileUrls.length > 0 ? (message.fileUrls[0].startsWith('http') ? message.fileUrls[0] : `${API_BASE_URL}${message.fileUrls[0]}`) : null;
+        const imageUrl = isImage
+            ? (message.fileUrl?.startsWith('http') ? message.fileUrl : `${API_BASE_URL}${message.fileUrl}`)
+            : (isMultipleImages && message.fileUrls && message.fileUrls.length > 0
+                ? (message.fileUrls[0].startsWith('http') ? message.fileUrls[0] : `${API_BASE_URL}${message.fileUrls[0]}`)
+                : null
+            );
 
         return (
             <View style={{
                 flexDirection: 'row',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 borderTopLeftRadius: 16,
                 borderTopRightRadius: 16,
                 padding: 10,
                 paddingHorizontal: 16,
                 marginBottom: -8,
-                overflow: 'hidden',
                 position: 'relative'
             }}>
                 {/* Thêm BlurView */}
@@ -1699,7 +1781,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                     {isImage && (
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             <Ionicons name="image-outline" size={14} color="#666" style={{ marginRight: 4 }} />
-                            <Text style={{ color: '#666', fontSize: 14, fontFamily: 'Mulish-Regular' }} numberOfLines={1}>
+                            <Text style={{ color: '#666', fontSize: 14, fontFamily: 'Mulish-Regular' }}>
                                 Hình ảnh
                             </Text>
                         </View>
@@ -1707,7 +1789,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                     {isMultipleImages && message.fileUrls && (
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             <Ionicons name="images-outline" size={14} color="#666" style={{ marginRight: 4 }} />
-                            <Text style={{ color: '#666', fontSize: 14, fontFamily: 'Mulish-Regular' }} numberOfLines={1}>
+                            <Text style={{ color: '#666', fontSize: 14, fontFamily: 'Mulish-Regular' }}>
                                 {message.fileUrls.length} hình ảnh
                             </Text>
                         </View>
@@ -1715,13 +1797,19 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                     {isFile && (
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             <Ionicons name="document-outline" size={14} color="#666" style={{ marginRight: 4 }} />
-                            <Text style={{ color: '#666', fontSize: 14, fontFamily: 'Mulish-Regular' }} numberOfLines={1}>
+                            <Text style={{ color: '#666', fontSize: 14, fontFamily: 'Mulish-Regular' }}>
                                 Tệp đính kèm
                             </Text>
                         </View>
                     )}
                     {!isImage && !isMultipleImages && !isFile && (
-                        <Text style={{ color: '#666', fontSize: 14, fontFamily: 'Mulish-Regular' }} numberOfLines={1}>
+                        <Text style={{
+                            color: '#666',
+                            fontSize: 14,
+                            fontFamily: 'Mulish-Regular',
+                            flexShrink: 1,
+                            flexWrap: 'wrap'
+                        }}>
                             {message.content}
                         </Text>
                     )}
@@ -1737,6 +1825,30 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
 
     // Thêm hàm xử lý nhấp vào tin nhắn ghim
     const handlePinnedMessagePress = (message: Message) => {
+        // Tìm index của tin nhắn trong danh sách
+        const messageIndex = messages.findIndex(msg => msg._id === message._id);
+        if (messageIndex !== -1) {
+            // Cuộn đến tin nhắn và highlight
+            setHighlightedMessageId(message._id);
+
+            // Cuộn đến vị trí tin nhắn (lưu ý FlatList đã bị đảo ngược)
+            if (flatListRef.current) {
+                flatListRef.current.scrollToIndex({
+                    index: messages.length - 1 - messageIndex,
+                    animated: true,
+                    viewPosition: 0.5
+                });
+            }
+
+            // Tắt highlight sau 2 giây
+            setTimeout(() => {
+                setHighlightedMessageId(null);
+            }, 2000);
+        }
+    };
+
+    // Thêm hàm xử lý nhấp vào tin nhắn reply
+    const handleReplyMessagePress = (message: Message) => {
         // Tìm index của tin nhắn trong danh sách
         const messageIndex = messages.findIndex(msg => msg._id === message._id);
         if (messageIndex !== -1) {
@@ -1921,6 +2033,8 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                     formatMessageTime={formatMessageTime}
                     getAvatar={getAvatar}
                     isLatestMessage={item._id === messages[messages.length - 1]?._id}
+                    onReplyPress={handleReplyMessagePress}
+                    highlightedMessageId={highlightedMessageId}
                 />
             );
         },
@@ -1929,6 +2043,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
             handleMessageLongPressIn, handleMessageLongPressOut,
             handleImagePress, messageScaleAnim, messages,
             formatMessageTime, getAvatar, isDifferentDay,
+            handleReplyMessagePress, highlightedMessageId,
         ]
     );
 
@@ -2013,6 +2128,89 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
             });
         }
     };
+
+    // Debug logging cho typing state
+    useEffect(() => {
+        console.log('🔵 otherTyping state changed:', otherTyping);
+    }, [otherTyping]);
+
+    // Debug typing state và reset animation
+    useEffect(() => {
+        console.log('🔵 Typing indicator state changed:', otherTyping);
+        
+        // Reset animation value khi typing state change
+        if (!otherTyping) {
+            typingOpacityAnim.setValue(0);
+        }
+    }, [otherTyping, typingOpacityAnim]);
+
+    useEffect(() => {
+        if (!socketRef.current || !chat?._id) return;
+
+        // Tăng tần suất heartbeat
+        const heartbeatInterval = setInterval(() => {
+            if (socketRef.current?.connected) {
+                socketRef.current.emit('heartbeat', { 
+                    userId: currentUserId,
+                    chatId: chat._id,
+                    timestamp: Date.now()
+                });
+            }
+        }, 3000); // Giảm xuống 3 giây
+
+        // Thêm ping để kiểm tra kết nối
+        const pingInterval = setInterval(() => {
+            if (socketRef.current?.connected) {
+                socketRef.current.emit('ping', { 
+                    userId: currentUserId,
+                    timestamp: Date.now()
+                });
+            }
+        }, 5000);
+
+        return () => {
+            clearInterval(heartbeatInterval);
+            clearInterval(pingInterval);
+        };
+    }, [chat?._id, currentUserId]);
+
+    useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket || !chat?._id) return;
+
+    const handleUserTyping = ({ userId, chatId }) => {
+        if (chatId !== chat?._id || userId === currentUserId) return;
+        setOtherTyping(true);
+
+        // Tự ẩn sau 3,5 s nếu không nhận event mới
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => {
+            setOtherTyping(false);
+            typingTimeoutRef.current = null;
+        }, 3500);
+    };
+
+    const handleUserStopTyping = ({ userId, chatId }) => {
+        if (chatId !== chat?._id || userId === currentUserId) return;
+        setOtherTyping(false);
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = null;
+        }
+    };
+
+    socket.on('userTyping', handleUserTyping);
+    socket.on('userStopTyping', handleUserStopTyping);
+
+    return () => {
+        socket.off('userTyping', handleUserTyping);
+        socket.off('userStopTyping', handleUserStopTyping);
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = null;
+        }
+    };
+}, [chat?._id, currentUserId]);
 
     return (
         <View style={{
@@ -2103,8 +2301,15 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                                     keyExtractor={keyExtractor}
                                     ListHeaderComponent={() => (
                                         <>
-                                            {otherTyping ? (
-                                                <View className="flex-row justify-start items-end mx-2 mt-4 mb-1">
+                                            {otherTyping && (
+                                                <View 
+                                                    style={{
+                                                        backgroundColor: 'yellow', // Thêm background để debug
+                                                        padding: 4,
+                                                        marginBottom: 8
+                                                    }}
+                                                    className="flex-row justify-start items-end mx-2 mt-4 mb-1"
+                                                >
                                                     <View className="relative mr-1.5">
                                                         <Image
                                                             source={{ uri: getAvatar(chatPartner) }}
@@ -2115,7 +2320,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                                                         <TypingIndicator />
                                                     </View>
                                                 </View>
-                                            ) : null}
+                                            )}
                                             {isLoadingMore && (
                                                 <View style={{ padding: 10, alignItems: 'center' }}>
                                                     <Text style={{ 
@@ -2459,6 +2664,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                 }}
                 onConfirm={handleConfirmRevoke}
             />
+           
         </View>
     );
 };

@@ -1,4 +1,5 @@
 import React from 'react';
+// @ts-ignore
 import { View, TextInput, TouchableOpacity, ScrollView, Image, Platform, Keyboard, Alert } from 'react-native';
 import { MaterialIcons, Ionicons, FontAwesome } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';

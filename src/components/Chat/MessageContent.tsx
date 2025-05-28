@@ -1,5 +1,6 @@
 // components/MessageContent.tsx
 import React from 'react';
+// @ts-ignore
 import { View, Text, Image, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ImageGrid from './ImageGrid';
@@ -79,7 +80,7 @@ const MessageContent: React.FC<MessageContentProps> = ({
                 <ImageGrid 
                     images={message.fileUrls || []} 
                     onPress={(index) => onImagePress && onImagePress(message.fileUrls || [], index)} 
-                    onLongPress={onLongPress}
+                    onLongPress={(index, event) => onLongPress && onLongPress(event)}
                     onPressOut={onLongPressOut}
                 />
             );

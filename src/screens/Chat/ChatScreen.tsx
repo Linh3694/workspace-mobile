@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+// @ts-ignore
 import { View, Text, SafeAreaView, TextInput, FlatList, Image, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import debounce from 'lodash.debounce';
@@ -7,7 +8,7 @@ import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/nativ
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChatStackParamList } from '../../navigation/ChatStackNavigator';
 import { jwtDecode } from 'jwt-decode';
-import io from 'socket.io-client';
+import { getSocket } from '../../services/socketService';
 import { useOnlineStatus } from '../../context/OnlineStatusContext';
 import { API_BASE_URL } from '../../config/constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -57,6 +58,18 @@ const ChatScreen = () => {
         parentTabNav?.setOptions({ tabBarStyle: { display: 'none' } });
     };
     const socketRef = useRef<any>(null);
+
+    // === Utility to join chat rooms ===
+    // We join every chat room so that the screen can receive real‑time
+    // 'receiveMessage' events even when the user is not inside the
+    // ChatDetail screen of that room.
+    const joinChatRooms = useCallback((chatList: Chat[]) => {
+        const socket = socketRef.current;
+        if (!socket) return;
+        chatList.forEach(chat => {
+            socket.emit('joinChat', chat._id);
+        });
+    }, []);
     const insets = useSafeAreaInsets();
 
     const { customEmojis } = useEmojis();
@@ -169,97 +182,94 @@ const ChatScreen = () => {
         fetchData();
     }, []);
 
-    // Persistent socket to listen for newChat even when ChatScreen is not focused
-    useEffect(() => {
-        const setupGlobalSocket = async () => {
-            if (!currentUserId || socketRef.current) return;
-            const token = await AsyncStorage.getItem('authToken');
-            if (!token) return;
+    const setupGlobalSocket = async () => {
+        if (!currentUserId || socketRef.current) return;
+        const token = await AsyncStorage.getItem('authToken');
+        if (!token) return;
 
-            socketRef.current = io(API_BASE_URL, { query: { token }, transports: ['websocket'] });
+        socketRef.current = getSocket(token);
 
-            // ensure server joins personal room
-            socketRef.current.on('connect', () => {
-                if (currentUserId) {
-                    socketRef.current.emit('joinUserRoom', currentUserId);
+        socketRef.current.on('connect', () => {
+            console.log('Socket connected');
+            if (currentUserId) {
+                socketRef.current.emit('joinUserRoom', currentUserId);
+            }
+        });
+
+        socketRef.current.on('receiveMessage', (message: any) => {
+            console.log('📨 [CHAT SCREEN] Received new message:', message._id);
+            
+            setChats(prevChats => {
+                const chatIndex = prevChats.findIndex(c => c._id === message.chat);
+                
+                if (chatIndex === -1) {
+                    fetchChats(true);
+                    return [...prevChats];
                 }
-            });
 
-            socketRef.current.on('newChat', (chat: any) => {
-                setChats(prev => {
-                    const idx = prev.findIndex(c => c._id === chat._id);
-                    if (idx > -1) {
-                        const newArr = [...prev];
-                        newArr.splice(idx, 1);
-                        return [chat, ...newArr];
-                    }
-                    return [chat, ...prev];
+                const newChats = [...prevChats];
+                const chat = newChats[chatIndex];
+                
+                newChats.splice(chatIndex, 1);
+                newChats.unshift({
+                    ...chat,
+                    lastMessage: message,
+                    updatedAt: message.createdAt
                 });
-            });
 
-            // Lắng nghe sự kiện tin nhắn được đọc để cập nhật UI
-            socketRef.current.on('messageRead', (data: { chatId: string, userId: string, timestamp: string }) => {
-                console.log('Message read event received in ChatScreen:', data);
-                setChats(prev => prev.map(chat => {
+                console.log('[📥] Updated chats with new message');
+                return newChats;
+            });
+        });
+        // Listen for newChat updates
+        socketRef.current.on('newChat', (updatedChat: Chat) => {
+            console.log('🆕 [CHAT SCREEN] Received new chat update:', updatedChat._id);
+            setChats(prevChats => {
+                const index = prevChats.findIndex(c => c._id === updatedChat._id);
+                const updated = [...prevChats];
+                if (index !== -1) {
+                    updated.splice(index, 1);
+                }
+                updated.unshift(updatedChat);
+                return updated;
+            });
+            // Ensure list stays in sync by refetching
+            fetchChats(true);
+        });
+
+        socketRef.current.on('messageRead', (data: { chatId: string, userId: string }) => {
+            setChats(prevChats => 
+                prevChats.map(chat => {
                     if (chat._id === data.chatId && chat.lastMessage) {
-                        // Chỉ cập nhật nếu tin nhắn cuối không phải do người đọc gửi
                         const senderId = typeof chat.lastMessage.sender === 'object' 
-                            ? (chat.lastMessage.sender as any)._id 
+                            ? chat.lastMessage.sender._id 
                             : chat.lastMessage.sender;
+                            
                         if (senderId !== data.userId) {
-                            const currentReadBy = chat.lastMessage.readBy || [];
-                            if (!currentReadBy.includes(data.userId)) {
-                                return {
-                                    ...chat,
-                                    lastMessage: {
-                                        ...chat.lastMessage,
-                                        readBy: [...currentReadBy, data.userId]
-                                    }
-                                };
-                            }
+                            return {
+                                ...chat,
+                                lastMessage: {
+                                    ...chat.lastMessage,
+                                    readBy: [...(chat.lastMessage.readBy || []), data.userId]
+                                }
+                            };
                         }
                     }
                     return chat;
-                }));
-            });
+                })
+            );
+        });
 
-            // Lắng nghe sự kiện cập nhật chat để refresh real-time
-            socketRef.current.on('chatUpdated', (updatedChat: Chat) => {
-                console.log('Chat updated event:', updatedChat);
-                setChats(prev => {
-                    const idx = prev.findIndex(c => c._id === updatedChat._id);
-                    if (idx > -1) {
-                        const newArr = [...prev];
-                        newArr[idx] = updatedChat;
-                        return newArr;
-                    }
-                    return prev;
-                });
-            });
+        socketRef.current.on('reconnect', () => {
+            console.log('Socket reconnected');
+            fetchChats(true);
+        });
+    };
 
-            // Lắng nghe sự kiện tin nhắn mới để cập nhật chat list
-            socketRef.current.on('newMessage', (data: { chatId: string, message: Message }) => {
-                console.log('New message event:', data);
-                setChats(prev => prev.map(chat => {
-                    if (chat._id === data.chatId) {
-                        return {
-                            ...chat,
-                            lastMessage: data.message,
-                            updatedAt: data.message.createdAt
-                        };
-                    }
-                    return chat;
-                }));
-            });
-        };
-
-        setupGlobalSocket();
-
-        return () => {
-            // cleanup when ChatScreen unmounts (should rarely happen)
-            socketRef.current?.disconnect();
-            socketRef.current = null;
-        };
+    useEffect(() => {
+        if (currentUserId) {
+            setupGlobalSocket();
+        }
     }, [currentUserId]);
 
     // Function để fetch chats với option force refresh
@@ -268,27 +278,50 @@ const ChatScreen = () => {
             const token = await AsyncStorage.getItem('authToken');
             if (!token) return;
             
-            // Thêm timestamp để force refresh nếu cần
             const url = forceRefresh 
                 ? `${API_BASE_URL}/api/chats/list?t=${Date.now()}`
                 : `${API_BASE_URL}/api/chats/list`;
                 
             const res = await fetch(url, {
-                headers: { Authorization: `Bearer ${token}` },
+                headers: { 
+                    Authorization: `Bearer ${token}`,
+                    'Cache-Control': 'no-cache'
+                },
             });
+            
             const data = await res.json();
-            // Đảm bảo data là array trước khi set state
-            setChats(Array.isArray(data) ? data : []);
+            if (Array.isArray(data)) {
+                const sortedChats = data.sort(
+                    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+                );
+
+                // Ensure we are listening to every chat room we just fetched
+                joinChatRooms(sortedChats);
+
+                setChats(sortedChats);
+            }
         } catch (err) {
             console.error('Error fetching chats:', err);
         }
     };
 
+    // Join/refresh rooms whenever the list of chats changes
+    useEffect(() => {
+        if (chats.length) {
+            joinChatRooms(chats);
+        }
+    }, [chats, joinChatRooms]);
+
     // Refresh chats khi màn hình được focus để cập nhật trạng thái đã đọc
     useFocusEffect(
         React.useCallback(() => {
             if (currentUserId) {
-                fetchChats(true); // Force refresh để đảm bảo dữ liệu mới nhất
+                fetchChats(true);
+                // Thêm refresh sau 1 giây để đảm bảo dữ liệu mới nhất
+                const timeoutId = setTimeout(() => {
+                    fetchChats(true);
+                }, 1000);
+                return () => clearTimeout(timeoutId);
             }
         }, [currentUserId])
     );
