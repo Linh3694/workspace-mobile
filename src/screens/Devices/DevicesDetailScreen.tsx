@@ -9,10 +9,10 @@ import {
     ActivityIndicator, 
     Alert,
     RefreshControl,
-
     Image,
     Linking,
-    Dimensions
+    Dimensions,
+    Platform
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -35,8 +35,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import RevokeIcon from '../../assets/revoke-devices.svg'
 import AssignIcon from '../../assets/assign-devices.svg'
 import BrokenIcon from '../../assets/broken-devices.svg'
-
-
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type DeviceDetailScreenRouteProp = RouteProp<RootStackParamList, typeof ROUTES.SCREENS.DEVICE_DETAIL>;
 type DeviceDetailScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, typeof ROUTES.SCREENS.DEVICE_DETAIL>;
@@ -58,8 +57,7 @@ const DevicesDetailScreen = () => {
     const navigation = useNavigation<DeviceDetailScreenNavigationProp>();
     const route = useRoute<DeviceDetailScreenRouteProp>();
     const { deviceId, deviceType } = route.params;
-
-
+    const insets = useSafeAreaInsets();
 
     const [device, setDevice] = useState<Device | null>(null);
     const [logs, setLogs] = useState<DeviceLog[]>([]);
@@ -593,8 +591,6 @@ const DevicesDetailScreen = () => {
         return endpointMap[deviceType] || `${deviceType}s`;
     };
 
-
-
     const getHandoverDocument = () => {
         if (!device?.assignmentHistory || device.assignmentHistory.length === 0) {
             return null;
@@ -997,7 +993,7 @@ const DevicesDetailScreen = () => {
     }
 
     return (
-        <SafeAreaView className="flex-1 bg-white">
+        <SafeAreaView className="flex-1 bg-white" style={{ paddingTop: Platform.OS === 'android' ? insets.top : 0 }}>
             {/* Header */}
             <View className="flex-row items-center justify-between px-5 pt-4 pb-1">
                 <View className="flex-1">

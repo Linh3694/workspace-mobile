@@ -192,6 +192,7 @@ const MessageBubble = memo(({
             customEmojis={customEmojis}
             onLongPress={(e) => onLongPressIn(message, e)}
             onLongPressOut={onLongPressOut}
+            onImagePress={onImagePress}
         />;
     };
 
@@ -327,12 +328,16 @@ const MessageBubble = memo(({
                 onPressOut={onLongPressOut}
                 delayLongPress={500}
             >
+                {/* Add spacing at the top of first message in a group */}
+                {isFirst && (
+                    <View style={{ height: 6 }} />
+                )}
                 <Animated.View
                     style={[
                         {
                             flexDirection: isMe ? 'row-reverse' : 'row',
                             alignItems: 'flex-end',
-                            marginBottom: (message.reactions && message.reactions.length > 0) ? 12 : 1,
+                            marginBottom: (message.reactions && message.reactions.length > 0) ? 12 : 2,
                             transform: [{ scale: messageScaleAnim }]
                         }
                     ]}
@@ -342,7 +347,7 @@ const MessageBubble = memo(({
                             <Avatar user={message.sender} size={40} statusSize={12} />
                         </View>
                     ) : (
-                        <View style={{ width: isMe ? 8 : 40, marginLeft: 4, marginRight: 4 }} />
+                        <View style={{ width: isMe ? 8 : 40, marginLeft: 6, marginRight: 6 }} />
                     )}
 
                     {/* Nếu là emoji thì không render bubble, chỉ render emoji to */}
@@ -358,7 +363,8 @@ const MessageBubble = memo(({
                             // Container chứa cả reply và bubble tin nhắn
                             <View style={{
                                 flexDirection: 'column',
-                                paddingTop: 2,
+                                paddingTop: 1,
+                                paddingBottom: 1,
                                 paddingLeft: isMe ? 0 : 8,
                                 maxWidth: '75%',
                                 alignItems: isMe ? 'flex-end' : 'flex-start',
