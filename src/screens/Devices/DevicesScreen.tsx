@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, SafeAreaView, TouchableOpacity, FlatList, TextInput, ActivityIndicator, Alert, RefreshControl, Modal, ScrollView } from 'react-native';
+import { View, Text, SafeAreaView, TouchableOpacity, FlatList, TextInput, ActivityIndicator, Alert, RefreshControl, Modal, ScrollView, Platform } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -14,6 +15,7 @@ type DevicesScreenRouteProp = RouteProp<RootStackParamList, typeof ROUTES.SCREEN
 const DevicesScreen = () => {
     const navigation = useNavigation<DevicesScreenNavigationProp>();
     const route = useRoute<DevicesScreenRouteProp>();
+    const insets = useSafeAreaInsets();
     const [devices, setDevices] = useState<Device[]>([]);
     const [filteredDevices, setFilteredDevices] = useState<Device[]>([]);
     const [loading, setLoading] = useState(false);
@@ -491,7 +493,7 @@ const DevicesScreen = () => {
 
     return (
         <View className="flex-1">
-            <SafeAreaView className="flex-1">
+            <SafeAreaView className="flex-1" style={{ paddingTop: Platform.OS === 'android' ? insets.top : 0 }}>
                 {/* Header */}
                 <View className="flex-row items-center justify-between px-5 py-4 ">
                     <TouchableOpacity onPress={handleGoBack} className="p-1">

@@ -13,6 +13,7 @@ interface MessageContentProps {
     customEmojis?: any[];
     onLongPress?: (event: any) => void;
     onLongPressOut?: () => void;
+    onImagePress?: (images: string[], index: number) => void;
 }
 
 const MessageContent: React.FC<MessageContentProps> = ({ 
@@ -21,7 +22,8 @@ const MessageContent: React.FC<MessageContentProps> = ({
     isMe = false, 
     customEmojis = [],
     onLongPress,
-    onLongPressOut
+    onLongPressOut,
+    onImagePress
 }) => {
     if (message.isEmoji && typeof message.content === 'string') {
         const emoji = customEmojis.find(e => e.code === message.content || e.name === message.content);
@@ -49,6 +51,7 @@ const MessageContent: React.FC<MessageContentProps> = ({
             ) : (
                 <TouchableOpacity 
                     style={{ marginTop: 4 }}
+                    onPress={() => onImagePress && onImagePress([processImageUrl(message.fileUrl)], 0)}
                     onLongPress={onLongPress}
                     onPressOut={onLongPressOut}
                     delayLongPress={500}
@@ -75,7 +78,7 @@ const MessageContent: React.FC<MessageContentProps> = ({
             ) : (
                 <ImageGrid 
                     images={message.fileUrls || []} 
-                    onPress={() => { }} 
+                    onPress={(index) => onImagePress && onImagePress(message.fileUrls || [], index)} 
                     onLongPress={onLongPress}
                     onPressOut={onLongPressOut}
                 />

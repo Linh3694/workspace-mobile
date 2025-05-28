@@ -617,9 +617,13 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
 
     // Socket.IO setup
     const setupSocket = async (authToken: string | null, chatId: string) => {
-        if (!authToken) return;
+        if (!authToken) {
+            console.log('No auth token available for socket setup');
+            return;
+        }
 
         try {
+            console.log('Setting up socket connection for chat:', chatId);
             // Kết nối socket
             const socket = io(API_BASE_URL, {
                 query: { token: authToken },
@@ -628,7 +632,21 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
 
             socketRef.current = socket;
 
+            // Add connection event listeners for debugging
+            socket.on('connect', () => {
+                console.log('Socket connected successfully, ID:', socket.id);
+            });
+
+            socket.on('disconnect', (reason) => {
+                console.log('Socket disconnected, reason:', reason);
+            });
+
+            socket.on('connect_error', (error) => {
+                console.error('Socket connection error:', error);
+            });
+
             // Join vào phòng chat
+            console.log('Joining chat room:', chatId);
             socket.emit('joinChat', chatId);
 
             // Lắng nghe tin nhắn mới với batching và typing reset
@@ -975,16 +993,24 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
     const handleInputChange = useCallback((text: string) => {
         setInput(text);
         
-        if (!socketRef.current || !chat?._id || !currentUserId) return;
+        if (!socketRef.current || !chat?._id || !currentUserId) {
+            console.log('Socket conditions not met:', {
+                socket: !!socketRef.current,
+                chatId: chat?._id,
+                currentUserId
+            });
+            return;
+        }
         
         // Clear previous debounced call
         if (debouncedTypingRef.current) {
             clearTimeout(debouncedTypingRef.current);
         }
         
-        // Debounce typing events to reduce socket calls
+        // Debounce typing events to reduce socket calls - reduce from 300ms to 100ms for better responsiveness
         debouncedTypingRef.current = setTimeout(() => {
             if (text.trim() !== '') {
+                console.log('Emitting typing event for chat:', chat._id, 'user:', currentUserId);
                 socketRef.current?.emit('typing', { chatId: chat._id, userId: currentUserId });
                 
                 // Clear existing stop typing timeout
@@ -992,18 +1018,20 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                     clearTimeout(typingTimeout.current);
                 }
                 
-                // Set stop typing timeout
+                // Set stop typing timeout - reduce from 3000ms to 2000ms
                 typingTimeout.current = setTimeout(() => {
+                    console.log('Auto-emitting stopTyping after 2s for chat:', chat._id, 'user:', currentUserId);
                     socketRef.current?.emit('stopTyping', { chatId: chat._id, userId: currentUserId });
-                }, 3000);
+                }, 2000);
             } else {
                 // Stop typing immediately if input is empty
                 if (typingTimeout.current) {
                     clearTimeout(typingTimeout.current);
                 }
+                console.log('Emitting stopTyping (empty input) for chat:', chat._id, 'user:', currentUserId);
                 socketRef.current?.emit('stopTyping', { chatId: chat._id, userId: currentUserId });
             }
-        }, 300); // Debounce typing events by 300ms
+        }, 100); // Reduce debounce from 300ms to 100ms for better responsiveness
     }, [chat?._id, currentUserId]);
 
     // Hàm upload file/ảnh lên server
@@ -2105,6 +2133,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                                     renderItem={renderItem}
                                     contentContainerStyle={{
                                         paddingVertical: 10,
+                                        paddingHorizontal: 4,
                                         paddingBottom: keyboardVisible ? 10 : (insets.bottom + 50),
                                     }}
                                     removeClippedSubviews={true}

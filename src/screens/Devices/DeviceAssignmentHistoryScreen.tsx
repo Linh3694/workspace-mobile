@@ -6,7 +6,8 @@ import {
     TouchableOpacity,
     ScrollView,
     ActivityIndicator,
-    RefreshControl
+    RefreshControl,
+    Platform
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,6 +18,7 @@ import deviceService from '../../services/deviceService';
 import { Image } from 'react-native';
 import { getAvatar } from '../../utils/avatar';
 import { AssignmentHistory, Device } from '../../types/devices';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type DeviceAssignmentHistoryScreenRouteProp = RouteProp<RootStackParamList, typeof ROUTES.SCREENS.DEVICE_ASSIGNMENT_HISTORY>;
 type DeviceAssignmentHistoryScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, typeof ROUTES.SCREENS.DEVICE_ASSIGNMENT_HISTORY>;
@@ -25,6 +27,7 @@ const DeviceAssignmentHistoryScreen = () => {
     const navigation = useNavigation<DeviceAssignmentHistoryScreenNavigationProp>();
     const route = useRoute<DeviceAssignmentHistoryScreenRouteProp>();
     const { deviceId, deviceType, deviceName } = route.params;
+    const insets = useSafeAreaInsets();
 
     const [assignmentHistory, setAssignmentHistory] = useState<AssignmentHistory[]>([]);
     const [loading, setLoading] = useState(true);
@@ -134,7 +137,7 @@ const DeviceAssignmentHistoryScreen = () => {
 
     if (loading) {
         return (
-            <SafeAreaView className="flex-1">
+            <SafeAreaView className="flex-1" style={{ paddingTop: Platform.OS === 'android' ? insets.top : 0 }}>
                 <View className="flex-1 items-center justify-center">
                     <ActivityIndicator size="large" color="#002855" />
                     <Text className="text-base text-[#002855] mt-3">Đang tải lịch sử...</Text>
@@ -144,7 +147,7 @@ const DeviceAssignmentHistoryScreen = () => {
     }
 
     return (
-        <SafeAreaView className="flex-1 bg-white">
+        <SafeAreaView className="flex-1 bg-white" style={{ paddingTop: Platform.OS === 'android' ? insets.top : 0 }}>
             {/* Header */}
             <View className="flex-row items-center justify-between px-5 py-4 bg-white">
                 <TouchableOpacity
