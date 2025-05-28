@@ -24,6 +24,9 @@
       "channel": "production",
       "android": {
         "buildType": "apk"
+      },
+      "ios": {
+        "autoIncrement": true
       }
     }
   },
@@ -31,8 +34,8 @@
     "production": {
       "ios": {
         "appleId": "developer@wellspring.edu.vn",
-        "ascAppId": "your-app-store-connect-app-id",
-        "appleTeamId": "your-apple-team-id"
+        "ascAppId": "6746143732",
+        "appleTeamId": "2D237L9M35"
       }
     }
   }
