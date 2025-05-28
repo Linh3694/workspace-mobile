@@ -46,8 +46,8 @@ Sửa file `eas.json` với thông tin của bạn:
     "production": {
       "ios": {
         "appleId": "your-apple-id@example.com",
-        "ascAppId": "your-app-store-connect-app-id", 
-        "appleTeamId": "your-apple-team-id"
+        "ascAppId": "6746143732", 
+        "appleTeamId": "2D237L9M35"
       }
     }
   }
