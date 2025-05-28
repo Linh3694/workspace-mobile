@@ -47,6 +47,7 @@ import { getMessageGroupPosition } from '../../utils/messageGroupUtils';
 import EmojiPicker from '../../components/Chat/EmojiPicker';
 import { useEmojis } from '../../hooks/useEmojis';
 import ConfirmModal from '../../components/ConfirmModal';
+import ChatInputBar from '../../components/Chat/ChatInputBar';
 
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -776,6 +777,31 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
             socket.on('userOffline', ({ userId }) => {
                 if (chatPartner._id === userId) {
                     setIsOnline(false);
+                }
+            });
+
+            // Lắng nghe sự kiện thu hồi tin nhắn
+            socket.on('messageRevoked', ({ messageId, chatId: updatedChatId }) => {
+                console.log('Received messageRevoked event:', { messageId, chatId: updatedChatId });
+                if (updatedChatId === chatId) {
+                    // Cập nhật UI ngay lập tức
+                    setMessages(prev => prev.map(msg =>
+                        msg._id === messageId
+                            ? { 
+                                ...msg, 
+                                isRevoked: true, 
+                                content: '',
+                                fileUrl: undefined,
+                                fileUrls: undefined,
+                                fileName: undefined,
+                                fileSize: undefined,
+                                emojiUrl: undefined,
+                                emojiType: undefined,
+                                emojiId: undefined,
+                                isEmoji: false
+                            }
+                            : msg
+                    ));
                 }
             });
 
@@ -1715,115 +1741,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
         }
     };
 
-    // Thêm component ReplyPreview để hiển thị preview tin nhắn đang trả lời
-    const ReplyPreview = ({ message, onCancel }: { message: Message | null, onCancel: () => void }) => {
-        if (!message) return null;
-
-        const isImage = message.type === 'image';
-        const isMultipleImages = message.type === 'multiple-images';
-        const isFile = message.type === 'file';
-        const imageUrl = isImage
-            ? (message.fileUrl?.startsWith('http') ? message.fileUrl : `${API_BASE_URL}${message.fileUrl}`)
-            : (isMultipleImages && message.fileUrls && message.fileUrls.length > 0
-                ? (message.fileUrls[0].startsWith('http') ? message.fileUrls[0] : `${API_BASE_URL}${message.fileUrls[0]}`)
-                : null
-            );
-
-        return (
-            <View style={{
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                borderTopLeftRadius: 16,
-                borderTopRightRadius: 16,
-                padding: 10,
-                paddingHorizontal: 16,
-                marginBottom: -8,
-                position: 'relative'
-            }}>
-                {/* Thêm BlurView */}
-                <View style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    borderTopLeftRadius: 16,
-                    borderTopRightRadius: 16,
-                    overflow: 'hidden'
-                }}>
-                    <BlurView
-                        intensity={8}
-                        tint="default"
-                    />
-                </View>
-
-                <View style={{
-                    width: 3,
-                    height: 40,
-                    marginRight: 8,
-                    borderRadius: 3
-                }} />
-
-                {/* Thumbnail ảnh nếu là ảnh hoặc nhiều ảnh */}
-                {(isImage || isMultipleImages) && imageUrl && (
-                    <Image
-                        source={{ uri: imageUrl }}
-                        style={{ width: 36, height: 36, borderRadius: 8, marginRight: 8 }}
-                        resizeMode="cover"
-                    />
-                )}
-
-                <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#3F4246', fontFamily: 'Mulish-SemiBold', fontSize: 14 }}>
-                        Trả lời {message.sender.fullname}
-                    </Text>
-
-                    {isImage && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Ionicons name="image-outline" size={14} color="#666" style={{ marginRight: 4 }} />
-                            <Text style={{ color: '#666', fontSize: 14, fontFamily: 'Mulish-Regular' }}>
-                                Hình ảnh
-                            </Text>
-                        </View>
-                    )}
-                    {isMultipleImages && message.fileUrls && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Ionicons name="images-outline" size={14} color="#666" style={{ marginRight: 4 }} />
-                            <Text style={{ color: '#666', fontSize: 14, fontFamily: 'Mulish-Regular' }}>
-                                {message.fileUrls.length} hình ảnh
-                            </Text>
-                        </View>
-                    )}
-                    {isFile && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Ionicons name="document-outline" size={14} color="#666" style={{ marginRight: 4 }} />
-                            <Text style={{ color: '#666', fontSize: 14, fontFamily: 'Mulish-Regular' }}>
-                                Tệp đính kèm
-                            </Text>
-                        </View>
-                    )}
-                    {!isImage && !isMultipleImages && !isFile && (
-                        <Text style={{
-                            color: '#666',
-                            fontSize: 14,
-                            fontFamily: 'Mulish-Regular',
-                            flexShrink: 1,
-                            flexWrap: 'wrap'
-                        }}>
-                            {message.content}
-                        </Text>
-                    )}
-                </View>
-
-                <TouchableOpacity onPress={onCancel} style={{ padding: 5 }}>
-                    <Ionicons name="close" size={20} color="#666" />
-                </TouchableOpacity>
-            </View>
-        );
-    };
-
-
-    // Thêm hàm xử lý nhấp vào tin nhắn ghim
+    // Thêm hàm xử lý tin nhắn ghim
     const handlePinnedMessagePress = (message: Message) => {
         // Tìm index của tin nhắn trong danh sách
         const messageIndex = messages.findIndex(msg => msg._id === message._id);
@@ -2079,18 +1997,48 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
         
         try {
             const authToken = await AsyncStorage.getItem('authToken');
+            if (!authToken) {
+                throw new Error('No auth token found');
+            }
+
             const response = await fetch(`${API_BASE_URL}/api/chats/message/${messageToRevoke._id}/revoke`, {
                 method: 'DELETE',
                 headers: {
-                    Authorization: `Bearer ${authToken}`,
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json',
                 },
             });
 
-            // Thêm log chi tiết
-            const responseText = await response.text();
-
             if (!response.ok) {
-                throw new Error('Failed to revoke message');
+                // Try to get error message from response
+                const contentType = response.headers.get('content-type');
+                let errorMessage = 'Failed to revoke message';
+                
+                if (contentType && contentType.includes('application/json')) {
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.message || errorMessage;
+                    } catch (jsonError) {
+                        console.error('Error parsing error response:', jsonError);
+                    }
+                } else {
+                    const textResponse = await response.text();
+                    console.error('Non-JSON error response:', textResponse);
+                    errorMessage = `Server error: ${response.status}`;
+                }
+                
+                throw new Error(errorMessage);
+            }
+
+            // Try to parse successful response
+            let responseData = null;
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                try {
+                    responseData = await response.json();
+                } catch (jsonError) {
+                    console.warn('Could not parse success response as JSON:', jsonError);
+                }
             }
 
             // Cập nhật local state
@@ -2124,7 +2072,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
             setNotification({
                 visible: true,
                 type: 'error',
-                message: 'Không thể thu hồi tin nhắn'
+                message: error instanceof Error ? error.message : 'Không thể thu hồi tin nhắn'
             });
         }
     };
@@ -2360,216 +2308,22 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                             )}
                         </View>
 
-                        {/* Input chat */}
-                        <View
-                            style={{
-                                borderRadius: 32,
-                                paddingHorizontal: 6,
-                                paddingVertical: 6,
-                                backgroundColor: 'transparent',
-                                width: '90%',
-                                alignSelf: 'center',
-                                minHeight: 40,
-                                paddingBottom: Platform.OS === 'ios' ? 2 : (keyboardVisible ? 2 : insets.bottom),
-                                marginBottom: 5,
-                                overflow: 'hidden',
-                            }}
-                        >
-                            {/* Màu nền tiêu chuẩn - hiển thị khi không có ảnh preview và không có reply */}
-                            {!imagesToSend.length && !replyTo && (
-                                <View
-                                    style={{
-                                        position: 'absolute',
-                                        top: 0,
-                                        left: 0,
-                                        right: 0,
-                                        bottom: 0,
-                                        backgroundColor: 'rgba(245, 245, 237, 1)',
-                                        borderRadius: 32,
-                                        zIndex: 0,
-                                    }}
-                                />
-                            )}
-
-                            {/* BlurView - hiển thị khi có ảnh preview hoặc có reply */}
-                            {(imagesToSend.length > 0 || replyTo) && (
-                                <View style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    right: 0,
-                                    bottom: 0,
-                                    borderRadius: 32,
-                                    zIndex: 0,
-                                    overflow: 'hidden'
-                                }}>
-                                    <BlurView
-                                        intensity={8}
-                                        tint="default"
-                                    />
-                                </View>
-                            )}
-
-                            {/* Preview tin nhắn đang trả lời */}
-                            {replyTo && (
-                                <ReplyPreview message={replyTo} onCancel={() => setReplyTo(null)} />
-                            )}
-
-                            {/* Dòng preview ảnh (nếu có) */}
-                            {imagesToSend.length > 0 && (
-                                <ScrollView
-                                    horizontal
-                                    showsHorizontalScrollIndicator={false}
-                                    contentContainerStyle={{
-                                        alignItems: 'center',
-                                        marginBottom: 8,
-                                        paddingVertical: 4
-                                    }}
-                                    style={{ maxHeight: 64, zIndex: 2 }}
-                                >
-                                    {imagesToSend.map((img, idx) => (
-                                        <View key={idx} style={{ position: 'relative', marginRight: 8 }}>
-                                            <Image source={{ uri: img.uri }} style={{ width: 48, height: 48, borderRadius: 8 }} />
-                                            <TouchableOpacity
-                                                onPress={() => removeImage(idx)}
-                                                style={{
-                                                    position: 'absolute',
-                                                    top: -5,
-                                                    right: -5,
-                                                    backgroundColor: '#fff',
-                                                    borderRadius: 10,
-                                                    padding: 2,
-                                                    zIndex: 3
-                                                }}
-                                            >
-                                                <MaterialIcons name="close" size={16} color="#002855" />
-                                            </TouchableOpacity>
-                                        </View>
-                                    ))}
-                                </ScrollView>
-                            )}
-
-                            {/* Dòng chứa TextInput và các nút */}
-                            <View style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                width: '100%',
-                                minHeight: 44,
-                                zIndex: 2,
-                            }}>
-                                {/* Nút camera (chụp ảnh) */}
-                                <TouchableOpacity
-                                    style={{
-                                        width: 40,
-                                        height: 40,
-                                        backgroundColor: '#F05023',
-                                        borderRadius: 20,
-                                        justifyContent: 'center',
-                                        alignItems: 'center',
-                                        marginRight: 10
-                                    }}
-                                    onPress={async () => {
-                                        const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
-                                        if (cameraStatus !== 'granted') {
-                                            Alert.alert('Cần quyền truy cập', 'Vui lòng cấp quyền truy cập camera để chụp ảnh.');
-                                            return;
-                                        }
-
-                                        const result = await ImagePicker.launchCameraAsync({
-                                            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                                            quality: 0.7, // Giảm chất lượng xuống 70%
-                                            allowsEditing: false, // Bỏ tính năng crop
-                                            exif: true, // Giữ thông tin EXIF
-                                        });
-                                        if (!result.canceled && result.assets && result.assets.length > 0) {
-                                            setImagesToSend(prev => [...prev, ...result.assets]);
-                                        }
-                                    }}
-                                >
-                                    <Ionicons name="camera" size={22} color="#fff" />
-                                </TouchableOpacity>
-
-                                {/* Input tin nhắn */}
-                                <TextInput
-                                    value={input}
-                                    onChangeText={handleInputChange}
-                                    placeholder="Nhập tin nhắn"
-                                    style={{
-                                        flex: 1,
-                                        fontSize: 16,
-                                        color: '#002855',
-                                        paddingVertical: 8,
-                                        minHeight: 24,
-                                        backgroundColor: 'transparent',
-                                        fontFamily: 'Mulish-Regular',
-                                    }}
-                                    multiline={false}
-                                    autoFocus={false}
-                                    onFocus={() => setShowEmojiPicker(false)}
-                                />
-
-                                {/* Container cho các nút bên phải */}
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    {/* Các nút chỉ hiển thị khi không nhập text */}
-                            {!input.trim() && (
-                                <>
-                                            {/* Nút emoji */}
-                                            <TouchableOpacity
-                                                style={{ marginHorizontal: 8 }}
-                                                onPress={() => {
-                                                    Keyboard.dismiss();
-                                                    setShowEmojiPicker(prev => !prev);
-                                                }}
-                                            >
-                                                <FontAwesome
-                                                    name={showEmojiPicker ? "keyboard-o" : "smile-o"}
-                                                    size={22}
-                                                    color="#00687F"
-                                                />
-                                            </TouchableOpacity>
-
-                                            {/* Nút chọn ảnh từ thư viện */}
-                                            <TouchableOpacity
-                                                style={{ marginHorizontal: 8 }}
-                                                onPress={async () => {
-                                                    const { status: libStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                                                    if (libStatus !== 'granted') {
-                                                        Alert.alert('Cần quyền truy cập', 'Vui lòng cấp quyền truy cập thư viện ảnh.');
-                                                        return;
-                                                    }
-
-                                                    // Chọn từ thư viện (cho phép nhiều ảnh)
-                                                    const result = await ImagePicker.launchImageLibraryAsync({
-                                                        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                                                        allowsMultipleSelection: true,
-                                                        quality: 0.7, // Giảm chất lượng xuống 70%
-                                                        allowsEditing: false, // Bỏ tính năng crop
-                                                        exif: true, // Giữ thông tin EXIF
-                                                    });
-                                                    if (!result.canceled && result.assets && result.assets.length > 0) {
-                                                        setImagesToSend(prev => [...prev, ...result.assets]);
-                                                    }
-                                                }}
-                                            >
-                                                <Ionicons name="image-outline" size={24} color="#00687F" />
-                                            </TouchableOpacity>
-
-                                            {/* Nút đính kèm file */}
-                                            <TouchableOpacity style={{ marginHorizontal: 8 }} onPress={handlePickFile}>
-                                                <MaterialIcons name="attach-file" size={24} color="#00687F" />
-                                            </TouchableOpacity>
-                                        </>
-                                    )}
-
-                                    {/* Nút gửi chỉ hiển thị khi có text hoặc hình ảnh để gửi */}
-                            {(input.trim() !== '' || imagesToSend.length > 0) && (
-                                        <TouchableOpacity onPress={handleSend} style={{ marginLeft: 8 }}>
-                                    <Ionicons name="send" size={24} color="#F05023" />
-                                </TouchableOpacity>
-                            )}
-                        </View>
-                    </View>
-                        </View>
+                        {/* Chat Input Bar */}
+                        <ChatInputBar 
+                            input={input}
+                            handleInputChange={handleInputChange}
+                            imagesToSend={imagesToSend}
+                            removeImage={removeImage}
+                            handleSend={handleSend}
+                            showEmojiPicker={showEmojiPicker}
+                            setShowEmojiPicker={setShowEmojiPicker}
+                            handlePickFile={handlePickFile}
+                            replyTo={replyTo}
+                            setReplyTo={setReplyTo}
+                            keyboardVisible={keyboardVisible}
+                            insets={insets}
+                            setImagesToSend={setImagesToSend}
+                        />
 
                         {/* Emoji Picker */}
                         {showEmojiPicker && (
@@ -2608,7 +2362,6 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                     </View>
                 )}
             />
-
                     {/* Thêm component ImageViewerModal vào render */}
                     <ImageViewerModal
                         images={viewerImages}
@@ -2644,7 +2397,6 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                             onForward={forwardSingleMessage}
                         />
                     )}
-
                 </SafeAreaView >
             </ImageBackground >
             <NotificationModal

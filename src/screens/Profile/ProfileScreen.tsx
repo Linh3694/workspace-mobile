@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, SafeAreaView, TouchableOpacity, Switch, Alert, Modal, TextInput, Pressable, Image, ScrollView } from 'react-native';
+import { View, Text, SafeAreaView, TouchableOpacity, Switch, Alert, Modal, TextInput, Pressable, Image, ScrollView, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -12,6 +12,10 @@ import { getAvatar } from '../../utils/avatar';
 import { API_BASE_URL } from '../../config/constants.js';
 import FaceID from '../../assets/faceid-gray.svg'
 import Dot from '../../assets/dot.svg'
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
+import * as Device from 'expo-device';
+import axios from 'axios';
 
 
 const ProfileScreen = () => {
@@ -19,6 +23,7 @@ const ProfileScreen = () => {
     const { logout, user, clearBiometricCredentials, refreshUserData } = useAuth();
     const { isBiometricAvailable, hasSavedCredentials, removeCredentials, saveCredentialsFromProfile } = useBiometricAuth();
     const [biometricEnabled, setBiometricEnabled] = useState(false);
+    const [notificationsEnabled, setNotificationsEnabled] = useState(false);
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [password, setPassword] = useState('');
@@ -30,6 +35,11 @@ const ProfileScreen = () => {
     useEffect(() => {
         setBiometricEnabled(hasSavedCredentials);
     }, [hasSavedCredentials]);
+
+    // Kiểm tra trạng thái thông báo khi component mount
+    useEffect(() => {
+        checkNotificationStatus();
+    }, []);
 
     // Debug avatar URL
     useEffect(() => {
@@ -115,6 +125,156 @@ const ProfileScreen = () => {
     const getFallbackAvatar = () => {
         if (!user) return 'https://ui-avatars.com/api/?name=Unknown&background=F97316&color=ffffff&size=200';
         return `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullname)}&background=F97316&color=ffffff&size=200&font-size=0.5`;
+    };
+
+    // Kiểm tra trạng thái thông báo đẩy
+    const checkNotificationStatus = async () => {
+        try {
+            const { status } = await Notifications.getPermissionsAsync();
+            const savedStatus = await AsyncStorage.getItem('notificationsEnabled');
+            setNotificationsEnabled(status === 'granted' && savedStatus === 'true');
+        } catch (error) {
+            console.error('Lỗi khi kiểm tra trạng thái thông báo:', error);
+        }
+    };
+
+    // Cài đặt thông báo đẩy
+    const setupPushNotifications = async () => {
+        // Kiểm tra xem thiết bị có phải là thiết bị thật không
+        if (!Device.isDevice) {
+            Alert.alert('Thông báo', 'Thiết bị giả lập không hỗ trợ thông báo đẩy!');
+            return false;
+        }
+
+        // Kiểm tra quyền thông báo
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+
+        // Nếu chưa được cấp quyền, yêu cầu quyền
+        if (existingStatus !== 'granted') {
+            const { status } = await Notifications.requestPermissionsAsync();
+            finalStatus = status;
+        }
+
+        // Nếu không được cấp quyền, thông báo cho người dùng
+        if (finalStatus !== 'granted') {
+            Alert.alert('Thông báo', 'Bạn cần cấp quyền thông báo để nhận thông báo!');
+            return false;
+        }
+
+        // Thiết lập kênh thông báo cho Android
+        if (Platform.OS === 'android') {
+            await Notifications.setNotificationChannelAsync('default', {
+                name: 'Mặc định',
+                importance: Notifications.AndroidImportance.MAX,
+                vibrationPattern: [0, 250, 250, 250],
+                lightColor: '#FF231F7C',
+            });
+        }
+
+        try {
+            // Lấy projectId từ Constants
+            const projectId = Constants?.expoConfig?.extra?.eas?.projectId;
+
+            if (!projectId) {
+                console.error('Không tìm thấy projectId trong app.json');
+                return false;
+            }
+
+            // Lấy token thiết bị
+            const token = await Notifications.getExpoPushTokenAsync({
+                projectId,
+            });
+
+            console.log('Push token:', token.data);
+
+            // Lưu token vào AsyncStorage để sử dụng sau này
+            await AsyncStorage.setItem('pushToken', token.data);
+
+            // Gửi token lên server
+            await registerDeviceToken(token.data);
+            return true;
+        } catch (error) {
+            console.error('Lỗi khi thiết lập thông báo đẩy:', error);
+            return false;
+        }
+    };
+
+    // Đăng ký token thiết bị với server
+    const registerDeviceToken = async (token: string) => {
+        try {
+            const authToken = await AsyncStorage.getItem('authToken');
+
+            if (!authToken) {
+                console.log('Người dùng chưa đăng nhập');
+                return;
+            }
+
+            await axios.post(
+                `${API_BASE_URL}/api/notifications/register-device`,
+                { deviceToken: token },
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`,
+                    }
+                }
+            );
+        } catch (error) {
+            console.error('Lỗi đăng ký token thiết bị:', error);
+        }
+    };
+
+    // Hủy đăng ký token thiết bị
+    const unregisterDeviceToken = async () => {
+        try {
+            const authToken = await AsyncStorage.getItem('authToken');
+            const pushToken = await AsyncStorage.getItem('pushToken');
+
+            if (!authToken || !pushToken) {
+                return;
+            }
+
+            await axios.post(
+                `${API_BASE_URL}/api/notifications/unregister-device`,
+                { deviceToken: pushToken },
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`,
+                    }
+                }
+            );
+
+            // Xóa token khỏi AsyncStorage
+            await AsyncStorage.removeItem('pushToken');
+        } catch (error) {
+            console.error('Lỗi hủy đăng ký token thiết bị:', error);
+        }
+    };
+
+    // Xử lý bật/tắt thông báo
+    const toggleNotifications = async (value: boolean) => {
+        try {
+            if (value) {
+                const success = await setupPushNotifications();
+                if (success) {
+                    setNotificationsEnabled(true);
+                    await AsyncStorage.setItem('notificationsEnabled', 'true');
+                    Alert.alert('Thành công', 'Đã bật thông báo đẩy!');
+                } else {
+                    setNotificationsEnabled(false);
+                }
+            } else {
+                await unregisterDeviceToken();
+                setNotificationsEnabled(false);
+                await AsyncStorage.setItem('notificationsEnabled', 'false');
+                Alert.alert('Thông báo', 'Đã tắt thông báo đẩy!');
+            }
+        } catch (error) {
+            console.error('Lỗi khi thay đổi cài đặt thông báo:', error);
+            Alert.alert('Lỗi', 'Không thể thay đổi cài đặt thông báo. Vui lòng thử lại sau.');
+        }
     };
 
     return (
@@ -203,10 +363,18 @@ const ProfileScreen = () => {
                     <View className="p-5 gap-8">
                         <Text className="text-base font-semibold text-black">Cài đặt</Text>
                         {/* Notifications */}
-                        <TouchableOpacity className="flex-row items-center">
-                            <Ionicons name="notifications-outline" size={20} color="#757575" />
-                            <Text className="ml-5 flex-1 text-black font-medium">Thông báo</Text>
-                        </TouchableOpacity>
+                        <View className="flex-row items-center justify-between">
+                            <View className="flex-row items-center flex-1">
+                                <Ionicons name="notifications-outline" size={20} color="#757575" />
+                                <Text className="ml-5 text-black font-medium">Thông báo</Text>
+                            </View>
+                            <Switch
+                                trackColor={{ false: "#D1D5DB", true: "#F97316" }}
+                                thumbColor={"#FFFFFF"}
+                                value={notificationsEnabled}
+                                onValueChange={toggleNotifications}
+                            />
+                        </View>
 
                         {/* Change Password */}
                         <TouchableOpacity className="flex-row items-center">
@@ -310,7 +478,7 @@ const ProfileScreen = () => {
                             <TouchableOpacity
                                 onPress={handleSubmitPassword}
                                 disabled={isLoading}
-                                className="bg-blue-600 px-6 py-3 rounded-lg"
+                                className="bg-secondary px-6 py-3 rounded-lg"
                             >
                                 <Text className="text-white font-medium">
                                     {isLoading ? 'Đang xử lý...' : 'Xác nhận'}

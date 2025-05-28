@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     bubble: {
         backgroundColor: 'transparent',
         alignSelf: 'flex-start' as const,
-        maxWidth: '100%',
+        maxWidth: '85%',
         paddingHorizontal: 14,
         paddingVertical: 8,
         borderRadius: 20,
@@ -387,10 +387,10 @@ const MessageBubble = memo(({
                 >
                     {showAvatar ? (
                         <View style={!isMe ? { marginLeft: 8 } : {}}>
-                            <Avatar user={message.sender} size={40} statusSize={12} />
+                            <Avatar user={message.sender} size={36} statusSize={12} />
                         </View>
                     ) : (
-                            <View style={{ width: isMe ? 8 : 36, marginLeft: 6, marginRight: 6 }} />
+                            <View style={{ width: isMe ? 0 : 44 }} />
                     )}
 
                     {/* Nếu là emoji thì không render bubble, chỉ render emoji to */}

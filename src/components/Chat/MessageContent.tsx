@@ -55,7 +55,7 @@ const MessageContent: React.FC<MessageContentProps> = ({
                     onPress={() => onImagePress && onImagePress([processImageUrl(message.fileUrl)], 0)}
                     onLongPress={onLongPress}
                     onPressOut={onLongPressOut}
-                    delayLongPress={500}
+                    delayLongPress={200}
                 >
                     <Image
                         source={{ uri: processImageUrl(message.fileUrl) }}
@@ -95,19 +95,20 @@ const MessageContent: React.FC<MessageContentProps> = ({
             );
         default:
             return (
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text
-                        style={{
-                            color: isPreview ? '#666' : (isMe ? '#fff' : '#757575'),
-                            fontFamily: 'Mulish-SemiBold',
-                            fontSize: 16,
-                            flexShrink: 1
-                        }}
-                        numberOfLines={isPreview ? 1 : undefined}
-                    >
-                        {message.content}
-                    </Text>
-                </View>
+                <Text
+                    style={{
+                        color: isPreview ? '#666' : (isMe ? '#fff' : '#757575'),
+                        fontFamily: 'Mulish-SemiBold',
+                        fontSize: 16,
+                        lineHeight: 22,
+                        flexWrap: 'wrap',
+                        textAlign: 'left'
+                    }}
+                    numberOfLines={isPreview ? 1 : undefined}
+                    ellipsizeMode={isPreview ? 'tail' : undefined}
+                >
+                    {message.content}
+                </Text>
             );
     }
 };

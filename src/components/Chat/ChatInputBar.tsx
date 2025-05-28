@@ -4,7 +4,7 @@ import { View, TextInput, TouchableOpacity, ScrollView, Image, Platform, Keyboar
 import { MaterialIcons, Ionicons, FontAwesome } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as ImagePicker from 'expo-image-picker';
-import { Message } from '../../types/chat';
+import { Message } from '../../types/message';
 import { ReplyPreview } from './ReplyPreview';
 import ImageGrid from './ImageGrid';
 
@@ -21,6 +21,7 @@ interface ChatInputBarProps {
     setReplyTo: (message: Message | null) => void;
     keyboardVisible: boolean;
     insets: { bottom: number };
+    setImagesToSend: React.Dispatch<React.SetStateAction<any[]>>;
 }
 
 const ChatInputBar: React.FC<ChatInputBarProps> = ({
@@ -35,7 +36,8 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
     replyTo,
     setReplyTo,
     keyboardVisible,
-    insets
+    insets,
+    setImagesToSend
 }) => {
     return (
         <View
@@ -70,19 +72,21 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
 
             {/* BlurView - hiển thị khi có ảnh preview hoặc có reply */}
             {(imagesToSend.length > 0 || replyTo) && (
-                <BlurView
-                    intensity={8}
-                    tint="default"
-                    style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        borderRadius: 32,
-                        zIndex: 0,
-                    }}
-                />
+                <View style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    borderRadius: 32,
+                    zIndex: 0,
+                    overflow: 'hidden'
+                }}>
+                    <BlurView
+                        intensity={8}
+                        tint="default"
+                    />
+                </View>
             )}
 
             {/* Preview tin nhắn đang trả lời */}
@@ -92,19 +96,44 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
 
             {/* Dòng preview ảnh (nếu có) */}
             {imagesToSend.length > 0 && (
-                <ImageGrid
-                    images={imagesToSend.map(img => img.uri)}
-                    onPress={() => { }}
-                    onLongPress={(index) => removeImage(index)}
-                />
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{
+                        alignItems: 'center',
+                        marginBottom: 8,
+                        paddingVertical: 4
+                    }}
+                    style={{ maxHeight: 64, zIndex: 2 }}
+                >
+                    {imagesToSend.map((img, idx) => (
+                        <View key={idx} style={{ position: 'relative', marginRight: 8 }}>
+                            <Image source={{ uri: img.uri }} style={{ width: 48, height: 48, borderRadius: 8 }} />
+                            <TouchableOpacity
+                                onPress={() => removeImage(idx)}
+                                style={{
+                                    position: 'absolute',
+                                    top: -5,
+                                    right: -5,
+                                    backgroundColor: '#fff',
+                                    borderRadius: 10,
+                                    padding: 2,
+                                    zIndex: 3
+                                }}
+                            >
+                                <MaterialIcons name="close" size={16} color="#002855" />
+                            </TouchableOpacity>
+                        </View>
+                    ))}
+                </ScrollView>
             )}
 
             {/* Dòng chứa TextInput và các nút */}
             <View style={{
                 flexDirection: 'row',
-                alignItems: 'center',
+                alignItems: 'flex-end',
                 width: '100%',
-                minHeight: 44,
+                minHeight: 28,
                 zIndex: 2,
             }}>
                 {/* Nút camera (chụp ảnh) */}
@@ -116,7 +145,8 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
                         borderRadius: 20,
                         justifyContent: 'center',
                         alignItems: 'center',
-                        marginRight: 10
+                        marginRight: 10,
+                        marginBottom:4 ,
                     }}
                     onPress={async () => {
                         const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
@@ -127,17 +157,12 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
 
                         const result = await ImagePicker.launchCameraAsync({
                             mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                            quality: 1,
-                            allowsEditing: true,
+                            quality: 0.7,
+                            allowsEditing: false,
+                            exif: true,
                         });
                         if (!result.canceled && result.assets && result.assets.length > 0) {
-                            // Giả sử có một hàm xử lý thêm ảnh
-                            // Trong component cha, sẽ cần truyền hàm này vào
-                            const addImage = (assets: any[]) => {
-                                const newImagesToSend = [...imagesToSend, ...assets];
-                                // Cần một cách để cập nhật state ở component cha
-                                // Vì vậy chúng ta sẽ truyền một hàm callback
-                            };
+                            setImagesToSend(prev => [...prev, ...result.assets]);
                         }
                     }}
                 >
@@ -153,18 +178,29 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
                         flex: 1,
                         fontSize: 16,
                         color: '#002855',
-                        paddingVertical: 8,
-                        minHeight: 24,
+                        paddingVertical: 10,
+                        paddingHorizontal: 8,
+                        minHeight: 40,
+                        maxHeight: 120,
                         backgroundColor: 'transparent',
                         fontFamily: 'Mulish-Regular',
+                        textAlignVertical: 'top',
+                        lineHeight: 20,
+                        marginBottom: 4
                     }}
-                    multiline={false}
+                    multiline={true}
+                    textAlignVertical="top"
+                    scrollEnabled={true}
                     autoFocus={false}
                     onFocus={() => setShowEmojiPicker(false)}
                 />
 
                 {/* Container cho các nút bên phải */}
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ 
+                    flexDirection: 'row', 
+                    alignItems: 'flex-end', // Căn các nút ở bottom
+                    marginBottom: 10, // Thêm margin bottom để căn với text input
+                }}>
                     {/* Các nút chỉ hiển thị khi không nhập text */}
                     {!input.trim() && (
                         <>
@@ -193,15 +229,15 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
                                         return;
                                     }
 
-                                    // Chọn từ thư viện (cho phép nhiều ảnh)
                                     const result = await ImagePicker.launchImageLibraryAsync({
                                         mediaTypes: ImagePicker.MediaTypeOptions.Images,
                                         allowsMultipleSelection: true,
-                                        quality: 1,
+                                        quality: 0.7,
                                         allowsEditing: false,
+                                        exif: true,
                                     });
                                     if (!result.canceled && result.assets && result.assets.length > 0) {
-                                        // Cũng cần một cách để cập nhật state ở component cha
+                                        setImagesToSend(prev => [...prev, ...result.assets]);
                                     }
                                 }}
                             >
@@ -217,7 +253,7 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
 
                     {/* Nút gửi chỉ hiển thị khi có text hoặc hình ảnh để gửi */}
                     {(input.trim() !== '' || imagesToSend.length > 0) && (
-                        <TouchableOpacity onPress={handleSend} style={{ marginLeft: 8 }}>
+                        <TouchableOpacity onPress={handleSend} style={{ marginLeft: 8 , marginRight : 8 }}>
                             <Ionicons name="send" size={24} color="#F05023" />
                         </TouchableOpacity>
                     )}

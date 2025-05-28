@@ -40,7 +40,7 @@ type MessageReactionModalProps = {
 
 const REACTION_CODES = ['clap', 'laugh', 'wow', 'cry', 'heart'];
 
-const initializeActions = (isPinned: boolean, messageType: string) => {
+const initializeActions = (isPinned: boolean, messageType: string, isMe: boolean, messageDate: string) => {
     const actions = [
         { icon: 'forward', text: 'Chuyển tiếp', value: 'forward', Svg: ForwardSvg },
         { icon: 'reply', text: 'Trả lời', value: 'reply', Svg: ReplySvg },
@@ -58,8 +58,15 @@ const initializeActions = (isPinned: boolean, messageType: string) => {
         actions.push({ icon: 'pin', text: 'Ghim tin nhắn', value: 'pin', Svg: PinSvg });
     }
 
-    // Thêm tùy chọn thu hồi (nếu cần)
-    actions.push({ icon: 'revoke', text: 'Thu hồi', value: 'revoke', Svg: RevokeSvg });
+    // Thêm tùy chọn thu hồi chỉ cho người gửi và trong vòng 24 giờ
+    if (isMe) {
+        const messageAge = Date.now() - new Date(messageDate).getTime();
+        const maxRevokeTime = 24 * 60 * 60 * 1000; // 24 giờ
+        
+        if (messageAge <= maxRevokeTime) {
+            actions.push({ icon: 'revoke', text: 'Thu hồi', value: 'revoke', Svg: RevokeSvg });
+        }
+    }
 
     return actions;
 };
@@ -122,7 +129,7 @@ const MessageReactionModal = ({
     const reactionEmojis = customEmojis;
 
     // Danh sách actions (sử dụng hàm khởi tạo mới với messageType)
-    const actions = initializeActions(isPinned, selectedMessage?.type || 'text');
+    const actions = initializeActions(isPinned, selectedMessage?.type || 'text', currentUserId === selectedMessage?.sender._id, selectedMessage?.createdAt || '');
 
     // Xác định vị trí của modal
     const modalPosition = position ? {
