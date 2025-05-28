@@ -1,0 +1,146 @@
+name: Build và Deploy App
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+        - all
+        - ios
+        - android
+      submit_to_store:
+        description: 'Submit to app store'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  build-ios:
+    name: Build iOS
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.platform == 'ios' || github.event.inputs.platform == 'all' || github.event.inputs.platform == '' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build iOS app
+        run: eas build --platform ios --non-interactive --wait
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Submit to TestFlight
+        if: ${{ github.event.inputs.submit_to_store == 'true' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+        run: eas submit --platform ios --latest --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+  build-android:
+    name: Build Android
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.platform == 'android' || github.event.inputs.platform == 'all' || github.event.inputs.platform == '' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Android APK
+        run: eas build --platform android --non-interactive --wait
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Download APK
+        run: |
+          # Lấy URL của APK build mới nhất
+          APK_URL=$(eas build:list --platform android --limit 1 --json | jq -r '.[0].artifacts.buildUrl')
+          echo "APK URL: $APK_URL"
+          
+          # Tải APK về
+          curl -L -o app-release.apk "$APK_URL"
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: app-release.apk
+          retention-days: 30
+
+      - name: Create Release
+        if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Release v${{ github.run_number }}
+          body: |
+            🚀 Phiên bản mới của ứng dụng Wiswork
+            
+            ### Thay đổi
+            - Build tự động từ commit: ${{ github.sha }}
+            
+            ### Tải về
+            - **Android APK**: Xem trong Assets bên dưới
+            - **iOS**: Có sẵn trên TestFlight
+            
+          files: app-release.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    name: Thông báo kết quả
+    runs-on: ubuntu-latest
+    needs: [build-ios, build-android]
+    if: always()
+    steps:
+      - name: Notify success
+        if: ${{ needs.build-ios.result == 'success' && needs.build-android.result == 'success' }}
+        run: |
+          echo "✅ Build thành công cho cả iOS và Android!"
+          echo "📱 iOS: Đã submit lên TestFlight"
+          echo "🤖 Android: APK đã được tạo và upload"
+
+      - name: Notify failure
+        if: ${{ needs.build-ios.result == 'failure' || needs.build-android.result == 'failure' }}
+        run: |
+          echo "❌ Build thất bại!"
+          echo "iOS status: ${{ needs.build-ios.result }}"
+          echo "Android status: ${{ needs.build-android.result }}" 
