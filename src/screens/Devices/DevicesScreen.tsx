@@ -655,7 +655,7 @@ const DevicesScreen = () => {
                 </View>
 
                 {/* Add Device Button */}
-                <TouchableOpacity className="absolute bottom-8 right-5 w-14 h-14 rounded-full bg-orange-500 items-center justify-center shadow-lg">
+                <TouchableOpacity className="absolute bottom-[10%] right-[5%] w-14 h-14 rounded-full bg-orange-500 items-center justify-center shadow-lg">
                     <Ionicons name="add" size={24} color="#fff" />
                 </TouchableOpacity>
 

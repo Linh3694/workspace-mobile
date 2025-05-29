@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 // @ts-ignore
-import { View, Text, SafeAreaView, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert } from 'react-native';
+import { View, Text, SafeAreaView, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert, Modal, Animated, StatusBar, Keyboard, Platform, TouchableWithoutFeedback, PanResponder } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,6 +9,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
 import { Ionicons, MaterialIcons, FontAwesome, Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import TicketIcon from '../../assets/ticket-icon.svg';
 import DevicesIcon from '../../assets/devices-icon.svg';
 import DocumentIcon from '../../assets/document-icon.svg';
@@ -20,6 +21,7 @@ type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, ty
 
 const HomeScreen = () => {
     const navigation = useNavigation<HomeScreenNavigationProp>();
+    const insets = useSafeAreaInsets();
     const [fullName, setFullName] = useState('');
     const [userRole, setUserRole] = useState('');
     const [checkInTime, setCheckInTime] = useState('--:--');
@@ -161,6 +163,13 @@ const HomeScreen = () => {
     const [searchHistory, setSearchHistory] = useState<string[]>([]);
     const [searchResults, setSearchResults] = useState(menuItems);
 
+    // iOS-style search states
+    const [isSearchFocused, setIsSearchFocused] = useState(false);
+    const [showSearchModal, setShowSearchModal] = useState(false);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    const slideUpAnimation = useState(new Animated.Value(0))[0];
+    const fadeAnimation = useState(new Animated.Value(0))[0];
+
     const handleSearch = (text: string) => {
         setSearchQuery(text);
         const results = menuItems.filter(item =>
@@ -178,7 +187,110 @@ const HomeScreen = () => {
         }
     };
 
+    // iOS-style search handlers
+    const openIOSSearch = () => {
+        setShowSearchModal(true);
+        setIsSearchFocused(true);
+        
+        // Animate slide up and fade in
+        Animated.parallel([
+            Animated.timing(slideUpAnimation, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+            }),
+            Animated.timing(fadeAnimation, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+            }),
+        ]).start();
+    };
 
+    const closeIOSSearch = () => {
+        // Start animation immediately without waiting for keyboard
+        Animated.parallel([
+            Animated.timing(slideUpAnimation, {
+                toValue: 0,
+                duration: 250,
+                useNativeDriver: true,
+            }),
+            Animated.timing(fadeAnimation, {
+                toValue: 0,
+                duration: 250,
+                useNativeDriver: true,
+            }),
+        ]).start(() => {
+            setShowSearchModal(false);
+            setIsSearchFocused(false);
+            setSearchQuery('');
+            setSearchResults(menuItems);
+            setKeyboardHeight(0);
+        });
+
+        // Dismiss keyboard asynchronously
+        Keyboard.dismiss();
+    };
+
+    const handleModalPress = () => {
+        // Always close modal immediately, regardless of keyboard state
+        closeIOSSearch();
+    };
+
+    // PanResponder for swipe gestures
+    const panResponder = PanResponder.create({
+        onMoveShouldSetPanResponder: (evt, gestureState) => {
+            // Respond to horizontal swipes with at least 20px movement
+            return Math.abs(gestureState.dx) > 20 && Math.abs(gestureState.dy) < 100;
+        },
+        onPanResponderMove: (evt, gestureState) => {
+            // Optional: Add visual feedback during swipe
+        },
+        onPanResponderRelease: (evt, gestureState) => {
+            // If swipe left with sufficient velocity or distance
+            if (gestureState.dx < -100 || gestureState.vx < -0.5) {
+                closeIOSSearch();
+            }
+        },
+    });
+
+    const handleIOSSearch = (text: string) => {
+        setSearchQuery(text);
+        const results = menuItems.filter(item =>
+            item.title.toLowerCase().includes(text.toLowerCase()) ||
+            item.description.toLowerCase().includes(text.toLowerCase())
+        );
+        setSearchResults(results);
+    };
+
+    const handleIOSSelectItem = (title: string) => {
+        const item = menuItems.find(i => i.title === title);
+        if (item) {
+            setSearchHistory(prev => [title, ...prev.filter(t => t !== title)]);
+            closeIOSSearch();
+            // Delay navigation to allow modal to close
+            setTimeout(() => {
+                item.onPress();
+            }, 100);
+        }
+    };
+
+    // Keyboard listeners
+    useEffect(() => {
+        const keyboardDidShowListener = Keyboard.addListener(
+            'keyboardDidShow',
+            (e) => setKeyboardHeight(e.endCoordinates.height)
+        );
+        const keyboardDidHideListener = Keyboard.addListener(
+            'keyboardDidHide',
+            () => setKeyboardHeight(0)
+        );
+
+        return () => {
+            keyboardDidShowListener.remove();
+            keyboardDidHideListener.remove();
+        };
+    }, []);
 
     // Gradient border container
     const GradientBorderContainer = ({ children }: { children: React.ReactNode }) => {
@@ -210,7 +322,7 @@ const HomeScreen = () => {
             end={{ x: 1, y: 1 }}
             style={{ flex: 1 }}
         >
-            <ScrollView>
+            <ScrollView keyboardShouldPersistTaps="always">
                 <View className="w-full items-center mt-[20%]">
                     <Text className="text-2xl text-primary font-medium mb-2 text-center">Xin chào WISer</Text>
                     <MaskedView
@@ -296,43 +408,20 @@ const HomeScreen = () => {
                 </View>
                 <View className="w-full mt-[10%] px-5">
                     <Text className="text-xl font-medium text-primary mb-5 text-center">Bạn cần tìm kiếm gì?</Text>
-                    {/* Search Bar */}
-                    <View className="bg-white rounded-2xl border border-gray-300 flex-row items-center px-4 py-3 mb-3">
+                    {/* iOS-style Search Bar */}
+                    <TouchableOpacity 
+                        className="bg-white rounded-2xl border border-gray-300 flex-row items-center px-4 py-3 mb-3"
+                        onPress={openIOSSearch}
+                    >
                         <FontAwesome name="search" size={18} color="#A1A1AA" />
-                        <TextInput
-                            value={searchQuery}
-                            onChangeText={handleSearch}
-                            placeholder="Hỏi WellDone"
-                            className="flex-1 ml-3"
-                        />
-                    </View>
-                    {/* Search Results */}
-                    {searchQuery !== '' && (
-                        <View>
-                            {searchResults.map(item => (
-                                <TouchableOpacity
-                                    key={item.id}
-                                    className="flex-row items-center py-2 border-b border-gray-200"
-                                    onPress={() => handleSelectItem(item.title)}
-                                >
-                                    {/* Menu item icon */}
-                                    <item.component width={60} height={60} style={{ marginRight: 8 }} />
-                                    <View className="flex-1">
-                                        <Text className="text-gray-700 text-base font-semibold">{item.title}</Text>
-                                        <Text className="text-gray-500 text-sm font-medium">{item.description}</Text>
-                                    </View>
-                                </TouchableOpacity>
-                            ))}
-                            {searchResults.length === 0 && (
-                                <Text className="text-gray-500 py-2">Không tìm thấy kết quả</Text>
-                            )}
-                        </View>
-                    )}
-
+                        <Text className="flex-1 ml-3 text-gray-400">Hỏi Wis</Text>
+                    </TouchableOpacity>
+                    
                     {/* Search History */}
-                    {searchQuery === '' && searchHistory.length > 0 && (
+                    {searchHistory.length > 0 && (
                         <View className="mt-2">
-                            {searchHistory.map(title => {
+                            <Text className="text-lg font-semibold text-gray-700 mb-2">Tìm kiếm gần đây</Text>
+                            {searchHistory.slice(0, 3).map(title => {
                                 const item = menuItems.find(i => i.title === title);
                                 if (!item) return null;
                                 return (
@@ -341,15 +430,220 @@ const HomeScreen = () => {
                                         className="flex-row items-center py-2 border-b border-gray-200 ml-2 pb-4"
                                         onPress={() => handleSelectItem(title)}
                                     >
-                                        <item.component width={40} height={40} style={{ marginRight: 8 }} />
-                                        <Text className="text-gray-700">{title}</Text>
+                                        <item.component width={40} height={40} />
+                                        <Text className="text-gray-700 ml-2">{title}</Text>
                                     </TouchableOpacity>
                                 );
                             })}
                         </View>
                     )}
-
                 </View>
+
+                {/* iOS-style Search Modal */}
+                <Modal
+                    visible={showSearchModal}
+                    animationType="none"
+                    transparent={false}
+                    statusBarTranslucent={true}
+                >
+                    <LinearGradient
+                        colors={[
+                            'rgba(240, 80, 35, 0.03)',   // #F05023 at 5% opacity
+                            'rgba(255, 206, 2, 0.06)',   // #FFCE02 at 5% opacity
+                            'rgba(190, 210, 50, 0.04)',  // #BED232 at 4% opacity
+                            'rgba(0, 148, 131, 0.07)',   // #009483 at 7% opacity
+                        ]}
+                        locations={[0, 0.22, 0.85, 1]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={{ flex: 1 }}
+                    >
+                        <TouchableWithoutFeedback onPress={handleModalPress}>
+                            <View style={{ 
+                                flex: 1, 
+                                // paddingTop: Platform.OS === 'android' ? insets.top : 0 
+                            }}>
+                                <StatusBar barStyle="dark-content" />
+                                
+                                {/* Animated Container */}
+                                <Animated.View 
+                                    {...panResponder.panHandlers}
+                                    style={{
+                                        flex: 1,
+                                        opacity: fadeAnimation,
+                                        transform: [{
+                                            translateY: slideUpAnimation.interpolate({
+                                                inputRange: [0, 1],
+                                                outputRange: [20, 0],
+                                            }),
+                                        }],
+                                    }}
+                                >
+                                    {/* Header with close button */}
+                                    <View className="px-4 py-8 flex-row justify-end items-center">
+                                        {/* <TouchableOpacity 
+                                            onPress={closeIOSSearch}
+                                            className="px-2 py-1"
+                                        >
+                                            <Text className="text-blue-500 text-base font-medium">Hủy</Text>
+                                        </TouchableOpacity> */}
+                                    </View>
+
+                                    {/* Search Content */}
+                                    <ScrollView
+                                        className="flex-1"
+                                        style={{ marginBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 80 }}
+                                        showsVerticalScrollIndicator={false}
+                                        keyboardShouldPersistTaps="always"
+                                    >
+                                        {searchQuery !== '' ? (
+                                            /* Search Results in Suggestion Box + Recent Searches Below */
+                                            <View className="px-1">
+                                                {/* Results in Suggestion Box */}
+                                                <View className="py-4 mx-2 rounded-xl px-4">
+                                                    <Text className="text-gray-900 font-semibold text-lg mb-3">Kết quả phù hợp</Text>
+                                                    <GradientBorderContainer>
+                                                        <LinearGradient
+                                                            colors={[
+                                                                'rgba(255, 206, 2, 0.05)',   // #FFCE02 at 5% opacity
+                                                                'rgba(190, 210, 50, 0.05)',  // #BED232 at 4% opacity
+                                                            ]}
+                                                            start={{ x: 1, y: 0 }}
+                                                            end={{ x: 0, y: 1 }}
+                                                        >
+                                                            <View className="p-4">
+                                                                {searchResults.length > 0 ? (
+                                                                    <View className="flex-row flex-wrap justify-between">
+                                                                        {searchResults.map(item => (
+                                                                            <TouchableOpacity
+                                                                                key={item.id}
+                                                                                className="w-[25%] items-center mt-2"
+                                                                                onPress={() => handleIOSSelectItem(item.title)}
+                                                                            >
+                                                                                <item.component width={80} height={80} />
+                                                                                <Text className="text-sm text-center mt-2">{item.title}</Text>
+                                                                            </TouchableOpacity>
+                                                                        ))}
+                                                                    </View>
+                                                                ) : (
+                                                                    <View className="items-center py-8">
+                                                                        <FontAwesome name="search" size={48} color="#ccc" />
+                                                                        <Text className="text-gray-500 mt-4 text-base">Không tìm thấy kết quả</Text>
+                                                                        <Text className="text-gray-400 text-sm mt-1">Thử tìm kiếm với từ khóa khác</Text>
+                                                                    </View>
+                                                                )}
+                                                            </View>
+                                                        </LinearGradient>
+                                                    </GradientBorderContainer>
+                                                </View>
+
+                                                {/* Recent Searches Below */}
+                                                {searchHistory.length > 0 && (
+                                                    <View className="py-4 mx-2 mb-4 rounded-xl px-4">
+                                                        <Text className="text-gray-900 font-semibold text-lg mb-3">Tìm kiếm gần đây</Text>
+                                                        {searchHistory.map(title => {
+                                                            const item = menuItems.find(i => i.title === title);
+                                                            if (!item) return null;
+                                                            return (
+                                                                <TouchableOpacity
+                                                                    key={title}
+                                                                    className="flex-row items-center py-3 border-b border-gray-100 last:border-b-0"
+                                                                    onPress={() => handleIOSSelectItem(title)}
+                                                                >
+                                                                    <FontAwesome name="clock-o" size={16} color="#666" />
+                                                                    <Text className="text-gray-700 ml-3 flex-1">{title}</Text>
+                                                                </TouchableOpacity>
+                                                            );
+                                                        })}
+                                                    </View>
+                                                )}
+                                            </View>
+                                        ) : (
+                                            /* Suggestions + Recent Searches */
+                                            <View className="px-1">
+                                                {/* Suggestions */}
+                                                <View className="py-4 mx-2 rounded-xl px-4">
+                                                    <Text className="text-gray-900 font-semibold text-lg mb-3">Gợi ý</Text>
+                                                    <GradientBorderContainer>
+                                                        <LinearGradient
+                                                            colors={[
+                                                                'rgba(255, 206, 2, 0.05)',   // #FFCE02 at 5% opacity
+                                                                'rgba(190, 210, 50, 0.05)',  // #BED232 at 4% opacity
+                                                            ]}
+                                                            start={{ x: 1, y: 0 }}
+                                                            end={{ x: 0, y: 1 }}
+                                                        >
+                                                            <View className="flex-row flex-wrap justify-between p-4">
+                                                                {menuItems.map((item) => (
+                                                                    <TouchableOpacity
+                                                                        key={item.id}
+                                                                        className="w-[25%] items-center mt-2"
+                                                                        onPress={() => handleIOSSelectItem(item.title)}
+                                                                    >
+                                                                        <item.component width={80} height={80} />
+                                                                        <Text className="text-sm text-center mt-2">{item.title}</Text>
+                                                                    </TouchableOpacity>
+                                                                ))}
+                                                            </View>
+                                                        </LinearGradient>
+                                                    </GradientBorderContainer>
+                                                </View>
+
+                                                {/* Recent Searches Below */}
+                                                {searchHistory.length > 0 && (
+                                                    <View className="py-4 mx-2 mb-4 rounded-xl px-4">
+                                                        <Text className="text-gray-900 font-semibold text-lg mb-3">Tìm kiếm gần đây</Text>
+                                                        {searchHistory.map(title => {
+                                                            const item = menuItems.find(i => i.title === title);
+                                                            if (!item) return null;
+                                                            return (
+                                                                <TouchableOpacity
+                                                                    key={title}
+                                                                    className="flex-row items-center py-3 border-b border-gray-100 last:border-b-0"
+                                                                    onPress={() => handleIOSSelectItem(title)}
+                                                                >
+                                                                    <FontAwesome name="clock-o" size={16} color="#666" />
+                                                                    <Text className="text-gray-700 ml-3 flex-1">{title}</Text>
+                                                                </TouchableOpacity>
+                                                            );
+                                                        })}
+                                                    </View>
+                                                )}
+                                            </View>
+                                        )}
+                                    </ScrollView>
+
+                                    {/* Search Bar at Bottom */}
+                                    <View 
+                                        className="px-4 py-3 bg-transparent"
+                                        style={{ 
+                                            position: 'absolute',
+                                            bottom: keyboardHeight > 0 ? keyboardHeight : 0,
+                                            left: 0,
+                                            right: 0,
+                                            paddingBottom: Platform.OS === 'ios' && keyboardHeight === 0 ? insets.bottom : 16,
+                                            zIndex: 10,
+                                        }}
+                                    >
+                                        <TouchableWithoutFeedback>
+                                            <View className="flex-1 bg-white border border-gray-300 rounded-full flex-row items-center px-3 py-4">
+                                                <FontAwesome name="search" size={16} color="#666" />
+                                                <TextInput
+                                                    value={searchQuery}
+                                                    onChangeText={handleIOSSearch}
+                                                    placeholder="Tìm kiếm"
+                                                    className="flex-1 ml-3"
+                                                    autoFocus={true}
+                                                    returnKeyType="search"
+                                                />
+                                            </View>
+                                        </TouchableWithoutFeedback>
+                                    </View>
+                                </Animated.View>
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </LinearGradient>
+                </Modal>
             </ScrollView>
         </LinearGradient>
     );
@@ -379,3 +673,4 @@ const styles = StyleSheet.create({
 });
 
 export default HomeScreen;
+

@@ -43,6 +43,7 @@ const TicketAdminScreen = () => {
     const [showFilters, setShowFilters] = useState(false);
     const [showRoleFilters, setShowRoleFilters] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
     const [userId, setUserId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState('all'); // 'all' hoặc 'assigned'
     const insets = useSafeAreaInsets();
@@ -65,9 +66,9 @@ const TicketAdminScreen = () => {
         }, [filterStatus, filterRole, activeTab])
     );
 
-    const fetchTickets = async () => {
+    const fetchTickets = async (showLoading: boolean = true) => {
         try {
-            setLoading(true);
+            if (showLoading) setLoading(true);
             const token = await AsyncStorage.getItem('authToken');
             const currentUserId = await AsyncStorage.getItem('userId');
 
@@ -140,7 +141,7 @@ const TicketAdminScreen = () => {
             console.error('Lỗi khi gọi API:', error);
             setTickets([]);
         } finally {
-            setLoading(false);
+            if (showLoading) setLoading(false);
         }
     };
 
@@ -253,6 +254,12 @@ const TicketAdminScreen = () => {
             // Gọi lại API để lấy dữ liệu mới
             fetchTickets();
         }
+    };
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await fetchTickets(false);
+        setRefreshing(false);
     };
 
     return (
@@ -375,6 +382,8 @@ const TicketAdminScreen = () => {
                         data={tickets}
                         keyExtractor={(item) => item.id}
                         contentContainerStyle={{ padding: 16 }}
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
                         renderItem={({ item }) => (
                             <TouchableOpacity
                                 className="bg-[#F8F8F8] rounded-xl p-4 mb-3"

@@ -1257,10 +1257,10 @@ const DevicesDetailScreen = () => {
                 </View>
             </ScrollView>
 
-            {/* Floating Action Button */}
+            {/* Floating Action Button
             <TouchableOpacity className="absolute bottom-8 right-5 w-14 h-14 rounded-full bg-[#F05023] items-center justify-center shadow-lg">
                 <Ionicons name="add" size={24} color="#fff" />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             {/* Edit Spec Modal */}
             <InputModal

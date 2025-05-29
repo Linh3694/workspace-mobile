@@ -108,7 +108,7 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({
             const data: Ticket =
                 res.data.success && res.data.ticket ? res.data.ticket : res.data;
             setTicket(data);
-            setTicketStatus(normalizeStatus(data.status));
+            setTicketStatus(normalizeStatus(data.status)); 
             setSubTasks(data.subTasks || []);
         } catch (err) {
             console.error('Lỗi khi lấy ticket:', err);
@@ -370,7 +370,7 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({
                 value: 'Completed' 
             },
             { 
-                label: 'Huỷ', 
+                label: 'Huỷ ', 
                 value: 'Cancelled' 
             }
         ];
@@ -455,9 +455,9 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({
     return (
         <View className="flex-1 bg-white p-4">
             {/* STATUS BAR */}
-            <View className="h-[20%] flex-col items-start justify-center p-4 gap-4 bg-[#f8f8f8] mt-4 rounded-2xl mb-2">
+            <View className="h-auto flex-col items-start justify-center p-4 gap-4 bg-[#f8f8f8] mt-4 rounded-2xl mb-2">
                 <Text className="font-semibold text-lg mr-2">Trạng thái:</Text>
-                <View style={{ zIndex: 1000, flex: 1 }}>
+                <View style={{ zIndex: 1000 }}>
                     <DropDownPicker
                         open={open}
                         value={value}

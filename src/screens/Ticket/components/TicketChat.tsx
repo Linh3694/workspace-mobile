@@ -42,6 +42,7 @@ interface Message {
     text: string;
     timestamp: string;
     type: 'text' | 'image';
+    tempId?: string;
 }
 
 interface OptimizedMessage extends Message {
@@ -49,6 +50,10 @@ interface OptimizedMessage extends Message {
     isLast: boolean;
     isMe: boolean;
 }
+
+// Tối ưu: Message batching để reduce re-renders
+const MESSAGE_BATCH_SIZE = 20;
+const VIRTUAL_LIST_THRESHOLD = 100;
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -66,17 +71,29 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
     const [currentUserId, setCurrentUserId] = useState<string>('');
     const [imagesToSend, setImagesToSend] = useState<string[]>([]);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
+    
+    // Tối ưu: Message batching state
+    const [pendingMessages, setPendingMessages] = useState<Message[]>([]);
+    const [lastBatchTime, setLastBatchTime] = useState(Date.now());
+    const batchTimeoutRef = useRef<NodeJS.Timeout>();
 
     // Tối ưu: Debounce cho scroll
-    const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>();
+    const scrollTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
     const messagesRef = useRef<Message[]>(messages);
     messagesRef.current = messages;
 
-    // Tối ưu: Cache cho optimized messages
+    // Tối ưu: Virtual scrolling cho many messages
+    const shouldUseVirtualScrolling = useMemo(() => {
+        return messages.length > VIRTUAL_LIST_THRESHOLD;
+    }, [messages.length]);
+
+    // Tối ưu: Memoized message processing với stable reference
     const optimizedMessages = useMemo(() => {
-        return messages.map((message, index) => {
-            const prevMsg = messages[index - 1];
-            const nextMsg = messages[index + 1];
+        const allMessages = [...messages, ...pendingMessages];
+        
+        return allMessages.map((message, index) => {
+            const prevMsg = allMessages[index - 1];
+            const nextMsg = allMessages[index + 1];
             const isMe = message.sender._id === currentUserId;
             const isPrevSameSender = prevMsg?.sender?._id === message.sender._id;
             const isNextSameSender = nextMsg?.sender?._id === message.sender._id;
@@ -88,9 +105,80 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
                 isMe
             } as OptimizedMessage;
         });
-    }, [messages, currentUserId]);
+    }, [messages, pendingMessages, currentUserId]);
 
-    // Tối ưu: Debounced scroll to end
+    // Tối ưu: Batch message updates + Debug
+    const batchAddMessage = useCallback((newMsg: Message) => {
+        console.log('🔄 BATCH ADD MESSAGE called:', {
+            messageId: newMsg._id,
+            sender: newMsg.sender?.fullname,
+            pendingCount: pendingMessages.length
+        });
+
+        setPendingMessages(prev => {
+            // Check for duplicates in pending
+            const isDuplicate = prev.some(m => m._id === newMsg._id || (m.tempId && m.tempId === newMsg.tempId));
+            if (isDuplicate) {
+                console.log('⚠️ Duplicate message in pending:', newMsg._id);
+                return prev;
+            }
+            
+            console.log('➕ Adding message to pending batch:', newMsg._id);
+            return [...prev, newMsg];
+        });
+
+        // Clear existing timeout
+        if (batchTimeoutRef.current) {
+            clearTimeout(batchTimeoutRef.current);
+            console.log('⏱️ Cleared existing batch timeout');
+        }
+
+        // Set new timeout for batch processing
+        batchTimeoutRef.current = setTimeout(() => {
+            console.log('⚡ Processing message batch...');
+            
+            setPendingMessages(pending => {
+                if (pending.length === 0) {
+                    console.log('📭 No pending messages to process');
+                    return pending;
+                }
+                
+                console.log(`📬 Processing ${pending.length} pending messages`);
+                
+                setMessages(prev => {
+                    const combined = [...prev];
+                    let addedCount = 0;
+                    
+                    pending.forEach(pendingMsg => {
+                        const exists = combined.some(m => m._id === pendingMsg._id);
+                        if (!exists) {
+                            combined.push(pendingMsg);
+                            addedCount++;
+                        } else {
+                            console.log('⚠️ Message already exists in main list:', pendingMsg._id);
+                        }
+                    });
+                    
+                    console.log(`✅ Added ${addedCount} new messages to main list`);
+                    
+                    const sorted = combined.sort((a, b) => 
+                        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                    );
+                    
+                    console.log(`📋 Total messages after sort: ${sorted.length}`);
+                    return sorted;
+                });
+                
+                console.log('📜 Scrolling to end after batch processing');
+                scrollToEnd(false);
+                return [];
+            });
+            setLastBatchTime(Date.now());
+        }, 100); // 100ms batch window
+
+    }, [pendingMessages.length]);
+
+    // Tối ưu: Debounced scroll to end với InteractionManager
     const scrollToEnd = useCallback((animated = false) => {
         if (scrollTimeoutRef.current) {
             clearTimeout(scrollTimeoutRef.current);
@@ -98,67 +186,139 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
         
         scrollTimeoutRef.current = setTimeout(() => {
             InteractionManager.runAfterInteractions(() => {
-                flatListRef.current?.scrollToEnd({ animated });
+                flatListRef.current?.scrollToEnd({ 
+                    animated: animated && messages.length < 50 // Only animate for smaller lists
+                });
             });
-        }, animated ? 100 : 50);
-    }, []);
+        }, animated ? 150 : 50);
+    }, [messages.length]);
 
-    // Tối ưu: Memoized socket setup
+    // Tối ưu: Memoized socket setup với stable dependencies + Debug
     const setupSocket = useCallback(async () => {
         try {
             const token = await AsyncStorage.getItem('authToken');
-            const userId = await AsyncStorage.getItem('userId');
-            if (!token || socketRef.current) return;
+            console.log('🔍 Setting up socket with token:', token ? 'Token exists' : 'No token');
+            
+            if (!token) {
+                console.error('❌ No auth token found for socket connection');
+                return;
+            }
+            
+            if (socketRef.current) {
+                console.log('🔄 Socket already exists, cleaning up first');
+                cleanupSocket();
+            }
 
+            console.log('🚀 Creating new socket connection to:', API_BASE_URL);
             const socket = io(API_BASE_URL, {
                 query: { token },
                 transports: ['websocket'],
                 forceNew: true,
+                timeout: 10000,
+                reconnection: true,
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000,
             });
 
             socket.on('connect', () => {
-                console.log('🔗 Socket connected to ticket:', ticketId);
+                console.log('✅ Socket connected successfully! Socket ID:', socket.id);
+                console.log('🎫 Joining ticket room:', ticketId);
+                updateSocketStatus('connected');
                 socket.emit('joinTicketRoom', ticketId);
             });
 
+            // Debug: Listen for join success/error
+            socket.on('error', (error: any) => {
+                console.error('❌ Socket error received:', error);
+                updateSocketStatus('error');
+                Alert.alert('Lỗi kết nối', error.message || 'Có lỗi xảy ra với kết nối chat');
+            });
+
+            socket.on('authError', (error: any) => {
+                console.error('🔐 Socket auth error:', error);
+                updateSocketStatus('auth_error');
+                Alert.alert('Lỗi xác thực', 'Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.');
+            });
+
             socket.on('newMessage', (message: Message) => {
-                console.log('📨 New message received:', message._id);
-
-                setMessages(prev => {
-                    // Tối ưu: Kiểm tra duplicate nhanh
-                    if (prev.some(m => m._id === message._id)) {
-                        return prev;
-                    }
-
-                    const newMessages = [...prev, message];
-                    scrollToEnd(false);
-                    return newMessages;
+                console.log('📨 NEW MESSAGE RECEIVED:', {
+                    messageId: message._id,
+                    sender: message.sender?.fullname,
+                    text: message.text?.substring(0, 50) + '...',
+                    type: message.type,
+                    timestamp: message.timestamp
                 });
+                
+                // Cập nhật debug info
+                setLastMessageReceived(`${message.sender?.fullname}: ${message.text?.substring(0, 30)}...`);
+                
+                // Kiểm tra message có hợp lệ không
+                if (!message._id || !message.sender) {
+                    console.error('❌ Invalid message received:', message);
+                    return;
+                }
+                
+                batchAddMessage(message);
             });
 
             socket.on('connect_error', (err: any) => {
-                console.error('❌ Socket connection error:', err);
+                console.error('❌ Socket connection error:', err.message || err);
+                updateSocketStatus('connect_error');
             });
 
             socket.on('disconnect', (reason: string) => {
-                console.log('🔌 Socket disconnected:', reason);
+                console.log('🔌 Socket disconnected. Reason:', reason);
+                updateSocketStatus('disconnected');
                 if (reason === 'io server disconnect') {
-                    // Server ngắt kết nối, cần reconnect
-                    socket.connect();
+                    console.log('⏳ Server disconnected, attempting reconnect in 1s...');
+                    setTimeout(() => socket.connect(), 1000);
                 }
             });
 
-            socketRef.current = socket;
-        } catch (error) {
-            console.error('Socket setup error:', error);
-        }
-    }, [ticketId, scrollToEnd]);
+            // Enhanced reconnection handling
+            socket.on('reconnect', (attemptNumber: number) => {
+                console.log(`🔄 Socket reconnected after ${attemptNumber} attempts`);
+                console.log('🎫 Re-joining ticket room after reconnect:', ticketId);
+                updateSocketStatus('reconnected');
+                socket.emit('joinTicketRoom', ticketId);
+                
+                // Refresh messages after reconnect
+                console.log('🔄 Refreshing messages after reconnect...');
+                fetchMessages();
+            });
 
-    // Tối ưu: Cleanup socket
+            socket.on('reconnect_error', (error: any) => {
+                console.error('❌ Socket reconnection error:', error);
+                updateSocketStatus('reconnect_error');
+            });
+
+            // Debug: Listen for successful room join
+            socket.on('userOnline', (data: any) => {
+                console.log('👤 User online event:', data);
+            });
+
+            // Listen for message confirmations
+            socket.on('messageConfirmed', (data: any) => {
+                console.log('✅ Message confirmed:', data);
+            });
+
+            socketRef.current = socket;
+            console.log('✅ Socket setup completed');
+        } catch (error) {
+            console.error('💥 Socket setup error:', error);
+        }
+    }, [ticketId, batchAddMessage, cleanupSocket]);
+
+    // Tối ưu: Cleanup socket với proper teardown
     const cleanupSocket = useCallback(() => {
         if (socketRef.current) {
+            socketRef.current.removeAllListeners();
             socketRef.current.disconnect();
             socketRef.current = null;
+        }
+        
+        if (batchTimeoutRef.current) {
+            clearTimeout(batchTimeoutRef.current);
         }
     }, []);
 
@@ -360,50 +520,127 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
         }
     }, []);
 
-    const sendImage = useCallback(async (uri: string) => {
+    // Tối ưu: Progressive image compression
+    const compressImage = useCallback(async (uri: string, quality = 0.7) => {
         try {
-            setSending(true);
+            // Lấy thông tin kích thước ảnh
+            const imageInfo = await manipulateAsync(uri, [], { format: SaveFormat.JPEG });
+            
+            let targetQuality = quality;
+            let targetWidth = 1024;
+            
+            // Dynamic compression based on image size
+            const fileSize = await fetch(uri).then(r => r.blob()).then(b => b.size);
+            if (fileSize > 5 * 1024 * 1024) { // > 5MB
+                targetQuality = 0.5;
+                targetWidth = 800;
+            } else if (fileSize > 2 * 1024 * 1024) { // > 2MB
+                targetQuality = 0.6;
+                targetWidth = 900;
+            }
 
-            // Nén ảnh
-            const manipResult = await manipulateAsync(
+            const manipulationOptions = [];
+            
+            // Resize if needed
+            if (imageInfo.width > targetWidth) {
+                manipulationOptions.push({ resize: { width: targetWidth } });
+            }
+
+            const result = await manipulateAsync(
                 uri,
-                [{ resize: { width: 800 } }],
-                { compress: 0.7, format: SaveFormat.JPEG }
-            );
-
-            const formData = new FormData();
-            const filename = uri.split('/').pop() || 'image.jpg';
-
-            formData.append('file', {
-                uri: manipResult.uri,
-                name: filename,
-                type: 'image/jpeg'
-            } as any);
-
-            const token = await AsyncStorage.getItem('authToken');
-            const response = await axios.post(
-                `${API_BASE_URL}/api/tickets/${ticketId}/messages`,
-                formData,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'Content-Type': 'multipart/form-data',
-                    },
-                    timeout: 30000, // 30s timeout
+                manipulationOptions,
+                { 
+                    compress: targetQuality, 
+                    format: SaveFormat.JPEG,
+                    base64: false // Don't need base64, saves memory
                 }
             );
 
-            if (response.data.success) {
-                await fetchMessages();
-                if (onRefresh) onRefresh();
+            return result;
+        } catch (error) {
+            console.error('Image compression error:', error);
+            // Fallback to original
+            return { uri };
+        }
+    }, []);
+
+    // Tối ưu: Batch image sending với progress
+    const sendImageBatch = useCallback(async (uris: string[]) => {
+        setSending(true);
+        
+        try {
+            for (let i = 0; i < uris.length; i++) {
+                const uri = uris[i];
+                
+                // Show progress for multiple images
+                if (uris.length > 1) {
+                    console.log(`Uploading image ${i + 1}/${uris.length}`);
+                }
+
+                const compressedImage = await compressImage(uri);
+                await sendSingleImage(compressedImage.uri);
+                
+                // Small delay between uploads to prevent server overload
+                if (i < uris.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
             }
         } catch (error) {
-            console.error('Lỗi khi gửi ảnh:', error);
-            Alert.alert('Lỗi', 'Không thể gửi ảnh. Vui lòng thử lại sau.');
+            console.error('Batch image send error:', error);
+            Alert.alert('Lỗi', 'Không thể gửi một số ảnh. Vui lòng thử lại.');
         } finally {
             setSending(false);
         }
+    }, [compressImage]);
+
+    const sendSingleImage = useCallback(async (uri: string) => {
+        const formData = new FormData();
+        const filename = uri.split('/').pop() || `image_${Date.now()}.jpg`;
+
+        formData.append('file', {
+            uri,
+            name: filename,
+            type: 'image/jpeg'
+        } as any);
+
+        const token = await AsyncStorage.getItem('authToken');
+        
+        // Add retry logic
+        let retries = 3;
+        while (retries > 0) {
+            try {
+                const response = await axios.post(
+                    `${API_BASE_URL}/api/tickets/${ticketId}/messages`,
+                    formData,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            'Content-Type': 'multipart/form-data',
+                        },
+                        timeout: 30000,
+                    }
+                );
+
+                if (response.data.success) {
+                    await fetchMessages();
+                    if (onRefresh) onRefresh();
+                    return;
+                }
+                break;
+            } catch (error) {
+                retries--;
+                if (retries === 0) {
+                    throw error;
+                }
+                // Wait before retry
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
     }, [ticketId, onRefresh]);
+
+    const sendImage = useCallback(async (uri: string) => {
+        await sendImageBatch([uri]);
+    }, [sendImageBatch]);
 
     const removeImage = useCallback((idx: number) => {
         setImagesToSend(prev => prev.filter((_, i) => i !== idx));
@@ -532,6 +769,82 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
         offset: 80 * index,
         index,
     }), []);
+
+    // Debug Panel State
+    const [debugMode, setDebugMode] = useState(__DEV__); // Chỉ hiện trong dev mode
+    const [socketStatus, setSocketStatus] = useState('disconnected');
+    const [lastMessageReceived, setLastMessageReceived] = useState<string>('');
+
+    // Cập nhật socket status
+    const updateSocketStatus = useCallback((status: string) => {
+        setSocketStatus(status);
+        console.log('🔌 Socket status changed to:', status);
+    }, []);
+
+    // Test function để gửi message thông qua socket
+    const testSocketMessage = useCallback(() => {
+        if (socketRef.current?.connected) {
+            const testMessage = `Test message at ${new Date().toLocaleTimeString()}`;
+            console.log('🧪 Sending test message via socket:', testMessage);
+            
+            socketRef.current.emit('sendMessage', {
+                ticketId: ticketId,
+                text: testMessage,
+                type: 'text',
+                tempId: `test_${Date.now()}`
+            });
+        } else {
+            Alert.alert('Debug', 'Socket không kết nối!');
+        }
+    }, [ticketId]);
+
+    // Debug component
+    const DebugPanel = () => {
+        if (!debugMode) return null;
+
+        return (
+            <View style={{ 
+                position: 'absolute', 
+                top: 50, 
+                right: 10, 
+                backgroundColor: 'rgba(0,0,0,0.8)', 
+                padding: 10, 
+                borderRadius: 8,
+                zIndex: 1000
+            }}>
+                <Text style={{ color: 'white', fontSize: 12 }}>
+                    🔌 Socket: {socketStatus}
+                </Text>
+                <Text style={{ color: 'white', fontSize: 12 }}>
+                    📬 Messages: {messages.length} + {pendingMessages.length} pending
+                </Text>
+                <Text style={{ color: 'white', fontSize: 12 }}>
+                    🎫 Ticket: {ticketId}
+                </Text>
+                <Text style={{ color: 'white', fontSize: 12 }}>
+                    📨 Last: {lastMessageReceived}
+                </Text>
+                <TouchableOpacity 
+                    onPress={testSocketMessage}
+                    style={{ backgroundColor: 'blue', padding: 5, marginTop: 5, borderRadius: 3 }}
+                >
+                    <Text style={{ color: 'white', fontSize: 10 }}>Test Socket</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                    onPress={() => setupSocket()}
+                    style={{ backgroundColor: 'green', padding: 5, marginTop: 3, borderRadius: 3 }}
+                >
+                    <Text style={{ color: 'white', fontSize: 10 }}>Reconnect</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                    onPress={() => setDebugMode(false)}
+                    style={{ backgroundColor: 'red', padding: 5, marginTop: 3, borderRadius: 3 }}
+                >
+                    <Text style={{ color: 'white', fontSize: 10 }}>Hide</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    };
 
     if (loading) {
         return (
@@ -687,6 +1000,8 @@ const TicketChat: React.FC<TicketChatProps> = ({ ticketId, onRefresh }) => {
                     </View>
                 </View>
             )}
+
+            <DebugPanel />
         </View>
     );
 };

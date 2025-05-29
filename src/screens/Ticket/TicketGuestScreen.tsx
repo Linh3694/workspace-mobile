@@ -35,6 +35,7 @@ const TicketGuestScreen = () => {
     const [tickets, setTickets] = useState<Ticket[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
     const [filterStatus, setFilterStatus] = useState('');
     const [showFilters, setShowFilters] = useState(false);
     const insets = useSafeAreaInsets();
@@ -43,9 +44,9 @@ const TicketGuestScreen = () => {
         fetchUserTickets();
     }, [filterStatus]);
 
-    const fetchUserTickets = async () => {
+    const fetchUserTickets = async (showLoading: boolean = true) => {
         try {
-            setLoading(true);
+            if (showLoading) setLoading(true);
             const token = await AsyncStorage.getItem('authToken');
             const userId = await AsyncStorage.getItem('userId');
 
@@ -83,7 +84,7 @@ const TicketGuestScreen = () => {
             console.error('Lỗi khi gọi API:', error);
             setTickets([]);
         } finally {
-            setLoading(false);
+            if (showLoading) setLoading(false);
         }
     };
 
@@ -177,6 +178,12 @@ const TicketGuestScreen = () => {
 
     const handleGoBack = () => {
         navigation.goBack();
+    };
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await fetchUserTickets(false);
+        setRefreshing(false);
     };
 
     return (
@@ -275,6 +282,8 @@ const TicketGuestScreen = () => {
                         keyExtractor={(item) => item._id}
                         renderItem={renderItem}
                         contentContainerStyle={{ padding: 16 }}
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
                     />
                 ) : (
                     <View className="flex-1 justify-center items-center p-4">

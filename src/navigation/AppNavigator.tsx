@@ -5,6 +5,9 @@ import WelcomeScreen from '../screens/Login/WelcomeScreen';
 import LoginScreen from '../screens/Login/SignInScreen';
 import { ROUTES } from '../constants/routes';
 import ChatDetailScreen from '../screens/Chat/ChatDetailScreen';
+import CreateGroupScreen from '../screens/Chat/CreateGroupScreen';
+import GroupChatDetailScreen from '../screens/Chat/GroupChatDetailScreen';
+import GroupInfoScreen from '../screens/Chat/GroupInfoScreen';
 import TicketGuestScreen from '../screens/Ticket/TicketGuestScreen';
 import TicketAdminScreen from '../screens/Ticket/TicketAdminScreen';
 import TicketCreate from '../screens/Ticket/TicketCreate';
@@ -23,7 +26,7 @@ export type User = {
     _id: string;
     email: string;
     fullname: string;
-    avatar?: string;
+    avatarUrl?: string;
     role?: string;
     lastSeen?: number;
     isOnline?: boolean;
@@ -41,6 +44,9 @@ export type RootStackParamList = {
     };
     [ROUTES.SCREENS.CHAT_DETAIL]: { user: User; chatId?: string };
     [ROUTES.SCREENS.CHAT_INIT]: { chatId: string; senderId: string };
+    [ROUTES.SCREENS.CREATE_GROUP]: { preSelectedUsers?: User[] } | undefined;
+    [ROUTES.SCREENS.GROUP_CHAT_DETAIL]: { chat: any };
+    [ROUTES.SCREENS.GROUP_INFO]: { groupInfo: any };
     [ROUTES.SCREENS.TICKET_DETAIL]: { ticketId: string };
     [ROUTES.SCREENS.TICKET_CREATE]: undefined;
     [ROUTES.SCREENS.TICKET_ADMIN_DETAIL]: { ticketId: string };
@@ -109,6 +115,8 @@ const AppNavigator = () => {
 
     return (
             <Stack.Navigator
+                key="AppStackNavigator"
+                id={undefined}
                 screenOptions={{
                     headerShown: false,
                     animation: 'slide_from_right',
@@ -142,6 +150,21 @@ const AppNavigator = () => {
                         <Stack.Screen
                             name={ROUTES.SCREENS.CHAT_DETAIL}
                             component={ChatDetailScreen}
+                            options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                            name={ROUTES.SCREENS.CREATE_GROUP}
+                            component={CreateGroupScreen}
+                            options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                            name={ROUTES.SCREENS.GROUP_CHAT_DETAIL}
+                            component={GroupChatDetailScreen}
+                            options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                            name={ROUTES.SCREENS.GROUP_INFO}
+                            component={GroupInfoScreen}
                             options={{ headerShown: false }}
                         />
                         <Stack.Screen

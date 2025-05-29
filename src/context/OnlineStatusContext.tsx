@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useContext, useRef } from 'r
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import io from 'socket.io-client';
+// @ts-ignore
 import { Platform, AppState, AppStateStatus } from 'react-native';
 import { API_BASE_URL } from '../config/constants';
 
@@ -22,6 +23,7 @@ interface OnlineStatusContextType {
     getLastSeen: (userId: string) => Date | undefined;
     getFormattedLastSeen: (userId: string) => string;
     reconnectSocket: () => Promise<void>;
+    isSocketConnected: boolean;
 }
 
 const OnlineStatusContext = createContext<OnlineStatusContextType>({
@@ -31,6 +33,7 @@ const OnlineStatusContext = createContext<OnlineStatusContextType>({
     getLastSeen: () => undefined,
     getFormattedLastSeen: () => 'Offline',
     reconnectSocket: async () => { },
+    isSocketConnected: false,
 });
 
 export const useOnlineStatus = () => useContext(OnlineStatusContext);
@@ -41,11 +44,17 @@ const fetchOnlineStatusFromCache = async (userId: string): Promise<{ isOnline: b
         const token = await AsyncStorage.getItem('authToken');
         if (!token) return null;
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
         const response = await fetch(`${API_BASE_URL}/api/users/online-status/${userId}`, {
             headers: {
                 'Authorization': `Bearer ${token}`
-            }
+            },
+            signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) return null;
 
@@ -66,6 +75,9 @@ const updateOnlineStatusToCache = async (userId: string, status: { isOnline: boo
         const token = await AsyncStorage.getItem('authToken');
         if (!token) return;
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
         await fetch(`${API_BASE_URL}/api/users/online-status/${userId}`, {
             method: 'POST',
             headers: {
@@ -75,8 +87,11 @@ const updateOnlineStatusToCache = async (userId: string, status: { isOnline: boo
             body: JSON.stringify({
                 isOnline: status.isOnline,
                 lastSeen: status.lastSeen?.toISOString()
-            })
+            }),
+            signal: controller.signal,
         });
+
+        clearTimeout(timeoutId);
     } catch (error) {
         console.error('Error updating online status to cache:', error);
     }
@@ -94,6 +109,7 @@ export const OnlineStatusProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const isInitialized = useRef(false);
     const reconnectAttempts = useRef(0);
     const maxReconnectAttempts = 5;
+    const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
 
     // Hàm lấy thời gian last seen dạng chuỗi thân thiện
     const getFormattedLastSeen = (userId: string): string => {
@@ -146,204 +162,330 @@ export const OnlineStatusProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }, 30000);
     };
 
-    // Hàm để reconnect socket
-    const reconnectSocket = async () => {
+    // Cleanup function cho socket
+    const cleanupSocket = () => {
         if (socketRef.current) {
             try {
+                socketRef.current.removeAllListeners();
                 socketRef.current.disconnect();
-            } catch (e) {
-                console.error('Error disconnecting socket:', e);
+            } catch (error) {
+                console.error('Error cleaning up socket:', error);
             }
             socketRef.current = null;
         }
+        setIsSocketConnected(false);
+    };
+
+    // Hàm để reconnect socket với backoff
+    const reconnectSocket = async () => {
+        if (reconnectTimeout.current) {
+            clearTimeout(reconnectTimeout.current);
+            reconnectTimeout.current = null;
+        }
 
         if (reconnectAttempts.current >= maxReconnectAttempts) {
-            console.log('Max reconnect attempts reached');
-            reconnectAttempts.current = 0;
+            console.log('Max reconnect attempts reached. Will retry in 30 seconds.');
+            reconnectTimeout.current = setTimeout(() => {
+                reconnectAttempts.current = 0;
+                reconnectSocket();
+            }, 30000);
             return;
         }
 
+        cleanupSocket();
+        
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
+        console.log(`Attempting reconnect ${reconnectAttempts.current + 1}/${maxReconnectAttempts} in ${delay}ms`);
+        
         reconnectAttempts.current++;
-        await initializeSocket();
+        
+        reconnectTimeout.current = setTimeout(async () => {
+            await initializeSocket();
+        }, delay);
     };
 
     // Tách riêng logic khởi tạo socket 
     const initializeSocket = async () => {
         try {
             const token = await AsyncStorage.getItem('authToken');
-            if (!token) return;
+            if (!token) {
+                console.warn('No auth token found, skipping socket initialization');
+                return;
+            }
 
             const decoded: any = jwtDecode(token);
             const userId = decoded._id || decoded.id;
-            if (!userId) return;
+            if (!userId) {
+                console.warn('No user ID found in token, skipping socket initialization');
+                return;
+            }
 
             setCurrentUserId(userId);
 
             // Đảm bảo chỉ có một socket instance
-            if (socketRef.current) {
-                try {
-                    socketRef.current.disconnect();
-                } catch (e) {
-                    console.error('Error disconnecting existing socket:', e);
-                }
-            }
+            cleanupSocket();
 
-            // Khởi tạo socket mới
+            console.log('Initializing socket connection to:', API_BASE_URL);
+
+            // Khởi tạo socket mới với cấu hình cải tiến
             socketRef.current = io(API_BASE_URL, {
                 query: { token },
-                transports: ['websocket'],
+                transports: ['websocket', 'polling'], // Fallback to polling if websocket fails
                 reconnection: true,
-                reconnectionAttempts: 10,
+                reconnectionAttempts: 5,
                 reconnectionDelay: 1000,
                 reconnectionDelayMax: 5000,
-                timeout: 10000
+                timeout: 20000,
+                forceNew: true, // Force new connection
+                autoConnect: true,
             });
 
             // Theo dõi trạng thái kết nối
             socketRef.current.on('connect', () => {
-                console.log('Global socket connected');
+                console.log('Socket connected successfully');
                 setIsSocketConnected(true);
-                reconnectAttempts.current = 0;
+                reconnectAttempts.current = 0; // Reset reconnect attempts on successful connection
 
-                // Emit sự kiện để thông báo trạng thái online của bản thân khi kết nối
-                socketRef.current.emit('joinUserRoom', userId);
-                socketRef.current.emit('userOnline', { userId, chatId: 'global' });
-                socketRef.current.emit('getUsersOnlineStatus');
+                // Chỉ emit cần thiết khi kết nối, không spam
+                try {
+                    // Delay các emit để tránh spam server
+                    setTimeout(() => {
+                        if (socketRef.current && socketRef.current.connected) {
+                            socketRef.current.emit('joinUserRoom', userId);
+                        }
+                    }, 500);
+                    
+                    setTimeout(() => {
+                        if (socketRef.current && socketRef.current.connected) {
+                            socketRef.current.emit('userOnline', { userId, chatId: 'global' });
+                        }
+                    }, 1000);
+                    
+                    setTimeout(() => {
+                        if (socketRef.current && socketRef.current.connected) {
+                            socketRef.current.emit('getUsersOnlineStatus');
+                        }
+                    }, 1500);
+                } catch (error) {
+                    console.error('Error emitting initial events:', error);
+                }
             });
 
             socketRef.current.on('connect_error', (error: any) => {
-                console.error('Socket connection error:', error);
+                console.error('Socket connection error:', error?.message || error);
                 setIsSocketConnected(false);
+                
+                // Tự động thử lại sau một khoảng thời gian nếu đang trong trạng thái active
+                if (appState.current === 'active' && reconnectAttempts.current < maxReconnectAttempts) {
+                    console.log('Will attempt to reconnect due to connection error');
+                    setTimeout(() => reconnectSocket(), 3000);
+                }
             });
 
             socketRef.current.on('disconnect', (reason: string) => {
-                console.log('Global socket disconnected. Reason:', reason);
+                console.log('Socket disconnected. Reason:', reason);
                 setIsSocketConnected(false);
 
-                // Tự động reconnect nếu là do lỗi mạng
+                // Tự động reconnect nếu là do lỗi mạng và app đang active
                 if (
-                    reason === 'io server disconnect' ||
+                    (reason === 'io server disconnect' ||
                     reason === 'transport close' ||
-                    reason === 'ping timeout'
+                    reason === 'ping timeout' ||
+                    reason === 'transport error') &&
+                    appState.current === 'active' &&
+                    reconnectAttempts.current < maxReconnectAttempts
                 ) {
-                    if (appState.current === 'active') {
-                        setTimeout(() => reconnectSocket(), 3000);
-                    }
+                    console.log('Will attempt to reconnect due to disconnect');
+                    setTimeout(() => reconnectSocket(), 3000);
                 }
+            });
+
+            // Error handling for socket
+            socketRef.current.on('error', (error: any) => {
+                console.error('Socket error:', error?.message || error);
             });
 
             // Lắng nghe sự kiện user online
             socketRef.current.on('userOnline', ({ userId }: { userId: string }) => {
-                console.log('Global user online:', userId);
-                updateOnlineStatus(userId, {
-                    isOnline: true,
-                    lastSeen: new Date()
-                });
+                try {
+                    updateOnlineStatus(userId, {
+                        isOnline: true,
+                        lastSeen: new Date()
+                    });
+                } catch (error) {
+                    console.error('Error handling userOnline event:', error);
+                }
             });
 
             // Lắng nghe sự kiện user offline
             socketRef.current.on('userOffline', ({ userId }: { userId: string }) => {
-                console.log('Global user offline:', userId);
-                updateOnlineStatus(userId, {
-                    isOnline: false,
-                    lastSeen: new Date()
-                });
+                try {
+                    updateOnlineStatus(userId, {
+                        isOnline: false,
+                        lastSeen: new Date()
+                    });
+                } catch (error) {
+                    console.error('Error handling userOffline event:', error);
+                }
             });
 
             // Lắng nghe danh sách user online hiện tại
             socketRef.current.on('onlineUsers', async (users: string[]) => {
-                console.log('Received current online users:', users);
+                try {
+                    console.log('Received current online users:', users);
 
-                // Lấy trạng thái từ cache cho tất cả users
-                const updatedStatus: OnlineStatusMap = {};
-                for (const id of users) {
-                    const cachedStatus = await fetchOnlineStatusFromCache(id);
-                    if (cachedStatus) {
-                        updatedStatus[id] = cachedStatus;
-                    } else {
-                        updatedStatus[id] = {
-                            isOnline: true,
-                            lastSeen: new Date()
-                        };
-                    }
-                }
-
-                setOnlineUsers(prev => {
-                    const newState = { ...prev };
-
-                    // Cập nhật trạng thái cho tất cả người dùng offline trước
-                    Object.keys(newState).forEach(id => {
-                        if (!users.includes(id)) {
-                            newState[id] = {
-                                ...newState[id],
-                                isOnline: false
+                    // Lấy trạng thái từ cache cho tất cả users
+                    const updatedStatus: OnlineStatusMap = {};
+                    for (const id of users) {
+                        const cachedStatus = await fetchOnlineStatusFromCache(id);
+                        if (cachedStatus) {
+                            updatedStatus[id] = cachedStatus;
+                        } else {
+                            updatedStatus[id] = {
+                                isOnline: true,
+                                lastSeen: new Date()
                             };
                         }
-                    });
+                    }
 
-                    // Sau đó cập nhật trạng thái online
-                    return { ...newState, ...updatedStatus };
-                });
+                    setOnlineUsers(prev => {
+                        const newState = { ...prev };
+
+                        // Cập nhật trạng thái cho tất cả người dùng offline trước
+                        Object.keys(newState).forEach(id => {
+                            if (!users.includes(id)) {
+                                newState[id] = {
+                                    ...newState[id],
+                                    isOnline: false
+                                };
+                            }
+                        });
+
+                        // Sau đó cập nhật trạng thái online
+                        return { ...newState, ...updatedStatus };
+                    });
+                } catch (error) {
+                    console.error('Error handling onlineUsers event:', error);
+                }
             });
 
             // Lắng nghe thông tin last seen
             socketRef.current.on('userLastSeen', ({ userId, lastSeen }: { userId: string, lastSeen: string }) => {
-                updateOnlineStatus(userId, {
-                    isOnline: false,
-                    lastSeen: new Date(lastSeen)
-                });
+                try {
+                    updateOnlineStatus(userId, {
+                        isOnline: false,
+                        lastSeen: new Date(lastSeen)
+                    });
+                } catch (error) {
+                    console.error('Error handling userLastSeen event:', error);
+                }
             });
 
             // Lắng nghe sự kiện userStatus
             socketRef.current.on('userStatus', ({ userId, status }: { userId: string, status: string }) => {
-                console.log(`User ${userId} status updated to ${status}`);
-                updateOnlineStatus(userId, {
-                    isOnline: status === 'online',
-                    lastSeen: status === 'offline' ? new Date() : onlineUsers[userId]?.lastSeen
-                });
+                try {
+                    console.log(`User ${userId} status updated to ${status}`);
+                    updateOnlineStatus(userId, {
+                        isOnline: status === 'online',
+                        lastSeen: status === 'offline' ? new Date() : onlineUsers[userId]?.lastSeen
+                    });
+                } catch (error) {
+                    console.error('Error handling userStatus event:', error);
+                }
             });
 
             isInitialized.current = true;
         } catch (error) {
-            console.error('Error setting up online status tracking:', error);
+            console.error('Critical error setting up socket connection:', error);
             setIsSocketConnected(false);
+            
+            // Thử lại sau 5 giây nếu có lỗi nghiêm trọng
+            if (appState.current === 'active' && reconnectAttempts.current < maxReconnectAttempts) {
+                setTimeout(() => reconnectSocket(), 5000);
+            }
         }
     };
 
     // Init socket và lắng nghe sự kiện
     useEffect(() => {
-        if (!isInitialized.current) {
-            initializeSocket();
-        }
+        let pingInterval: NodeJS.Timeout;
+        let statusRefreshInterval: NodeJS.Timeout;
+        let isUnmounted = false;
 
-        // Thiết lập ping để duy trì kết nối và trạng thái online
-        const pingInterval = setInterval(() => {
-            if (socketRef.current && socketRef.current.connected && currentUserId) {
-                socketRef.current.emit('ping', { userId: currentUserId });
-            } else if (socketRef.current && !socketRef.current.connected && appState.current === 'active') {
-                // Thử reconnect nếu không connected và app đang active
-                reconnectSocket();
+        const initializeAndSetupSocket = async () => {
+            if (!isInitialized.current && !isUnmounted) {
+                await initializeSocket();
             }
-        }, 10000); // Giảm từ 30 giây xuống 10 giây để responsive hơn
 
-        // Thiết lập sự kiện khi app chuyển vào background hoặc foreground
+            if (isUnmounted) return;
+
+            // Thiết lập ping để duy trì kết nối (giảm tần suất)
+            pingInterval = setInterval(() => {
+                if (isUnmounted) return;
+                
+                if (socketRef.current && socketRef.current.connected && currentUserId) {
+                    try {
+                        // Chỉ emit ping, không emit userOnline liên tục
+                        socketRef.current.emit('ping', { userId: currentUserId });
+                    } catch (error) {
+                        console.error('Error sending ping:', error);
+                    }
+                } else if (appState.current === 'active' && (!socketRef.current || !socketRef.current.connected)) {
+                    // Thử reconnect nếu không connected và app đang active
+                    console.log('Ping check: Socket not connected, attempting reconnect');
+                    reconnectSocket();
+                }
+            }, 30000); // Tăng từ 15 giây lên 30 giây để giảm tải
+
+            // Tự động kiểm tra lại trạng thái online (giảm tần suất)
+            statusRefreshInterval = setInterval(() => {
+                if (isUnmounted) return;
+                
+                if (socketRef.current && socketRef.current.connected) {
+                    try {
+                        socketRef.current.emit('getUsersOnlineStatus');
+                    } catch (error) {
+                        console.error('Error refreshing online status:', error);
+                    }
+                }
+            }, 60000); // Tăng từ 30 giây lên 60 giây
+        };
+
+        // Thiết lập sự kiện khi app chuyển vào background hoặc foreground  
         const handleAppStateChange = (nextAppState: AppStateStatus) => {
+            if (isUnmounted) return;
+            
             console.log('App state changed:', appState.current, '->', nextAppState);
 
             if (nextAppState === 'active' && appState.current.match(/inactive|background/)) {
                 // App từ background về active
                 console.log('App has come to the foreground!');
                 if (!socketRef.current || !socketRef.current.connected) {
+                    console.log('Reconnecting socket due to app becoming active');
                     reconnectSocket();
                 } else if (socketRef.current && currentUserId) {
-                    socketRef.current.emit('userOnline', { userId: currentUserId, chatId: 'global' });
-                    socketRef.current.emit('getUsersOnlineStatus');
+                    try {
+                        // Chỉ emit userOnline một lần khi app active
+                        socketRef.current.emit('userOnline', { userId: currentUserId, chatId: 'global' });
+                        // Delay một chút trước khi emit getUsersOnlineStatus
+                        setTimeout(() => {
+                            if (socketRef.current && socketRef.current.connected && !isUnmounted) {
+                                socketRef.current.emit('getUsersOnlineStatus');
+                            }
+                        }, 1000);
+                    } catch (error) {
+                        console.error('Error emitting events on app active:', error);
+                    }
                 }
             } else if (nextAppState.match(/inactive|background/) && appState.current === 'active') {
                 // App từ active về background
                 console.log('App has gone to the background!');
                 if (socketRef.current && socketRef.current.connected && currentUserId) {
-                    socketRef.current.emit('userBackground', { userId: currentUserId });
+                    try {
+                        socketRef.current.emit('userBackground', { userId: currentUserId });
+                    } catch (error) {
+                        console.error('Error emitting background event:', error);
+                    }
                 }
             }
 
@@ -353,24 +495,38 @@ export const OnlineStatusProvider: React.FC<{ children: React.ReactNode }> = ({ 
         // Đăng ký event listener cho app state
         const subscription = AppState.addEventListener('change', handleAppStateChange);
 
-        // Tự động kiểm tra lại trạng thái online mỗi 20 giây thay vì 60 giây
-        const statusRefreshInterval = setInterval(() => {
-            if (socketRef.current && socketRef.current.connected) {
-                socketRef.current.emit('getUsersOnlineStatus');
-            }
-        }, 20000);
+        // Initialize socket
+        initializeAndSetupSocket();
 
         return () => {
-            if (socketRef.current) {
-                socketRef.current.disconnect();
+            console.log('Cleaning up OnlineStatusProvider');
+            isUnmounted = true;
+            
+            // Cleanup socket
+            cleanupSocket();
+            
+            // Clear intervals
+            if (pingInterval) clearInterval(pingInterval);
+            if (statusRefreshInterval) clearInterval(statusRefreshInterval);
+            
+            // Clear reconnect timeout
+            if (reconnectTimeout.current) {
+                clearTimeout(reconnectTimeout.current);
+                reconnectTimeout.current = null;
             }
-            clearInterval(pingInterval);
-            clearInterval(statusRefreshInterval);
+            
+            // Remove app state listener
             subscription.remove();
+            
             // Clear tất cả các timeout cache
             Object.values(cacheTimeoutRef.current).forEach(timeout => clearTimeout(timeout));
+            cacheTimeoutRef.current = {};
+            
+            // Reset state
+            isInitialized.current = false;
+            reconnectAttempts.current = 0;
         };
-    }, [currentUserId]);
+    }, []); // Xóa currentUserId khỏi dependency để tránh re-run liên tục
 
     const isUserOnline = (userId: string): boolean => {
         return onlineUsers[userId]?.isOnline || false;
@@ -388,10 +544,11 @@ export const OnlineStatusProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 isUserOnline,
                 getLastSeen,
                 getFormattedLastSeen,
-                reconnectSocket
+                reconnectSocket,
+                isSocketConnected
             }}
         >
             {children}
         </OnlineStatusContext.Provider>
     );
-}; 
+};

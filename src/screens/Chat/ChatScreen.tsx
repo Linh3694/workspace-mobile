@@ -13,8 +13,10 @@ import { useOnlineStatus } from '../../context/OnlineStatusContext';
 import { API_BASE_URL } from '../../config/constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Avatar from '../../components/Chat/Avatar';
+import GroupAvatar from '../../components/Chat/GroupAvatar';
 import { useEmojis } from '../../hooks/useEmojis';
 import WiscomLogo from '../../assets/wiscom.svg';
+import { ROUTES } from '../../constants/routes';
 
 interface User {
     _id: string;
@@ -39,6 +41,9 @@ interface Chat {
     participants: User[];
     lastMessage?: Message;
     updatedAt: string;
+    isGroup?: boolean;
+    name?: string;
+    avatar?: string;
 }
 
 const ChatScreen = () => {
@@ -51,6 +56,7 @@ const ChatScreen = () => {
     const [messageToForwardId, setMessageToForwardId] = useState<string | null>(null);
     const [shouldRefresh, setShouldRefresh] = useState(false);
     const [lastVisitedChatId, setLastVisitedChatId] = useState<string | null>(null);
+    const [socketConnected, setSocketConnected] = useState(false);
     const { isUserOnline, getFormattedLastSeen } = useOnlineStatus();
     const navigation = useNavigation<NativeStackNavigationProp<ChatStackParamList>>();
     const route = useRoute();
@@ -161,18 +167,15 @@ const ChatScreen = () => {
 
                 // Lấy token từ AsyncStorage
                 const token = await AsyncStorage.getItem('authToken');
-                console.log('Token:', token);
                 if (token) {
                     try {
                         const decoded: any = jwtDecode(token);
-                        console.log('Decoded:', decoded);
                         // decode JWT to get the current user's id
                         const userId = decoded._id || decoded.id;
                         if (userId) {
                             setCurrentUserId(userId);
                         }
                     } catch (err) {
-                        console.log('Token decode error:', err);
                     }
                 }
             } catch (err) {
@@ -191,14 +194,17 @@ const ChatScreen = () => {
         socketRef.current = getSocket(token);
 
         socketRef.current.on('connect', () => {
-            console.log('Socket connected');
+            setSocketConnected(true);
             if (currentUserId) {
                 socketRef.current.emit('joinUserRoom', currentUserId);
             }
         });
 
+        socketRef.current.on('disconnect', () => {
+            setSocketConnected(false);
+        });
+
         socketRef.current.on('receiveMessage', (message: any) => {
-            console.log('📨 [CHAT SCREEN] Received new message:', message._id);
             
             setChats(prevChats => {
                 const chatIndex = prevChats.findIndex(c => c._id === message.chat);
@@ -218,13 +224,11 @@ const ChatScreen = () => {
                     updatedAt: message.createdAt
                 });
 
-                console.log('[📥] Updated chats with new message');
                 return newChats;
             });
         });
         // Listen for newChat updates
         socketRef.current.on('newChat', (updatedChat: Chat) => {
-            console.log('🆕 [CHAT SCREEN] Received new chat update:', updatedChat._id);
             setChats(prevChats => {
                 const index = prevChats.findIndex(c => c._id === updatedChat._id);
                 const updated = [...prevChats];
@@ -239,7 +243,6 @@ const ChatScreen = () => {
         });
 
         socketRef.current.on('messageRead', (data: { chatId: string, userId: string }) => {
-            console.log('📖 [CHAT SCREEN] Received messageRead event:', data);
             setChats(prevChats => 
                 prevChats.map(chat => {
                     if (chat._id === data.chatId && chat.lastMessage) {
@@ -247,7 +250,6 @@ const ChatScreen = () => {
                         const isAlreadyRead = chat.lastMessage.readBy && chat.lastMessage.readBy.includes(data.userId);
                         
                         if (!isAlreadyRead) {
-                            console.log('📖 [CHAT SCREEN] Adding user to readBy:', data.userId);
                             return {
                                 ...chat,
                                 lastMessage: {
@@ -263,7 +265,6 @@ const ChatScreen = () => {
             
             // Nếu người đọc là người dùng hiện tại, refresh để đảm bảo UI được cập nhật
             if (data.userId === currentUserId) {
-                console.log('📖 [CHAT SCREEN] Current user read message, refreshing...');
                 setTimeout(() => {
                     fetchChats(true);
                 }, 100);
@@ -271,8 +272,51 @@ const ChatScreen = () => {
         });
 
         socketRef.current.on('reconnect', () => {
-            console.log('Socket reconnected');
             fetchChats(true);
+        });
+
+        // =============== GROUP CHAT SOCKET EVENTS ===============
+        
+        // Group member events
+        socketRef.current.on('addedToGroup', (data: any) => {
+            fetchChats(true); // Refresh to show new group
+            Alert.alert('Thông báo', 'Bạn đã được thêm vào một nhóm mới');
+        });
+
+        socketRef.current.on('removedFromGroup', (data: any) => {
+            fetchChats(true); // Refresh to remove group from list
+            Alert.alert('Thông báo', 'Bạn đã bị xóa khỏi một nhóm');
+        });
+
+        socketRef.current.on('groupMembersAdded', (data: any) => {
+            fetchChats(true); // Refresh to update member count
+        });
+
+        socketRef.current.on('groupMemberRemoved', (data: any) => {
+            fetchChats(true); // Refresh to update member count
+        });
+
+        // Group info updates
+        socketRef.current.on('groupInfoUpdated', (data: any) => {
+            setChats(prevChats => 
+                prevChats.map(chat => 
+                    chat._id === data.chatId 
+                        ? { ...chat, ...data.changes }
+                        : chat
+                )
+            );
+        });
+
+        // Group admin updates
+        socketRef.current.on('groupAdminUpdated', (data: any) => {
+            // This would need to update admin status in chat if we store it
+        });
+
+        // User joined/left group
+        socketRef.current.on('userJoinedGroup', (data: any) => {
+        });
+
+        socketRef.current.on('userLeftGroup', (data: any) => {
         });
     };
 
@@ -286,7 +330,10 @@ const ChatScreen = () => {
     const fetchChats = async (forceRefresh = false) => {
         try {
             const token = await AsyncStorage.getItem('authToken');
-            if (!token) return;
+            if (!token) {
+                console.log('No auth token for fetchChats');
+                return;
+            }
             
             const url = forceRefresh 
                 ? `${API_BASE_URL}/api/chats/list?t=${Date.now()}`
@@ -299,6 +346,27 @@ const ChatScreen = () => {
                 },
             });
             
+            if (!res.ok) {
+                const contentType = res.headers.get('content-type');
+                if (contentType && contentType.includes('text/html')) {
+                    console.warn(`💡 Chats API endpoint not available (Status: ${res.status})`);
+                    console.warn('Backend server may not be running or endpoint not implemented yet.');
+                    return;
+                }
+                
+                const errorText = await res.text();
+                console.warn('Chats API unavailable:', res.status, errorText);
+                return;
+            }
+
+            // Kiểm tra content type trước khi parse JSON
+            const contentType = res.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const responseText = await res.text();
+                console.warn('Chats API returned non-JSON response:', responseText.substring(0, 100));
+                return;
+            }
+            
             const data = await res.json();
             if (Array.isArray(data)) {
                 const sortedChats = data.sort(
@@ -309,9 +377,13 @@ const ChatScreen = () => {
                 joinChatRooms(sortedChats);
 
                 setChats(sortedChats);
+            } else {
+                console.warn('Chats response is not an array:', data);
+                setChats([]);
             }
         } catch (err) {
             console.error('Error fetching chats:', err);
+            setChats([]);
         }
     };
 
@@ -340,9 +412,7 @@ const ChatScreen = () => {
     // Lắng nghe khi quay lại từ ChatDetail để refresh chats
     useEffect(() => {
         const unsubscribe = navigation.addListener('focus', () => {
-            if (currentUserId && shouldRefresh) {
-                console.log('🔄 [CHAT SCREEN] Refreshing chats after returning from ChatDetail');
-                
+            if (currentUserId && shouldRefresh) {                
                 // Đánh dấu tất cả chats của current user là đã đọc tức thời trong local state
                 setChats(prevChats => 
                     prevChats.map(chat => {
@@ -357,8 +427,6 @@ const ChatScreen = () => {
                             if (lastMessage && 
                                 lastMessageSenderId !== currentUserId && 
                                 (!lastMessage.readBy || !lastMessage.readBy.includes(currentUserId))) {
-                                
-                                console.log('🟢 [INSTANT MARK] Marking visited chat as read locally:', chat._id);
                                 return {
                                     ...chat,
                                     lastMessage: {
@@ -377,9 +445,11 @@ const ChatScreen = () => {
                     const markChatAsRead = async () => {
                         try {
                             const token = await AsyncStorage.getItem('authToken');
-                            if (!token) return;
-                            
-                            console.log('📞 [API CALL] Marking chat as read via API:', lastVisitedChatId);
+                            if (!token) {
+                                console.log('No token for markChatAsRead');
+                                return;
+                            }
+
                             const response = await fetch(`${API_BASE_URL}/api/chats/read-all/${lastVisitedChatId}`, {
                                 method: 'PUT',
                                 headers: {
@@ -389,12 +459,20 @@ const ChatScreen = () => {
                             });
                             
                             if (response.ok) {
-                                console.log('✅ [API CALL] Successfully marked chat as read');
+                                // Success - no action needed
                             } else {
-                                console.error('❌ [API CALL] Failed to mark chat as read:', response.status);
+                                const contentType = response.headers.get('content-type');
+                                if (contentType && contentType.includes('text/html')) {
+                                    console.warn(`💡 Mark read API endpoint not available (Status: ${response.status})`);
+                                    console.warn('Backend server may not be running or endpoint not implemented yet.');
+                                    return;
+                                }
+                                
+                                const errorText = await response.text();
+                                console.warn('💡 [API] Failed to mark chat as read:', response.status, errorText);
                             }
                         } catch (error) {
-                            console.error('❌ [API CALL] Error marking chat as read:', error);
+                            console.warn('💡 [API] Error marking chat as read:', error);
                         }
                     };
                     markChatAsRead();
@@ -428,17 +506,57 @@ const ChatScreen = () => {
             if (text.trim() === "") {
                 // Khi không có search text, fetch tất cả users
                 const usersRes = await fetch(API_BASE_URL + '/api/users');
+                
+                if (!usersRes.ok) {
+                    const contentType = usersRes.headers.get('content-type');
+                    if (contentType && contentType.includes('text/html')) {
+                        console.warn(`💡 Users API endpoint not available (Status: ${usersRes.status})`);
+                        console.warn('Backend server may not be running or endpoint not implemented yet.');
+                        setUsers([]);
+                        return;
+                    }
+                    
+                    const errorText = await usersRes.text();
+                    console.warn('Users API unavailable:', usersRes.status, errorText);
+                    setUsers([]);
+                    return;
+                }
+
+                const contentType = usersRes.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const responseText = await usersRes.text();
+                    console.warn('Users API returned non-JSON response:', responseText.substring(0, 100));
+                    setUsers([]);
+                    return;
+                }
+
                 usersData = await usersRes.json();
             } else {
                 // Khi có search text, tìm kiếm users
                 const res = await fetch(`${API_BASE_URL}/api/users/search?query=${encodeURIComponent(text)}`);
+                
                 if (res.ok) {
+                    const contentType = res.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        const responseText = await res.text();
+                        console.error('Expected JSON but got:', responseText.substring(0, 200));
+                        setUsers([]);
+                        return;
+                    }
                     usersData = await res.json();
                 } else {
+                    const contentType = res.headers.get('content-type');
+                    if (contentType && contentType.includes('text/html')) {
+                        console.warn(`💡 Search API endpoint not available (Status: ${res.status})`);
+                        console.warn('Backend server may not be running or endpoint not implemented yet.');
+                    } else {
+                        const errorText = await res.text();
+                        console.warn('Search API unavailable:', res.status, errorText);
+                    }
                     usersData = [];
                 }
             }
-            setUsers(usersData);
+            setUsers(Array.isArray(usersData) ? usersData : []);
         } catch (err) {
             console.error('Error searching users:', err);
             setUsers([]);
@@ -447,7 +565,7 @@ const ChatScreen = () => {
 
     const debouncedSearch = useCallback(debounce(handleSearch, 400), []);
 
-    const handleChatPress = async (chat: Chat, other: User) => {
+    const handleChatPress = async (chat: Chat, other: User | null) => {
         if (forwardMode && messageToForwardId) {
             // Forward the message to this chat
             try {
@@ -475,7 +593,14 @@ const ChatScreen = () => {
                     
                     // Navigate to the chat
                     hideTabBar();
-                    navigation.navigate('ChatDetail', { user: other, chatId: chat._id });
+                    if (chat.isGroup) {
+                        // For group chat, navigate to GroupChatDetailScreen
+                        navigation.navigate(ROUTES.SCREENS.GROUP_CHAT_DETAIL as any, { 
+                            chat: chat as any // Convert to GroupInfo format
+                        });
+                    } else {
+                        navigation.navigate('ChatDetail', { user: other!, chatId: chat._id });
+                    }
                 } else {
                     const errorData = await response.json();
                     Alert.alert('Lỗi', errorData.message || 'Không thể chuyển tiếp tin nhắn');
@@ -485,12 +610,18 @@ const ChatScreen = () => {
                 Alert.alert('Lỗi', 'Đã xảy ra lỗi khi chuyển tiếp tin nhắn');
             }
         } else {
-            // Normal navigation to chat
-            console.log('🚀 [NAVIGATION] Navigating to ChatDetail, setting refresh flag');
             setLastVisitedChatId(chat._id); // Lưu ID của chat được visit
             setShouldRefresh(true); // Set flag để refresh khi quay lại
             hideTabBar();
-            navigation.navigate('ChatDetail', { user: other, chatId: chat._id });
+            
+            if (chat.isGroup) {
+                // For group chat, navigate to GroupChatDetailScreen
+                navigation.navigate(ROUTES.SCREENS.GROUP_CHAT_DETAIL as any, { 
+                    chat: chat as any // Convert to GroupInfo format
+                });
+            } else {
+                navigation.navigate('ChatDetail', { user: other!, chatId: chat._id });
+            }
         }
     };
 
@@ -500,8 +631,6 @@ const ChatScreen = () => {
             const existingChat = chats && Array.isArray(chats) ? chats.find(chat => 
                 chat.participants.some(p => p._id === item._id)
             ) : null;
-            
-            console.log('🚀 [USER NAVIGATION] Navigating to chat with user:', item.fullname);
             setLastVisitedChatId(existingChat?._id || null); // Lưu ID của chat được visit
             setShouldRefresh(true); // Set flag để refresh khi quay lại
             hideTabBar();
@@ -532,7 +661,6 @@ const ChatScreen = () => {
 
     const renderChat = ({ item, index }: { item: Chat, index: number }) => {
         if (!Array.isArray(item.participants)) {
-            console.log('Participants is not an array');
             return null;
         }
 
@@ -540,9 +668,23 @@ const ChatScreen = () => {
             return null; // wait until we know who the current user is
         }
 
-        const other = item.participants.find(p => p._id !== currentUserId);
-        if (!other) {
-            return null;
+        // Check if this is a group chat
+        const isGroupChat = item.isGroup;
+        
+        let displayName = '';
+        let displayUser = null;
+        
+        if (isGroupChat) {
+            // For group chat, display group name and member count
+            displayName = item.name || 'Nhóm không tên';
+        } else {
+            // For 1-1 chat, find the other user
+            const other = item.participants.find(p => p._id !== currentUserId);
+            if (!other) {
+                return null;
+            }
+            displayName = other.fullname;
+            displayUser = other;
         }
 
         // Format time
@@ -557,58 +699,67 @@ const ChatScreen = () => {
             ? item.lastMessage.sender._id 
             : item.lastMessage?.sender;
         
-        // Logic kiểm tra tin nhắn chưa đọc:
-        // 1. Phải có lastMessage
-        // 2. Người gửi không phải là người dùng hiện tại
-        // 3. Người dùng hiện tại chưa có trong readBy array
         const hasUnreadMessage = item.lastMessage &&
             lastMessageSenderId !== currentUserId &&
             (!item.lastMessage.readBy || !item.lastMessage.readBy.includes(currentUserId));
-
-        // Debug log để theo dõi trạng thái (uncomment nếu cần debug)
-        if (item.lastMessage && lastMessageSenderId !== currentUserId) {
-            console.log(`📋 [RENDER CHAT] Chat ${item._id}:`, {
-                hasLastMessage: !!item.lastMessage,
-                senderId: lastMessageSenderId,
-                currentUserId,
-                readBy: item.lastMessage.readBy,
-                hasUnreadMessage
-            });
-        }
 
         // Xử lý nội dung tin nhắn cuối cùng để hiển thị
         let lastMessageContent = '';
         if (item.lastMessage) {
             // Kiểm tra loại tin nhắn và hiển thị tương ứng
             if (item.lastMessage.type === 'image') {
-                // Một ảnh
                 lastMessageContent = 'Đã gửi ảnh';
             } else if (item.lastMessage.fileUrls && item.lastMessage.fileUrls.length > 0) {
-                // Nhiều ảnh
                 lastMessageContent = `${item.lastMessage.fileUrls.length} hình ảnh`;
             } else if (item.lastMessage.type === 'file') {
-                // File đính kèm
                 lastMessageContent = 'Tệp đính kèm';
             } else {
-                // Tin nhắn văn bản thông thường
                 lastMessageContent = item.lastMessage.content || '';
             }
 
-            // Thêm tiền tố "Bạn: " nếu người gửi là người dùng hiện tại
-            if (lastMessageSenderId === currentUserId) {
+            // Thêm tên người gửi cho group chat
+            if (isGroupChat && typeof item.lastMessage.sender === 'object') {
+                const senderName = item.lastMessage.sender.fullname;
+                if (lastMessageSenderId === currentUserId) {
+                    lastMessageContent = `Bạn: ${lastMessageContent}`;
+                } else {
+                    lastMessageContent = `${senderName}: ${lastMessageContent}`;
+                }
+            } else if (!isGroupChat && lastMessageSenderId === currentUserId) {
+                // Cho 1-1 chat, chỉ thêm "Bạn: " nếu là tin nhắn của mình
                 lastMessageContent = `Bạn: ${lastMessageContent}`;
             }
         }
+
+      
 
         return (
             <TouchableOpacity
                 key={`chat-item-${item._id || index}`}
                 className="flex-row items-center py-3 px-4 border-b border-gray-100"
-                onPress={() => handleChatPress(item, other)}
+                onPress={() => handleChatPress(item, displayUser)}
             >
-                <Avatar user={other} size={56} statusSize={15} />
+                {isGroupChat ? (
+                    <GroupAvatar
+                        size={56}
+                        groupAvatar={item.avatar}
+                        participants={item.participants as any}
+                        currentUserId={currentUserId}
+                    />
+                ) : (
+                    <Avatar user={displayUser} size={56} statusSize={15} />
+                )}
+                
                 <View className="flex-1 ml-4">
-                    <Text className={`${hasUnreadMessage ? 'font-bold' : 'font-medium'} text-lg`} numberOfLines={1}>{other.fullname}</Text>
+                    <View className="flex-row items-center">
+                        <Text className={`${hasUnreadMessage ? 'font-bold' : 'font-medium'} text-lg flex-1`} numberOfLines={1}>
+                            {displayName}
+                        </Text>
+                        {isGroupChat && (
+                            <MaterialIcons name="group" size={16} color="#666" style={{ marginLeft: 4 }} />
+                        )}
+                    </View>
+                    
                     <View className="flex-row items-center">
                         {item.lastMessage?.isEmoji ? (() => {
                             const emoji = customEmojis.find(e => e.code === item.lastMessage?.content);
@@ -636,11 +787,9 @@ const ChatScreen = () => {
                                 {lastMessageContent}
                             </Text>
                         )}
-                        <Text className="text-xs text-gray-400 font-medium mt-1">
-                            • {isUserOnline(other._id) ? 'Đang hoạt động' : getFormattedLastSeen(other._id)}
-                        </Text>
                     </View>
                 </View>
+                
                 <View className="items-end">
                     <Text className={`${hasUnreadMessage ? 'text-black font-bold' : 'text-gray-400 font-medium'} text-xs mb-1`}>{formattedTime}</Text>
                     {/* Hiển thị dấu chấm đỏ thay vì số khi có tin nhắn chưa đọc */}
@@ -657,7 +806,6 @@ const ChatScreen = () => {
             <View className="p-4 bg-white">
                 <WiscomLogo width={100} height={100} />
             </View>
-            <ActivityIndicator size="large" color="#002855" className="flex-1" />
         </SafeAreaView>
     );
 
@@ -667,7 +815,20 @@ const ChatScreen = () => {
             style={{ paddingTop: Platform.OS === 'android' ? insets.top : 0 }}
         >
             <View className="p-4 bg-white">
-                <WiscomLogo width={130} height={50} />
+                <View className="flex-row items-center justify-between mb-4">
+                    <View className="flex-row items-center">
+                        <WiscomLogo width={130} height={50} />
+                        {/* Socket Connection Status */}
+                    </View>
+                    <TouchableOpacity
+                        onPress={() => navigation.navigate(ROUTES.SCREENS.CREATE_GROUP as any)}
+                        className="bg-white rounded-full p-2"
+                        style={{ backgroundColor: '#fff' }}
+                    >
+                        <MaterialIcons name="group-add" size={24} color="#002855" />
+                    </TouchableOpacity>
+                </View>
+                
                 <View className="flex-row items-center bg-white border border-gray-200 rounded-full px-4 py-2">
                     <MaterialIcons name="search" size={22} color="#BDBDBD" />
                     <TextInput
@@ -690,6 +851,7 @@ const ChatScreen = () => {
                     />
                 </View>
             </View>
+            
             <View className="mt-2">
                 {getSortedUsers.length > 0 ? (
                     <FlatList
@@ -717,6 +879,7 @@ const ChatScreen = () => {
                     </View>
                 )}
             </View>
+            
             <Text className="text-lg font-medium text-gray-900 mt-[5%] ml-[5%]">
                 Trò chuyện
             </Text>

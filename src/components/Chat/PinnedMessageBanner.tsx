@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
+// @ts-ignore
 import { View, Text, Image, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { API_BASE_URL } from '../../config/constants';
 import ConfirmModal from '../../components/ConfirmModal';
 import NotificationModal from '../../components/NotificationModal';
-import { Message, MessageReaction } from '../../types/message';
+import { Message } from '../../types/message';
 import Avatar from './Avatar';
 import MessageContent from './MessageContent';
 

@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+// @ts-ignore
 import { View, ActivityIndicator, Text } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';

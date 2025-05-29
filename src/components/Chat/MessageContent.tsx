@@ -51,7 +51,9 @@ const MessageContent: React.FC<MessageContentProps> = ({
                 </View>
             ) : (
                 <TouchableOpacity 
-                    style={{ marginTop: 4 }}
+                    style={{ 
+                        marginTop: 4
+                    }}
                     onPress={() => onImagePress && onImagePress([processImageUrl(message.fileUrl)], 0)}
                     onLongPress={onLongPress}
                     onPressOut={onLongPressOut}
@@ -60,8 +62,8 @@ const MessageContent: React.FC<MessageContentProps> = ({
                     <Image
                         source={{ uri: processImageUrl(message.fileUrl) }}
                         style={{
-                            width: 200,
-                            height: 200,
+                            width: 180,
+                            height: 180,
                             borderRadius: 12
                         }}
                         resizeMode="cover"
@@ -77,12 +79,14 @@ const MessageContent: React.FC<MessageContentProps> = ({
                     </Text>
                 </View>
             ) : (
-                <ImageGrid 
-                    images={message.fileUrls || []} 
-                    onPress={(index) => onImagePress && onImagePress(message.fileUrls || [], index)} 
-                    onLongPress={(index, event) => onLongPress && onLongPress(event)}
-                    onPressOut={onLongPressOut}
-                />
+                <View>
+                    <ImageGrid 
+                        images={message.fileUrls || []} 
+                        onPress={(index) => onImagePress && onImagePress(message.fileUrls || [], index)} 
+                        onLongPress={(index, event) => onLongPress && onLongPress(event)}
+                        onPressOut={onLongPressOut}
+                    />
+                </View>
             );
         case 'file':
             return (

@@ -105,7 +105,6 @@ class AttendanceService {
             data,
             timestamp: Date.now()
         });
-        console.log(`Cache set for key: ${key}`);
     }
 
     // Clear cache manually

@@ -1,4 +1,5 @@
 import React, { useMemo, memo } from 'react';
+// @ts-ignore
 import { View, Image, TouchableOpacity, Text, Dimensions, GestureResponderEvent } from 'react-native';
 import { API_BASE_URL } from '../../config/constants';
 import { processImageUrl } from '../../utils/image';
@@ -14,7 +15,8 @@ const ImageGrid = memo(({ images, onPress, onLongPress, onPressOut }: ImageGridP
     // Memoize screen dimensions and calculations
     const { maxWidth, gap, processedImages } = useMemo(() => {
         const screenWidth = Dimensions.get('window').width;
-        const maxWidth = screenWidth * 0.7;
+        // Giảm từ 0.7 xuống 0.65 để tính đến margin 8px mỗi bên từ MessageContent
+        const maxWidth = screenWidth * 0.65;
         const gap = 2;
         const processedImages = images.map(processImageUrl);
         

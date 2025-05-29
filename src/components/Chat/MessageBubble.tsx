@@ -149,15 +149,12 @@ const MessageBubble = memo(({
     // Tính toán style cho bubble
     const getBubbleStyle = () => {
         // Only treat actual images and multi-image messages as media content
-        const isMediaContent = message.type === 'image' || message.type === 'multiple-images';
-
-        const isAlone = isFirst && isLast;
-        
+        const isMediaContent = message.type === 'image' || message.type === 'multiple-images';        
         return {
             ...styles.bubble,
             backgroundColor: isMediaContent ? 'transparent' : (isMe ? '#009483' : '#F5F5ED'),
-            paddingHorizontal: isMediaContent ? 0 : 14,
-            paddingVertical: isMediaContent ? 0 : 8,
+            paddingHorizontal: isMediaContent ? 20 : 14,
+            paddingVertical: isMediaContent ? 8 : 8,
             borderTopLeftRadius: isMe ? 20 : (isLast ? 20 : 4),
             borderTopRightRadius: isMe ? (isLast ? 20 : 4) : 20,
             borderBottomRightRadius: isMe ? (isFirst ? 20 : 4) : 20,
@@ -376,8 +373,8 @@ const MessageBubble = memo(({
                             marginBottom: (message.reactions && message.reactions.length > 0) ? 12 : 2,
                             transform: [{ scale: messageScaleAnim }],
                             backgroundColor: highlightAnim.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: ['transparent', 'rgba(0, 148, 131, 0.15)']
+                            inputRange: [0, 1],
+                            outputRange: ['transparent', 'rgba(0, 148, 131, 0.15)']
                             }),
                             borderRadius: isHighlighted ? 8 : 0,
                             paddingHorizontal: isHighlighted ? 4 : 0,
@@ -386,11 +383,11 @@ const MessageBubble = memo(({
                     ]}
                 >
                     {showAvatar ? (
-                        <View style={!isMe ? { marginLeft: 8 } : {}}>
+                        <View>
                             <Avatar user={message.sender} size={36} statusSize={12} />
                         </View>
                     ) : (
-                            <View style={{ width: isMe ? 0 : 44 }} />
+                            <View style={{ width: isMe ? 0 : 36 }} />
                     )}
 
                     {/* Nếu là emoji thì không render bubble, chỉ render emoji to */}
@@ -418,9 +415,8 @@ const MessageBubble = memo(({
                                 {/* Preview tin nhắn reply */}
                                 {message.replyTo && (
                                     <View style={{
-                                        marginBottom: -15,
-                                        marginLeft: isMe ? 0 : 10,
-                                        marginRight: isMe ? 10 : 0,
+                                        marginBottom: -8,
+                                        marginTop: 5,
                                         backgroundColor: isMe ? '#F5F5ED' : '#98D3C6',
                                         borderRadius: 20,
                                         alignSelf: isMe ? 'flex-end' : 'flex-start',
@@ -446,8 +442,8 @@ const MessageBubble = memo(({
                                                         uri: processImageUrl(message.replyTo.fileUrl)
                                                     }}
                                                     style={{
-                                                        width: 200,
-                                                        height: 200,
+                                                        width: 180,
+                                                        height: 180,
                                                         borderRadius: 12,
                                                         marginTop: 4
                                                     }}
@@ -550,8 +546,8 @@ const MessageBubble = memo(({
                                                 {(message.reactions && message.reactions.length > 0) ? (
                                                     <View style={{
                                                         position: 'absolute',
-                                                        bottom: 20,
-                                                        right: (message.type === 'image' || message.type === 'multiple-images') ? 12 : 0,
+                                                        bottom: -20,
+                                                        alignSelf: isMe ? 'flex-end' : 'flex-start',
                                                         flexDirection: 'row',
                                                         backgroundColor: 'white',
                                                         borderRadius: 12,
@@ -577,7 +573,7 @@ const MessageBubble = memo(({
                                                                     <Image
                                                                         key={idx}
                                                                         source={typeof emoji.url === 'string' ? { uri: emoji.url } : emoji.url}
-                                                                        style={{ width: 24, height: 24, marginRight: 4, marginTop: 12 }}
+                                                                        style={{ width: 18, height: 18 }}
                                                                         resizeMode="contain"
                                                                     />
                                                                 );
@@ -599,7 +595,8 @@ const MessageBubble = memo(({
                                                 <View style={{
                                                     position: 'absolute',
                                                     bottom: -20,
-                                                    right: (message.type === 'image' || message.type === 'multiple-images') ? 12 : 0,
+                                                    alignSelf: isMe ? 'flex-end' : 'flex-start',
+                                                    
                                                     flexDirection: 'row',
                                                     backgroundColor: 'white',
                                                     borderRadius: 12,
@@ -639,7 +636,7 @@ const MessageBubble = memo(({
                                 {/* Trạng thái tin nhắn cuối cùng */}
                                 {isMe && isLatestMessage && (
                                     <View style={{
-                                                alignSelf: isMe ? 'flex-end' : 'flex-start',
+                                        alignSelf: isMe ? 'flex-end' : 'flex-start',
                                         marginRight: 4,
                                         flexDirection: 'row',
                                         alignItems: 'center'

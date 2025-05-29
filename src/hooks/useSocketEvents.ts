@@ -30,7 +30,6 @@ export const useSocketEvents = ({
 
         // Message events
         const handleReceiveMessage = (newMessage: Message) => {
-            console.log('Received new message:', newMessage);
             
             // Reset typing indicator if message from chat partner
             if (newMessage.sender._id === chatPartnerId) {
@@ -90,13 +89,11 @@ export const useSocketEvents = ({
         // Online/Offline events
         const handleUserOnline = ({ userId }: { userId: string }) => {
             if (userId === chatPartnerId) {
-                console.log('Chat partner is now online');
             }
         };
 
         const handleUserOffline = ({ userId }: { userId: string }) => {
             if (userId === chatPartnerId) {
-                console.log('Chat partner is now offline');
                 setOtherTyping(false);
             }
         };
