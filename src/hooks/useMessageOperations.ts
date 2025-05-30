@@ -22,6 +22,10 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
   const saveMessagesQueue = useRef<Map<string, Message[]>>(new Map());
   const saveMessagesTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Debounce mechanism for handleLoadMore
+  const lastLoadMoreCall = useRef<number>(0);
+  const loadMoreTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Force reset tất cả loading states
   const forceResetLoadingStates = useCallback(() => {
     console.log('🔄 Force resetting all loading states');
@@ -29,6 +33,22 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
     setLoading(false);
     setHasMoreMessages(false);
   }, []);
+
+  // Reset page khi chat thay đổi
+  useEffect(() => {
+    if (chat?._id) {
+      console.log('📄 Resetting page to 1 for new chat:', chat._id);
+      setPage(1);
+      setHasMoreMessages(true);
+      // Reset debounce state for new chat
+      lastLoadMoreCall.current = 0;
+      // Clear any pending timeout
+      if (loadMoreTimeoutRef.current) {
+        clearTimeout(loadMoreTimeoutRef.current);
+        loadMoreTimeoutRef.current = null;
+      }
+    }
+  }, [chat?._id]);
 
   // Timeout để tự động reset isLoadingMore nếu bị stuck
   useEffect(() => {
@@ -85,22 +105,39 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
 
   // Hàm load tin nhắn từ server
   const loadMessages = useCallback(async (chatId: string, pageNum: number = 1, append: boolean = false) => {
+    console.log('🔗 [loadMessages] chatId:', chatId, 'page:', pageNum, 'append:', append);
+    if (!chatId || typeof chatId !== 'string' || chatId.length !== 24) {
+      console.warn('❌ [loadMessages] Invalid chatId:', chatId);
+      setIsLoadingMore(false);
+      if (!append) setLoading(false);
+      return;
+    }
+
+    // Prevent multiple simultaneous calls for the same page
+    if (append && isLoadingMore) {
+      console.log('⏭️ [loadMessages] Already loading more, skipping...');
+      return;
+    }
+
     try {
       const token = await AsyncStorage.getItem('authToken');
       if (!token) {
         console.error('No auth token found');
         setLoading(false);
+        setIsLoadingMore(false);
         return;
       }
 
-      if (append && isLoadingMore) {
-        return;
+      // Only set loading state if not already loading
+      if (append && !isLoadingMore) {
+        setIsLoadingMore(true);
+      } else if (!append) {
+        setLoading(true);
       }
-
-      setIsLoadingMore(true);
       
       // Gọi API với pagination
       const url = `${API_BASE_URL}/api/chats/messages/${chatId}?page=${pageNum}&limit=20`;
+      console.log('🔗 Fetching messages:', url, 'token:', token.substring(0, 8) + '...');
 
       const response = await fetch(url, {
         headers: { 
@@ -119,8 +156,8 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
           if (!append) {
             const storedMessages = await loadMessagesFromStorage(chatId);
             setMessages(storedMessages);
-            setHasMoreMessages(false);
           }
+          setHasMoreMessages(false);
           // Reset loading states
           setIsLoadingMore(false);
           if (!append) {
@@ -149,6 +186,7 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
           hasMore = false;
         }
         
+        console.log(`📦 [loadMessages] Got ${responseMessages.length} messages, hasMore: ${hasMore}`);
         setHasMoreMessages(hasMore);
 
         // Validate messages structure
@@ -172,13 +210,12 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
             const existingIds = new Set(prevMessages.map(msg => msg._id));
             const newOldMessages = sortedMessages.filter(msg => !existingIds.has(msg._id));
             
-            console.log(`Adding ${newOldMessages.length} older messages to the beginning`);
+            console.log(`📝 [loadMessages] Adding ${newOldMessages.length} older messages to the beginning`);
             // Tin nhắn cũ hơn được thêm vào đầu array
             return [...newOldMessages, ...prevMessages];
           });
         } else {
           setMessages(sortedMessages);
-          setPage(1); // Reset page khi load lần đầu
         }
 
         // Lưu vào storage (chỉ lưu khi không append để tránh duplicate)
@@ -227,16 +264,25 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
 
   // Xử lý load more khi scroll lên trên
   const handleLoadMore = useCallback(() => {
+    const now = Date.now();
+    
     console.log('handleLoadMore called:', { 
       hasChat: !!chat?._id, 
       isLoadingMore, 
       hasMoreMessages,
       chatId: chat?._id,
-      currentPage: page
+      currentPage: page,
+      timeSinceLastCall: now - lastLoadMoreCall.current
     });
     
+    // Debounce: Ignore calls within 1000ms of the last call
+    if (now - lastLoadMoreCall.current < 1000) {
+      console.log('⏱️ Debounced handleLoadMore call - too soon');
+      return;
+    }
+    
     if (!chat?._id || isLoadingMore || !hasMoreMessages) {
-      console.log('Skip handleLoadMore:', { 
+      console.log('❌ Skip handleLoadMore:', { 
         hasChat: !!chat?._id, 
         isLoadingMore, 
         hasMoreMessages 
@@ -244,10 +290,36 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
       return;
     }
     
-    console.log('Loading more messages, current page:', page);
-    const nextPage = page + 1;
-    setPage(nextPage);
-    loadMessages(chat._id, nextPage, true);
+    // Update last call time
+    lastLoadMoreCall.current = now;
+    
+    // Clear any existing timeout
+    if (loadMoreTimeoutRef.current) {
+      clearTimeout(loadMoreTimeoutRef.current);
+      loadMoreTimeoutRef.current = null;
+    }
+    
+    // Lưu chatId để tránh stale closure
+    const chatId = chat._id;
+    
+    console.log('✅ Processing handleLoadMore for chatId:', chatId, 'current page:', page);
+    
+    // Set loading state immediately
+    setIsLoadingMore(true);
+    
+    // Sử dụng functional update để đảm bảo luôn có giá trị page mới nhất
+    setPage(currentPage => {
+      const nextPage = currentPage + 1;
+      console.log('📄 Setting page from', currentPage, 'to', nextPage, 'for chat:', chatId);
+      
+      // Use timeout to ensure state updates are processed
+      loadMoreTimeoutRef.current = setTimeout(() => {
+        console.log('🚀 Actually loading messages for page:', nextPage);
+        loadMessages(chatId, nextPage, true);
+      }, 100);
+      
+      return nextPage;
+    });
   }, [isLoadingMore, hasMoreMessages, chat?._id, page, loadMessages]);
 
   // Cải thiện hàm tryAlternativeEndpoints
@@ -774,6 +846,16 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
     }
   }, [chat?._id, checkServerHealth]);
 
+  // Cleanup timeout when component unmounts or chat changes
+  useEffect(() => {
+    return () => {
+      if (loadMoreTimeoutRef.current) {
+        clearTimeout(loadMoreTimeoutRef.current);
+        loadMoreTimeoutRef.current = null;
+      }
+    };
+  }, [chat?._id]);
+
   return {
     messages,
     setMessages,
@@ -794,4 +876,4 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
     handleMessageRevoked,
     forceResetLoadingStates
   };
-}; 
+};

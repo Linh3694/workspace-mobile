@@ -356,9 +356,6 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                     setChat(chatData);
                     chatIdRef.current = routeChatId;
 
-                    // Load tin nhắn từ server
-                    await messageOps.loadMessages(routeChatId);
-
                     // Lấy tin nhắn đã ghim
                     await fetchPinnedMessages(routeChatId);
                 } else {
@@ -388,9 +385,6 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                             setChat(chatData);
                             chatIdRef.current = chatData._id;
 
-                            // Load tin nhắn từ server (nếu có)
-                            await messageOps.loadMessages(chatData._id);
-
                             // Lấy tin nhắn đã ghim
                             await fetchPinnedMessages(chatData._id);
                         } else {
@@ -407,7 +401,15 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
         };
 
         fetchData();
-    }, [chatPartner._id, routeChatId, currentUserId, messageOps.loadMessages]);
+    }, [chatPartner._id, routeChatId, currentUserId]); // Removed messageOps.loadMessages to prevent reload loop
+
+    // Separate useEffect to load messages when chat is available
+    useEffect(() => {
+        if (chat?._id && currentUserId) {
+            console.log('🔄 [ChatDetailScreen] Loading initial messages for chat:', chat._id);
+            messageOps.loadMessages(chat._id);
+        }
+    }, [chat?._id, currentUserId]); // Only depend on chat._id and currentUserId
 
     // Optimized real-time online/offline status tracking
     useEffect(() => {
@@ -1485,16 +1487,17 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                                     renderItem={renderItem}
                                     contentContainerStyle={{
                                         paddingVertical: 10,
-                                        paddingHorizontal: 12,
+                                        paddingHorizontal: 8,
                                         paddingBottom: keyboardVisible ? 10 : (insets.bottom + 50),
+                                        flexGrow: 1,
                                     }}
                                     removeClippedSubviews={true}
                                     maxToRenderPerBatch={20}
                                     windowSize={21}
                                     updateCellsBatchingPeriod={100}
                                     initialNumToRender={25}
-                                    onEndReachedThreshold={0.1}
-                                    onEndReached={messageOps.handleLoadMore}
+                                    onEndReachedThreshold={0.3}
+                                    onEndReached={messageOps.hasMoreMessages ? messageOps.handleLoadMore : undefined}
                                     legacyImplementation={false}
                                     onScrollToIndexFailed={(info) => {
                                         console.warn('📱 ScrollToIndex failed:', info);

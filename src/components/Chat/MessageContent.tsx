@@ -1,7 +1,7 @@
 // components/MessageContent.tsx
 import React from 'react';
 // @ts-ignore
-import { View, Text, Image, TouchableOpacity } from 'react-native';
+import { View, Text, Image, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ImageGrid from './ImageGrid';
 import { Message } from '../../types/chat';
@@ -105,11 +105,15 @@ const MessageContent: React.FC<MessageContentProps> = ({
                         fontFamily: 'Mulish-SemiBold',
                         fontSize: 16,
                         lineHeight: 22,
-                        flexWrap: 'wrap',
-                        textAlign: 'left'
+                        textAlign: 'left',
+                        alignSelf: 'flex-start',
+                        maxWidth: '100%',
                     }}
-                    numberOfLines={isPreview ? 1 : undefined}
-                    ellipsizeMode={isPreview ? 'tail' : undefined}
+                    ellipsizeMode="tail"
+                    allowFontScaling={false}
+                    adjustsFontSizeToFit={false}
+                    selectable={false}
+                    
                 >
                     {message.content}
                 </Text>

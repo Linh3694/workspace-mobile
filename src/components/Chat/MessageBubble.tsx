@@ -1,6 +1,6 @@
 import React, { memo, useMemo, useRef, useEffect } from 'react';
 // @ts-ignore
-import { View, Text, Image, TouchableOpacity, Animated, Pressable, Linking, StyleSheet, ImageSourcePropType } from 'react-native';
+import { View, Text, Image, TouchableOpacity, Animated, Pressable, Linking, StyleSheet, ImageSourcePropType, Platform } from 'react-native';
 import { Message, Chat } from '../../types/message';
 import { CustomEmoji } from '../../types/chat';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -64,15 +64,19 @@ const ForwardedLabel = ({ message, isMe }: { message: Message, isMe: boolean }) 
 
 const styles = StyleSheet.create({
     container: {
-        width: '100%',
+        width: '50%',
     },
     bubble: {
         backgroundColor: 'transparent',
         alignSelf: 'flex-start' as const,
-        maxWidth: '85%',
+        maxWidth: '0%',
         paddingHorizontal: 14,
         paddingVertical: 8,
         borderRadius: 20,
+        minWidth: 48,
+        flexShrink: 1,
+        flex: 0,
+        flexWrap: 'nowrap' as const,
     }
 });
 
@@ -149,21 +153,25 @@ const MessageBubble = memo(({
     // Tính toán style cho bubble
     const getBubbleStyle = () => {
         // Only treat actual images and multi-image messages as media content
-        const isMediaContent = message.type === 'image' || message.type === 'multiple-images';        
+        const isMediaContent = message.type === 'image' || message.type === 'multiple-images';
+        
+        // Kiểm tra nếu là tin nhắn reply hoặc forward thì bo tất cả góc 20
+        const isReplyOrForward = message.replyTo || message.isForwarded === true;
+        
         return {
-            ...styles.bubble,
             backgroundColor: isMediaContent ? 'transparent' : (isMe ? '#009483' : '#F5F5ED'),
             paddingHorizontal: isMediaContent ? 20 : 14,
             paddingVertical: isMediaContent ? 8 : 8,
-            borderTopLeftRadius: isMe ? 20 : (isLast ? 20 : 4),
-            borderTopRightRadius: isMe ? (isLast ? 20 : 4) : 20,
-            borderBottomRightRadius: isMe ? (isFirst ? 20 : 4) : 20,
-            borderBottomLeftRadius: isMe ? 20 : (isFirst ? 20 : 4),
-            minWidth: 48,
+            borderTopLeftRadius: isReplyOrForward ? 20 : (isMe ? 20 : (isLast ? 20 : 4)),
+            borderTopRightRadius: isReplyOrForward ? 20 : (isMe ? (isLast ? 20 : 4) : 20),
+            borderBottomRightRadius: isReplyOrForward ? 20 : (isMe ? (isFirst ? 20 : 4) : 20),
+            borderBottomLeftRadius: isReplyOrForward ? 20 : (isMe ? 20 : (isFirst ? 20 : 4)),
             minHeight: 36,
+            minWidth: 40,
+            maxWidth: '75%',
             alignSelf: isMe ? 'flex-end' : 'flex-start',
-            justifyContent: 'center' as const,
-            alignItems: 'center' as const,
+            justifyContent: 'flex-start' as const,
+            alignItems: 'flex-start' as const,
         };
     };
 
@@ -232,96 +240,6 @@ const MessageBubble = memo(({
         />;
     };
 
-    // Xử lý trạng thái tin nhắn
-    const renderMessageStatus = () => {
-        if (!isMe || !isLatestMessage) return null;
-
-        // Nếu chưa gửi hoặc đang gửi (không có _id)
-        if (!message._id) {
-            return (
-                <>
-                    <Text style={{
-                        color: '#757575',
-                        fontSize: 12,
-                        fontFamily: 'Mulish-Regular',
-                        marginRight: 4
-                    }}>
-                        Đang gửi
-                    </Text>
-                    <MaterialCommunityIcons name="clock-outline" size={16} color="#757575" />
-                </>
-            );
-        }
-
-        // Lấy danh sách người tham gia trừ người gửi
-        const otherParticipants = chat?.participants
-            ?.filter(user => user._id !== currentUserId)
-            ?.map(user => user._id) || [];
-
-        // Đảm bảo readBy là một mảng
-        const readByArray = Array.isArray(message.readBy) ? [...message.readBy] : [];
-
-        // Lọc ra ID của người đã đọc, không tính người gửi
-        const readByOthers = readByArray.filter(id =>
-            id !== currentUserId && otherParticipants.includes(id)
-        );
-
-        // Kiểm tra xem tất cả người tham gia khác đã đọc chưa
-        const allParticipantsRead = otherParticipants.length > 0 &&
-            otherParticipants.every(participantId => readByArray.includes(participantId));
-
-        // Nếu tất cả đã đọc hoặc có người đã đọc
-        if (allParticipantsRead || readByOthers.length > 0) {
-            return (
-                <>
-                    <Text style={{
-                        color: '#009483',
-                        fontSize: 12,
-                        fontFamily: 'Mulish-Regular',
-                        marginRight: 4
-                    }}>
-                        Đã xem
-                    </Text>
-                    <MaterialCommunityIcons name="check-all" size={16} color="#009483" />
-                </>
-            );
-        }
-
-        // Kiểm tra xem tin nhắn đã được nhận chưa (delivered)
-        const isDelivered = message._id && otherParticipants.length > 0;
-        
-        if (isDelivered) {
-            return (
-                <>
-                    <Text style={{
-                        color: '#757575',
-                        fontSize: 12,
-                        fontFamily: 'Mulish-Regular',
-                        marginRight: 4
-                    }}>
-                        Đã nhận
-                    </Text>
-                    <MaterialCommunityIcons name="check-all" size={16} color="#757575" />
-                </>
-            );
-        }
-
-        // Mặc định là đã gửi
-        return (
-            <>
-                <Text style={{
-                    color: '#757575',
-                    fontSize: 12,
-                    fontFamily: 'Mulish-Regular',
-                    marginRight: 4
-                }}>
-                    Đã gửi
-                </Text>
-                <MaterialCommunityIcons name="check" size={16} color="#757575" />
-            </>
-        );
-    };
-
     // Render footer cho tin nhắn
     const renderMessageFooter = () => {
         if (!showTime) return null;
@@ -351,7 +269,13 @@ const MessageBubble = memo(({
                     </Text>
                 )}
                 {isMe && (
-                    <MessageStatus message={message} currentUserId={currentUserId} chat={chat} />
+                    <MessageStatus 
+                        message={message} 
+                        currentUserId={currentUserId} 
+                        chat={chat} 
+                        showText={true}
+                        iconColor="#757575"
+                    />
                 )}
             </View>
         );
@@ -403,14 +327,16 @@ const MessageBubble = memo(({
                                 </View>
                         ) : (
                             // Container chứa cả reply và bubble tin nhắn
-                            <View style={{
+                            <View className ="w-full"
+                             style={{
                                 flexDirection: 'column',
                                 paddingTop: 1,
                                 paddingBottom: 1,
                                 paddingLeft: isMe ? 0 : 8,
-                                         paddingRight: isMe ? 8 : 0,
-                                        alignSelf: isMe ? 'flex-end' : 'flex-start',
-                                        alignItems: isMe ? 'flex-end' : 'flex-start',
+                                paddingRight: isMe ? 8 : 0,
+                                alignSelf: isMe ? 'flex-end' : 'flex-start',
+                                alignItems: isMe ? 'flex-end' : 'flex-start',
+                   
                             }}>
                                 {/* Preview tin nhắn reply */}
                                 {message.replyTo && (
@@ -482,12 +408,17 @@ const MessageBubble = memo(({
                                                         color: isMe ? '#757575' : 'white',
                                                         fontFamily: 'Mulish-Regular',
                                                         textAlign: isMe ? 'right' : 'left',
-                                                        flexWrap: 'wrap',
                                                         flexShrink: 1,
                                                         marginTop: 4
                                                     }}
                                                     numberOfLines={3}
                                                     ellipsizeMode="tail"
+                                                    allowFontScaling={false}
+                                                    adjustsFontSizeToFit={false}
+                                                    {...(Platform.OS === 'android' && {
+                                                        textBreakStrategy: 'simple',
+                                                        includeFontPadding: false,
+                                                    })}
                                                 >
                                                     {message.replyTo.content}
                                                 </Text>
@@ -585,18 +516,15 @@ const MessageBubble = memo(({
                                         </View>
                                     </View>
                                 ) : (
-                                    // Original bubble (non-forwarded)
+                                    // Normal messages - Apply row layout without breaking existing structure
                                     <View style={getBubbleStyle()}>
                                         <View style={{ position: 'relative' }}>
-                                            {/* Nội dung chính */}
                                             {renderMessageContent()}
-                                            {/* Reactions */}
                                             {(message.reactions && message.reactions.length > 0) ? (
                                                 <View style={{
                                                     position: 'absolute',
                                                     bottom: -20,
                                                     alignSelf: isMe ? 'flex-end' : 'flex-start',
-                                                    
                                                     flexDirection: 'row',
                                                     backgroundColor: 'white',
                                                     borderRadius: 12,
@@ -641,7 +569,13 @@ const MessageBubble = memo(({
                                         flexDirection: 'row',
                                         alignItems: 'center'
                                     }}>
-                                        {renderMessageStatus()}
+                                        <MessageStatus 
+                                            message={message} 
+                                            currentUserId={currentUserId} 
+                                            chat={chat} 
+                                            showText={true}
+                                            iconColor="#757575"
+                                        />
                                     </View>
                                 )}
                                 {/* Footer với thời gian và trạng thái online */}
