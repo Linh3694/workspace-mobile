@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, SafeAreaView, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, SafeAreaView, TouchableOpacity, ActivityIndicator, Platform, Modal, FlatList } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
@@ -9,9 +9,8 @@ import { API_BASE_URL } from '../../config/constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import TicketInformation from './components/TicketInformation';
 import TicketProcessing from './components/TicketProcessing';
-import TicketChat from './components/TicketChat';
+import TicketGroupChat from './components/TicketGroupChat';
 import TicketHistory from './components/TicketHistory';
-import { Modal, FlatList } from 'react-native';
 import SelectModal from '../../components/SelectModal';
 import InputModal from '../../components/InputModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -105,7 +104,7 @@ const TicketAdminDetail = () => {
                 );
             case 'chat':
                 return (
-                    <TicketChat ticketId={ticketId} />
+                    <TicketGroupChat ticketId={ticketId} />
                 );
             case 'history':
                 return (

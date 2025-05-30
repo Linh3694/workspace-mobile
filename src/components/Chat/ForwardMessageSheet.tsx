@@ -14,7 +14,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '../../types/user';
-import { Message } from '../../types/chat';
+import { Message } from '../../types/message';
 import { API_BASE_URL } from '../../config/constants';
 import Avatar from './Avatar';
 import MessageContent from './MessageContent';

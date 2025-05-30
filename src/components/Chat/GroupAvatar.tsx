@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 // @ts-ignore
 import { View, Text, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import type { User } from '../../types/message';
 import { getAvatar } from '../../utils/avatar';
+import { processImageUrl } from '../../utils/image';
+import TicketIcon from '../../assets/ticket-icon.svg';
 
 interface GroupAvatarProps {
   size: number;
@@ -20,15 +22,50 @@ const GroupAvatar: React.FC<GroupAvatarProps> = ({
   currentUserId,
   style
 }) => {
-  // Nếu có group avatar, hiển thị nó
-  if (groupAvatar) {
+  const [imageError, setImageError] = useState(false);
+
+  // Nếu có group avatar và chưa có lỗi, hiển thị nó
+  if (groupAvatar && !imageError) {
+    // Xử lý đặc biệt cho ticket-icon.svg
+    if (groupAvatar === 'ticket-icon.svg') {
+      return (
+        <View 
+          className="relative overflow-hidden items-center justify-center"
+          style={[{ width: size, height: size }, style]}
+        >
+          <TicketIcon width={size} height={size} />
+        </View>
+      );
+    }
+    
+    // Xử lý đặc biệt cho ticket.svg (nếu có)
+    if (groupAvatar === 'ticket.svg') {
+      return (
+        <View 
+          className="relative overflow-hidden items-center justify-center"
+          style={[{ width: size, height: size }, style]}
+        >
+          <TicketIcon width={size} height={size} />
+        </View>
+      );
+    }
+    
     return (
       <View className="relative overflow-hidden" style={[{ width: size, height: size }, style]}>
         <Image
-          source={{ uri: groupAvatar }}
+          source={{ uri: processImageUrl(groupAvatar) }}
           className="rounded-full"
           style={{ width: size, height: size, borderRadius: size / 2 }}
           resizeMode="cover"
+          onError={(error) => {
+            console.error('🖼️ [GroupAvatar] Group avatar load error:', error.nativeEvent.error);
+            console.error('🖼️ [GroupAvatar] Attempted URL:', processImageUrl(groupAvatar));
+            setImageError(true);
+          }}
+          onLoad={() => {
+            console.log('🖼️ [GroupAvatar] Group avatar loaded successfully:', processImageUrl(groupAvatar));
+            setImageError(false);
+          }}
         />
       </View>
     );

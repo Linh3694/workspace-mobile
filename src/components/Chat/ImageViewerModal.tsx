@@ -1,4 +1,5 @@
 import React from 'react';
+// @ts-ignore
 import { View, Text, TouchableOpacity, Platform, Dimensions, Modal } from 'react-native';
 import ImageViewer from 'react-native-image-zoom-viewer';
 import { API_BASE_URL } from '../../config/constants';

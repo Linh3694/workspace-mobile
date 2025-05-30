@@ -8,7 +8,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../../config/constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import TicketInformation from './components/TicketInformation';
-import TicketChat from './components/TicketChat';
+import TicketGroupChat from './components/TicketGroupChat';
 import TicketHistory from './components/TicketHistory';
 import TicketProcessingGuest from './components/TicketProcessingGuest';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -71,7 +71,9 @@ const TicketGuestDetail = () => {
             case 'processing':
                 return <TicketProcessingGuest ticketId={ticketId} />;
             case 'chat':
-                return <TicketChat ticketId={ticketId} />;
+                return (
+                    <TicketGroupChat ticketId={ticketId} />
+                );
             case 'history':
                 return <TicketHistory ticketId={ticketId} />;
             default:

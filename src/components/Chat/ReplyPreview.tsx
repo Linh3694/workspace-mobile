@@ -1,8 +1,9 @@
 import React from 'react';
+// @ts-ignore
 import { View, Text, Image, TouchableOpacity } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { Message } from '../../types/chat';
+import { Message } from '../../types/message';
 import { API_BASE_URL } from '../../config/constants';
 import { processImageUrl } from '../../utils/image';
 import MessageContent from './MessageContent';
@@ -34,19 +35,21 @@ export const ReplyPreview: React.FC<ReplyPreviewProps> = ({ message, onCancel })
             position: 'relative'
         }}>
             {/* Thêm BlurView */}
-            <BlurView
-                intensity={8}
-                tint="default"
-                style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    borderTopLeftRadius: 16,
-                    borderTopRightRadius: 16,
-                }}
-            />
+            <View style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                borderTopLeftRadius: 16,
+                borderTopRightRadius: 16,
+            }}>
+                {/* @ts-ignore */}
+                <BlurView
+                    intensity={8}
+                    tint="default"
+                />
+            </View>
 
             <View style={{
                 width: 3,
@@ -94,7 +97,15 @@ export const ReplyPreview: React.FC<ReplyPreviewProps> = ({ message, onCancel })
                     </View>
                 )}
                 {!isImage && !isMultipleImages && !isFile && (
-                    <MessageContent message={message} isPreview={true} />
+                    <MessageContent 
+                        message={message} 
+                        isPreview={true}
+                        textStyle={{
+                            fontSize: 14,
+                            fontStyle: 'italic',
+                            fontFamily: 'Mulish-Italic',
+                        }}
+                    />
                 )}
             </View>
 

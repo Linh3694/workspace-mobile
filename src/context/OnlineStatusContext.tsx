@@ -26,7 +26,8 @@ interface OnlineStatusContextType {
     isSocketConnected: boolean;
 }
 
-const OnlineStatusContext = createContext<OnlineStatusContextType>({
+// Initialize the context with default values
+export const OnlineStatusContext = createContext<OnlineStatusContextType>({
     onlineUsers: {},
     currentUserId: null,
     isUserOnline: () => false,
@@ -37,6 +38,25 @@ const OnlineStatusContext = createContext<OnlineStatusContextType>({
 });
 
 export const useOnlineStatus = () => useContext(OnlineStatusContext);
+
+// Helper function để tạo Date object an toàn
+const createSafeDate = (value: any): Date | null => {
+    try {
+        if (!value) return null;
+        
+        // Nếu đã là Date object
+        if (value instanceof Date) {
+            return isNaN(value.getTime()) ? null : value;
+        }
+        
+        // Nếu là string hoặc number
+        const date = new Date(value);
+        return isNaN(date.getTime()) ? null : date;
+    } catch (error) {
+        console.warn('Invalid date value:', value, error);
+        return null;
+    }
+};
 
 // Hàm để lấy trạng thái online từ Redis cache
 const fetchOnlineStatusFromCache = async (userId: string): Promise<{ isOnline: boolean; lastSeen?: Date } | null> => {
@@ -61,7 +81,7 @@ const fetchOnlineStatusFromCache = async (userId: string): Promise<{ isOnline: b
         const data = await response.json();
         return {
             isOnline: data.isOnline,
-            lastSeen: data.lastSeen ? new Date(data.lastSeen) : undefined
+            lastSeen: data.lastSeen ? createSafeDate(data.lastSeen) : undefined
         };
     } catch (error) {
         console.error('Error fetching online status from cache:', error);
@@ -119,7 +139,9 @@ export const OnlineStatusProvider: React.FC<{ children: React.ReactNode }> = ({ 
         if (userStatus.isOnline) return 'Đang hoạt động';
         if (!userStatus.lastSeen) return 'Offline';
 
-        const lastSeen = new Date(userStatus.lastSeen);
+        const lastSeen = createSafeDate(userStatus.lastSeen);
+        if (!lastSeen) return 'Offline';
+        
         const now = new Date();
         const diffMs = now.getTime() - lastSeen.getTime();
         const diffMins = Math.floor(diffMs / 60000);
@@ -372,12 +394,18 @@ export const OnlineStatusProvider: React.FC<{ children: React.ReactNode }> = ({ 
             // Lắng nghe thông tin last seen
             socketRef.current.on('userLastSeen', ({ userId, lastSeen }: { userId: string, lastSeen: string }) => {
                 try {
+                    const safeLastSeen = createSafeDate(lastSeen);
                     updateOnlineStatus(userId, {
                         isOnline: false,
-                        lastSeen: new Date(lastSeen)
+                        lastSeen: safeLastSeen || new Date() // Fallback to current time if invalid
                     });
                 } catch (error) {
                     console.error('Error handling userLastSeen event:', error);
+                    // Fallback với current time
+                    updateOnlineStatus(userId, {
+                        isOnline: false,
+                        lastSeen: new Date()
+                    });
                 }
             });
 

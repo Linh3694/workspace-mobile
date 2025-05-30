@@ -79,6 +79,17 @@ export const useSocket = ({
         // Chỉ join chat room, không emit userOnline vì đã có OnlineStatusContext handle
         socket.emit('joinChat', chatId);
         
+        // Tự động đánh dấu các tin nhắn hiện có là đã đọc khi mở chat
+        if (isScreenActive && currentUserId) {
+          setTimeout(() => {
+            socket.emit('messageRead', {
+              userId: currentUserId,
+              chatId: chatId,
+              timestamp: new Date().toISOString()
+            });
+          }, 500);
+        }
+        
         // Check online status của partner
         socket.emit('checkUserStatus', { userId: chatPartner._id });
       });
@@ -118,17 +129,32 @@ export const useSocket = ({
 
         // Auto-mark as read if screen is active and message is not from me
         if (isScreenActive && newMessage.sender._id !== currentUserId) {
+          // Emit messageRead ngay lập tức
+          socket.emit('messageRead', {
+            userId: currentUserId,
+            chatId: chatId,
+            timestamp: new Date().toISOString()
+          });
+          
+          // Backup với API call sau delay ngắn để đảm bảo
           setTimeout(async () => {
             const token = await AsyncStorage.getItem('authToken');
             if (token && currentUserId) {
-              // Call markMessagesAsRead from message operations
-              socket.emit('messageRead', {
-                userId: currentUserId,
-                chatId: chatId,
-                timestamp: new Date().toISOString()
-              });
+              try {
+                await fetch(`${API_BASE_URL}/api/chats/messages/${chatId}/read`, {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({ userId: currentUserId })
+                });
+                console.log('💬 [Socket] Backup API call completed');
+              } catch (error) {
+                console.error('💬 [Socket] Backup API call failed:', error);
+              }
             }
-          }, 1000);
+          }, 100);
         }
       });
 

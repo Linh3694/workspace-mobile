@@ -8,6 +8,7 @@ import { Entypo } from '@expo/vector-icons';
 import { API_BASE_URL } from '../../config/constants';
 import ImageGrid from './ImageGrid';
 import MessageStatus from './MessageStatus';
+import GroupMessageStatus from './GroupMessageStatus';
 import { processImageUrl } from '../../utils/image';
 import { useOnlineStatus } from '../../context/OnlineStatusContext';
 import Avatar from './Avatar';
@@ -100,8 +101,8 @@ const MessageBubble = memo(({
     onReplyPress,
     highlightedMessageId
 }: MessageBubbleProps) => {
-    const isMe = currentUserId && message.sender._id === currentUserId;
-    
+    const isMe = currentUserId && message.sender._id === currentUserId;    
+
     // Memoize emoji lookup
     const emoji = useMemo(() => 
         customEmojis.find(e => e.code === message.content), 
@@ -123,22 +124,22 @@ const MessageBubble = memo(({
                 Animated.timing(highlightAnim, {
                     toValue: 1,
                     duration: 300,
-                    useNativeDriver: false,
+                    useNativeDriver: true,
                 }),
                 Animated.timing(highlightAnim, {
                     toValue: 0,
                     duration: 300,
-                    useNativeDriver: false,
+                    useNativeDriver: true,
                 }),
                 Animated.timing(highlightAnim, {
                     toValue: 1,
                     duration: 300,
-                    useNativeDriver: false,
+                    useNativeDriver: true,
                 }),
                 Animated.timing(highlightAnim, {
                     toValue: 0,
                     duration: 500,
-                    useNativeDriver: false,
+                    useNativeDriver: true,
                 })
             ]).start();
         }
@@ -160,7 +161,7 @@ const MessageBubble = memo(({
         
         return {
             backgroundColor: isMediaContent ? 'transparent' : (isMe ? '#009483' : '#F5F5ED'),
-            paddingHorizontal: isMediaContent ? 20 : 14,
+            paddingHorizontal: isMediaContent ? 0 : 14,
             paddingVertical: isMediaContent ? 8 : 8,
             borderTopLeftRadius: isReplyOrForward ? 20 : (isMe ? 20 : (isLast ? 20 : 4)),
             borderTopRightRadius: isReplyOrForward ? 20 : (isMe ? (isLast ? 20 : 4) : 20),
@@ -240,47 +241,6 @@ const MessageBubble = memo(({
         />;
     };
 
-    // Render footer cho tin nhắn
-    const renderMessageFooter = () => {
-        if (!showTime) return null;
-
-        return (
-            <View style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                marginTop: 4,
-                marginRight: 4
-            }}>
-                <Text style={{
-                    color: '#757575',
-                    fontSize: 12,
-                    fontFamily: 'Mulish-Regular',
-                    marginRight: 4
-                }}>
-                    {formatMessageTime(message.createdAt)}
-                </Text>
-                {!isMe && (
-                    <Text style={{
-                        color: '#757575',
-                        fontSize: 12,
-                        fontFamily: 'Mulish-Regular'
-                    }}>
-                        • {isUserOnline(message.sender._id) ? 'Đang hoạt động' : getFormattedLastSeen(message.sender._id)}
-                    </Text>
-                )}
-                {isMe && (
-                    <MessageStatus 
-                        message={message} 
-                        currentUserId={currentUserId} 
-                        chat={chat} 
-                        showText={true}
-                        iconColor="#757575"
-                    />
-                )}
-            </View>
-        );
-    };
-
     return (
         <View>
             <Pressable
@@ -296,16 +256,28 @@ const MessageBubble = memo(({
                             alignItems: 'flex-end',
                             marginBottom: (message.reactions && message.reactions.length > 0) ? 12 : 2,
                             transform: [{ scale: messageScaleAnim }],
-                            backgroundColor: highlightAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: ['transparent', 'rgba(0, 148, 131, 0.15)']
-                            }),
                             borderRadius: isHighlighted ? 8 : 0,
                             paddingHorizontal: isHighlighted ? 4 : 0,
                             paddingVertical: isHighlighted ? 2 : 0,
                         }
                     ]}
                 >
+                    {/* Highlight overlay */}
+                    {isHighlighted && (
+                        <Animated.View
+                            style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                backgroundColor: 'rgba(0, 148, 131, 0.15)',
+                                borderRadius: 8,
+                                opacity: highlightAnim,
+                            }}
+                        />
+                    )}
+
                     {showAvatar ? (
                         <View>
                             <Avatar user={message.sender} size={36} statusSize={12} />
@@ -350,10 +322,13 @@ const MessageBubble = memo(({
                                         paddingHorizontal: 10,
                                         elevation: 1,
                                         alignItems: isMe ? 'flex-end' : 'flex-start',
-                                        minHeight: 40,
+                                        minHeight: 30,
                                     }}>
                                         <TouchableOpacity
-                                            onPress={() => onReplyPress?.(message.replyTo)}
+                                            onPress={() => {
+                                                console.log('🔍 [MessageBubble] Reply preview pressed:', message.replyTo);
+                                                onReplyPress?.(message.replyTo);
+                                            }}
                                             style={{
                                                 flexDirection: 'column',
                                                 alignItems: isMe ? 'flex-end' : 'flex-start',
@@ -407,11 +382,11 @@ const MessageBubble = memo(({
                                                         fontSize: 14,
                                                         color: isMe ? '#757575' : 'white',
                                                         fontFamily: 'Mulish-Regular',
-                                                        textAlign: isMe ? 'right' : 'left',
+                                                        textAlign: isMe ? 'left' : 'right',
                                                         flexShrink: 1,
-                                                        marginTop: 4
+                                                        maxWidth: '85%',
                                                     }}
-                                                    numberOfLines={3}
+                                                    
                                                     ellipsizeMode="tail"
                                                     allowFontScaling={false}
                                                     adjustsFontSizeToFit={false}
@@ -569,17 +544,96 @@ const MessageBubble = memo(({
                                         flexDirection: 'row',
                                         alignItems: 'center'
                                     }}>
-                                        <MessageStatus 
-                                            message={message} 
-                                            currentUserId={currentUserId} 
-                                            chat={chat} 
-                                            showText={true}
-                                            iconColor="#757575"
-                                        />
+                                        {/* Debug logging - chỉ log khi cần thiết */}
+                                        {(() => {
+                                            // Chỉ log khi có vấn đề với readBy
+                                            if (!message.readBy || message.readBy.length === 0) {
+                                                console.log('🔍 [MessageBubble] No readBy data:', {
+                                                    messageId: message._id,
+                                                    readBy: message.readBy,
+                                                    isMe,
+                                                    currentUserId,
+                                                    messageSenderId: message.sender._id
+                                                });
+                                            }
+                                            return null;
+                                        })()}
+                                        
+                                        {/* Kiểm tra xem có người đã đọc tin nhắn không */}
+                                        {(() => {
+                                            const isGroupChat = chat?.isGroup === true || (chat?.participants && chat.participants.length > 2);
+                                            
+                                            // Đối với group chat, kiểm tra xem có người đã đọc không
+                                            if (isGroupChat) {
+                                                const otherParticipants = chat?.participants?.filter(user => user._id !== currentUserId) || [];
+                                                const readByArray = Array.isArray(message.readBy) ? message.readBy : [];
+                                                const usersWhoRead = otherParticipants.filter(user => readByArray.includes(user._id));
+                                                
+                                                // Nếu có người đã đọc, chỉ hiển thị status (không hiển thị thời gian)
+                                                if (usersWhoRead.length > 0) {
+                                                    return (
+                                                        <GroupMessageStatus 
+                                                            message={message} 
+                                                            currentUserId={currentUserId} 
+                                                            chat={chat} 
+                                                            showText={false}
+                                                            iconColor="#757575"
+                                                        />
+                                                    );
+                                                }
+                                            } else {
+                                                // Đối với chat 1-1, kiểm tra partner đã đọc chưa
+                                                const readByArray = Array.isArray(message.readBy) ? message.readBy : [];
+                                                const otherParticipants = chat?.participants?.filter(user => user._id !== currentUserId) || [];
+                                                const hasBeenRead = otherParticipants.some(user => readByArray.includes(user._id));
+                                                
+                                                // Nếu đã được đọc, chỉ hiển thị status (không hiển thị thời gian)
+                                                if (hasBeenRead) {
+                                                    return (
+                                                        <MessageStatus 
+                                                            message={message} 
+                                                            currentUserId={currentUserId} 
+                                                            chat={chat} 
+                                                            showText={false}
+                                                            iconColor="#757575"
+                                                        />
+                                                    );
+                                                }
+                                            }
+                                            
+                                            // Nếu chưa được đọc, hiển thị thời gian + status
+                                            return (
+                                                <>
+                                                    <Text style={{
+                                                        color: '#757575',
+                                                        fontSize: 12,
+                                                        fontFamily: 'Mulish-Regular',
+                                                        marginRight: 4
+                                                    }}>
+                                                        {formatMessageTime(message.createdAt)}
+                                                    </Text>
+                                                    {isGroupChat ? (
+                                                        <GroupMessageStatus 
+                                                            message={message} 
+                                                            currentUserId={currentUserId} 
+                                                            chat={chat} 
+                                                            showText={false}
+                                                            iconColor="#757575"
+                                                        />
+                                                    ) : (
+                                                        <MessageStatus 
+                                                            message={message} 
+                                                            currentUserId={currentUserId} 
+                                                            chat={chat} 
+                                                            showText={false}
+                                                            iconColor="#757575"
+                                                        />
+                                                    )}
+                                                </>
+                                            );
+                                        })()}
                                     </View>
                                 )}
-                                {/* Footer với thời gian và trạng thái online */}
-                                {renderMessageFooter()}
                             </View>
                         )
                     )}

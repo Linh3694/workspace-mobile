@@ -2,9 +2,10 @@ import React from 'react';
 // @ts-ignore
 import { View, Text } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Message, Chat } from '../../types/message';
+import { Message, Chat, User } from '../../types/message';
+import Avatar from './Avatar';
 
-interface MessageStatusProps {
+interface GroupMessageStatusProps {
     message: Message;
     currentUserId: string | null;
     chat: Chat | null;
@@ -12,7 +13,7 @@ interface MessageStatusProps {
     showText?: boolean;
 }
 
-const MessageStatus: React.FC<MessageStatusProps> = ({
+const GroupMessageStatus: React.FC<GroupMessageStatusProps> = ({
     message,
     currentUserId,
     chat,
@@ -20,7 +21,7 @@ const MessageStatus: React.FC<MessageStatusProps> = ({
     showText = false
 }) => {
     // Debug logging
-    console.log('🔍 [MessageStatus] Debug:', {
+    console.log('🔍 [GroupMessageStatus] Debug:', {
         currentUserId,
         messageSenderId: message.sender._id,
         messageId: message._id,
@@ -30,13 +31,13 @@ const MessageStatus: React.FC<MessageStatusProps> = ({
 
     // Chỉ hiển thị status cho tin nhắn của mình
     if (!currentUserId || message.sender._id !== currentUserId) {
-        console.log('🔍 [MessageStatus] Not showing - not my message');
+        console.log('🔍 [GroupMessageStatus] Not showing - not my message');
         return null;
     }
 
     // Nếu chưa gửi hoặc đang gửi (không có _id)
     if (!message._id) {
-        console.log('🔍 [MessageStatus] Showing - sending status');
+        console.log('🔍 [GroupMessageStatus] Showing - sending status');
         return (
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 {showText && (
@@ -56,7 +57,7 @@ const MessageStatus: React.FC<MessageStatusProps> = ({
 
     // Không có chat hoặc không có người tham gia
     if (!chat || !Array.isArray(chat.participants) || chat.participants.length === 0) {
-        console.log('🔍 [MessageStatus] No chat or participants, showing default sent status');
+        console.log('🔍 [GroupMessageStatus] No chat or participants, showing default sent status');
         return (
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 {showText && (
@@ -75,9 +76,7 @@ const MessageStatus: React.FC<MessageStatusProps> = ({
     }
 
     // Lấy danh sách người tham gia trừ người gửi
-    const otherParticipants = chat.participants
-        .filter(user => user._id !== currentUserId)
-        .map(user => user._id);
+    const otherParticipants = chat.participants.filter(user => user._id !== currentUserId);
 
     // Nếu không có người tham gia khác
     if (otherParticipants.length === 0) {
@@ -88,7 +87,7 @@ const MessageStatus: React.FC<MessageStatusProps> = ({
                         color: iconColor,
                         fontSize: 12,
                         fontFamily: 'Mulish-Regular',
-                        marginRight: 12
+                        marginRight: 4
                     }}>
                         Đã gửi
                     </Text>
@@ -101,25 +100,23 @@ const MessageStatus: React.FC<MessageStatusProps> = ({
     // Đảm bảo readBy là một mảng
     const readByArray = Array.isArray(message.readBy) ? [...message.readBy] : [];
 
-    // Lọc ra ID của người đã đọc, không tính người gửi
-    const readByOthers = readByArray.filter(id =>
-        id !== currentUserId && otherParticipants.includes(id)
+    // Lọc ra những người đã đọc tin nhắn (không tính người gửi)
+    const usersWhoRead = otherParticipants.filter(user => 
+        readByArray.includes(user._id)
     );
 
-    console.log('🔍 [MessageStatus] Read status:', {
+    console.log('🔍 [GroupMessageStatus] Read status:', {
         messageId: message._id,
         readByArray,
-        otherParticipants,
-        readByOthers,
-        currentUserId
+        otherParticipants: otherParticipants.map(u => ({ id: u._id, name: u.fullname })),
+        usersWhoRead: usersWhoRead.map(u => ({ id: u._id, name: u.fullname })),
+        usersWhoReadLength: usersWhoRead.length,
+        messageContent: message.content?.substring(0, 30),
+        messageCreatedAt: message.createdAt
     });
 
-    // Kiểm tra xem tất cả người tham gia khác đã đọc chưa
-    const allParticipantsRead = otherParticipants.length > 0 &&
-        otherParticipants.every(participantId => readByArray.includes(participantId));
-
-    // Nếu tất cả đã đọc
-    if (allParticipantsRead) {
+    // Nếu có người đã đọc, hiển thị avatar của họ
+    if (usersWhoRead.length > 0) {
         return (
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 {showText && (
@@ -127,31 +124,58 @@ const MessageStatus: React.FC<MessageStatusProps> = ({
                         color: '#009483',
                         fontSize: 12,
                         fontFamily: 'Mulish-Regular',
-                        marginRight: 4
+                        marginRight: 6
                     }}>
                         Đã xem
                     </Text>
                 )}
-                <MaterialCommunityIcons name="check-all" size={14} color="#009483" />
-            </View>
-        );
-    }
-
-    // Nếu có người đã đọc nhưng không phải tất cả
-    if (readByOthers.length > 0) {
-        return (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                {showText && (
-                    <Text style={{
-                        color: '#009483',
-                        fontSize: 12,
-                        fontFamily: 'Mulish-Regular',
-                        marginRight: 4
-                    }}>
-                        Đã xem
-                    </Text>
-                )}
-                <MaterialCommunityIcons name="check-all" size={14} color="#009483" />
+                <View style={{ 
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginLeft: showText ? 0 : 4
+                }}>
+                    {usersWhoRead.slice(0, 3).map((user, index) => (
+                        <View
+                            key={user._id}
+                            style={{
+                                marginLeft: index > 0 ? -8 : 0,
+                                borderWidth: 1,
+                                borderColor: 'white',
+                                borderRadius: 10,
+                                zIndex: usersWhoRead.length - index,
+                                marginTop: 2
+                            }}
+                        >
+                            <Avatar
+                                user={user}
+                                size={20}
+                                statusSize={0}
+                            />
+                        </View>
+                    ))}
+                    {usersWhoRead.length > 3 && (
+                        <View style={{
+                            marginLeft: -8,
+                            width: 16,
+                            height: 16,
+                            borderRadius: 8,
+                            backgroundColor: '#009483',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            borderWidth: 1,
+                            borderColor: 'white',
+                            zIndex: 0
+                        }}>
+                            <Text style={{
+                                color: 'white',
+                                fontSize: 8,
+                                fontFamily: 'Mulish-Bold'
+                            }}>
+                                +{usersWhoRead.length - 3}
+                            </Text>
+                        </View>
+                    )}
+                </View>
             </View>
         );
     }
@@ -196,4 +220,4 @@ const MessageStatus: React.FC<MessageStatusProps> = ({
     );
 };
 
-export default MessageStatus; 
+export default GroupMessageStatus; 

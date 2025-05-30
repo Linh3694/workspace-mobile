@@ -79,6 +79,7 @@ const PinnedMessageBanner = ({ pinnedMessages, onPress, onUnpin }: Props) => {
             <TouchableOpacity
                 style={{ flex: 1 }}
                 onPress={() => onPress(message)}
+                activeOpacity={0.7}
             >
                 <View>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>

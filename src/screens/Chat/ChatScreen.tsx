@@ -8,7 +8,7 @@ import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/nativ
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChatStackParamList } from '../../navigation/ChatStackNavigator';
 import { jwtDecode } from 'jwt-decode';
-import { getSocket } from '../../services/socketService';
+import { getSocket, getGroupSocket } from '../../services/socketService';
 import { useOnlineStatus } from '../../context/OnlineStatusContext';
 import { API_BASE_URL } from '../../config/constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -65,6 +65,7 @@ const ChatScreen = () => {
         parentTabNav?.setOptions({ tabBarStyle: { display: 'none' } });
     };
     const socketRef = useRef<any>(null);
+    const groupSocketRef = useRef<any>(null);
 
     // === Utility to join chat rooms ===
     // We join every chat room so that the screen can receive real‑time
@@ -205,27 +206,29 @@ const ChatScreen = () => {
         });
 
         socketRef.current.on('receiveMessage', (message: any) => {
-            
-            setChats(prevChats => {
-                const chatIndex = prevChats.findIndex(c => c._id === message.chat);
-                
-                if (chatIndex === -1) {
-                    fetchChats(true);
-                    return [...prevChats];
-                }
+            // Chỉ xử lý message từ chat 1-1 (không có isGroup hoặc isGroup = false)
+            if (!message.isGroup) {
+                setChats(prevChats => {
+                    const chatIndex = prevChats.findIndex(c => c._id === message.chat);
+                    
+                    if (chatIndex === -1) {
+                        fetchChats(true);
+                        return [...prevChats];
+                    }
 
-                const newChats = [...prevChats];
-                const chat = newChats[chatIndex];
-                
-                newChats.splice(chatIndex, 1);
-                newChats.unshift({
-                    ...chat,
-                    lastMessage: message,
-                    updatedAt: message.createdAt
+                    const newChats = [...prevChats];
+                    const chat = newChats[chatIndex];
+                    
+                    newChats.splice(chatIndex, 1);
+                    newChats.unshift({
+                        ...chat,
+                        lastMessage: message,
+                        updatedAt: message.createdAt
+                    });
+
+                    return newChats;
                 });
-
-                return newChats;
-            });
+            }
         });
         // Listen for newChat updates
         socketRef.current.on('newChat', (updatedChat: Chat) => {
@@ -274,30 +277,50 @@ const ChatScreen = () => {
         socketRef.current.on('reconnect', () => {
             fetchChats(true);
         });
+    };
+
+    // Setup socket riêng cho GroupChat
+    const setupGroupSocket = async () => {
+        if (!currentUserId || groupSocketRef.current) return;
+        const token = await AsyncStorage.getItem('authToken');
+        if (!token) return;
+
+        groupSocketRef.current = getGroupSocket(token);
+
+        groupSocketRef.current.on('connect', () => {
+            console.log('✅ GroupSocket connected');
+            if (currentUserId) {
+                groupSocketRef.current.emit('joinUserRoom', currentUserId);
+            }
+        });
+
+        groupSocketRef.current.on('disconnect', () => {
+            console.log('🔌 GroupSocket disconnected');
+        });
 
         // =============== GROUP CHAT SOCKET EVENTS ===============
         
         // Group member events
-        socketRef.current.on('addedToGroup', (data: any) => {
+        groupSocketRef.current.on('addedToGroup', (data: any) => {
             fetchChats(true); // Refresh to show new group
             Alert.alert('Thông báo', 'Bạn đã được thêm vào một nhóm mới');
         });
 
-        socketRef.current.on('removedFromGroup', (data: any) => {
+        groupSocketRef.current.on('removedFromGroup', (data: any) => {
             fetchChats(true); // Refresh to remove group from list
             Alert.alert('Thông báo', 'Bạn đã bị xóa khỏi một nhóm');
         });
 
-        socketRef.current.on('groupMembersAdded', (data: any) => {
+        groupSocketRef.current.on('groupMembersAdded', (data: any) => {
             fetchChats(true); // Refresh to update member count
         });
 
-        socketRef.current.on('groupMemberRemoved', (data: any) => {
+        groupSocketRef.current.on('groupMemberRemoved', (data: any) => {
             fetchChats(true); // Refresh to update member count
         });
 
         // Group info updates
-        socketRef.current.on('groupInfoUpdated', (data: any) => {
+        groupSocketRef.current.on('groupInfoUpdated', (data: any) => {
             setChats(prevChats => 
                 prevChats.map(chat => 
                     chat._id === data.chatId 
@@ -308,22 +331,62 @@ const ChatScreen = () => {
         });
 
         // Group admin updates
-        socketRef.current.on('groupAdminUpdated', (data: any) => {
+        groupSocketRef.current.on('groupAdminUpdated', (data: any) => {
             // This would need to update admin status in chat if we store it
         });
 
         // User joined/left group
-        socketRef.current.on('userJoinedGroup', (data: any) => {
+        groupSocketRef.current.on('userJoinedGroup', (data: any) => {
         });
 
-        socketRef.current.on('userLeftGroup', (data: any) => {
+        groupSocketRef.current.on('userLeftGroup', (data: any) => {
+        });
+
+        // Group message events
+        groupSocketRef.current.on('receiveMessage', (message: any) => {
+            // Chỉ xử lý message từ group chat (có isGroup = true)
+            if (message.isGroup) {
+                setChats(prevChats => {
+                    const chatIndex = prevChats.findIndex(c => c._id === message.chat);
+                    
+                    if (chatIndex === -1) {
+                        fetchChats(true);
+                        return [...prevChats];
+                    }
+
+                    const newChats = [...prevChats];
+                    const chat = newChats[chatIndex];
+                    
+                    newChats.splice(chatIndex, 1);
+                    newChats.unshift({
+                        ...chat,
+                        lastMessage: message,
+                        updatedAt: message.createdAt
+                    });
+
+                    return newChats;
+                });
+            }
         });
     };
 
     useEffect(() => {
         if (currentUserId) {
             setupGlobalSocket();
+            setupGroupSocket();
         }
+
+        // Cleanup function khi component unmount
+        return () => {
+            if (socketRef.current) {
+                socketRef.current.disconnect();
+                socketRef.current = null;
+            }
+            if (groupSocketRef.current) {
+                groupSocketRef.current.disconnect();
+                groupSocketRef.current = null;
+            }
+        };
     }, [currentUserId]);
 
     // Function để fetch chats với option force refresh
@@ -752,12 +815,14 @@ const ChatScreen = () => {
                 
                 <View className="flex-1 ml-4">
                     <View className="flex-row items-center">
-                        <Text className={`${hasUnreadMessage ? 'font-bold' : 'font-medium'} text-lg flex-1`} numberOfLines={1}>
+                        {isGroupChat && (
+                            <MaterialIcons name="group" size={16} color="#666" style={{marginRight: 5 }} />
+                        )}
+
+                        <Text className={`${hasUnreadMessage ? 'font-bold' : 'font-medium'} text-lg flex`} numberOfLines={1}>
                             {displayName}
                         </Text>
-                        {isGroupChat && (
-                            <MaterialIcons name="group" size={16} color="#666" style={{ marginLeft: 4 }} />
-                        )}
+                        
                     </View>
                     
                     <View className="flex-row items-center">
@@ -880,8 +945,8 @@ const ChatScreen = () => {
                 )}
             </View>
             
-            <Text className="text-lg font-medium text-gray-900 mt-[5%] ml-[5%]">
-                Trò chuyện
+            <Text className="text-xl font-semibold text-gray-900 mt-[6%] mb-[2%] ml-[5%]">
+               Sảnh tâm sự
             </Text>
             {chats.length === 0 ? (
                 <View className="flex-1 items-center justify-center p-4">

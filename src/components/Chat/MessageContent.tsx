@@ -4,7 +4,7 @@ import React from 'react';
 import { View, Text, Image, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ImageGrid from './ImageGrid';
-import { Message } from '../../types/chat';
+import { Message } from '../../types/message';
 import { processImageUrl } from '../../utils/image';
 
 interface MessageContentProps {
@@ -15,6 +15,7 @@ interface MessageContentProps {
     onLongPress?: (event: any) => void;
     onLongPressOut?: () => void;
     onImagePress?: (images: string[], index: number) => void;
+    textStyle?: any;
 }
 
 const MessageContent: React.FC<MessageContentProps> = ({ 
@@ -24,7 +25,8 @@ const MessageContent: React.FC<MessageContentProps> = ({
     customEmojis = [],
     onLongPress,
     onLongPressOut,
-    onImagePress
+    onImagePress,
+    textStyle
 }) => {
     if (message.isEmoji && typeof message.content === 'string') {
         const emoji = customEmojis.find(e => e.code === message.content || e.name === message.content);
@@ -108,6 +110,7 @@ const MessageContent: React.FC<MessageContentProps> = ({
                         textAlign: 'left',
                         alignSelf: 'flex-start',
                         maxWidth: '100%',
+                        ...textStyle
                     }}
                     ellipsizeMode="tail"
                     allowFontScaling={false}

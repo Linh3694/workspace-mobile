@@ -37,6 +37,7 @@ import { NotificationType, ChatDetailParams } from '../../types/chat';
 import { CustomEmoji } from '../../hooks/useEmojis';
 import ImageGrid from '../../components/Chat/ImageGrid';
 import MessageBubble from '../../components/Chat/MessageBubble';
+import SwipeableMessageBubble from '../../components/Chat/SwipeableMessageBubble';
 import ImageViewerModal from '../../components/Chat/ImageViewerModal';
 import ForwardMessageSheet from '../../components/Chat/ForwardMessageSheet';
 import { formatMessageTime, formatMessageDate, getAvatar, isDifferentDay } from '../../utils/messageUtils';
@@ -180,6 +181,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
     const [replyTo, setReplyTo] = useState<Message | null>(null);
     const [selectedEmoji, setSelectedEmoji] = useState<CustomEmoji | null>(null);
     const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+    const [isLoadingPinnedMessage, setIsLoadingPinnedMessage] = useState(false);
     const [notification, setNotification] = useState<{
         visible: boolean;
         type: 'success' | 'error';
@@ -244,6 +246,11 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
         const unsubscribeFocus = navigation.addListener('focus', () => {
             setIsScreenActive(true);
 
+            // Emit messageRead ngay lập tức khi focus
+            if (currentUserId && chatIdRef.current && socketConnection.socket && socketConnection.socket.connected) {
+                socketConnection.emitMessageRead(currentUserId, chatIdRef.current);
+            }
+
             // Mark messages as read when screen comes into focus với delay nhỏ
             setTimeout(() => {
                 if (currentUserId && chatIdRef.current) {
@@ -266,7 +273,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
             unsubscribeFocus();
             unsubscribeBlur();
         };
-    }, [navigation, currentUserId, messageOps.markMessagesAsRead]);
+    }, [navigation, currentUserId, messageOps.markMessagesAsRead, socketConnection]);
 
     // Lấy authToken khi component mount
     useEffect(() => {
@@ -728,6 +735,8 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
     const handleActionSelect = (action: string) => {
         if (!selectedMessage?._id) return;
 
+        console.log('📌 [ChatDetailScreen] handleActionSelect called with action:', action);
+
         switch (action) {
             case 'forward':
                 setForwardMessage(selectedMessage);
@@ -736,6 +745,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                 break;
             case 'reply':
                 setReplyTo(selectedMessage);
+                closeReactionModal();
                 break;
             case 'copy':
                 Clipboard.setString(selectedMessage.content);
@@ -744,14 +754,20 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                     type: 'success',
                     message: 'Đã sao chép nội dung tin nhắn'
                 });
+                closeReactionModal();
                 break;
             case 'pin':
+                console.log('📌 [Pin Action] Pinning message');
                 handlePinMessage(selectedMessage._id);
+                closeReactionModal();
                 break;
             case 'unpin':
+                console.log('📌 [Unpin Action] Unpinning message');
                 handleUnpinMessage(selectedMessage._id);
+                closeReactionModal();
                 break;
             default:
+                console.log('📌 [Action] Unknown action:', action);
                 break;
         }
     };
@@ -894,15 +910,170 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
     };
 
     // Thêm hàm xử lý tin nhắn ghim
-    const handlePinnedMessagePress = (message: Message) => {
+    const handlePinnedMessagePress = async (message: Message) => {
         try {
             console.log('📌 Navigating to pinned message:', message._id);
             
-            // Tìm index của tin nhắn trong danh sách messages gốc
-            const messageIndex = messageOps.messages.findIndex(msg => msg._id === message._id);
+            // Highlight tin nhắn ngay lập tức để người dùng thấy phản hồi
+            setHighlightedMessageId(message._id);
             
+            // Tìm index trong processedMessages trước
+            let targetIndex = -1;
+            for (let i = 0; i < processedMessages.length; i++) {
+                if (processedMessages[i]._id === message._id) {
+                    targetIndex = i;
+                    break;
+                }
+            }
+            
+            // Nếu tìm thấy trong processedMessages, scroll ngay lập tức
+            if (targetIndex !== -1 && flatListRef.current) {
+                console.log('📌 Found in current data, scrolling to index:', targetIndex);
+                flatListRef.current.scrollToIndex({
+                    index: targetIndex,
+                    animated: true,
+                    viewPosition: 0.5,
+                    viewOffset: 0
+                });
+                
+                // Tắt highlight sau 3 giây
+                setTimeout(() => {
+                    setHighlightedMessageId(null);
+                }, 3000);
+                return;
+            }
+            
+            // Nếu không tìm thấy, load thêm messages
+            console.log('📌 Message not found in current data, loading more...');
+            setIsLoadingPinnedMessage(true);
+            
+            // Tìm index của tin nhắn trong danh sách messages gốc
+            let messageIndex = messageOps.messages.findIndex(msg => msg._id === message._id);
+            
+            // Nếu không tìm thấy trong messages hiện tại, load tất cả messages
             if (messageIndex === -1) {
-                console.warn('📌 Pinned message not found in current messages list');
+                console.log('📌 Pinned message not found in current messages, loading all messages...');
+                setIsLoadingPinnedMessage(true);
+                
+                try {
+                    const token = await AsyncStorage.getItem('authToken');
+                    if (!chat?._id || !token) {
+                        setNotification({
+                            visible: true,
+                            type: 'error',
+                            message: 'Không thể tải tin nhắn'
+                        });
+                        return;
+                    }
+
+                    // Load tất cả messages có thể với limit tối đa
+                    const response = await fetch(`${API_BASE_URL}/api/chats/messages/${chat._id}?page=1&limit=100`, {
+                        headers: { 
+                            Authorization: `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        let allMessages = [];
+                        
+                        if (data && typeof data === 'object' && data.success === true && Array.isArray(data.messages)) {
+                            allMessages = data.messages;
+                        } else if (Array.isArray(data)) {
+                            allMessages = data;
+                        }
+
+                        if (allMessages.length > 0) {
+                            // Validate và sort messages
+                            const validMessages = allMessages.filter(msg => 
+                                msg && msg._id && msg.sender && msg.createdAt
+                            );
+                            
+                            const sortedMessages = validMessages.sort(
+                                (a: Message, b: Message) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                            );
+
+                            messageOps.setMessages(sortedMessages);
+                            
+                            // Tìm lại index sau khi load messages
+                            messageIndex = sortedMessages.findIndex(msg => msg._id === message._id);
+                            
+                            // Nếu vẫn không tìm thấy, load thêm trang
+                            if (messageIndex === -1 && data.pagination?.hasMore) {
+                                console.log('📌 Still not found, loading more pages...');
+                                let currentPage = 2;
+                                let found = false;
+                                
+                                while (!found && currentPage <= 10) { // Giới hạn tối đa 10 trang để tránh vô hạn
+                                    const nextResponse = await fetch(`${API_BASE_URL}/api/chats/messages/${chat._id}?page=${currentPage}&limit=100`, {
+                                        headers: { 
+                                            Authorization: `Bearer ${token}`,
+                                            'Content-Type': 'application/json'
+                                        }
+                                    });
+                                    
+                                    if (nextResponse.ok) {
+                                        const nextData = await nextResponse.json();
+                                        let nextMessages = [];
+                                        
+                                        if (nextData && typeof nextData === 'object' && nextData.success === true && Array.isArray(nextData.messages)) {
+                                            nextMessages = nextData.messages;
+                                        } else if (Array.isArray(nextData)) {
+                                            nextMessages = nextData;
+                                        }
+                                        
+                                        if (nextMessages.length > 0) {
+                                            const validNextMessages = nextMessages.filter(msg => 
+                                                msg && msg._id && msg.sender && msg.createdAt
+                                            );
+                                            
+                                            const sortedNextMessages = validNextMessages.sort(
+                                                (a: Message, b: Message) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                                            );
+                                            
+                                            // Thêm messages mới vào đầu danh sách (tin nhắn cũ hơn)
+                                            const combinedMessages = [...sortedNextMessages, ...sortedMessages];
+                                            messageOps.setMessages(combinedMessages);
+                                            
+                                            // Tìm message trong danh sách kết hợp
+                                            messageIndex = combinedMessages.findIndex(msg => msg._id === message._id);
+                                            
+                                            if (messageIndex !== -1) {
+                                                found = true;
+                                                break;
+                                            }
+                                        }
+                                        
+                                        // Kiểm tra xem còn trang nào không
+                                        if (!nextData.pagination?.hasMore) {
+                                            break;
+                                        }
+                                    } else {
+                                        break;
+                                    }
+                                    
+                                    currentPage++;
+                                }
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error loading all messages:', error);
+                    setNotification({
+                        visible: true,
+                        type: 'error',
+                        message: 'Không thể tải tin nhắn để tìm tin nhắn được ghim'
+                    });
+                    return;
+                } finally {
+                    setIsLoadingPinnedMessage(false);
+                }
+            }
+            
+            // Kiểm tra lại sau khi load all messages
+            if (messageIndex === -1) {
+                console.warn('📌 Pinned message still not found after loading all messages');
                 setNotification({
                     visible: true,
                     type: 'error',
@@ -911,51 +1082,51 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                 return;
             }
 
-            // Highlight tin nhắn
-            setHighlightedMessageId(message._id);
-
-            // Tính toán index trong processedMessages (có thể có time separators)
-            let targetIndex = -1;
-            for (let i = 0; i < processedMessages.length; i++) {
-                if (processedMessages[i]._id === message._id) {
-                    targetIndex = i;
-                    break;
-                }
-            }
-
-            if (targetIndex !== -1 && flatListRef.current) {
-                console.log('📌 Scrolling to message at index:', targetIndex);
-                
-                // Sử dụng scrollToOffset thay vì scrollToIndex để an toàn hơn
-                flatListRef.current.scrollToIndex({
-                    index: targetIndex,
-                    animated: true,
-                    viewPosition: 0.5,
-                    viewOffset: 0
-                });
-
-                // Backup method nếu scrollToIndex fails
-                setTimeout(() => {
-                    if (flatListRef.current) {
-                        try {
-                            flatListRef.current.scrollToIndex({
-                                index: targetIndex,
-                                animated: false,
-                                viewPosition: 0.5
-                            });
-                        } catch (scrollError) {
-                            console.log('📌 Using fallback scroll method');
-                            // Fallback: scroll to approximate position
-                            const estimatedOffset = targetIndex * 80; // Estimate message height
-                            flatListRef.current.scrollToOffset({
-                                offset: estimatedOffset,
-                                animated: true
-                            });
-                        }
+            // Đợi một chút để React re-render và processedMessages được cập nhật
+            setTimeout(() => {
+                // Tính toán index trong processedMessages (có thể có time separators)
+                let targetIndex = -1;
+                for (let i = 0; i < processedMessages.length; i++) {
+                    if (processedMessages[i]._id === message._id) {
+                        targetIndex = i;
+                        break;
                     }
-                }, 100);
-            }
+                }
 
+                if (targetIndex !== -1 && flatListRef.current) {
+                    console.log('📌 Scrolling to message at index:', targetIndex);
+                    
+                    // Sử dụng scrollToOffset thay vì scrollToIndex để an toàn hơn
+                    flatListRef.current.scrollToIndex({
+                        index: targetIndex,
+                        animated: true,
+                        viewPosition: 0.5,
+                        viewOffset: 0
+                    });
+
+                    // Backup method nếu scrollToIndex fails
+                    setTimeout(() => {
+                        if (flatListRef.current) {
+                            try {
+                                flatListRef.current.scrollToIndex({
+                                    index: targetIndex,
+                                    animated: false,
+                                    viewPosition: 0.5
+                                });
+                            } catch (scrollError) {
+                                console.log('📌 Using fallback scroll method');
+                                // Fallback: scroll to approximate position
+                                const estimatedOffset = targetIndex * 80; // Estimate message height
+                                flatListRef.current.scrollToOffset({
+                                    offset: estimatedOffset,
+                                    animated: true
+                                });
+                            }
+                        }
+                    }, 100);
+                }
+            }, 50); // Giảm từ 200ms xuống 50ms
+            
             // Tắt highlight sau 3 giây
             setTimeout(() => {
                 setHighlightedMessageId(null);
@@ -992,52 +1163,50 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
             // Highlight tin nhắn
             setHighlightedMessageId(message._id);
 
-            // Tính toán index trong processedMessages (có thể có time separators)
-            let targetIndex = -1;
-            for (let i = 0; i < processedMessages.length; i++) {
-                if (processedMessages[i]._id === message._id) {
-                    targetIndex = i;
-                    break;
-                }
-            }
-
-            if (targetIndex !== -1 && flatListRef.current) {
-                console.log('💬 Scrolling to message at index:', targetIndex);
-                
-                // Sử dụng scrollToIndex với error handling
-                flatListRef.current.scrollToIndex({
-                    index: targetIndex,
-                    animated: true,
-                    viewPosition: 0.5,
-                    viewOffset: 0
-                });
-
-                // Backup method nếu scrollToIndex fails
-                setTimeout(() => {
-                    if (flatListRef.current) {
-                        try {
-                            flatListRef.current.scrollToIndex({
-                                index: targetIndex,
-                                animated: false,
-                                viewPosition: 0.5
-                            });
-                        } catch (scrollError) {
-                            console.log('💬 Using fallback scroll method');
-                            // Fallback: scroll to approximate position
-                            const estimatedOffset = targetIndex * 80; // Estimate message height
-                            flatListRef.current.scrollToOffset({
-                                offset: estimatedOffset,
-                                animated: true
-                            });
-                        }
-                    }
-                }, 100);
-            }
-
-            // Tắt highlight sau 3 giây
+            // Đợi một chút để React re-render và processedMessages được cập nhật
             setTimeout(() => {
-                setHighlightedMessageId(null);
-            }, 3000);
+                // Tính toán index trong processedMessages (có thể có time separators)
+                let targetIndex = -1;
+                for (let i = 0; i < processedMessages.length; i++) {
+                    if (processedMessages[i]._id === message._id) {
+                        targetIndex = i;
+                        break;
+                    }
+                }
+
+                if (targetIndex !== -1 && flatListRef.current) {
+                    console.log('💬 Scrolling to message at index:', targetIndex);
+                    
+                    // Sử dụng scrollToIndex với error handling
+                    flatListRef.current.scrollToIndex({
+                        index: targetIndex,
+                        animated: true,
+                        viewPosition: 0.5,
+                        viewOffset: 0
+                    });
+
+                    // Backup method nếu scrollToIndex fails
+                    setTimeout(() => {
+                        if (flatListRef.current) {
+                            try {
+                                flatListRef.current.scrollToIndex({
+                                    index: targetIndex,
+                                    animated: false,
+                                    viewPosition: 0.5
+                                });
+                            } catch (scrollError) {
+                                console.log('💬 Using fallback scroll method');
+                                // Fallback: scroll to approximate position
+                                const estimatedOffset = targetIndex * 80; // Estimate message height
+                                flatListRef.current.scrollToOffset({
+                                    offset: estimatedOffset,
+                                    animated: true
+                                });
+                            }
+                        }
+                    }, 100);
+                }
+            }, 200); // Đợi 200ms để React re-render
             
         } catch (error) {
             console.error('💬 Error navigating to replied message:', error);
@@ -1071,6 +1240,14 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
         const processed = [...messagesWithTime].reverse();
         return processed;
     }, [messageOps.messages]);
+
+    // Thêm hàm xử lý swipe reply
+    const handleSwipeReply = useCallback((message: Message) => {
+        setReplyTo(message);
+        // Có thể thêm haptic feedback ở đây nếu muốn
+        // import { Haptics } from 'expo-haptics';
+        // Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }, []);
 
     // Memoized key extractor
     const keyExtractor = useCallback((item: Message | any) => {
@@ -1196,7 +1373,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
             const showAvatar = !isMe && isFirst;
             
             return (
-                <MessageBubble
+                <SwipeableMessageBubble
                     chat={chat}
                     message={item}
                     currentUserId={currentUserId}
@@ -1213,6 +1390,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                     isLatestMessage={item._id === messageOps.messages[messageOps.messages.length - 1]?._id}
                     onReplyPress={handleReplyMessagePress}
                     highlightedMessageId={highlightedMessageId}
+                    onReply={handleSwipeReply}
                 />
             );
         },
@@ -1222,6 +1400,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
             handleImagePress, messageScaleAnim, messageOps.messages,
             formatMessageTime, getAvatar, isDifferentDay,
             handleReplyMessagePress, highlightedMessageId,
+            handleSwipeReply,
         ]
     );
 
@@ -1499,6 +1678,13 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                                     onEndReachedThreshold={0.3}
                                     onEndReached={messageOps.hasMoreMessages ? messageOps.handleLoadMore : undefined}
                                     legacyImplementation={false}
+                                    onScroll={() => {
+                                        // Emit messageRead khi user scroll để đảm bảo real-time tracking
+                                        if (currentUserId && chatIdRef.current && socketConnection.socket && socketConnection.socket.connected) {
+                                            socketConnection.emitMessageRead(currentUserId, chatIdRef.current);
+                                        }
+                                    }}
+                                    scrollEventThrottle={2000} // Throttle để tránh spam
                                     onScrollToIndexFailed={(info) => {
                                         console.warn('📱 ScrollToIndex failed:', info);
                                         
@@ -1597,6 +1783,8 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                         selectedMessage={selectedMessage}
                         onSuccess={refreshMessages}
                         currentUserId={currentUserId}
+                        showPinOption={true}
+                        isPinned={selectedMessage?.isPinned || false}
                         onRequestRevoke={handleRequestRevoke}
                     />
 
@@ -1608,7 +1796,7 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                                 setForwardMessage(null);
                             }}
                             message={forwardMessage}
-                            currentUser={currentUser} // Sửa: Truyền đúng currentUser
+                            currentUser={currentUser}
                             onForward={forwardSingleMessage}
                         />
                     )}

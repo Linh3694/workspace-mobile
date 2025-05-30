@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+// @ts-ignore
 import { Animated, Dimensions, View, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
@@ -17,8 +18,9 @@ import Toast from 'react-native-toast-message';
 import CustomToastConfig from './src/components/CustomToastConfig';
 import * as SplashScreen from 'expo-splash-screen';
 import SvgSplash from './src/assets/splash.svg';
+// @ts-ignore
 import { Image } from 'react-native';
-
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import './global.css';
 
@@ -187,34 +189,38 @@ export default function App() {
 
   return (
     <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-      <SafeAreaProvider>
-        <AuthProvider>
-          <OnlineStatusProvider>
-            <NavigationContainer
-              ref={navigationRef}
-            >
-              <AppNavigator />
-            </NavigationContainer>
-            <StatusBar style="auto" />
-            <Toast config={CustomToastConfig} topOffset={60} />
-          </OnlineStatusProvider>
-        </AuthProvider>
-      </SafeAreaProvider>
-      {/* Sweep overlay */}
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFill,
-          { transform: [{ translateX: sweep }] },
-        ]}
-      >
-        <LinearGradient
-          colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.5)', 'rgba(255,255,255,0)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
+      {/* @ts-ignore */}
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <AuthProvider>
+            <OnlineStatusProvider>
+              <NavigationContainer
+                ref={navigationRef}
+              >
+                <AppNavigator />
+              </NavigationContainer>
+              <StatusBar style="auto" />
+              <Toast config={CustomToastConfig} topOffset={60} />
+            </OnlineStatusProvider>
+          </AuthProvider>
+        </SafeAreaProvider>
+        {/* Sweep overlay */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            { transform: [{ translateX: sweep }] },
+          ]}
+        >
+          {/* @ts-ignore */}
+          <LinearGradient
+            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.5)', 'rgba(255,255,255,0)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
+      </GestureHandlerRootView>
     </View>
   );
 }

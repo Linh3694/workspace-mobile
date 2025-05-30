@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import api from '../utils/api';
 import * as SecureStore from 'expo-secure-store';
+import { disconnectAllSockets } from '../services/socketService';
 
 // Khóa cho thông tin đăng nhập sinh trắc học
 const CREDENTIALS_KEY = 'WELLSPRING_SECURE_CREDENTIALS';
@@ -127,6 +128,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const logout = async () => {
         try {
             setLoading(true);
+            // Disconnect tất cả socket connections
+            disconnectAllSockets();
+            
             // Xóa các thông tin
             await AsyncStorage.removeItem('authToken');
             await AsyncStorage.removeItem('user');

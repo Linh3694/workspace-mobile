@@ -1,16 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import {
-    View,
-    Text,
-    TouchableOpacity,
-    Modal,
-    Dimensions,
-    Animated,
-    Easing,
-    TouchableWithoutFeedback,
-    Image,
-} from 'react-native';
-import { Message } from '../../types/chat';
+// @ts-ignore
+import {View,Text,TouchableOpacity,Modal,Dimensions,Animated,Easing,TouchableWithoutFeedback, Image,} from 'react-native';
+import { Message } from '../../types/message';
 import ReplySvg from '../../assets/reply.svg';
 import ForwardSvg from '../../assets/forward.svg';
 import CopySvg from '../../assets/copy.svg';
@@ -40,7 +31,8 @@ type MessageReactionModalProps = {
 
 const REACTION_CODES = ['clap', 'laugh', 'wow', 'cry', 'heart'];
 
-const initializeActions = (isPinned: boolean, messageType: string, isMe: boolean, messageDate: string) => {
+const initializeActions = (isPinned: boolean, messageType: string, isMe: boolean, messageDate: string, showPinOption: boolean = false) => {
+    
     const actions = [
         { icon: 'forward', text: 'Chuyển tiếp', value: 'forward', Svg: ForwardSvg },
         { icon: 'reply', text: 'Trả lời', value: 'reply', Svg: ReplySvg },
@@ -51,11 +43,15 @@ const initializeActions = (isPinned: boolean, messageType: string, isMe: boolean
         actions.push({ icon: 'copy', text: 'Sao chép', value: 'copy', Svg: CopySvg });
     }
 
-    // Thêm tùy chọn ghim hoặc bỏ ghim dựa vào trạng thái hiện tại
-    if (isPinned) {
-        actions.push({ icon: 'unpin', text: 'Bỏ ghim', value: 'unpin', Svg: PinOffSvg });
+    // Thêm tùy chọn ghim hoặc bỏ ghim nếu được phép
+    if (showPinOption) {
+        if (isPinned) {
+            actions.push({ icon: 'unpin', text: 'Bỏ ghim', value: 'unpin', Svg: PinOffSvg });
+        } else {
+            actions.push({ icon: 'pin', text: 'Ghim tin nhắn', value: 'pin', Svg: PinSvg });
+        }
     } else {
-        actions.push({ icon: 'pin', text: 'Ghim tin nhắn', value: 'pin', Svg: PinSvg });
+       
     }
 
     // Thêm tùy chọn thu hồi chỉ cho người gửi và trong vòng 24 giờ
@@ -129,8 +125,13 @@ const MessageReactionModal = ({
     const reactionEmojis = customEmojis;
 
     // Danh sách actions (sử dụng hàm khởi tạo mới với messageType)
-    const actions = initializeActions(isPinned, selectedMessage?.type || 'text', currentUserId === selectedMessage?.sender._id, selectedMessage?.createdAt || '');
-
+    const actions = initializeActions(
+        isPinned, 
+        selectedMessage?.type || 'text', 
+        currentUserId === selectedMessage?.sender._id, 
+        selectedMessage?.createdAt || '',
+        showPinOption
+    );
     // Xác định vị trí của modal
     const modalPosition = position ? {
         top: position.y - 150, // Hiện phía trên vị trí nhấn
@@ -187,8 +188,6 @@ const MessageReactionModal = ({
                             <Text className="text-sm font-bold text-[#00687F] mb-1">{selectedMessage.sender.fullname}</Text>
                             {selectedMessage.isEmoji ? (() => {
                                 // Debug log
-                                console.log('selectedMessage.content:', selectedMessage.content);
-                                console.log('customEmojis:', customEmojis);
                                 const emoji = customEmojis.find(
                                     e =>
                                         e.code === selectedMessage.content ||
@@ -270,58 +269,69 @@ const MessageReactionModal = ({
                             }}
                         >
                             <View className="py-4 px-2">
-                                {/* Chia 2 hàng, mỗi hàng 3 action */}
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
-                                    {[0, 1, 2].map(idx => {
-                                        const action = actions[idx];
-                                        if (!action) return <View key={idx} style={{ flex: 1 }} />;
+                                {/* Hiển thị actions theo layout linh hoạt */}
+                                <View style={{ 
+                                    flexDirection: 'row', 
+                                    flexWrap: 'wrap', 
+                                    justifyContent: 'space-around',
+                                    alignItems: 'center'
+                                }}>
+                                    {actions.map((action, idx) => {
                                         const SvgIcon = action.Svg;
-                                        return (
-                                            <TouchableOpacity
-                                                key={idx}
-                                                style={{ flex: 1, alignItems: 'center' }}
-                                                onPress={() => {
-                                                    onActionSelect(action.value);
-                                                    onCloseActionBar();
-                                                }}
-                                            >
-                                                <SvgIcon width={32} height={32} />
-                                                <Text style={{ marginTop: 8, fontSize: 14, color: '#212121', fontFamily: 'Mulish-Regular', textAlign: 'center' }}>{action.text}</Text>
-                                            </TouchableOpacity>
-                                        );
-                                    })}
-                                </View>
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                                    {[3, 4, 5].map(idx => {
-                                        const action = actions[idx];
-                                        if (!action) return <View key={idx} style={{ flex: 1 }} />;
-                                        const SvgIcon = action.Svg;
+                                        
                                         if (action.value === 'revoke' && onRequestRevoke && selectedMessage) {
                                             return (
                                                 <TouchableOpacity
                                                     key={idx}
-                                                    style={{ flex: 1, alignItems: 'center' }}
+                                                    style={{ 
+                                                        width: '30%', 
+                                                        alignItems: 'center',
+                                                        marginBottom: 16
+                                                    }}
                                                     onPress={() => {
                                                         onRequestRevoke(selectedMessage);
                                                         onCloseActionBar();
                                                     }}
                                                 >
                                                     <SvgIcon width={32} height={32} />
-                                                    <Text style={{ marginTop: 8, fontSize: 14, color: '#212121', fontFamily: 'Mulish-Regular', textAlign: 'center' }}>{action.text}</Text>
+                                                    <Text style={{ 
+                                                        marginTop: 8, 
+                                                        fontSize: 12, 
+                                                        color: '#212121', 
+                                                        fontFamily: 'Mulish-Regular', 
+                                                        textAlign: 'center',
+                                                        lineHeight: 16
+                                                    }}>
+                                                        {action.text}
+                                                    </Text>
                                                 </TouchableOpacity>
                                             );
                                         }
+                                        
                                         return (
                                             <TouchableOpacity
                                                 key={idx}
-                                                style={{ flex: 1, alignItems: 'center' }}
+                                                style={{ 
+                                                    width: '30%', 
+                                                    alignItems: 'center',
+                                                    marginBottom: 16
+                                                }}
                                                 onPress={() => {
                                                     onActionSelect(action.value);
                                                     onCloseActionBar();
                                                 }}
                                             >
                                                 <SvgIcon width={32} height={32} />
-                                                <Text style={{ marginTop: 8, fontSize: 14, color: '#212121', fontFamily: 'Mulish-Regular', textAlign: 'center' }}>{action.text}</Text>
+                                                <Text style={{ 
+                                                    marginTop: 8, 
+                                                    fontSize: 12, 
+                                                    color: '#212121', 
+                                                    fontFamily: 'Mulish-Regular', 
+                                                    textAlign: 'center',
+                                                    lineHeight: 16
+                                                }}>
+                                                    {action.text}
+                                                </Text>
                                             </TouchableOpacity>
                                         );
                                     })}
