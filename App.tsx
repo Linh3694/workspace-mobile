@@ -12,7 +12,7 @@ import { RootStackParamList } from './src/navigation/AppNavigator';
 import 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from './src/config/constants';
-import { AuthProvider } from './src/context/AuthContext';
+import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import CustomToastConfig from './src/components/CustomToastConfig';
@@ -21,8 +21,27 @@ import SvgSplash from './src/assets/splash.svg';
 // @ts-ignore
 import { Image } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import * as Linking from 'expo-linking';
 
 import './global.css';
+
+// Cấu hình linking cho deep links
+const linking = {
+  prefixes: [Linking.createURL('/'), 'staffportal://'],
+  config: {
+    screens: {
+      // Xử lý deep link cho Microsoft auth
+      Welcome: 'auth/success',
+      Login: 'auth/success',
+      Main: {
+        path: 'auth/success',
+        screens: {
+          Home: 'home',
+        },
+      },
+    },
+  },
+};
 
 // Thiết lập cách xử lý thông báo khi ứng dụng đang chạy
 Notifications.setNotificationHandler({
@@ -71,6 +90,72 @@ export default function App() {
   // Sweep animation setup
   const { width } = Dimensions.get('window');
   const sweep = useRef(new Animated.Value(-width)).current;
+
+  // Xử lý deep link từ Microsoft authentication
+  useEffect(() => {
+    const handleDeepLink = async (url: string) => {
+      console.log('🔍 [App] Deep link received:', url);
+      
+      if (url.includes('staffportal://auth/success')) {
+        try {
+          const urlObj = new URL(url);
+          const token = urlObj.searchParams.get('token');
+          const error = urlObj.searchParams.get('error');
+          
+          console.log('🔍 [App] Deep link params:', { token: !!token, error });
+          
+          if (error) {
+            console.log('❌ [App] Deep link error:', error);
+            Toast.show({
+              type: 'error',
+              text1: 'Lỗi đăng nhập Microsoft',
+              text2: error,
+            });
+            return;
+          }
+          
+          if (token) {
+            console.log('✅ [App] Deep link token received, saving...');
+            
+            // Lưu token vào AsyncStorage
+            await AsyncStorage.setItem('authToken', token);
+            
+            // Có thể thêm logic để fetch user info từ token ở đây
+            Toast.show({
+              type: 'success',
+              text1: 'Đăng nhập Microsoft thành công!',
+            });
+            
+            // Navigate to main app (sẽ được xử lý bởi AuthContext)
+            // Context sẽ detect token và chuyển màn hình
+          }
+        } catch (err) {
+          console.error('❌ [App] Error parsing deep link:', err);
+        }
+      }
+    };
+
+    // Xử lý URL khi app được mở từ deep link
+    const getInitialURL = async () => {
+      const initialUrl = await Linking.getInitialURL();
+      if (initialUrl) {
+        console.log('🔍 [App] Initial URL:', initialUrl);
+        handleDeepLink(initialUrl);
+      }
+    };
+
+    // Lắng nghe deep link khi app đang chạy
+    const subscription = Linking.addEventListener('url', (event) => {
+      console.log('🔍 [App] URL event:', event.url);
+      handleDeepLink(event.url);
+    });
+
+    getInitialURL();
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   // Splash sweep and hide handled on layout
   const onLayoutRootView = useCallback(async () => {
@@ -196,6 +281,7 @@ export default function App() {
             <OnlineStatusProvider>
               <NavigationContainer
                 ref={navigationRef}
+                linking={linking}
               >
                 <AppNavigator />
               </NavigationContainer>

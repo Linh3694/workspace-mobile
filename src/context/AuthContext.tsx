@@ -35,36 +35,64 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             const token = await AsyncStorage.getItem('authToken');
 
             if (!token) {
+                console.log('🔍 [checkAuth] No token found');
                 setLoading(false);
                 return false;
             }
+
+            console.log('🔍 [checkAuth] Token found, checking validity...');
 
             // Kiểm tra token còn hạn không
             try {
                 const decoded: any = jwtDecode(token);
                 const currentTime = Date.now() / 1000;
 
+                console.log('🔍 [checkAuth] Token decoded:', {
+                    exp: decoded.exp,
+                    currentTime,
+                    isExpired: decoded.exp && decoded.exp < currentTime,
+                    issuer: decoded.iss
+                });
+
                 if (decoded.exp && decoded.exp < currentTime) {
                     // Token đã hết hạn
+                    console.log('⚠️ [checkAuth] Token expired, logging out');
                     await logout();
                     setLoading(false);
                     return false;
                 }
 
-                // Nếu token còn hạn, lấy thông tin user từ AsyncStorage
+                // Lấy thông tin user từ AsyncStorage
                 const userStr = await AsyncStorage.getItem('user');
+                console.log('🔍 [checkAuth] User data from storage:', !!userStr);
+                
                 if (userStr) {
                     const userData = JSON.parse(userStr);
+                    console.log('✅ [checkAuth] User data loaded:', {
+                        name: userData.fullname,
+                        provider: userData.provider,
+                        id: userData._id
+                    });
                     setUser(userData);
                     setLoading(false);
                     return true;
                 } else {
-                    // Nếu không có thông tin user, lấy từ API
+                    // If it's a Microsoft token (has iss field with windows.net), don't try API call
+                    if (decoded.iss && decoded.iss.includes('windows.net')) {
+                        console.log('⚠️ [checkAuth] Microsoft token but no user data in storage');
+                        await logout();
+                        setLoading(false);
+                        return false;
+                    }
+                    
+                    // For regular tokens, try API call
                     try {
+                        console.log('🔄 [checkAuth] Fetching user data from API...');
                         const response = await api.get('/users');
 
                         if (response.data.success) {
                             const userData = response.data.user;
+                            console.log('✅ [checkAuth] User data fetched from API');
                             setUser(userData);
                             await AsyncStorage.setItem('user', JSON.stringify(userData));
                             await AsyncStorage.setItem('userId', userData._id);
@@ -77,20 +105,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                             return true;
                         }
                     } catch (error) {
-                        console.error('Lỗi khi lấy thông tin người dùng:', error);
+                        console.error('❌ [checkAuth] Error fetching user data:', error);
                         await logout();
                         setLoading(false);
                         return false;
                     }
                 }
             } catch (error) {
-                console.error('Token decode error:', error);
+                console.error('❌ [checkAuth] Token decode error:', error);
                 await logout();
                 setLoading(false);
                 return false;
             }
         } catch (error) {
-            console.error('Lỗi kiểm tra trạng thái auth:', error);
+            console.error('❌ [checkAuth] General error:', error);
             await logout();
             setLoading(false);
             return false;

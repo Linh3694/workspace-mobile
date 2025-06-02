@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+// @ts-ignore
 import { View, Text, TextInput, TouchableOpacity, Image, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -39,7 +40,7 @@ const SignInScreen = () => {
     const [loading, setLoading] = useState(false);
     const [loginError, setLoginError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-    const { login } = useAuth();
+    const { login, checkAuth } = useAuth();
     const {
         isBiometricAvailable,
         hasSavedCredentials,
@@ -51,9 +52,60 @@ const SignInScreen = () => {
     const [notificationMessage, setNotificationMessage] = useState('');
     const [notificationType, setNotificationType] = useState<'success' | 'error'>('error');
 
-    const { request, promptAsync } = useMicrosoftLogin((token) => {
-        // Lưu token, chuyển màn hình, v.v.
-    });
+    const {  promptAsync } = useMicrosoftLogin(
+        async (token) => {
+            console.log('✅ Microsoft login successful in SignInScreen:', token);
+            try {
+                // Call backend to check/create user based on Microsoft email
+                const response = await fetch(`${API_BASE_URL}/api/auth/microsoft/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const authData = await response.json();
+                console.log('🔍 Microsoft auth response:', authData);
+                
+                if (response.ok && authData.success) {
+                    // Use the system token and user data from our database
+                    const { token: systemToken, user } = authData;
+                    
+                    console.log('🎯 Microsoft user authenticated:', {
+                        name: user.fullname,
+                        email: user.email,
+                        isNewUser: user.isNewUser,
+                        role: user.role
+                    });
+                    
+                    // Use AuthContext login method with system token and DB user data
+                    await login(systemToken, user);
+                    
+                    // Trigger AuthContext to refresh and ensure navigation happens
+                    await checkAuth();
+                    
+                    console.log('🚀 AuthContext refreshed, user should be navigated to main app');
+                    
+                    const message = user.isNewUser 
+                        ? 'Chào mừng! Tài khoản Microsoft đã được tạo thành công!'
+                        : 'Đăng nhập Microsoft thành công!';
+                    
+                    showNotification(message, 'success');
+                } else {
+                    throw new Error(authData.message || 'Microsoft authentication failed');
+                }
+                
+            } catch (error) {
+                console.error('❌ Error in Microsoft login flow:', error);
+                showNotification('Không thể đăng nhập với Microsoft', 'error');
+            }
+        },
+        (error) => {
+            console.log('❌ Microsoft login error in SignInScreen:', error);
+            showNotification(`Lỗi đăng nhập Microsoft: ${error}`, 'error');
+        }
+    );
 
     const showNotification = (message: string, type: 'success' | 'error' = 'error') => {
         setNotificationMessage(message);
@@ -282,7 +334,6 @@ const SignInScreen = () => {
                 {/* Nút đăng nhập Microsoft */}
                 <TouchableOpacity
                     className="w-full flex-row items-center justify-center rounded-full bg-secondary/10 py-3 mb-2"
-                    disabled={!request}
                     onPress={() => promptAsync()}
                 >
                     <View style={{ marginRight: 8 }}>

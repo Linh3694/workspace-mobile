@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+// @ts-ignore
 import { View, Text, SafeAreaView, TouchableOpacity, Switch, Alert, Modal, TextInput, Pressable, Image, ScrollView, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
@@ -109,12 +110,6 @@ const ProfileScreen = () => {
             setBiometricEnabled(false);
         }
         setShowConfirmModal(false);
-    };
-
-    const handleRefreshAvatar = async () => {
-        console.log('Refreshing user data to get avatar...');
-        await refreshUserData();
-        setAvatarError(false); // Reset avatar error state
     };
 
     const handleImageError = () => {
@@ -289,7 +284,6 @@ const ProfileScreen = () => {
                 <View className="mx-4 mt-6 rounded-2xl p-6 items-center">
                     {/* Avatar với online status */}
                     <View className="relative mb-4">
-                        <TouchableOpacity onPress={handleRefreshAvatar}>
                             <Image
                                 source={{
                                     uri: avatarError ? getFallbackAvatar() : getAvatar(user)
@@ -297,16 +291,7 @@ const ProfileScreen = () => {
                                 className="w-24 h-24 rounded-full"
                                 onError={handleImageError}
                                 onLoad={() => setAvatarError(false)}
-                            />
-                        </TouchableOpacity>
-                        <View className="absolute bottom-1 right-1 w-6 h-6 bg-green-500 rounded-full border-3 border-white" />
-                        {/* Refresh icon */}
-                        <TouchableOpacity
-                            onPress={handleRefreshAvatar}
-                            className="absolute top-0 right-0 w-8 h-8 bg-white rounded-full shadow-md items-center justify-center"
-                        >
-                            <Ionicons name="refresh" size={16} color="#666" />
-                        </TouchableOpacity>
+                            />                    
                     </View>
 
                     {/* User Info */}

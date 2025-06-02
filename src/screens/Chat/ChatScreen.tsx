@@ -67,14 +67,38 @@ const ChatScreen = () => {
     const socketRef = useRef<any>(null);
     const groupSocketRef = useRef<any>(null);
 
+    // Helper function to check if a message is unread by current user
+    const isMessageUnread = useCallback((message: Message | undefined, currentUserId: string | null): boolean => {
+        if (!message || !currentUserId) {
+            return false;
+        }
+        
+        const senderId = typeof message.sender === 'object' 
+            ? message.sender._id 
+            : message.sender;
+            
+        if (!senderId || senderId === currentUserId) {
+            return false;
+        }
+        
+        const readBy = Array.isArray(message.readBy) ? message.readBy : [];
+        return !readBy.includes(currentUserId);
+    }, []);
+
     // === Utility to join chat rooms ===
     // We join every chat room so that the screen can receive real‑time
     // 'receiveMessage' events even when the user is not inside the
     // ChatDetail screen of that room.
     const joinChatRooms = useCallback((chatList: Chat[]) => {
         const socket = socketRef.current;
-        if (!socket) return;
+        if (!socket) {
+            console.log('🔌 [joinChatRooms] No socket available');
+            return;
+        }
+        
+        console.log('🔌 [joinChatRooms] Joining', chatList.length, 'chat rooms');
         chatList.forEach(chat => {
+            console.log('🔌 [joinChatRooms] Joining room:', chat._id);
             socket.emit('joinChat', chat._id);
         });
     }, []);
@@ -206,23 +230,30 @@ const ChatScreen = () => {
         });
 
         socketRef.current.on('receiveMessage', (message: any) => {
-            // Chỉ xử lý message từ chat 1-1 (không có isGroup hoặc isGroup = false)
+            // Only handle 1-1 chat messages (not group messages)
             if (!message.isGroup) {
                 setChats(prevChats => {
                     const chatIndex = prevChats.findIndex(c => c._id === message.chat);
                     
                     if (chatIndex === -1) {
-                        fetchChats(true);
-                        return [...prevChats];
+                        // If chat not found, fetch fresh data but avoid immediate state conflicts
+                        setTimeout(() => fetchChats(true), 100);
+                        return prevChats;
                     }
 
                     const newChats = [...prevChats];
-                    const chat = newChats[chatIndex];
+                    const existingChat = newChats[chatIndex];
                     
+                    // Remove chat from current position
                     newChats.splice(chatIndex, 1);
+                    
+                    // Add to top with updated last message
                     newChats.unshift({
-                        ...chat,
-                        lastMessage: message,
+                        ...existingChat,
+                        lastMessage: {
+                            ...message,
+                            readBy: Array.isArray(message.readBy) ? message.readBy : []
+                        },
                         updatedAt: message.createdAt
                     });
 
@@ -246,18 +277,33 @@ const ChatScreen = () => {
         });
 
         socketRef.current.on('messageRead', (data: { chatId: string, userId: string }) => {
+            console.log('📖 [ChatScreen] Received messageRead event:', data);
+            
+            // Only update local state, avoid unnecessary API calls
             setChats(prevChats => 
                 prevChats.map(chat => {
                     if (chat._id === data.chatId && chat.lastMessage) {
-                        // Kiểm tra xem người đọc đã có trong readBy chưa
-                        const isAlreadyRead = chat.lastMessage.readBy && chat.lastMessage.readBy.includes(data.userId);
+                        console.log('📖 [ChatScreen] Processing messageRead for chat:', chat._id);
+                        
+                        const currentReadBy = Array.isArray(chat.lastMessage.readBy) 
+                            ? chat.lastMessage.readBy 
+                            : [];
+                        
+                        // Check if user is already in readBy array
+                        const isAlreadyRead = currentReadBy.includes(data.userId);
+                        console.log('📖 [ChatScreen] Read status:', { 
+                            userId: data.userId, 
+                            currentReadBy, 
+                            isAlreadyRead 
+                        });
                         
                         if (!isAlreadyRead) {
+                            console.log('📖 [ChatScreen] Adding user to readBy list');
                             return {
                                 ...chat,
                                 lastMessage: {
                                     ...chat.lastMessage,
-                                    readBy: [...(chat.lastMessage.readBy || []), data.userId]
+                                    readBy: [...currentReadBy, data.userId]
                                 }
                             };
                         }
@@ -266,12 +312,8 @@ const ChatScreen = () => {
                 })
             );
             
-            // Nếu người đọc là người dùng hiện tại, refresh để đảm bảo UI được cập nhật
-            if (data.userId === currentUserId) {
-                setTimeout(() => {
-                    fetchChats(true);
-                }, 100);
-            }
+            // Remove the unnecessary fetchChats call to avoid race conditions
+            // The local state update above is sufficient for UI consistency
         });
 
         socketRef.current.on('reconnect', () => {
@@ -344,23 +386,30 @@ const ChatScreen = () => {
 
         // Group message events
         groupSocketRef.current.on('receiveMessage', (message: any) => {
-            // Chỉ xử lý message từ group chat (có isGroup = true)
+            // Only handle group chat messages (isGroup = true)
             if (message.isGroup) {
                 setChats(prevChats => {
                     const chatIndex = prevChats.findIndex(c => c._id === message.chat);
                     
                     if (chatIndex === -1) {
-                        fetchChats(true);
-                        return [...prevChats];
+                        // If chat not found, fetch fresh data but avoid immediate state conflicts
+                        setTimeout(() => fetchChats(true), 100);
+                        return prevChats;
                     }
 
                     const newChats = [...prevChats];
-                    const chat = newChats[chatIndex];
+                    const existingChat = newChats[chatIndex];
                     
+                    // Remove chat from current position
                     newChats.splice(chatIndex, 1);
+                    
+                    // Add to top with updated last message
                     newChats.unshift({
-                        ...chat,
-                        lastMessage: message,
+                        ...existingChat,
+                        lastMessage: {
+                            ...message,
+                            readBy: Array.isArray(message.readBy) ? message.readBy : []
+                        },
                         updatedAt: message.createdAt
                     });
 
@@ -432,6 +481,24 @@ const ChatScreen = () => {
             
             const data = await res.json();
             if (Array.isArray(data)) {
+                console.log('💾 [fetchChats] Received chats data:', data.length, 'chats');
+                
+                // Debug readBy status for each chat
+                data.forEach((chat, index) => {
+                    if (chat.lastMessage) {
+                        console.log(`💾 [fetchChats] Chat ${index + 1}:`, {
+                            chatId: chat._id,
+                            lastMessageId: chat.lastMessage._id,
+                            lastMessageContent: chat.lastMessage.content?.substring(0, 20) + '...',
+                            senderId: typeof chat.lastMessage.sender === 'object' 
+                                ? chat.lastMessage.sender._id 
+                                : chat.lastMessage.sender,
+                            readBy: chat.lastMessage.readBy || [],
+                            currentUserId
+                        });
+                    }
+                });
+                
                 const sortedChats = data.sort(
                     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
                 );
@@ -476,25 +543,29 @@ const ChatScreen = () => {
     useEffect(() => {
         const unsubscribe = navigation.addListener('focus', () => {
             if (currentUserId && shouldRefresh) {                
-                // Đánh dấu tất cả chats của current user là đã đọc tức thời trong local state
+                // Mark visited chat as read in local state immediately for better UX
                 setChats(prevChats => 
                     prevChats.map(chat => {
-                        // Chỉ mark read chat cuối cùng được visit
-                        if (chat._id === lastVisitedChatId) {
+                        // Only mark read for the last visited chat
+                        if (chat._id === lastVisitedChatId && chat.lastMessage) {
                             const lastMessage = chat.lastMessage;
-                            const lastMessageSenderId = typeof lastMessage?.sender === 'object' 
+                            const lastMessageSenderId = typeof lastMessage.sender === 'object' 
                                 ? lastMessage.sender._id 
-                                : lastMessage?.sender;
+                                : lastMessage.sender;
                             
-                            // Nếu tin nhắn cuối cùng không phải từ current user và chưa được đọc
-                            if (lastMessage && 
+                            const currentReadBy = Array.isArray(lastMessage.readBy) 
+                                ? lastMessage.readBy 
+                                : [];
+                            
+                            // If last message is not from current user and not read yet
+                            if (lastMessageSenderId && 
                                 lastMessageSenderId !== currentUserId && 
-                                (!lastMessage.readBy || !lastMessage.readBy.includes(currentUserId))) {
+                                !currentReadBy.includes(currentUserId)) {
                                 return {
                                     ...chat,
                                     lastMessage: {
                                         ...lastMessage,
-                                        readBy: [...(lastMessage.readBy || []), currentUserId]
+                                        readBy: [...currentReadBy, currentUserId]
                                     }
                                 };
                             }
@@ -503,7 +574,7 @@ const ChatScreen = () => {
                     })
                 );
                 
-                // Gọi API mark read cho chat vừa được visit
+                // Call mark read API for the visited chat
                 if (lastVisitedChatId) {
                     const markChatAsRead = async () => {
                         try {
@@ -513,16 +584,42 @@ const ChatScreen = () => {
                                 return;
                             }
 
-                            const response = await fetch(`${API_BASE_URL}/api/chats/read-all/${lastVisitedChatId}`, {
-                                method: 'PUT',
+                            // Use the correct endpoint that exists in backend
+                            const response = await fetch(`${API_BASE_URL}/api/chats/messages/${lastVisitedChatId}/read`, {
+                                method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
                                     'Authorization': `Bearer ${token}`
-                                }
+                                },
+                                body: JSON.stringify({ 
+                                    userId: currentUserId,
+                                    timestamp: new Date().toISOString()
+                                })
                             });
                             
                             if (response.ok) {
-                                // Success - no action needed
+                                console.log('✅ [ChatScreen] Successfully marked chat as read');
+                                // Force update local state to ensure UI consistency
+                                setChats(prevChats => 
+                                    prevChats.map(chat => {
+                                        if (chat._id === lastVisitedChatId && chat.lastMessage) {
+                                            const currentReadBy = Array.isArray(chat.lastMessage.readBy) 
+                                                ? chat.lastMessage.readBy 
+                                                : [];
+                                            
+                                            if (!currentReadBy.includes(currentUserId)) {
+                                                return {
+                                                    ...chat,
+                                                    lastMessage: {
+                                                        ...chat.lastMessage,
+                                                        readBy: [...currentReadBy, currentUserId]
+                                                    }
+                                                };
+                                            }
+                                        }
+                                        return chat;
+                                    })
+                                );
                             } else {
                                 const contentType = response.headers.get('content-type');
                                 if (contentType && contentType.includes('text/html')) {
@@ -541,22 +638,17 @@ const ChatScreen = () => {
                     markChatAsRead();
                 }
                 
-                // Refresh liên tục để đảm bảo dữ liệu mới nhất từ server
+                // Single refresh call instead of multiple calls to avoid race conditions
                 fetchChats(true);
                 
-                const refreshTimeout1 = setTimeout(() => {
-                    fetchChats(true);
-                }, 200);
-                
-                const refreshTimeout2 = setTimeout(() => {
-                    fetchChats(true);
-                    setShouldRefresh(false); // Reset flag
-                    setLastVisitedChatId(null); // Reset visited chat ID
-                }, 800);
+                // Clean up flags after a short delay
+                const cleanupTimeout = setTimeout(() => {
+                    setShouldRefresh(false);
+                    setLastVisitedChatId(null);
+                }, 500);
                 
                 return () => {
-                    clearTimeout(refreshTimeout1);
-                    clearTimeout(refreshTimeout2);
+                    clearTimeout(cleanupTimeout);
                 };
             }
         });
@@ -757,14 +849,23 @@ const ChatScreen = () => {
             minute: '2-digit'
         }) : '';
 
-        // Kiểm tra xem tin nhắn đã được đọc chưa
+        // Kiểm tra xem tin nhắn đã được đọc chưa - IMPROVED LOGIC
         const lastMessageSenderId = typeof item.lastMessage?.sender === 'object' 
             ? item.lastMessage.sender._id 
             : item.lastMessage?.sender;
         
-        const hasUnreadMessage = item.lastMessage &&
-            lastMessageSenderId !== currentUserId &&
-            (!item.lastMessage.readBy || !item.lastMessage.readBy.includes(currentUserId));
+        // Use the helper function for consistent unread checking
+        const hasUnreadMessage = isMessageUnread(item.lastMessage, currentUserId);
+        
+        console.log('🎨 [renderChat] Chat render info:', {
+            chatId: item._id,
+            displayName,
+            lastMessageId: item.lastMessage?._id,
+            lastMessageContent: item.lastMessage?.content?.substring(0, 15) + '...',
+            hasUnreadMessage,
+            currentUserId,
+            lastMessageSenderId
+        });
 
         // Xử lý nội dung tin nhắn cuối cùng để hiển thị
         let lastMessageContent = '';
