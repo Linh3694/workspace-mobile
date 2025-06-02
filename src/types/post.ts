@@ -20,6 +20,7 @@ export interface Comment {
   content: string;
   createdAt: string;
   reactions: Reaction[];
+  parentComment?: string | null;
 }
 
 export interface Post {

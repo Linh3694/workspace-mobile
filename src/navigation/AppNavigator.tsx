@@ -19,6 +19,7 @@ import DevicesScreen from '../screens/Devices/DevicesScreen';
 import DevicesDetailScreen from '../screens/Devices/DevicesDetailScreen';
 import DeviceAssignmentHistoryScreen from '../screens/Devices/DeviceAssignmentHistoryScreen';
 import { useAuth } from '../context/AuthContext';
+import ChatInfoScreen from '../screens/Chat/ChatInfoScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -30,6 +31,9 @@ export type User = {
     role?: string;
     lastSeen?: number;
     isOnline?: boolean;
+    employeeCode?: string;
+    department?: string;
+    phone?: string;
 };
 
 export type RootStackParamList = {
@@ -44,6 +48,7 @@ export type RootStackParamList = {
     };
     [ROUTES.SCREENS.CHAT_DETAIL]: { user: User; chatId?: string };
     [ROUTES.SCREENS.CHAT_INIT]: { chatId: string; senderId: string };
+    [ROUTES.SCREENS.CHAT_INFO]: { user: User; chatId?: string };
     [ROUTES.SCREENS.CREATE_GROUP]: { preSelectedUsers?: User[] } | undefined;
     [ROUTES.SCREENS.GROUP_CHAT_DETAIL]: { chat: any };
     [ROUTES.SCREENS.GROUP_INFO]: { groupInfo: any };
@@ -150,6 +155,11 @@ const AppNavigator = () => {
                         <Stack.Screen
                             name={ROUTES.SCREENS.CHAT_DETAIL}
                             component={ChatDetailScreen}
+                            options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
+                            name={ROUTES.SCREENS.CHAT_INFO}
+                            component={ChatInfoScreen}
                             options={{ headerShown: false }}
                         />
                         <Stack.Screen

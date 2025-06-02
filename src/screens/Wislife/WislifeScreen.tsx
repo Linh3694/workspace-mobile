@@ -1,25 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  RefreshControl,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  ActivityIndicator,
-  Image,
-} from 'react-native';
+// @ts-ignore
+import { View,Text,ScrollView,RefreshControl,TouchableOpacity,Alert,ActivityIndicator,Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PostCard from '../../components/Wislife/PostCard';
 import CreatePostModal from '../../components/Wislife/CreatePostModal';
+import CommentsModal from '../../components/Wislife/CommentsModal';
 import PostSkeleton from '../../components/Wislife/PostSkeleton';
 import { postService } from '../../services/postService';
 import { useAuth } from '../../context/AuthContext';
 import { Post } from '../../types/post';
 import WislifeIcon from '../../assets/wislife-banner.svg';
 import { getAvatar } from '../../utils/avatar';
+import StandardHeader from '../../components/Common/StandardHeader';
 
 const WislifeScreen = () => {
   const { user } = useAuth();
@@ -30,6 +23,8 @@ const WislifeScreen = () => {
   const [hasNextPage, setHasNextPage] = useState(true);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isCommentsModalVisible, setIsCommentsModalVisible] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
 
   const fetchPosts = useCallback(async (pageNum = 1, isRefresh = false) => {
     try {
@@ -99,10 +94,23 @@ const WislifeScreen = () => {
         post._id === updatedPost._id ? updatedPost : post
       )
     );
-  }, []);
+    if (selectedPost && selectedPost._id === updatedPost._id) {
+      setSelectedPost(updatedPost);
+    }
+  }, [selectedPost]);
 
   const handlePostDelete = useCallback((postId: string) => {
     setPosts(prev => prev.filter(post => post._id !== postId));
+  }, []);
+
+  const handleCommentPress = useCallback((post: Post) => {
+    setSelectedPost(post);
+    setIsCommentsModalVisible(true);
+  }, []);
+
+  const handleCloseCommentsModal = useCallback(() => {
+    setIsCommentsModalVisible(false);
+    setSelectedPost(null);
   }, []);
 
   useEffect(() => {
@@ -111,44 +119,17 @@ const WislifeScreen = () => {
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-3 bg-white ">
-        <View className="flex-1">
-         <WislifeIcon width={100} height={30} />
-        </View>
-        <TouchableOpacity 
-          onPress={() => setIsCreateModalVisible(true)}
-          className="ml-3"
-        >
-          <Ionicons name="search" size={24} color="#6B7280" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Search Bar
-      <View className="px-4 py-3 bg-white border-b border-gray-100">
-        <View className="flex-row items-center bg-gray-100 rounded-full px-4 py-2">
-          <Ionicons name="search" size={20} color="#6B7280" />
-          <TextInput
-            className="flex-1 ml-3 text-base text-gray-900"
-            placeholder="Tìm kiếm bài viết..."
-            placeholderTextColor="#9CA3AF"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onSubmitEditing={handleSearch}
-            returnKeyType="search"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity
-              onPress={() => {
-                setSearchQuery('');
-                fetchPosts(1);
-              }}
-            >
-              <Ionicons name="close-circle" size={20} color="#6B7280" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View> */}
+      <StandardHeader
+        logo={<WislifeIcon width={130} height={50} />}
+        rightButton={
+          <TouchableOpacity 
+            onPress={() => setIsCreateModalVisible(true)}
+            className="ml-3"
+          >
+            <Ionicons name="search" size={24} color="#6B7280" />
+          </TouchableOpacity>
+        }
+      />
 
       {/* Create Post Section */}
       <TouchableOpacity
@@ -234,6 +215,7 @@ const WislifeScreen = () => {
                 post={post}
                 onUpdate={handlePostUpdate}
                 onDelete={handlePostDelete}
+                onCommentPress={handleCommentPress}
               />
             ))}
             
@@ -252,6 +234,16 @@ const WislifeScreen = () => {
         onClose={() => setIsCreateModalVisible(false)}
         onPostCreated={handlePostCreated}
       />
+
+      {/* Comments Modal */}
+      {selectedPost && (
+        <CommentsModal
+          visible={isCommentsModalVisible}
+          onClose={handleCloseCommentsModal}
+          post={selectedPost}
+          onUpdate={handlePostUpdate}
+        />
+      )}
     </SafeAreaView>
   );
 };

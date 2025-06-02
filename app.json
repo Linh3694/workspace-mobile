@@ -23,7 +23,7 @@
         {
           "faceIDPermission": "Ứng dụng cần sử dụng FaceID để xác thực đăng nhập an toàn"
         }
-      ],
+      ],  
       "expo-secure-store"
     ],
     "orientation": "portrait",

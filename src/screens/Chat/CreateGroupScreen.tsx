@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
-import {View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Alert, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator} from 'react-native';
+import {View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Alert, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Image} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { API_BASE_URL } from '../../config/constants';
 import { User } from '../../navigation/AppNavigator';
+import { getAvatar } from '../../utils/avatar';
+import NotificationModal from '../../components/NotificationModal';
+import { ROUTES } from '../../constants/routes';
 
 interface CreateGroupScreenProps {
   route?: {
@@ -20,22 +24,25 @@ interface CreateGroupScreenProps {
 
 const CreateGroupScreen: React.FC<CreateGroupScreenProps> = ({ route }) => {
   const [groupName, setGroupName] = useState('');
-  const [groupDescription, setGroupDescription] = useState('');
+  const [groupAvatar, setGroupAvatar] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<User[]>(route?.params?.preSelectedUsers || []);
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<'info' | 'members'>('info');
+  const [activeTab, setActiveTab] = useState<'nearby' | 'contacts'>('nearby');
+  const [notification, setNotification] = useState({
+    visible: false,
+    type: 'success' as 'success' | 'error',
+    message: ''
+  });
   
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
-    if (step === 'members') {
-      fetchUsers();
-    }
-  }, [step]);
+    fetchUsers();
+  }, []);
 
   useEffect(() => {
     if (searchText.trim()) {
@@ -77,13 +84,44 @@ const CreateGroupScreen: React.FC<CreateGroupScreenProps> = ({ route }) => {
         console.log('✅ Successfully fetched', otherUsers.length, 'users');
       } else {
         console.error('❌ Failed to fetch users:', response.status);
-        Alert.alert('Lỗi', 'Không thể tải danh sách người dùng');
+        setNotification({
+          visible: true,
+          type: 'error',
+          message: 'Không thể tải danh sách người dùng'
+        });
       }
     } catch (error) {
       console.error('❌ Error fetching users:', error);
-      Alert.alert('Lỗi', 'Không thể tải danh sách người dùng: ' + error.message);
+      setNotification({
+        visible: true,
+        type: 'error',
+        message: 'Không thể tải danh sách người dùng: ' + error.message
+      });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      setNotification({
+        visible: true,
+        type: 'error',
+        message: 'Cần quyền truy cập thư viện ảnh để chọn avatar'
+      });
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setGroupAvatar(result.assets[0].uri);
     }
   };
 
@@ -100,12 +138,20 @@ const CreateGroupScreen: React.FC<CreateGroupScreenProps> = ({ route }) => {
 
   const handleCreateGroup = async () => {
     if (!groupName.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập tên nhóm');
+      setNotification({
+        visible: true,
+        type: 'error',
+        message: 'Vui lòng nhập tên nhóm'
+      });
       return;
     }
 
     if (selectedUsers.length === 0) {
-      Alert.alert('Lỗi', 'Vui lòng chọn ít nhất 1 thành viên');
+      setNotification({
+        visible: true,
+        type: 'error',
+        message: 'Vui lòng chọn ít nhất 1 thành viên'
+      });
       return;
     }
 
@@ -116,7 +162,7 @@ const CreateGroupScreen: React.FC<CreateGroupScreenProps> = ({ route }) => {
       
       const requestBody = {
         name: groupName.trim(),
-        description: groupDescription.trim(),
+        description: '',
         participantIds: selectedUsers.map(u => u._id)
       };
       
@@ -135,189 +181,96 @@ const CreateGroupScreen: React.FC<CreateGroupScreenProps> = ({ route }) => {
       console.log('📥 Response status:', response.status);
       console.log('📥 Response ok:', response.ok);
       
-      // Lấy response text trước để debug
       const responseText = await response.text();
       console.log('📥 Response text:', responseText);
 
       if (response.ok) {
-        // Parse JSON nếu response ok
         const newGroup = JSON.parse(responseText);
         console.log('✅ Group created successfully:', newGroup);
         
-        Alert.alert(
-          'Thành công', 
-          'Đã tạo nhóm thành công!',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // Navigate back to ChatScreen where the new group will appear in the list
-                navigation.goBack();
-                // Note: ChatScreen sẽ tự động refresh và hiển thị group mới thông qua socket events
-              }
-            }
-          ]
-        );
+        // Hiển thị notification thành công
+        setNotification({
+          visible: true,
+          type: 'success',
+          message: 'Đã tạo nhóm thành công!'
+        });
+        
+        // Sau 1 giây, navigate vào chat nhóm
+        setTimeout(() => {
+          setNotification(prev => ({ ...prev, visible: false }));
+          navigation.replace(ROUTES.SCREENS.GROUP_CHAT_DETAIL, {
+            chat: newGroup
+          });
+        }, 1000);
       } else {
-        // Xử lý lỗi response
         console.error('❌ API Error - Status:', response.status);
         console.error('❌ API Error - Response:', responseText);
         
         try {
           const errorData = JSON.parse(responseText);
-          Alert.alert('Lỗi', errorData.message || 'Không thể tạo nhóm');
+          setNotification({
+            visible: true,
+            type: 'error',
+            message: errorData.message || 'Không thể tạo nhóm'
+          });
         } catch (parseError) {
           console.error('❌ Cannot parse error response as JSON:', parseError);
-          Alert.alert('Lỗi', `Lỗi server (${response.status}): ${responseText.substring(0, 100)}`);
+          setNotification({
+            visible: true,
+            type: 'error',
+            message: `Lỗi server (${response.status}): ${responseText.substring(0, 100)}`
+          });
         }
       }
     } catch (error) {
       console.error('❌ Network Error:', error);
-      Alert.alert('Lỗi', 'Có lỗi xảy ra khi tạo nhóm: ' + error.message);
+      setNotification({
+        visible: true,
+        type: 'error',
+        message: 'Có lỗi xảy ra khi tạo nhóm: ' + error.message
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const renderUserItem = ({ item }: { item: User }) => {
+  const getTimeAgo = (index: number) => {
+    // Mock time data cho demo
+    const times = ['27 phút trước', '30 phút trước', '1 giờ trước', '1 giờ trước', '3 giờ trước', '16 giờ trước', '18 giờ trước', '21 giờ trước'];
+    return times[index % times.length] || '1 giờ trước';
+  };
+
+  const renderUserItem = ({ item, index }: { item: User; index: number }) => {
     const isSelected = selectedUsers.some(u => u._id === item._id);
     
     return (
       <TouchableOpacity
-        style={[styles.userItem, isSelected && styles.userItemSelected]}
+        className="flex-row items-center px-4 py-3"
         onPress={() => handleUserToggle(item)}
       >
-        <View style={styles.userAvatar}>
-          <Text style={styles.userAvatarText}>
-            {item.fullname.charAt(0).toUpperCase()}
-          </Text>
-        </View>
-        <View style={styles.userInfo}>
-          <Text style={styles.userName}>{item.fullname}</Text>
-          <Text style={styles.userEmail}>{item.email}</Text>
-        </View>
-        <View style={styles.checkboxContainer}>
-          {isSelected && (
-            <MaterialIcons name="check-circle" size={24} color="#007AFF" />
-          )}
-          {!isSelected && (
-            <View style={styles.uncheckedCircle} />
+        <View className="w-6 h-6 mr-3">
+          {isSelected ? (
+            <View className="w-6 h-6 rounded-full bg-secondary items-center justify-center">
+              <MaterialIcons name="check" size={16} color="#fff" />
+            </View>
+          ) : (
+            <View className="w-6 h-6 rounded-full border-2 border-gray-300" />
           )}
         </View>
+
+        <Image
+          source={{ uri: getAvatar(item) }}
+          className="w-16 h-16 rounded-full mr-3"
+          resizeMode="cover"
+        />
+        <View className="flex-1">
+          <Text className="text-base text-black mb-1">{item.fullname}</Text>
+          <Text className="text-sm text-gray-600">{getTimeAgo(index)}</Text>
+        </View>
+         
       </TouchableOpacity>
     );
   };
-
-  const renderInfoStep = () => (
-    <ScrollView style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Thông tin nhóm</Text>
-      
-      <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Tên nhóm *</Text>
-        <TextInput
-          style={styles.textInput}
-          value={groupName}
-          onChangeText={setGroupName}
-          placeholder="Nhập tên nhóm"
-          maxLength={100}
-        />
-      </View>
-
-      <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Mô tả nhóm</Text>
-        <TextInput
-          style={[styles.textInput, styles.textArea]}
-          value={groupDescription}
-          onChangeText={setGroupDescription}
-          placeholder="Nhập mô tả nhóm (không bắt buộc)"
-          multiline
-          numberOfLines={3}
-          maxLength={500}
-        />
-      </View>
-
-      <TouchableOpacity
-        style={[styles.nextButton, !groupName.trim() && styles.disabledButton]}
-        onPress={() => setStep('members')}
-        disabled={!groupName.trim()}
-      >
-        <Text style={styles.nextButtonText}>Tiếp theo</Text>
-        <MaterialIcons name="arrow-forward" size={20} color="#fff" />
-      </TouchableOpacity>
-    </ScrollView>
-  );
-
-  const renderMembersStep = () => (
-    <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Chọn thành viên</Text>
-      
-      {selectedUsers.length > 0 && (
-        <View style={styles.selectedContainer}>
-          <Text style={styles.selectedLabel}>
-            Đã chọn {selectedUsers.length} thành viên
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {selectedUsers.map(user => (
-              <View key={user._id} style={styles.selectedUserChip}>
-                <Text style={styles.selectedUserText}>
-                  {user.fullname.split(' ').pop()}
-                </Text>
-                <TouchableOpacity onPress={() => handleUserToggle(user)}>
-                  <MaterialIcons name="close" size={16} color="#666" />
-                </TouchableOpacity>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
-      <View style={styles.searchContainer}>
-        <MaterialIcons name="search" size={20} color="#666" />
-        <TextInput
-          style={styles.searchInput}
-          value={searchText}
-          onChangeText={setSearchText}
-          placeholder="Tìm kiếm người dùng..."
-        />
-      </View>
-
-      <FlatList
-        data={filteredUsers}
-        renderItem={renderUserItem}
-        keyExtractor={(item) => item._id}
-        style={styles.usersList}
-        showsVerticalScrollIndicator={false}
-      />
-
-      <View style={styles.bottomButtons}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => setStep('info')}
-        >
-          <MaterialIcons name="arrow-back" size={20} color="#007AFF" />
-          <Text style={styles.backButtonText}>Quay lại</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.createButton,
-            (selectedUsers.length === 0 || loading) && styles.disabledButton
-          ]}
-          onPress={handleCreateGroup}
-          disabled={selectedUsers.length === 0 || loading}
-        >
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
-              <Text style={styles.createButtonText}>Đang tạo nhóm...</Text>
-            </View>
-          ) : (
-            <Text style={styles.createButtonText}>Tạo nhóm</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
 
   return (
     <KeyboardAvoidingView 
@@ -325,27 +278,136 @@ const CreateGroupScreen: React.FC<CreateGroupScreenProps> = ({ route }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="close" size={24} color="#000" />
+      <View className="flex-row items-start px-4 py-3 border-b border-gray-200">
+          <View className="items-center mr-4 my-auto">
+               <TouchableOpacity onPress={() => navigation.goBack()}>
+                 <Ionicons name="close" size={24} color="#000" />
+               </TouchableOpacity>
+          </View>
+            <View className="flex-col items-start justify-center">
+            <Text className="text-lg font-bold text-primary">Nhóm mới</Text>
+            <Text className="text-sm text-primary">Đã chọn: {selectedUsers.length}</Text>
+            </View>
+         </View>
+
+      {/* Group Info Section */}
+      <View className="flex-row items-center px-4 py-3">
+        <TouchableOpacity onPress={handlePickImage}>
+          {groupAvatar ? (
+            <Image source={{ uri: groupAvatar }} className="w-16 h-16 rounded-full mr-3" />
+          ) : (
+            <View className="w-16 h-16 rounded-full bg-gray-100 items-center justify-center mr-3">
+              <MaterialIcons name="camera-alt" size={28} color="#666" />
+            </View>
+          )}
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Tạo nhóm mới</Text>
-        <View style={styles.headerRight} />
+        <TextInput
+          className="flex-1 text-xl text-black py-2"
+          value={groupName}
+          onChangeText={setGroupName}
+          placeholder="Đặt tên nhóm"
+          maxLength={100}
+        />
       </View>
 
-      {/* Progress indicator */}
-      <View style={styles.progressContainer}>
-        <View style={[styles.progressStep, step === 'info' && styles.activeStep]}>
-          <Text style={[styles.progressNumber, step === 'info' && styles.activeStepText]}>1</Text>
-        </View>
-        <View style={styles.progressLine} />
-        <View style={[styles.progressStep, step === 'members' && styles.activeStep]}>
-          <Text style={[styles.progressNumber, step === 'members' && styles.activeStepText]}>2</Text>
+      {/* Search Section */}
+      <View className="px-4 py-2 mb-2">
+        <View className="flex-row items-center bg-gray-100 rounded-full px-3 py-3">
+          <MaterialIcons name="search" size={20} color="#666" />
+          <TextInput
+            className="flex-1 text-base ml-2 text-black"
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholder="Tìm tên hoặc số điện thoại"
+          />
+        
         </View>
       </View>
 
-      {/* Content */}
-      {step === 'info' ? renderInfoStep() : renderMembersStep()}
+      {/* Tabs */}
+      {/* <View className="flex-row bg-gray-100">
+        <TouchableOpacity 
+          className={`flex-1 py-3 items-center ${activeTab === 'nearby' ? 'border-b-2 border-blue-500' : ''}`}
+          onPress={() => setActiveTab('nearby')}
+        >
+          <Text className={`text-sm font-semibold ${activeTab === 'nearby' ? 'text-blue-500' : 'text-gray-600'}`}>
+            GẦN ĐÂY
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          className={`flex-1 py-3 items-center ${activeTab === 'contacts' ? 'border-b-2 border-blue-500' : ''}`}
+          onPress={() => setActiveTab('contacts')}
+        >
+          <Text className={`text-sm font-semibold ${activeTab === 'contacts' ? 'text-blue-500' : 'text-gray-600'}`}>
+            DANH BẠ
+          </Text>
+        </TouchableOpacity>
+      </View> */}
+
+      {/* Users List */}
+      {loading ? (
+        <View className="flex-1 justify-center items-center">
+          <ActivityIndicator size="large" color="#007AFF" />
+        </View>
+      ) : (
+        <FlatList
+          data={filteredUsers}
+          renderItem={renderUserItem}
+          keyExtractor={(item) => item._id}
+          style={styles.usersList}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+
+      {/* Bottom Selected Users */}
+      {selectedUsers.length > 0 && (
+        <View className="h-[15%] flex-row items-center px-4 bg-gray-100 border-t border-gray-200 shadow-md">
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            className="flex mr-3 mb-5"
+          >
+            <View className="flex-row items-center justify-center">
+              {selectedUsers.map(user => (
+                <TouchableOpacity 
+                  key={user._id} 
+                  className="relative mr-3"
+                  onPress={() => handleUserToggle(user)}
+                >
+                  <Image
+                    source={{ uri: getAvatar(user) }}
+                    className="w-16 h-16 rounded-full"
+                    resizeMode="cover"
+                  />
+                  <View className="absolute top-0 -right-1 w-5 h-5 rounded-full bg-gray-300 items-center justify-center">
+                    <MaterialIcons name="close" size={12} color="#757575" />
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+          
+          <TouchableOpacity 
+            className={`w-10 h-10 rounded-full items-center justify-center mb-5 ${(!groupName.trim() || loading) ? 'bg-gray-400' : 'bg-secondary'}`}
+            onPress={handleCreateGroup}
+            disabled={!groupName.trim() || loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <MaterialIcons name="send" size={20} color="#fff" />
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Notification Modal */}
+      <NotificationModal
+        visible={notification.visible}
+        type={notification.type}
+        message={notification.message}
+        onClose={() => setNotification(prev => ({ ...prev, visible: false }))}
+      />
     </KeyboardAvoidingView>
   );
 };
@@ -355,225 +417,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E7',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#000',
-  },
-  headerRight: {
-    width: 24,
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 20,
-    backgroundColor: '#F8F9FA',
-  },
-  progressStep: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#E5E5E7',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  activeStep: {
-    backgroundColor: '#007AFF',
-  },
-  progressNumber: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-  },
-  activeStepText: {
-    color: '#fff',
-  },
-  progressLine: {
-    width: 40,
-    height: 2,
-    backgroundColor: '#E5E5E7',
-    marginHorizontal: 8,
-  },
-  stepContainer: {
-    flex: 1,
-    padding: 16,
-  },
-  stepTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 24,
-  },
-  inputContainer: {
-    marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-    marginBottom: 8,
-  },
-  textInput: {
-    borderWidth: 1,
-    borderColor: '#E5E5E7',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    backgroundColor: '#F8F9FA',
-  },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  nextButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#007AFF',
-    borderRadius: 12,
-    paddingVertical: 16,
-    marginTop: 24,
-  },
-  nextButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-    marginRight: 8,
-  },
-  selectedContainer: {
-    marginBottom: 16,
-  },
-  selectedLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 8,
-  },
-  selectedUserChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E6F3FF',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
-  },
-  selectedUserText: {
-    fontSize: 14,
-    color: '#007AFF',
-    marginRight: 4,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8F9FA',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    marginBottom: 16,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingLeft: 8,
-    fontSize: 16,
-  },
   usersList: {
     flex: 1,
-  },
-  userItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    borderRadius: 8,
-  },
-  userItemSelected: {
-    backgroundColor: '#F0F8FF',
-  },
-  userAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#007AFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  userAvatarText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  userInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-  },
-  userEmail: {
-    fontSize: 14,
-    color: '#666',
-  },
-  checkboxContainer: {
-    width: 24,
-    height: 24,
-  },
-  uncheckedCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#E5E5E7',
-  },
-  bottomButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5E7',
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  backButtonText: {
-    fontSize: 16,
-    color: '#007AFF',
-    marginLeft: 4,
-  },
-  createButton: {
-    backgroundColor: '#007AFF',
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-  },
-  createButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  disabledButton: {
-    backgroundColor: '#B0B0B0',
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
 

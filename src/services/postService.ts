@@ -213,6 +213,58 @@ class PostService {
     const data: PostsResponse = await response.json();
     return data.data;
   }
+
+  // ========== CÁC METHODS MỚI CHO COMMENT FEATURES ==========
+
+  // Thêm reaction cho comment
+  async addCommentReaction(postId: string, commentId: string, type: string): Promise<Post> {
+    const headers = await this.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/comments/${commentId}/reactions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ type }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to add comment reaction');
+    }
+
+    const data: CreatePostResponse = await response.json();
+    return data.data;
+  }
+
+  // Xóa reaction khỏi comment
+  async removeCommentReaction(postId: string, commentId: string): Promise<Post> {
+    const headers = await this.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/comments/${commentId}/reactions`, {
+      method: 'DELETE',
+      headers,
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to remove comment reaction');
+    }
+
+    const data: CreatePostResponse = await response.json();
+    return data.data;
+  }
+
+  // Reply comment
+  async replyComment(postId: string, commentId: string, content: string): Promise<Post> {
+    const headers = await this.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/comments/${commentId}/replies`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ content }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to reply comment');
+    }
+
+    const data: CreatePostResponse = await response.json();
+    return data.data;
+  }
 }
 
 export const postService = new PostService(); 

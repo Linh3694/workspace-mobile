@@ -227,30 +227,69 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
         if (contentType && contentType.includes('text/html')) {
           console.warn(`💡 Messages API endpoint not available (Status: ${response.status})`);
           console.warn('Backend server may not be running or endpoint not implemented yet.');
-          forceResetLoadingStates(); // Force reset tất cả states
+          
+          // Fallback to storage if server returns HTML error page
+          if (!append) {
+            try {
+              const storedMessages = await loadMessagesFromStorage(chatId);
+              if (storedMessages.length > 0) {
+                console.log('📱 Using cached messages from storage');
+                setMessages(storedMessages);
+                setHasMoreMessages(false);
+              } else {
+                setMessages([]);
+              }
+            } catch (storageError) {
+              console.warn('Warning: Could not load cached messages:', storageError.message);
+              setMessages([]);
+            }
+          }
+          
+          forceResetLoadingStates();
           return;
         }
         
-        const errorText = await response.text();
-        console.warn('Messages API unavailable:', response.status, errorText);
-        forceResetLoadingStates(); // Force reset tất cả states
+        // For non-HTML errors, try to get more info
+        let errorMessage = `HTTP ${response.status}`;
+        try {
+          const errorText = await response.text();
+          // Only log first 100 chars to avoid spam
+          errorMessage = errorText.length > 100 ? errorText.substring(0, 100) + '...' : errorText;
+        } catch (parseError) {
+          // If we can't even read the response, just use status
+        }
+        
+        console.warn('⚠️ Messages API unavailable:', errorMessage);
+        forceResetLoadingStates();
         return;
       }
     } catch (error) {
-      console.error('Error loading messages:', error);
+      // Handle network errors more gracefully
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          console.warn('⚠️ Messages API request timed out');
+        } else if (error.name === 'TypeError' && error.message.includes('Network request failed')) {
+          console.warn('⚠️ Network error - server may be offline');
+        } else {
+          console.warn('⚠️ Error loading messages:', error.message);
+        }
+      } else {
+        console.warn('⚠️ Unknown error loading messages:', error);
+      }
 
       // Fallback: load từ storage nếu API thất bại và không phải append
       if (!append) {
         try {
           const storedMessages = await loadMessagesFromStorage(chatId);
           if (storedMessages.length > 0) {
+            console.log('📱 Using cached messages from storage after error');
             setMessages(storedMessages);
             setHasMoreMessages(false);
           } else {
             setMessages([]);
           }
         } catch (storageError) {
-          console.error('Error loading from storage after error:', storageError);
+          console.warn('Warning: Could not load cached messages after error:', storageError.message);
           setMessages([]);
         }
       }
@@ -441,7 +480,7 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
         
         // Kiểm tra nếu server trả về HTML (thường là 404 page)
         if (contentType && contentType.includes('text/html')) {
-          console.error('❌ Server returned HTML response (likely 404 page)');
+          console.warn('⚠️ Server returned HTML response (likely 404 page)');
           
           // Thử các endpoint thay thế trước khi báo lỗi
           if (res.status === 404 && !replyToId) { // Chỉ thử với tin nhắn thường, không phải reply
@@ -458,11 +497,13 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
           }
           
           if (res.status === 404) {
+            console.warn('⚠️ Send message API endpoint not implemented yet (404)');
             Alert.alert(
-              'Lỗi kết nối', 
-              'Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng và thử lại.'
+              'Tính năng đang phát triển', 
+              'Tính năng gửi tin nhắn đang được phát triển. Vui lòng thử lại sau hoặc liên hệ với quản trị viên.'
             );
           } else {
+            console.warn(`⚠️ Server error: ${res.status}`);
             Alert.alert(
               'Lỗi server', 
               `Server đang gặp sự cố (${res.status}). Vui lòng thử lại sau.`
@@ -475,12 +516,12 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
         try {
           const errorData = await res.json();
           const errorMessage = errorData.message || errorData.error || 'Không thể gửi tin nhắn';
-          console.error('❌ Failed to send message:', res.status, errorMessage);
+          console.warn('⚠️ Failed to send message:', res.status, errorMessage);
           Alert.alert('Lỗi gửi tin nhắn', errorMessage);
         } catch (jsonError) {
           // Fallback nếu không parse được JSON
           const errText = await res.text();
-          console.error('❌ Failed to send message (non-JSON):', res.status, errText.substring(0, 100));
+          console.warn('⚠️ Failed to send message (non-JSON):', res.status, errText.substring(0, 100));
           Alert.alert('Lỗi gửi tin nhắn', `Lỗi server (${res.status}). Vui lòng thử lại.`);
         }
         return null;
@@ -488,7 +529,7 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
 
       const contentType = res.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
-        console.error('❌ Expected JSON response but got:', contentType);
+        console.warn('⚠️ Expected JSON response but got:', contentType);
         Alert.alert('Lỗi', 'Server trả về dữ liệu không hợp lệ');
         return null;
       }
@@ -507,12 +548,12 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
         
         return newMessage;
       } else {
-        console.error('❌ Invalid message response - missing _id');
+        console.warn('⚠️ Invalid message response - missing _id');
         Alert.alert('Lỗi', 'Tin nhắn không được gửi đúng cách');
         return null;
       }
     } catch (error) {
-      console.error('❌ Error sending message:', error);
+      console.warn('⚠️ Error sending message:', error);
       
       if (error.name === 'AbortError') {
         Alert.alert('Lỗi kết nối', 'Kết nối bị timeout. Vui lòng kiểm tra mạng và thử lại.');
@@ -667,19 +708,53 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
       
       clearTimeout(timeoutId);
 
-
       if (response.ok) {
         const result = await response.json();
+        console.log('✅ [MARK READ] Successfully marked messages as read');
       } else {
-        const errorText = await response.text();
-        console.error('❌ [MARK READ] Failed to mark messages as read:', {
+        // Check if this is a known unimplemented endpoint
+        if (response.status === 404) {
+          console.warn('⚠️ [MARK READ] API endpoint not implemented yet:', {
+            status: response.status,
+            endpoint: `/api/chats/read-all/${chatId}`
+          });
+          // Don't treat 404 as a critical error - the UI is already updated
+          return;
+        }
+        
+        // For other errors, log them but don't crash
+        const contentType = response.headers.get('content-type');
+        let errorText = 'Unknown error';
+        
+        if (contentType && contentType.includes('application/json')) {
+          try {
+            const errorData = await response.json();
+            errorText = errorData.message || `HTTP ${response.status}`;
+          } catch (parseError) {
+            errorText = `HTTP ${response.status} - Failed to parse error response`;
+          }
+        } else {
+          // It's probably HTML error page, don't log the full HTML
+          errorText = `HTTP ${response.status} - Server returned HTML error page`;
+        }
+        
+        console.warn('⚠️ [MARK READ] API call failed (non-critical):', {
           status: response.status,
           statusText: response.statusText,
           errorText: errorText
         });
       }
     } catch (error) {
-      console.error('❌ [MARK READ] Error marking messages as read:', error);
+      // Handle network errors, timeouts, etc.
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          console.warn('⚠️ [MARK READ] Request timed out');
+        } else {
+          console.warn('⚠️ [MARK READ] Network error (non-critical):', error.message);
+        }
+      } else {
+        console.warn('⚠️ [MARK READ] Unknown error (non-critical):', error);
+      }
     }
   }, []);
 

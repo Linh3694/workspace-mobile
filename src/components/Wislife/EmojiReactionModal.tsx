@@ -1,16 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Modal,
-  Dimensions,
-  Animated,
-  Easing,
-  TouchableWithoutFeedback,
-  Image,
-  ScrollView,
-} from 'react-native';
+// @ts-ignore
+import { View, Text, TouchableOpacity, Modal, Dimensions, Animated, Easing, TouchableWithoutFeedback, Image, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useEmojis } from '../../hooks/useEmojis';
 
@@ -67,10 +57,9 @@ const EmojiReactionModal: React.FC<EmojiReactionModalProps> = ({
 
   if (!visible) return null;
 
-  // Calculate position - default to center if no position provided
   const modalWidth = 250;
   const modalHeight = 60;
-  const modalTop = position ? Math.max(10, position.y - modalHeight - 10) : height / 2 - modalHeight / 2;
+  const modalTop = position ? Math.min(height - modalHeight - 10, position.y + 60) : height / 2 - modalHeight / 2;
   const modalLeft = position 
     ? Math.max(10, Math.min(width - modalWidth - 10, position.x - modalWidth / 2)) 
     : (width - modalWidth) / 2;
@@ -139,21 +128,7 @@ const EmojiReactionModal: React.FC<EmojiReactionModalProps> = ({
                     ))}
                   </View>
                 </ScrollView>
-              )}
-              {/* Small arrow pointing down */}
-              {position && (
-                <View 
-                  className="absolute bg-white"
-                  style={{
-                    bottom: -5,
-                    left: Math.max(5, Math.min(modalWidth - 15, position.x - modalLeft)),
-                    width: 10,
-                    height: 10,
-                    transform: [{ rotate: '45deg' }],
-                    elevation: 8,
-                  }}
-                />
-              )}
+              )}              
             </Animated.View>
           </TouchableWithoutFeedback>
         </View>

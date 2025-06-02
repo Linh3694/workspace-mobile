@@ -17,6 +17,7 @@ import GroupAvatar from '../../components/Chat/GroupAvatar';
 import { useEmojis } from '../../hooks/useEmojis';
 import WiscomLogo from '../../assets/wiscom.svg';
 import { ROUTES } from '../../constants/routes';
+import StandardHeader from '../../components/Common/StandardHeader';
 
 interface User {
     _id: string;
@@ -108,8 +109,8 @@ const ChatScreen = () => {
 
     // Tạo function để sắp xếp users theo độ ưu tiên:
     // 1. Users đang online (hiển thị trước)
-    // 2. Users đã có chat gần đây
-    // 3. Sắp xếp theo thời gian tin nhắn cuối cùng (nếu có chat)
+    // 2. Users đã có chat 1-1 gần đây (không tính group chat)
+    // 3. Sắp xếp theo thời gian tin nhắn cuối cùng (nếu có chat 1-1)
     // 4. Sắp xếp theo tên (nếu cùng trạng thái)
     const getSortedUsers = useMemo(() => {
         if (!currentUserId) return users;
@@ -117,18 +118,21 @@ const ChatScreen = () => {
         // Lọc bỏ current user khỏi danh sách
         const filteredUsers = users.filter(user => user._id !== currentUserId);
 
-        // Tạo map để tra cứu nhanh thông tin chat
+        // Tạo map để tra cứu nhanh thông tin chat 1-1 (không bao gồm group chat)
         const chatParticipantsMap = new Map();
         const chatLastMessageMap = new Map();
         
         // Kiểm tra chats có tồn tại và là array trước khi forEach
         if (chats && Array.isArray(chats)) {
             chats.forEach(chat => {
-                const otherParticipant = chat.participants.find(p => p._id !== currentUserId);
-                if (otherParticipant) {
-                    chatParticipantsMap.set(otherParticipant._id, true);
-                    if (chat.lastMessage) {
-                        chatLastMessageMap.set(otherParticipant._id, new Date(chat.lastMessage.createdAt).getTime());
+                // Chỉ xét chat 1-1, bỏ qua group chat
+                if (!chat.isGroup && chat.participants.length === 2) {
+                    const otherParticipant = chat.participants.find(p => p._id !== currentUserId);
+                    if (otherParticipant) {
+                        chatParticipantsMap.set(otherParticipant._id, true);
+                        if (chat.lastMessage) {
+                            chatLastMessageMap.set(otherParticipant._id, new Date(chat.lastMessage.createdAt).getTime());
+                        }
                     }
                 }
             });
@@ -146,11 +150,11 @@ const ChatScreen = () => {
             if (aIsOnline && !bIsOnline) return -1;
             if (!aIsOnline && bIsOnline) return 1;
 
-            // Ưu tiên 2: Users đã có chat
+            // Ưu tiên 2: Users đã có chat 1-1
             if (aHasChat && !bHasChat) return -1;
             if (!aHasChat && bHasChat) return 1;
 
-            // Ưu tiên 3: Nếu cả hai đều có chat, sắp xếp theo thời gian tin nhắn cuối
+            // Ưu tiên 3: Nếu cả hai đều có chat 1-1, sắp xếp theo thời gian tin nhắn cuối
             if (aHasChat && bHasChat) {
                 return bLastMessageTime - aLastMessageTime;
             }
@@ -483,21 +487,32 @@ const ChatScreen = () => {
             if (Array.isArray(data)) {
                 console.log('💾 [fetchChats] Received chats data:', data.length, 'chats');
                 
-                // Debug readBy status for each chat
-                data.forEach((chat, index) => {
-                    if (chat.lastMessage) {
-                        console.log(`💾 [fetchChats] Chat ${index + 1}:`, {
-                            chatId: chat._id,
-                            lastMessageId: chat.lastMessage._id,
-                            lastMessageContent: chat.lastMessage.content?.substring(0, 20) + '...',
-                            senderId: typeof chat.lastMessage.sender === 'object' 
-                                ? chat.lastMessage.sender._id 
-                                : chat.lastMessage.sender,
-                            readBy: chat.lastMessage.readBy || [],
-                            currentUserId
-                        });
-                    }
-                });
+                // Backend đã lọc chat rỗng, chỉ cần sort theo thời gian
+                // Tạm comment debug logs để tránh spam khi test
+                // data.forEach((chat, index) => {
+                //     if (chat.lastMessage) {
+                //         console.log(`💾 [fetchChats] Chat ${index + 1}:`, {
+                //             chatId: chat._id,
+                //             lastMessageId: chat.lastMessage._id,
+                //             lastMessageContent: chat.lastMessage.content?.substring(0, 20) + '...',
+                //             senderId: typeof chat.lastMessage.sender === 'object' 
+                //                 ? chat.lastMessage.sender._id 
+                //                 : chat.lastMessage.sender,
+                //             readBy: chat.lastMessage.readBy || [],
+                //             currentUserId,
+                //             isGroup: chat.isGroup
+                //         });
+                //     } else if (chat.isGroup) {
+                //         console.log(`💾 [fetchChats] Group chat ${index + 1}:`, {
+                //             chatId: chat._id,
+                //             name: chat.name,
+                //             isGroup: chat.isGroup,
+                //             participants: chat.participants?.length,
+                //             hasLastMessage: false,
+                //             note: 'Group chat mới tạo chưa có tin nhắn'
+                //         });
+                //     }
+                // });
                 
                 const sortedChats = data.sort(
                     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
@@ -527,16 +542,23 @@ const ChatScreen = () => {
     // Refresh chats khi màn hình được focus để cập nhật trạng thái đã đọc
     useFocusEffect(
         React.useCallback(() => {
-            if (currentUserId) {
-                // Refresh ngay lập tức khi focus
-                fetchChats(true);
-                // Refresh thêm một lần nữa sau delay ngắn để đảm bảo đồng bộ với server
-                const timeoutId = setTimeout(() => {
-                    fetchChats(true);
-                }, 500);
-                return () => clearTimeout(timeoutId);
-            }
-        }, [currentUserId])
+            if (!currentUserId) return;
+            
+            let isMounted = true;
+            
+            const refreshChats = async () => {
+                if (isMounted) {
+                    await fetchChats(true);
+                }
+            };
+            
+            // Refresh ngay lập tức khi focus
+            refreshChats();
+            
+            return () => {
+                isMounted = false;
+            };
+        }, [currentUserId]) // Chỉ phụ thuộc vào currentUserId
     );
 
     // Lắng nghe khi quay lại từ ChatDetail để refresh chats
@@ -782,18 +804,24 @@ const ChatScreen = () => {
 
     const renderUser = useCallback(({ item }: { item: User }) => {
         const handleUserPress = () => {
-            // Tìm chat hiện có với user này
+            // Tìm chat 1-1 hiện có với user này (chỉ những chat có tin nhắn)
             const existingChat = chats && Array.isArray(chats) ? chats.find(chat => 
-                chat.participants.some(p => p._id === item._id)
+                !chat.isGroup && // Chỉ tìm chat 1-1, không phải group chat
+                chat.participants.length === 2 && // Đảm bảo là chat 1-1
+                chat.participants.some(p => p._id === item._id) &&
+                chat.lastMessage // Chỉ những chat có tin nhắn
             ) : null;
+            
             setLastVisitedChatId(existingChat?._id || null); // Lưu ID của chat được visit
             setShouldRefresh(true); // Set flag để refresh khi quay lại
             hideTabBar();
+            
             if (existingChat) {
-                // Nếu đã có chat, navigate với chatId
+                // Nếu đã có chat 1-1 với tin nhắn, navigate với chatId
                 navigation.navigate('ChatDetail', { user: item, chatId: existingChat._id });
             } else {
-                // Nếu chưa có chat, tạo chat mới
+                // Nếu chưa có chat hoặc chat chưa có tin nhắn, chỉ navigate với user
+                // ChatDetailScreen sẽ tự tạo chat khi gửi tin nhắn đầu tiên
                 navigation.navigate('ChatDetail', { user: item });
             }
         };
@@ -857,16 +885,6 @@ const ChatScreen = () => {
         // Use the helper function for consistent unread checking
         const hasUnreadMessage = isMessageUnread(item.lastMessage, currentUserId);
         
-        console.log('🎨 [renderChat] Chat render info:', {
-            chatId: item._id,
-            displayName,
-            lastMessageId: item.lastMessage?._id,
-            lastMessageContent: item.lastMessage?.content?.substring(0, 15) + '...',
-            hasUnreadMessage,
-            currentUserId,
-            lastMessageSenderId
-        });
-
         // Xử lý nội dung tin nhắn cuối cùng để hiển thị
         let lastMessageContent = '';
         if (item.lastMessage) {
@@ -978,14 +996,10 @@ const ChatScreen = () => {
     return (
         <SafeAreaView
             className="flex-1 bg-white"
-            style={{ paddingTop: Platform.OS === 'android' ? insets.top : 0 }}
         >
-            <View className="p-4 bg-white">
-                <View className="flex-row items-center justify-between mb-4">
-                    <View className="flex-row items-center">
-                        <WiscomLogo width={130} height={50} />
-                        {/* Socket Connection Status */}
-                    </View>
+            <StandardHeader
+                logo={<WiscomLogo width={150} height={50} />}
+                rightButton={
                     <TouchableOpacity
                         onPress={() => navigation.navigate(ROUTES.SCREENS.CREATE_GROUP as any)}
                         className="bg-white rounded-full p-2"
@@ -993,8 +1007,10 @@ const ChatScreen = () => {
                     >
                         <MaterialIcons name="group-add" size={24} color="#002855" />
                     </TouchableOpacity>
-                </View>
-                
+                }
+            />
+            
+            <View className="p-4 bg-white">                
                 <View className="flex-row items-center bg-white border border-gray-200 rounded-full px-4 py-2">
                     <MaterialIcons name="search" size={22} color="#BDBDBD" />
                     <TextInput

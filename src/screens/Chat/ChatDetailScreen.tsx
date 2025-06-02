@@ -40,6 +40,7 @@ import MessageBubble from '../../components/Chat/MessageBubble';
 import SwipeableMessageBubble from '../../components/Chat/SwipeableMessageBubble';
 import ImageViewerModal from '../../components/Chat/ImageViewerModal';
 import ForwardMessageSheet from '../../components/Chat/ForwardMessageSheet';
+import GroupAvatar from '../../components/Chat/GroupAvatar';
 import { formatMessageTime, formatMessageDate, getAvatar, isDifferentDay } from '../../utils/messageUtils';
 import MessageStatus from '../../components/Chat/MessageStatus';
 import { getMessageGroupPosition } from '../../utils/messageGroupUtils';
@@ -48,6 +49,7 @@ import { useEmojis } from '../../hooks/useEmojis';
 import ConfirmModal from '../../components/ConfirmModal';
 import ChatInputBar from '../../components/Chat/ChatInputBar';
 import { useSocket } from '../../hooks/useSocket';
+import { useGroupSocket } from '../../hooks/useGroupSocket';
 import { useMessageOperations } from '../../hooks/useMessageOperations';
 
 
@@ -226,13 +228,17 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
         }
     }, [chatPartner._id]);
 
-    // Sử dụng socket hook
-    const socketConnection = useSocket({
-        authToken,
-        chatId: chat?._id || '',
-        currentUserId,
+    // Sử dụng socket hook phù hợp dựa trên chat type
+    const is1to1Chat = chat && !chat.isGroup;
+    const isGroupChat = chat && chat.isGroup;
+
+    // Socket cho chat 1-1
+    const oneToOneSocket = useSocket({
+        authToken: is1to1Chat ? authToken : null,
+        chatId: is1to1Chat ? (chat?._id || '') : '',
+        currentUserId: is1to1Chat ? currentUserId : null,
         chatPartner,
-        isScreenActive,
+        isScreenActive: is1to1Chat ? isScreenActive : false,
         onNewMessage: messageOps.handleNewMessage,
         onMessageRead: messageOps.handleMessageRead,
         onMessageRevoked: messageOps.handleMessageRevoked,
@@ -240,6 +246,23 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
         onUserOffline: handleUserOffline,
         onUserStatus: handleUserStatus
     });
+
+    // Socket cho group chat
+    const groupSocket = useGroupSocket({
+        authToken: isGroupChat ? authToken : null,
+        chatId: isGroupChat ? (chat?._id || '') : '',
+        currentUserId: isGroupChat ? currentUserId : null,
+        isScreenActive: isGroupChat ? isScreenActive : false,
+        onNewMessage: messageOps.handleNewMessage,
+        onMessageRead: messageOps.handleMessageRead,
+        onMessageRevoked: messageOps.handleMessageRevoked,
+        onGroupMemberAdded: () => {}, // Placeholder for now
+        onGroupMemberRemoved: () => {}, // Placeholder for now  
+        onGroupInfoUpdated: () => {}, // Placeholder for now
+    });
+
+    // Chọn socket connection phù hợp
+    const socketConnection = is1to1Chat ? oneToOneSocket : groupSocket;
 
     // Focus & blur handlers for tracking when screen is active/inactive
     useEffect(() => {
@@ -414,34 +437,36 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
     useEffect(() => {
         if (chat?._id && currentUserId) {
             console.log('🔄 [ChatDetailScreen] Loading initial messages for chat:', chat._id);
+            
+            // Check if this is a group chat and redirect to GroupChatDetailScreen
+            if (chat.isGroup) {
+                console.log('⚠️ [ChatDetailScreen] Group chat detected, redirecting to GroupChatDetailScreen');
+                navigation.replace('GroupChatDetail', { chat: chat as any });
+                return;
+            }
+            
             messageOps.loadMessages(chat._id);
         }
-    }, [chat?._id, currentUserId]); // Only depend on chat._id and currentUserId
+    }, [chat?._id, currentUserId, navigation]); // Only depend on chat._id and currentUserId
 
     // Optimized real-time online/offline status tracking
     useEffect(() => {
-        if (!socketConnection.socket || !chat?._id || !currentUserId) return;
+        if (!socketConnection.socket || !chat?._id || !currentUserId || !is1to1Chat) return;
 
-        let hasEmitted = false;
+        console.log('📡 [ChatDetailScreen] Emitting user online for chat:', chat._id);
+        oneToOneSocket.emitUserOnline();
         
-        // Chỉ emit user online một lần và chỉ khi cần thiết
-        if (!hasEmitted) {
-            console.log('📡 [ChatDetailScreen] Emitting user online for chat:', chat._id);
-            socketConnection.emitUserOnline();
-            hasEmitted = true;
-            
-            // Kiểm tra trạng thái của chat partner sau một khoảng thời gian
-            const checkPartnerTimeout = setTimeout(() => {
-                if (socketConnection.socket && socketConnection.socket.connected) {
-                    socketConnection.checkUserStatus(chatPartner._id);
-                }
-            }, 2000); // Tăng delay để tránh spam
-            
-            return () => {
-                clearTimeout(checkPartnerTimeout);
-            };
-        }
-    }, [currentUserId, chat?._id]); // Bỏ socketConnection và chatPartner._id khỏi dependency để tránh re-run liên tục
+        // Kiểm tra trạng thái của chat partner sau một khoảng thời gian
+        const checkPartnerTimeout = setTimeout(() => {
+            if (oneToOneSocket.socket && oneToOneSocket.socket.connected) {
+                oneToOneSocket.checkUserStatus(chatPartner._id);
+            }
+        }, 2000);
+        
+        return () => {
+            clearTimeout(checkPartnerTimeout);
+        };
+    }, [chat?._id, currentUserId, is1to1Chat]); // Chỉ phụ thuộc vào các giá trị core, bỏ các object references
 
     // Debounced typing handler
     const handleInputChange = useCallback((text: string) => {
@@ -1572,33 +1597,87 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                                 <MaterialIcons name="arrow-back-ios" size={32} color="#009483" />
                             </TouchableOpacity>
                             <View style={{ position: 'relative', marginRight: 12 }}>
-                                <Image
-                                    source={{ uri: getAvatar(chatPartner) }}
-                                    style={{ width: 48, height: 48, borderRadius: 24 }}
-                                />
-                                <View
-                                    style={{
-                                        position: 'absolute',
-                                        bottom: 0,
-                                        right: 0,
-                                        width: 14,
-                                        height: 14,
-                                        borderRadius: 9999,
-                                        backgroundColor: isUserOnline(chatPartner._id) ? 'green' : '#bbb',
-                                        borderWidth: 2,
-                                        borderColor: 'white',
-                                    }}
-                                />
+                                {isGroupChat ? (
+                                    <GroupAvatar
+                                        size={48}
+                                        groupAvatar={chat?.avatar}
+                                        participants={chat?.participants || []}
+                                        currentUserId={currentUserId}
+                                    />
+                                ) : (
+                                    <>
+                                        <Image
+                                            source={{ uri: getAvatar(chatPartner) }}
+                                            style={{ width: 48, height: 48, borderRadius: 24 }}
+                                        />
+                                        <View
+                                            style={{
+                                                position: 'absolute',
+                                                bottom: 0,
+                                                right: 0,
+                                                width: 14,
+                                                height: 14,
+                                                borderRadius: 9999,
+                                                backgroundColor: isUserOnline(chatPartner._id) ? 'green' : '#bbb',
+                                                borderWidth: 2,
+                                                borderColor: 'white',
+                                            }}
+                                        />
+                                    </>
+                                )}
                             </View>
                             <View style={{ justifyContent: 'center', flex: 1 }}>
-                                <Text className="font-bold text-lg" style={{ marginBottom: 0 }}>{chatPartner.fullname}</Text>
+                                <Text className="font-bold text-lg" style={{ marginBottom: 0 }}>
+                                    {isGroupChat ? (chat?.name || 'Nhóm chat') : chatPartner.fullname}
+                                </Text>
                                 <Text style={{ fontSize: 12, color: '#444', fontFamily: 'Inter', fontWeight: 'medium' }}>
-                                    {socketConnection.otherTyping 
-                                        ? 'đang soạn tin...' 
-                                        : (isUserOnline(chatPartner._id) ? 'Đang hoạt động' : getFormattedLastSeen(chatPartner._id))
-                                    }
+                                    {(() => {
+                                        // Logic typing khác nhau cho chat 1-1 và group chat
+                                        if (is1to1Chat && oneToOneSocket.otherTyping) {
+                                            return 'đang soạn tin...';
+                                        } else if (isGroupChat && groupSocket.typingUsers && groupSocket.typingUsers.length > 0) {
+                                            const typingNames = groupSocket.typingUsers
+                                                .filter(user => user._id !== currentUserId)
+                                                .map(user => user.fullname)
+                                                .slice(0, 2); // Chỉ hiển thị tối đa 2 tên
+                                            
+                                            if (typingNames.length === 1) {
+                                                return `${typingNames[0]} đang soạn tin...`;
+                                            } else if (typingNames.length === 2) {
+                                                return `${typingNames[0]} và ${typingNames[1]} đang soạn tin...`;
+                                            } else if (typingNames.length > 2) {
+                                                return `${typingNames[0]} và ${typingNames.length - 1} người khác đang soạn tin...`;
+                                            }
+                                        }
+                                        
+                                        // Hiển thị trạng thái online/offline cho chat 1-1
+                                        if (is1to1Chat) {
+                                            return isUserOnline(chatPartner._id) ? 'Đang hoạt động' : getFormattedLastSeen(chatPartner._id);
+                                        }
+                                        
+                                        // Mặc định cho group chat
+                                        return chat?.participants?.length ? `${chat.participants.length} thành viên` : '';
+                                    })()}
                                 </Text>
                             </View>
+                            {/* Thêm nút thông tin */}
+                            <TouchableOpacity 
+                                onPress={() => {
+                                    if (isGroupChat && chat) {
+                                        // Navigate to GroupInfoScreen
+                                        navigationProp.navigate(ROUTES.SCREENS.GROUP_INFO as any, { groupInfo: chat });
+                                    } else {
+                                        // Navigate to ChatInfoScreen  
+                                        navigationProp.navigate(ROUTES.SCREENS.CHAT_INFO as any, { 
+                                            user: chatPartner, 
+                                            chatId: routeChatId 
+                                        });
+                                    }
+                                }}
+                                className="ml-2"
+                            >
+                                 <MaterialIcons name="info" size={24} color="#009483" />
+                            </TouchableOpacity>
                         </View>
 
                         {/* Hiển thị banner tin nhắn ghim */}
@@ -1630,21 +1709,30 @@ const ChatDetailScreen = ({ route, navigation }: Props) => {
                                     keyExtractor={keyExtractor}
                                     ListHeaderComponent={() => (
                                         <>
-                                            {socketConnection.otherTyping && (
-                                                <View 
-                                                    className="flex-row justify-start items-end mx-2 mt-4 mb-1"
-                                                >
-                                                    <View className="relative mr-1.5">
-                                                        <Image
-                                                            source={{ uri: getAvatar(chatPartner) }}
-                                                            className="w-8 h-8 rounded-full"
-                                                        />
+                                            {(() => {
+                                                // Hiển thị typing indicator khác nhau cho chat 1-1 và group chat
+                                                const shouldShowTyping = is1to1Chat 
+                                                    ? oneToOneSocket.otherTyping 
+                                                    : isGroupChat && groupSocket.typingUsers && groupSocket.typingUsers.length > 0;
+                                                
+                                                if (!shouldShowTyping) return null;
+                                                
+                                                return (
+                                                    <View 
+                                                        className="flex-row justify-start items-end mx-2 mt-4 mb-1"
+                                                    >
+                                                        <View className="relative mr-1.5">
+                                                            <Image
+                                                                source={{ uri: getAvatar(chatPartner) }}
+                                                                className="w-8 h-8 rounded-full"
+                                                            />
+                                                        </View>
+                                                        <View className="bg-[#F5F5ED] rounded-2xl py-2 px-4 flex-row items-center">
+                                                            <TypingIndicator />
+                                                        </View>
                                                     </View>
-                                                    <View className="bg-[#F5F5ED] rounded-2xl py-2 px-4 flex-row items-center">
-                                                        <TypingIndicator />
-                                                    </View>
-                                                </View>
-                                            )}
+                                                );
+                                            })()}
                                         </>
                                     )}
                                     ListFooterComponent={() => (

@@ -17,6 +17,7 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import axios from 'axios';
+import StandardHeader from '../../components/Common/StandardHeader';
 
 
 const ProfileScreen = () => {
@@ -41,30 +42,6 @@ const ProfileScreen = () => {
     useEffect(() => {
         checkNotificationStatus();
     }, []);
-
-    // Debug avatar URL
-    useEffect(() => {
-        if (user) {
-            const avatarUrl = getAvatar(user);
-            console.log('Avatar URL:', avatarUrl);
-            console.log('User data:', user);
-            console.log('User has avatarUrl:', !!user.avatarUrl);
-
-            // Test if avatar URL is accessible
-            if (user.avatarUrl) {
-                const testUrl = `${API_BASE_URL}/uploads/Avatar/${user.avatarUrl}`;
-                console.log('Testing avatar URL accessibility:', testUrl);
-
-                // Try to load the image to check if it exists
-                Image.prefetch(testUrl).then(() => {
-                    console.log('Avatar image successfully prefetched');
-                }).catch((error) => {
-                    console.log('Avatar image prefetch failed:', error);
-                    setAvatarError(true);
-                });
-            }
-        }
-    }, [user]);
 
     const handleLogout = async () => {
         await logout();
@@ -274,12 +251,11 @@ const ProfileScreen = () => {
 
     return (
         <SafeAreaView className="flex-1 bg-white">
+            <StandardHeader
+                logo={<Wismelogo width={130} height={50} />}
+            />
+            
             <ScrollView className="flex-1">
-                {/* Header */}
-                <View className=" px-6 pt-4 pb-2">
-                    <Wismelogo width={100} height={30} />
-                </View>
-
                 {/* Profile Section */}
                 <View className="mx-4 mt-6 rounded-2xl p-6 items-center">
                     {/* Avatar với online status */}

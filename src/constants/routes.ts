@@ -6,6 +6,7 @@ export const ROUTES = {
         MAIN: 'Main',
         CHAT_DETAIL: 'ChatDetail',
         CHAT_INIT: 'ChatInit',
+        CHAT_INFO: 'ChatInfo',
         CREATE_GROUP: 'CreateGroup',
         GROUP_CHAT_DETAIL: 'GroupChatDetail',
         GROUP_INFO: 'GroupInfo',

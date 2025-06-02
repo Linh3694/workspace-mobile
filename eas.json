@@ -26,7 +26,8 @@
       "autoIncrement": true,
       "channel": "production",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease -x lint"
       },
       "ios": {
         "autoIncrement": true
