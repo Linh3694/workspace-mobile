@@ -50,23 +50,13 @@ export const useMicrosoftLogin = (
       scheme: undefined,
       path: 'auth',
     });
-    console.log('🔗 Generated Expo URI (add this exact URI to Azure AD):', redirectUri);
-    console.log('🔗 Current IP-based URI - may change with network');
-    console.log('🔗 Alternative stable URI: https://auth.expo.io/%40hailinh.n23/workspace/auth');
+    
   } else {
     // For standalone/dev client, use custom scheme
     redirectUri = `${appScheme}://auth`;
-    console.log('🔗 Using custom scheme for production/standalone');
   }
 
-  // Log for debugging
-  console.log('🔗 Microsoft Auth Config:', {
-    isExpoGo,
-    appScheme,
-    redirectUri,
-    appOwnership: Constants.appOwnership,
-    clientId,
-  });
+  
 
   /* Build the auth request */
   const [request, result, promptAsync] = AuthSession.useAuthRequest(
