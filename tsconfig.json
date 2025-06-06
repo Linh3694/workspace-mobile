@@ -30,6 +30,8 @@
     "nativewind-env.d.ts",
     "types/**/*.d.ts",
     "src/@types/**/*.d.ts",
+    "../workspace-frontend/src/pages/Student/HallOfHonor/HallOfHonorPage.tsx",
+    "../workspace-frontend/src/pages/Student/HallOfHonor/RecordManager.tsx"
   ],
   "exclude": [
     "node_modules",

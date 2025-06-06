@@ -113,7 +113,7 @@ const ChatScreen = () => {
     // 3. Sắp xếp theo thời gian tin nhắn cuối cùng (nếu có chat 1-1)
     // 4. Sắp xếp theo tên (nếu cùng trạng thái)
     const getSortedUsers = useMemo(() => {
-        if (!currentUserId) return users;
+        if (!currentUserId || !users || !Array.isArray(users)) return [];
 
         // Lọc bỏ current user khỏi danh sách
         const filteredUsers = users.filter(user => user._id !== currentUserId);

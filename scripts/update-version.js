@@ -12,7 +12,7 @@ const updateVersion = (versionType = 'patch', customVersion = null) => {
     const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
     const currentVersion = appJson.expo.version;
     
-    console.log(`📱 Version hiện tại: ${currentVersion}`);
+    console.error(`Current version: ${currentVersion}`);
     
     let newVersion;
     
@@ -44,7 +44,7 @@ const updateVersion = (versionType = 'patch', customVersion = null) => {
     // Ghi lại file app.json
     fs.writeFileSync(appJsonPath, JSON.stringify(appJson, null, 2));
     
-    console.log(`✅ Đã cập nhật version: ${currentVersion} → ${newVersion}`);
+    console.error(`Updated version: ${currentVersion} -> ${newVersion}`);
     
     // Cũng cập nhật version trong package.json nếu cần
     const packageJsonPath = path.join(process.cwd(), 'package.json');
@@ -52,12 +52,14 @@ const updateVersion = (versionType = 'patch', customVersion = null) => {
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
       packageJson.version = newVersion;
       fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
-      console.log(`✅ Đã cập nhật version trong package.json: ${newVersion}`);
+      console.error(`Updated package.json version: ${newVersion}`);
     }
     
+    // Chỉ output version number cho GitHub Actions
+    console.log(newVersion);
     return newVersion;
   } catch (error) {
-    console.error('❌ Lỗi khi cập nhật version:', error.message);
+    console.error('Error updating version:', error.message);
     process.exit(1);
   }
 };

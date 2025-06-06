@@ -1,14 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  Modal,
-  TouchableOpacity,
-  Animated,
-  Dimensions,
-  TouchableWithoutFeedback,
-  ActivityIndicator
-} from 'react-native';
+// @ts-ignore
+import { View, Text, Modal, TouchableOpacity, Animated, Dimensions, TouchableWithoutFeedback, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 interface UploadDocumentModalProps {

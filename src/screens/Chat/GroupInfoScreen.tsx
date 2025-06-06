@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 // @ts-ignore
-import {View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, Modal, FlatList, ActivityIndicator, SafeAreaView, Image} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, Modal, FlatList, ActivityIndicator, SafeAreaView, Image, Platform} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../../config/constants';
+import { useOnlineStatus } from '../../context/OnlineStatusContext';
 import Avatar from '../../components/Chat/Avatar';
 import GroupAvatar from '../../components/Chat/GroupAvatar';
 import type { GroupInfo, User } from '../../types/message';
@@ -35,11 +36,16 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
   const [searchText, setSearchText] = useState('');
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [activeTab, setActiveTab] = useState('search');
+  const [showMemberDetailModal, setShowMemberDetailModal] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<User | null>(null);
+  const [selectedUsersToAdd, setSelectedUsersToAdd] = useState<User[]>([]);
   
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const route = useRoute();
   const { groupInfo: initialGroupInfo } = route.params as { groupInfo: GroupInfo };
   const insets = useSafeAreaInsets();
+  const { isUserOnline, getFormattedLastSeen } = useOnlineStatus();
 
   useEffect(() => {
     setGroupInfo(initialGroupInfo);
@@ -413,28 +419,96 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
     }
   };
 
+  const showMoreOptions = () => {
+    Alert.alert(
+      'Tùy chọn',
+      'Chọn hành động',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        { text: 'Cài đặt nhóm', onPress: () => {} },
+        { text: 'Báo cáo nhóm', onPress: () => {} },
+      ]
+    );
+  };
+
+  const handleSelectUser = (user: User) => {
+    const isSelected = selectedUsersToAdd.some(u => u._id === user._id);
+    if (isSelected) {
+      setSelectedUsersToAdd(prev => prev.filter(u => u._id !== user._id));
+    } else {
+      setSelectedUsersToAdd(prev => [...prev, user]);
+    }
+  };
+
+  const handleRemoveSelectedUser = (userId: string) => {
+    setSelectedUsersToAdd(prev => prev.filter(u => u._id !== userId));
+  };
+
+  const handleAddSelectedMembers = async () => {
+    if (selectedUsersToAdd.length === 0) {
+      Alert.alert('Thông báo', 'Vui lòng chọn ít nhất một thành viên');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      const response = await fetch(`${API_BASE_URL}/api/chats/group/${groupInfo?._id}/add-member`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userIds: selectedUsersToAdd.map(u => u._id),
+        }),
+      });
+
+      if (response.ok) {
+        const updatedGroup = await response.json();
+        setGroupInfo(updatedGroup);
+        setShowAddMemberModal(false);
+        setSelectedUsersToAdd([]);
+        setSearchText('');
+        Alert.alert('Thành công', 'Đã thêm thành viên vào nhóm');
+      } else {
+        const errorData = await response.json();
+        Alert.alert('Lỗi', errorData.message || 'Không thể thêm thành viên');
+      }
+    } catch (error) {
+      console.error('Error adding members:', error);
+      Alert.alert('Lỗi', 'Có lỗi xảy ra khi thêm thành viên');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const renderMemberItem = ({ item }: { item: User }) => {
     const memberIsAdmin = groupInfo?.admins.some(admin => admin._id === item._id);
     const memberIsCreator = groupInfo?.creator._id === item._id;
     const canManageMember = isCreator && !memberIsCreator;
 
     return (
-      <View style={styles.memberItem}>
+      <View className="flex-row items-center px-4 py-3 border-b border-gray-200">
         <Avatar user={item} size={48} />
-        <View style={styles.memberInfo}>
-          <Text style={styles.memberName}>{item.fullname}</Text>
-          <Text style={styles.memberEmail}>{item.email}</Text>
+        <View className="flex-1 ml-3">
+          <Text className="text-base font-semibold text-black">{item.fullname}</Text>
+          <Text className="text-sm text-gray-500 mt-0.5">{item.email}</Text>
         </View>
-        <View style={styles.memberActions}>
+        <View className="flex-row items-center">
           {memberIsCreator && (
-            <Text style={styles.creatorBadge}>Người tạo</Text>
+            <Text className="text-xs font-semibold text-orange-500 bg-orange-50 px-2 py-1 rounded-3xl mr-2">
+              Người tạo
+            </Text>
           )}
           {memberIsAdmin && !memberIsCreator && (
-            <Text style={styles.adminBadge}>Admin</Text>
+            <Text className="text-xs font-semibold text-blue-500 bg-blue-50 px-2 py-1 rounded-3xl mr-2">
+              Admin
+            </Text>
           )}
           {canManageMember && (
             <TouchableOpacity
-              style={styles.actionButton}
+              className="p-2 ml-1"
               onPress={() => handleToggleAdmin(item._id, item.fullname, memberIsAdmin)}
             >
               <MaterialIcons 
@@ -446,7 +520,7 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
           )}
           {(isAdmin || isCreator) && !memberIsCreator && item._id !== currentUserId && (
             <TouchableOpacity
-              style={[styles.actionButton, styles.dangerButton]}
+              className="p-2 ml-1 bg-red-50 rounded-2xl"
               onPress={() => handleRemoveMember(item._id, item.fullname)}
             >
               <MaterialIcons name="remove-circle" size={20} color="#FF3B30" />
@@ -459,13 +533,13 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
 
   const renderUserToAdd = ({ item }: { item: User }) => (
     <TouchableOpacity
-      style={styles.userToAddItem}
+      className="flex-row items-center px-4 py-3 border-b border-gray-200"
       onPress={() => handleAddMember(item._id)}
     >
       <Avatar user={item} size={40} />
-      <View style={styles.userToAddInfo}>
-        <Text style={styles.userToAddName}>{item.fullname}</Text>
-        <Text style={styles.userToAddEmail}>{item.email}</Text>
+      <View className="flex-1 ml-3">
+        <Text className="text-base font-semibold text-black">{item.fullname}</Text>
+        <Text className="text-sm text-gray-500 mt-0.5">{item.email}</Text>
       </View>
       <MaterialIcons name="add-circle" size={24} color="#007AFF" />
     </TouchableOpacity>
@@ -473,8 +547,8 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
 
   if (!groupInfo) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
+      <SafeAreaView className="flex-1 bg-white">
+        <View className="flex-1 justify-center items-center">
           <ActivityIndicator size="large" color="#007AFF" />
         </View>
       </SafeAreaView>
@@ -482,121 +556,119 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
+    <SafeAreaView className="flex-1 bg-white" style={{ paddingTop: Platform.OS === 'android' ? insets.top : 0 }}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#007AFF" />
+      <View className="flex-row items-center justify-between px-4 py-3">
+        <TouchableOpacity onPress={() => navigation.goBack()} className="p-2">
+          <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Thông tin nhóm</Text>
-        {(isAdmin || isCreator) && !isEditing && (
-          <TouchableOpacity onPress={() => setIsEditing(true)}>
-            <MaterialIcons name="edit" size={24} color="#007AFF" />
-          </TouchableOpacity>
-        )}
-        {isEditing && (
-          <TouchableOpacity onPress={handleUpdateGroupInfo} disabled={loading}>
-            {loading ? (
-              <ActivityIndicator size="small" color="#007AFF" />
-            ) : (
-              <Text style={styles.saveButton}>Lưu</Text>
-            )}
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity onPress={showMoreOptions} className="p-2">
+          <MaterialIcons name="more-vert" size={24} color="#000" />
+        </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         {/* Group Info Section */}
-        <View style={styles.groupInfoSection}>
+        <View className="items-center py-0 px-4 bg-white">
           <TouchableOpacity
-            style={styles.avatarContainer}
+            className="relative mb-4"
             onPress={handleChangeAvatar}
             disabled={uploadingAvatar || (!isAdmin && !isCreator)}
           >
             <GroupAvatar
-              size={80}
+              size={120}
               groupAvatar={groupInfo.avatar}
-              participants={groupInfo.participants}
+              participants={groupInfo.participants.slice(0, 3)}
               currentUserId={currentUserId}
             />
-            {(isAdmin || isCreator) && (
-              <View style={styles.avatarOverlay}>
-                {uploadingAvatar ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <MaterialIcons name="camera-alt" size={20} color="#fff" />
-                )}
+            {groupInfo.participants.length > 3 && (
+              <View className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-gray-500 items-center justify-center border-2 border-white">
+                <Text className="text-white text-xs font-semibold">
+                  +{groupInfo.participants.length - 3}
+                </Text>
               </View>
             )}
           </TouchableOpacity>
           
-          {isEditing ? (
-            <View style={styles.editContainer}>
-              <TextInput
-                style={styles.editNameInput}
-                value={editedName}
-                onChangeText={setEditedName}
-                placeholder="Tên nhóm"
-                maxLength={100}
-              />
-              <TextInput
-                style={styles.editDescriptionInput}
-                value={editedDescription}
-                onChangeText={setEditedDescription}
-                placeholder="Mô tả nhóm (không bắt buộc)"
-                multiline
-                numberOfLines={3}
-                maxLength={500}
-              />
-            </View>
-          ) : (
-            <View style={styles.infoContainer}>
-              <Text style={styles.groupName}>{groupInfo.name}</Text>
-              {groupInfo.description && (
-                <Text style={styles.groupDescription}>{groupInfo.description}</Text>
-              )}
-              <Text style={styles.memberCount}>
-                {groupInfo.participants.length} thành viên
-              </Text>
-              <Text style={styles.createdDate}>
-                Tạo bởi {groupInfo.creator.fullname} • {new Date(groupInfo.createdAt).toLocaleDateString('vi-VN')}
-              </Text>
-            </View>
-          )}
+          <Text className="text-2xl font-semibold text-black text-center">
+            {groupInfo.name}
+          </Text>
         </View>
 
-        {/* Actions Section */}
-        <View style={styles.actionsSection}>
+        {/* Tab Navigation */}
+        <View className="flex-row bg-white px-20 py-6 justify-around">
           <TouchableOpacity 
-            style={styles.actionItem}
-            onPress={() => {
-              setShowMembersModal(true);
-            }}
+            className="items-center py-3 px-4"
+            onPress={() => setActiveTab('search')}
           >
-            <MaterialIcons name="people" size={24} color="#007AFF" />
-            <Text style={styles.actionText}>Xem danh sách thành viên</Text>
-            <Text style={styles.actionSubtext}>{groupInfo.participants.length} thành viên</Text>
+            <View className={`w-16 h-16 rounded-full items-center justify-center bg-gray-100`}>
+              <MaterialIcons 
+                name="search" 
+                size={32} 
+                color="#757575" 
+              />
+            </View>
+            <Text className={`text-sm mt-2 font-medium text-[#757575]`}>
+              Tìm
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            className="items-center py-3 px-4"
+            onPress={() => setActiveTab('notification')}
+          >
+            <View className={`w-16 h-16 rounded-full items-center justify-center bg-gray-100`}>
+              <MaterialIcons 
+                name="notifications" 
+                size={32} 
+                color="#757575" 
+              />
+            </View>
+            <Text className={`text-sm mt-2 font-medium text-[#757575]`}>
+              Thông báo
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Menu Section */}
+        <View className="bg-white pt-4 border-t border-[#E5E5E5] gap-2">
+          <Text className="text-sm text-gray-500 font-semibold px-4 pb-2">
+            Hành động
+          </Text>
+          
+          <TouchableOpacity 
+            className="flex-row items-center py-4 px-4"
+            onPress={() => setShowMembersModal(true)}
+          >
+            <MaterialIcons name="people" size={24} color="#8E8E93" />
+            <Text className="text-base font-semibold text-[#757575] ml-4 flex-1">Quản lý nhóm</Text>
           </TouchableOpacity>
 
-          {(isAdmin || groupInfo.settings.allowMembersToAdd) && (
-            <TouchableOpacity 
-              style={styles.actionItem}
-              onPress={() => {
-                fetchUsers();
-                setShowAddMemberModal(true);
-              }}
-            >
-              <MaterialIcons name="person-add" size={24} color="#007AFF" />
-              <Text style={styles.actionText}>Thêm thành viên</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity className="flex-row items-center py-4 px-4">
+            <MaterialIcons name="photo-library" size={24} color="#8E8E93" />
+            <Text className="text-base font-semibold text-[#757575] ml-4 flex-1">Xem ảnh, video</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity className="flex-row items-center py-4 px-4">
+            <MaterialIcons name="attach-file" size={24} color="#8E8E93" />
+            <Text className="text-base font-semibold text-[#757575] ml-4 flex-1">Tìm tệp đính kèm</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity className="flex-row items-center py-4 px-4">
+            <MaterialIcons name="link" size={24} color="#8E8E93" />
+            <Text className="text-base font-semibold text-[#757575] ml-4 flex-1">Tìm liên kết</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity className="flex-row items-center py-4 px-4 opacity-50">
+            <MaterialIcons name="note" size={24} color="#C7C7CC" />
+            <Text className="text-base font-semibold text-[#757575] ml-4 flex-1">Ghim tin nhắn</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionItem, styles.dangerAction]}
+            className="flex-row items-center py-4 px-4"
             onPress={handleLeaveGroup}
           >
             <MaterialIcons name="exit-to-app" size={24} color="#FF3B30" />
-            <Text style={[styles.actionText, styles.dangerText]}>Rời khỏi nhóm</Text>
+            <Text className="text-base font-semibold text-[#FF3B30] ml-4 flex-1">Rời nhóm</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -607,19 +679,179 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
         animationType="slide"
         presentationStyle="pageSheet"
       >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Danh sách thành viên</Text>
+        <SafeAreaView className="flex-1 bg-white">
+          <View className="flex-row items-center justify-between px-7 py-6">
             <TouchableOpacity onPress={() => setShowMembersModal(false)}>
-              <Ionicons name="close" size={24} color="#000" />
+              <Ionicons name="arrow-back" size={24} color="#000" />
             </TouchableOpacity>
+            <Text className="text-xl font-bold text-black">Quản lý nhóm</Text>
+            {(isAdmin || groupInfo.settings.allowMembersToAdd) && (
+              <TouchableOpacity 
+                onPress={() => {
+                  setShowMembersModal(false);
+                  fetchUsers();
+                  setShowAddMemberModal(true);
+                }}
+              >
+                <MaterialIcons name="person-add" size={24} color="#000" />
+              </TouchableOpacity>
+            )}
           </View>
-          <FlatList
-            data={groupInfo.participants}
-            renderItem={renderMemberItem}
-            keyExtractor={(item) => item._id}
-            style={styles.membersList}
-          />
+          
+          <ScrollView className="flex-1">
+            {/* Admins Section */}
+            {groupInfo.admins.length > 0 && (
+              <View className="mt-4">
+                <Text className="text-base text-gray-600 font-medium px-4 mb-3">
+                  Quản trị viên ({groupInfo.admins.length})
+                </Text>
+                {groupInfo.admins.map((admin) => (
+                  <TouchableOpacity 
+                    key={admin._id} 
+                    className="flex-row items-center px-4 py-3"
+                    onPress={() => {
+                      console.log('Admin pressed:', admin.fullname);
+                      setSelectedMember(admin);
+                      setShowMemberDetailModal(true);
+                    }}
+                  >
+                    <View className="relative">
+                      <Avatar user={admin} size={48} />
+                      <View className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-white ${isUserOnline(admin._id) ? 'bg-green-500' : 'bg-gray-400'}`} />
+                    </View>
+                    <View className="flex-1 ml-3">
+                      <Text className="text-base font-semibold text-black">{admin.fullname}</Text>
+                      <Text className="text-sm text-gray-500">
+                        {isUserOnline(admin._id) ? 'Đang hoạt động' : getFormattedLastSeen(admin._id)}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Regular Members Section */}
+            <View className="mt-6">
+              <Text className="text-base text-gray-600 font-medium px-4 mb-3">
+                Thành viên ({groupInfo.participants.filter(p => !groupInfo.admins.some(a => a._id === p._id)).length})
+              </Text>
+              {groupInfo.participants
+                .filter(participant => !groupInfo.admins.some(admin => admin._id === participant._id))
+                .map((member) => (
+                  <TouchableOpacity 
+                    key={member._id} 
+                    className="flex-row items-center px-4 py-3"
+                    onPress={() => {
+                      console.log('Member pressed:', member.fullname);
+                      setSelectedMember(member);
+                      setShowMemberDetailModal(true);
+                    }}
+                  >
+                    <View className="relative">
+                      <Avatar user={member} size={48} />
+                      <View className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-white ${isUserOnline(member._id) ? 'bg-green-500' : 'bg-gray-400'}`} />
+                    </View>
+                    <View className="flex-1 ml-3">
+                      <Text className="text-base font-semibold text-black">{member.fullname}</Text>
+                      <Text className="text-sm text-gray-500">
+                        {isUserOnline(member._id) ? 'Đang hoạt động' : getFormattedLastSeen(member._id)}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+            </View>
+          </ScrollView>
+          
+          {/* Member Detail Modal Overlay - Inside Members Modal */}
+          {showMemberDetailModal && selectedMember && (
+            <View className="absolute inset-0 bg-black bg-opacity-70 flex justify-center items-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+              <View className="bg-white rounded-3xl mx-6 w-80 overflow-hidden">
+                {/* Member Profile Section */}
+                <View className="items-center py-8 px-6">
+                  <View className="relative mb-4">
+                    <Avatar user={selectedMember} size={100} />
+                    <View className={`absolute bottom-1 right-1 w-6 h-6 rounded-full border-4 border-white ${isUserOnline(selectedMember._id) ? 'bg-green-500' : 'bg-gray-400'}`} />
+                  </View>
+                  
+                  <Text className="text-xl font-bold text-black mb-2">
+                    {selectedMember.fullname}
+                  </Text>
+                  
+                  {(selectedMember as any).jobTitle && (
+                    <Text className="text-sm text-gray-600 text-center mb-2">
+                      {(selectedMember as any).jobTitle}
+                    </Text>
+                  )}
+                  
+                  {/* Online Status */}
+                  <Text className="text-sm text-gray-500">
+                    {isUserOnline(selectedMember._id) ? 'Đang hoạt động' : getFormattedLastSeen(selectedMember._id)}
+                  </Text>
+                </View>
+
+                {/* Action Menu */}
+                <View className="bg-white border-t border-[#E5E5E5] py-2">
+                  <TouchableOpacity 
+                    className="flex-row items-center py-4 px-6"
+                    onPress={() => {
+                      setShowMemberDetailModal(false);
+                      setShowMembersModal(false);
+                      // Navigate to 1-1 chat with this user
+                      navigation.navigate('Chat', { 
+                        user: selectedMember,
+                        chatId: null 
+                      });
+                    }}
+                  >
+                    <Text className="text-base text-black flex-1">Nhắn tin</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    className="flex-row items-center py-4 px-6"
+                    onPress={() => {
+                      Alert.alert('Thông báo', 'Tính năng đang được xây dựng', [{ text: 'OK' }]);
+                    }}
+                  >
+                    <Text className="text-base text-black flex-1">Xem hồ sơ</Text>
+                  </TouchableOpacity>
+
+                  {/* Admin actions */}
+                  {(isAdmin || isCreator) && selectedMember._id !== currentUserId && (
+                    <>
+                      {!groupInfo.admins.some(admin => admin._id === selectedMember._id) && (
+                        <TouchableOpacity 
+                          className="flex-row items-center py-4 px-6"
+                          onPress={() => {
+                            Alert.alert('Thông báo', 'Tính năng đang được xây dựng', [{ text: 'OK' }]);
+                          }}
+                        >
+                          <Text className="text-base text-black flex-1">Thêm làm Quản trí viên</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {selectedMember._id !== groupInfo.creator._id && (
+                        <TouchableOpacity 
+                          className="flex-row items-center py-4 px-6"
+                          onPress={() => {
+                            Alert.alert('Thông báo', 'Tính năng đang được xây dựng', [{ text: 'OK' }]);
+                          }}
+                        >
+                          <Text className="text-base text-red-500 flex-1">Xóa khỏi nhóm</Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
+                </View>
+              </View>
+              
+              {/* Background tap to close */}
+              <TouchableOpacity 
+                className="absolute inset-0"
+                onPress={() => setShowMemberDetailModal(false)}
+                activeOpacity={1}
+              />
+            </View>
+          )}
         </SafeAreaView>
       </Modal>
 
@@ -629,304 +861,132 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
         animationType="slide"
         presentationStyle="pageSheet"
       >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Thêm thành viên</Text>
-            <TouchableOpacity onPress={() => setShowAddMemberModal(false)}>
-              <Ionicons name="close" size={24} color="#000" />
+        <SafeAreaView className="flex-1 bg-white">
+          <View className="flex-row items-center justify-between px-4 py-3">
+            <TouchableOpacity onPress={() => {
+              setShowAddMemberModal(false);
+              setSelectedUsersToAdd([]);
+              setSearchText('');
+            }}>
+              <Ionicons name="arrow-back" size={24} color="#000" />
+            </TouchableOpacity>
+            <Text className="text-xl font-bold text-black">Thành viên</Text>
+            <TouchableOpacity onPress={() => {}}>
+              <MaterialIcons name="person" size={24} color="#000" />
             </TouchableOpacity>
           </View>
           
-          <View style={styles.searchContainer}>
+          {/* Selected Users Section */}
+          {selectedUsersToAdd.length > 0 && (
+            <View className="px-4 py-4">
+              <Text className="text-base font-medium text-gray-600 mb-3">
+                Đã chọn
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View className="flex-row gap-3">
+                  {selectedUsersToAdd.map((user) => (
+                    <View key={user._id} className="items-center">
+                      <View className="relative">
+                        <Avatar user={user} size={60} />
+                        <TouchableOpacity
+                          className="absolute top-0 -right-1 w-5 h-5 bg-red-500 rounded-full items-center justify-center"
+                          onPress={() => handleRemoveSelectedUser(user._id)}
+                        >
+                          <MaterialIcons name="remove" size={16} color="white" />
+                        </TouchableOpacity>
+                      </View>
+                      <Text className="text-sm text-black mt-1 max-w-16 text-center" numberOfLines={1}>
+                        {user.fullname.split(' ').slice(-1)[0]}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Search Input */}
+          <View className="flex-row items-center bg-gray-100 rounded-2xl px-3 mx-4 mb-4">
             <MaterialIcons name="search" size={20} color="#666" />
             <TextInput
-              style={styles.searchInput}
+              className="flex-1 py-3 pl-2 text-base text-black"
               value={searchText}
               onChangeText={setSearchText}
               placeholder="Tìm kiếm người dùng..."
             />
           </View>
 
-          <FlatList
-            data={filteredUsers}
-            renderItem={renderUserToAdd}
-            keyExtractor={(item) => item._id}
-            style={styles.usersList}
-            ListEmptyComponent={() => (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>
-                  {searchText.trim() ? 'Không tìm thấy người dùng' : 'Nhập tên để tìm kiếm người dùng'}
-                </Text>
-              </View>
-            )}
-          />
+          {/* Users List */}
+          <View className="flex-1">
+            <Text className="text-base font-medium text-gray-600 px-4 mb-3">
+              Gần đây
+            </Text>
+            
+            <FlatList
+              data={filteredUsers}
+              renderItem={({ item }) => {
+                const isSelected = selectedUsersToAdd.some(u => u._id === item._id);
+                return (
+                  <TouchableOpacity
+                    className="flex-row items-center px-4 py-3"
+                    onPress={() => handleSelectUser(item)}
+                  >
+                    <Avatar user={item} size={48} />
+                    <View className="flex-1 ml-3">
+                      <Text className="text-base font-semibold text-black">{item.fullname}</Text>
+                      <Text className="text-sm text-gray-500 mt-0.5">{item.email}</Text>
+                    </View>
+                    <View className={`w-6 h-6 rounded-full border-2 items-center justify-center ${
+                      isSelected ? 'bg-[#002855] border-[#002855]' : 'border-gray-300'
+                    }`}>
+                      {isSelected && (
+                        <MaterialIcons name="check" size={16} color="white" />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+              keyExtractor={(item) => item._id}
+              ListEmptyComponent={() => (
+                <View className="p-8 items-center">
+                  <Text className="text-base text-gray-500 text-center">
+                    {searchText.trim() ? 'Không tìm thấy người dùng' : 'Nhập tên để tìm kiếm người dùng'}
+                  </Text>
+                </View>
+              )}
+            />
+          </View>
+
+          {/* Add Button */}
+          {selectedUsersToAdd.length > 0 && (
+            <View className="p-4 border-t border-gray-200">
+              <TouchableOpacity
+                className="bg-[#002855] py-3 rounded-full flex-row items-center justify-center"
+                onPress={handleAddSelectedMembers}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <>
+                    <MaterialIcons name="group-add" size={20} color="white" />
+                    <Text className="text-white font-semibold ml-2">
+                      Thêm {selectedUsersToAdd.length} thành viên
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
 };
 
+// Minimal styles for compatibility
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E7',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#000',
-    flex: 1,
-    textAlign: 'center',
-  },
-  saveButton: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#007AFF',
-  },
-  content: {
-    flex: 1,
-  },
-  groupInfoSection: {
-    alignItems: 'center',
-    paddingVertical: 32,
-    paddingHorizontal: 16,
-    backgroundColor: '#F8F9FA',
-  },
-  avatarContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#E6F3FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  avatarOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  editContainer: {
-    width: '100%',
-    alignItems: 'center',
-  },
-  editNameInput: {
-    width: '100%',
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#007AFF',
-    paddingVertical: 8,
-    marginBottom: 16,
-  },
-  editDescriptionInput: {
-    width: '100%',
-    fontSize: 16,
-    textAlign: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E5E7',
-    borderRadius: 8,
-    padding: 12,
-    minHeight: 80,
-  },
-  infoContainer: {
-    alignItems: 'center',
-  },
-  groupName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#000',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  groupDescription: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  memberCount: {
-    fontSize: 14,
-    color: '#999',
-    marginBottom: 4,
-  },
-  createdDate: {
-    fontSize: 12,
-    color: '#999',
-  },
-  actionsSection: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  actionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    backgroundColor: '#F8F9FA',
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  actionText: {
-    fontSize: 16,
-    color: '#007AFF',
-    marginLeft: 12,
-    flex: 1,
-    fontWeight: '500',
-  },
-  actionSubtext: {
-    fontSize: 14,
-    color: '#666',
-  },
-  dangerAction: {
-    backgroundColor: '#FFF2F0',
-  },
-  dangerText: {
-    color: '#FF3B30',
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E7',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#000',
-  },
-  membersList: {
-    flex: 1,
-  },
-  memberItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  memberInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  memberName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-  },
-  memberEmail: {
-    fontSize: 14,
-    color: '#666',
-  },
-  memberActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  creatorBadge: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FF9500',
-    backgroundColor: '#FFF4E6',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 8,
-  },
-  adminBadge: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#007AFF',
-    backgroundColor: '#E6F3FF',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 8,
-  },
-  actionButton: {
-    padding: 8,
-    marginLeft: 4,
-  },
-  dangerButton: {
-    backgroundColor: '#FFF2F0',
-    borderRadius: 16,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8F9FA',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    marginHorizontal: 16,
-    marginVertical: 12,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingLeft: 8,
-    fontSize: 16,
-  },
-  usersList: {
-    flex: 1,
-  },
-  userToAddItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  userToAddInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  userToAddName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-  },
-  userToAddEmail: {
-    fontSize: 14,
-    color: '#666',
-  },
-  emptyContainer: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-  },
+  // Keep empty or minimal styles for backward compatibility
 });
 
 export default GroupInfoScreen; 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+// @ts-ignore
 import { View, Text, SafeAreaView, TouchableOpacity, ActivityIndicator, Platform, Modal, FlatList } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -100,11 +101,11 @@ const TicketAdminDetail = () => {
                 );
             case 'processing':
                 return (
-                    <TicketProcessing ticketId={ticketId} onRefresh={fetchTicketData} />
+                    <TicketProcessing ticketId={ticketId} ticketCode={ticket?.ticketCode} onRefresh={fetchTicketData} />
                 );
             case 'chat':
                 return (
-                    <TicketGroupChat ticketId={ticketId} />
+                    <TicketGroupChat ticketId={ticketId} ticketCode={ticket?.ticketCode} onRefresh={fetchTicketData} />
                 );
             case 'history':
                 return (

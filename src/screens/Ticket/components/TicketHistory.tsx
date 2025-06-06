@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+//@ts-ignore
 import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
 import axios from 'axios';
 import { API_BASE_URL } from '../../../config/constants';

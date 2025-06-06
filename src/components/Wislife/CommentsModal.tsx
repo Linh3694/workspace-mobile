@@ -268,16 +268,16 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
 
   const renderCommentContent = (content: string) => {
     // Tách text thành các phần để highlight @mentions
-    // Match từ @ cho đến khi gặp space hoặc end of string
-    const parts = content.split(/(@[^\s]+)/g);
+    // Chỉ match tên người thật: @ + từ đầu viết hoa + tối đa 2 từ tiếp theo cũng viết hoa
+    const parts = content.split(/(@[A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ][a-zàáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]*(?:\s+[A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ][a-zàáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]*){0,2})/g);
     
     return (
       <Text className="text-gray-800 text-base leading-5">
         {parts.map((part, index) => {
-          if (part.startsWith('@')) {
+          if (part.startsWith('@') && part.trim().length > 1) {
             return (
               <Text key={index} className="text-blue-500 font-medium">
-                {part}
+                {part.trim()}
               </Text>
             );
           }
@@ -353,13 +353,13 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                         return (
                           <Image
                             source={emoji.url}
-                            className="w-12 h-12 mr-1"
+                            className="w-8 h-8 mr-1"
                             resizeMode="contain"
                           />
                         );
                       } else if (emoji && isFallbackEmoji(emoji)) {
                         return (
-                          <Text className="text-lg mr-1">{emoji.fallbackText}</Text>
+                          <Text className="text-lg mr-1 font-semibold">{emoji.fallbackText}</Text>
                         );
                       } else {
                         return (

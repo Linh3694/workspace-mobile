@@ -31,6 +31,10 @@ on:
         - minor
         - major
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   version-bump:
     name: Auto Version Bump
@@ -67,20 +71,26 @@ jobs:
             VERSION_TYPE="minor"
           fi
           
-          echo "🔄 Bumping version: $VERSION_TYPE"
+          echo "Bumping version: $VERSION_TYPE"
           
-          # Run version update script
+          # Run version update script and capture new version
           NEW_VERSION=$(node scripts/update-version.js $VERSION_TYPE)
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
           
           # Configure git
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
           # Commit version changes
-          git add app.json package.json
-          git commit -m "🔖 Auto bump version to $NEW_VERSION [skip ci]" || echo "No changes to commit"
-          git push origin ${{ github.ref_name }} || echo "No changes to push"
+          if git diff --quiet app.json package.json; then
+            echo "No version changes to commit"
+          else
+            git add app.json package.json
+            git commit -m "🔖 Auto bump version to $NEW_VERSION [skip ci]"
+            git push origin ${{ github.ref_name }}
+            echo "Version changes committed and pushed"
+          fi
 
   build-ios:
     name: Build iOS

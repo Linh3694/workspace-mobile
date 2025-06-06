@@ -1,17 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-    View,
-    Text,
-    ActivityIndicator,
-    Alert,
-    TextInput,
-    TouchableOpacity,
-    Platform,
-    ScrollView,
-    Modal,
-    Animated,
-    Dimensions,
-    TouchableWithoutFeedback,
+// @ts-ignore
+import {View,Text,ActivityIndicator,Alert,TextInput,TouchableOpacity,Platform,ScrollView,Modal,Animated,Dimensions,TouchableWithoutFeedback,
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -22,6 +11,7 @@ import Toast from 'react-native-toast-message';
 
 interface TicketProcessingProps {
     ticketId: string;
+    ticketCode?: string;
     onRefresh: () => void;
 }
 
@@ -74,6 +64,7 @@ const statusOptions = ['Processing', 'Done', 'Cancelled'];
 
 const TicketProcessing: React.FC<TicketProcessingProps> = ({
     ticketId,
+    ticketCode,
     onRefresh,
 }) => {
     const [loading, setLoading] = useState(true);
