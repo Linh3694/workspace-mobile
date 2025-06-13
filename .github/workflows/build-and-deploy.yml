@@ -30,6 +30,16 @@ on:
           - patch
           - minor
           - major
+      release_track:
+        description: 'Google Play release track'
+        required: false
+        default: 'internal'
+        type: choice
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
 
 permissions:
   contents: write
@@ -126,14 +136,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Fix MSAL dependency issue
-        run: |
-          # Clean và reinstall dependencies để fix MSAL issue
-          rm -rf node_modules
-          npm ci
-          # Clear Expo cache
-          npx expo install --fix
-
       - name: Build iOS app
         run: eas build --platform ios --non-interactive --wait
         env:
@@ -179,45 +181,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Fix MSAL dependency issue
-        run: |
-          # Clean và reinstall dependencies để fix MSAL issue
-          rm -rf node_modules
-          npm ci
-          # Clear Expo cache
-          npx expo install --fix
-
-      - name: Build Android APK
-        run: eas build --platform android --non-interactive --wait
+      - name: Build Android App Bundle
+        run: eas build --platform android --non-interactive --wait --profile production
         timeout-minutes: 60
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-            - name: Download APK
+      - name: Prepare Google service account JSON
+        run: echo "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}" > service-account.json
+
+      - name: Submit to Google Play Console
+        if: ${{ github.event.inputs.submit_to_store == 'true' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
         run: |
-          # Lấy URL của APK build mới nhất
-          APK_URL=$(eas build:list --platform android --limit 1 --json | jq -r '.[0].artifacts.buildUrl')
-          echo "APK URL: $APK_URL"
-          
-          # Kiểm tra URL có hợp lệ không
-          if [ "$APK_URL" = "null" ] || [ -z "$APK_URL" ]; then
-            echo "❌ Không thể lấy URL APK"
-            exit 1
-          fi
-          
-          # Tải APK về với tên có version
-          VERSION="${{ needs.version-bump.outputs.new_version || 'latest' }}"
-          echo "📥 Downloading APK..."
-          curl -L -o "wiswork-v$VERSION.apk" "$APK_URL"
-          
-          # Kiểm tra file đã được tải thành công
-          if [ -f "wiswork-v$VERSION.apk" ]; then
-            echo "✅ APK downloaded successfully: wiswork-v$VERSION.apk"
-            ls -la *.apk
-          else
-            echo "❌ Failed to download APK"
-            exit 1
-          fi
+          eas submit --platform android \
+            --latest \
+            --non-interactive \
+            --profile production \
+            --key service-account.json \
+            --track ${{ github.event.inputs.release_track }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
