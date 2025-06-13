@@ -13,9 +13,9 @@ on:
         default: 'all'
         type: choice
         options:
-        - all
-        - ios
-        - android
+          - all
+          - ios
+          - android
       submit_to_store:
         description: 'Submit to app store'
         required: false
@@ -27,9 +27,9 @@ on:
         default: 'patch'
         type: choice
         options:
-        - patch
-        - minor
-        - major
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: write
@@ -63,25 +63,25 @@ jobs:
         run: |
           # Determine version type based on commit message or manual input
           VERSION_TYPE="${{ github.event.inputs.version_type || 'patch' }}"
-          
+
           # Check if commit message contains version bump keywords
           if git log -1 --pretty=%B | grep -i "breaking change\|major"; then
             VERSION_TYPE="major"
           elif git log -1 --pretty=%B | grep -i "feat\|feature\|minor"; then
             VERSION_TYPE="minor"
           fi
-          
+
           echo "Bumping version: $VERSION_TYPE"
-          
+
           # Run version update script and capture new version
           NEW_VERSION=$(node scripts/update-version.js $VERSION_TYPE)
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "New version: $NEW_VERSION"
-          
+
           # Configure git
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          
+
           # Commit version changes
           if git diff --quiet app.json package.json; then
             echo "No version changes to commit"
@@ -127,7 +127,12 @@ jobs:
         run: npm ci
 
       - name: Fix MSAL dependency issue
-        run: npm run fix-msal
+        run: |
+          # Clean và reinstall dependencies để fix MSAL issue
+          rm -rf node_modules
+          npm ci
+          # Clear Expo cache
+          npx expo install --fix
 
       - name: Build iOS app
         run: eas build --platform ios --non-interactive --wait
@@ -175,22 +180,44 @@ jobs:
         run: npm ci
 
       - name: Fix MSAL dependency issue
-        run: npm run fix-msal
+        run: |
+          # Clean và reinstall dependencies để fix MSAL issue
+          rm -rf node_modules
+          npm ci
+          # Clear Expo cache
+          npx expo install --fix
 
       - name: Build Android APK
         run: eas build --platform android --non-interactive --wait
+        timeout-minutes: 60
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Download APK
+            - name: Download APK
         run: |
           # Lấy URL của APK build mới nhất
           APK_URL=$(eas build:list --platform android --limit 1 --json | jq -r '.[0].artifacts.buildUrl')
           echo "APK URL: $APK_URL"
           
+          # Kiểm tra URL có hợp lệ không
+          if [ "$APK_URL" = "null" ] || [ -z "$APK_URL" ]; then
+            echo "❌ Không thể lấy URL APK"
+            exit 1
+          fi
+          
           # Tải APK về với tên có version
           VERSION="${{ needs.version-bump.outputs.new_version || 'latest' }}"
+          echo "📥 Downloading APK..."
           curl -L -o "wiswork-v$VERSION.apk" "$APK_URL"
+          
+          # Kiểm tra file đã được tải thành công
+          if [ -f "wiswork-v$VERSION.apk" ]; then
+            echo "✅ APK downloaded successfully: wiswork-v$VERSION.apk"
+            ls -la *.apk
+          else
+            echo "❌ Failed to download APK"
+            exit 1
+          fi
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
@@ -198,7 +225,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-apk-v${{ needs.version-bump.outputs.new_version || github.run_number }}
-          path: "*.apk"
+          path: '*.apk'
           retention-days: 30
 
       - name: Create Release
@@ -209,21 +236,21 @@ jobs:
           name: Wiswork v${{ needs.version-bump.outputs.new_version || github.run_number }}
           body: |
             🚀 Phiên bản mới của ứng dụng Wiswork v${{ needs.version-bump.outputs.new_version }}
-            
+
             ### 📝 Thay đổi
             - Build tự động từ commit: ${{ github.sha }}
             - Version được tự động cập nhật: ${{ needs.version-bump.outputs.new_version }}
-            
+
             ### 📥 Tải về
             - **Android APK**: Xem trong Assets bên dưới
             - **iOS**: Có sẵn trên TestFlight
-            
+
             ### 📋 Hướng dẫn cài đặt Android
             1. Tải file `.apk` về máy
             2. Bật "Cài đặt từ nguồn không xác định" trong Settings
             3. Mở file APK để cài đặt
-            
-          files: "*.apk"
+
+          files: '*.apk'
           draft: false
           prerelease: false
         env:
@@ -248,4 +275,4 @@ jobs:
         run: |
           echo "❌ Build thất bại!"
           echo "iOS status: ${{ needs.build-ios.result }}"
-          echo "Android status: ${{ needs.build-android.result }}" 
+          echo "Android status: ${{ needs.build-android.result }}"
