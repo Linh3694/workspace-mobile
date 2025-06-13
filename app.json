@@ -2,7 +2,7 @@
   "expo": {
     "name": "Wis",
     "slug": "workspace",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "web": {
       "favicon": "./src/assets/favicon.png"
     },
@@ -23,7 +23,7 @@
         {
           "faceIDPermission": "Ứng dụng cần sử dụng FaceID để xác thực đăng nhập an toàn"
         }
-      ],  
+      ],
       "expo-secure-store"
     ],
     "orientation": "portrait",
