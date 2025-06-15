@@ -1,0 +1,147 @@
+name: Build và Deploy iOS App
+
+on:
+  push:
+    branches: [ios]
+  pull_request:
+    branches: [ios]
+  workflow_dispatch:
+    inputs:
+      submit_to_store:
+        description: 'Submit to TestFlight'
+        required: false
+        default: false
+        type: boolean
+      version_type:
+        description: 'Version bump type'
+        required: false
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  version-bump:
+    name: Auto Version Bump
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/ios' }}
+    outputs:
+      new_version: ${{ steps.version.outputs.new_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Auto increment version
+        id: version
+        run: |
+          # Determine version type based on commit message or manual input
+          VERSION_TYPE="${{ github.event.inputs.version_type || 'patch' }}"
+
+          # Check if commit message contains version bump keywords
+          if git log -1 --pretty=%B | grep -i "breaking change\|major"; then
+            VERSION_TYPE="major"
+          elif git log -1 --pretty=%B | grep -i "feat\|feature\|minor"; then
+            VERSION_TYPE="minor"
+          fi
+
+          echo "Bumping version: $VERSION_TYPE"
+
+          # Run version update script and capture new version
+          NEW_VERSION=$(node scripts/update-version.js $VERSION_TYPE)
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+
+          # Configure git
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          # Commit version changes
+          if git diff --quiet app.json package.json; then
+            echo "No version changes to commit"
+          else
+            git add app.json package.json
+            git commit -m "🔖 Auto bump version to $NEW_VERSION [skip ci]"
+            git push origin ${{ github.ref_name }}
+            echo "Version changes committed and pushed"
+          fi
+
+  build-ios:
+    name: Build iOS
+    runs-on: ubuntu-latest
+    needs: version-bump
+    steps:
+      - name: Check for EXPO_TOKEN
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "You must provide an EXPO_TOKEN secret linked to this project's Expo account in this repo's secrets."
+            echo "Learn more: https://docs.expo.dev/eas-update/github-actions"
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build iOS app
+        run: eas build --platform ios --non-interactive --wait
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Submit to TestFlight
+        if: ${{ github.event.inputs.submit_to_store == 'true' || github.ref == 'refs/heads/ios' }}
+        run: eas submit --platform ios --latest --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+  notify:
+    name: Thông báo kết quả
+    runs-on: ubuntu-latest
+    needs: [version-bump, build-ios]
+    if: always()
+    steps:
+      - name: Notify success
+        if: ${{ needs.build-ios.result == 'success' }}
+        run: |
+          echo "✅ Build iOS thành công!"
+          echo "📱 Đã submit lên TestFlight"
+          echo "🔖 Version mới: ${{ needs.version-bump.outputs.new_version }}"
+
+      - name: Notify failure
+        if: ${{ needs.build-ios.result == 'failure' }}
+        run: |
+          echo "❌ Build iOS thất bại!"
+          echo "iOS status: ${{ needs.build-ios.result }}" 
