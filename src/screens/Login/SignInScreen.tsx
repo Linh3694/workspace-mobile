@@ -9,7 +9,10 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { typography } from '../../theme/typography';
 import { useMicrosoftLogin } from '../../hooks/useMicrosoftLogin';
+import { useAppleLogin } from '../../hooks/useAppleLogin';
 import MicrosoftIcon from '../../assets/microsoft.svg';
+import AppleIcon from '../../assets/apple.svg';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import VisibilityIcon from '../../assets/visibility.svg';
 import WarningIcon from '../../assets/warning.svg';
 import FaceIdIcon from '../../assets/face-id.svg';
@@ -54,9 +57,7 @@ const SignInScreen = () => {
 
     const {  promptAsync } = useMicrosoftLogin(
         async (token) => {
-            console.log('✅ Microsoft login successful in SignInScreen:', token);
             try {
-                // Call backend to check/create user based on Microsoft email
                 const response = await fetch(`${API_BASE_URL}/api/auth/microsoft/login`, {
                     method: 'POST',
                     headers: {
@@ -66,44 +67,70 @@ const SignInScreen = () => {
                 });
                 
                 const authData = await response.json();
-                console.log('🔍 Microsoft auth response:', authData);
                 
                 if (response.ok && authData.success) {
-                    // Use the system token and user data from our database
                     const { token: systemToken, user } = authData;
                     
-                    console.log('🎯 Microsoft user authenticated:', {
-                        name: user.fullname,
-                        email: user.email,
-                        isNewUser: user.isNewUser,
-                        role: user.role
-                    });
-                    
-                    // Use AuthContext login method with system token and DB user data
                     await login(systemToken, user);
-                    
-                    // Trigger AuthContext to refresh and ensure navigation happens
                     await checkAuth();
                     
-                    console.log('🚀 AuthContext refreshed, user should be navigated to main app');
-                    
-                    const message = user.isNewUser 
-                        ? 'Chào mừng! Tài khoản Microsoft đã được tạo thành công!'
-                        : 'Đăng nhập Microsoft thành công!';
-                    
-                    showNotification(message, 'success');
+                    showNotification('Đăng nhập Microsoft thành công!', 'success');
                 } else {
-                    throw new Error(authData.message || 'Microsoft authentication failed');
+                    const errorMessage = authData.message || 'Xác thực Microsoft thất bại';
+                    throw new Error(errorMessage);
                 }
                 
             } catch (error) {
-                console.error('❌ Error in Microsoft login flow:', error);
-                showNotification('Không thể đăng nhập với Microsoft', 'error');
+                const errorMessage = error.message.includes('Tài khoản chưa đăng ký') 
+                    ? 'Tài khoản chưa đăng ký' 
+                    : 'Không thể đăng nhập với Microsoft';
+                showNotification(errorMessage, 'error');
             }
         },
         (error) => {
-            console.log('❌ Microsoft login error in SignInScreen:', error);
-            showNotification(`Lỗi đăng nhập Microsoft: ${error}`, 'error');
+            showNotification('Đăng nhập Microsoft thất bại', 'error');
+        }
+    );
+
+    const { signInAsync: appleSignIn, isAvailable: isAppleAvailable } = useAppleLogin(
+        async (credential) => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/auth/apple/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        identityToken: credential.identityToken,
+                        user: credential.user,
+                        email: credential.email,
+                        fullName: credential.fullName
+                    })
+                });
+                
+                const authData = await response.json();
+                
+                if (response.ok && authData.success) {
+                    const { token: systemToken, user } = authData;
+                    
+                    await login(systemToken, user);
+                    await checkAuth();
+                    
+                    showNotification('Đăng nhập Apple thành công!', 'success');
+                } else {
+                    const errorMessage = authData.message || 'Xác thực Apple thất bại';
+                    throw new Error(errorMessage);
+                }
+                
+            } catch (error) {
+                const errorMessage = error.message.includes('Tài khoản chưa đăng ký') 
+                    ? 'Tài khoản chưa đăng ký' 
+                    : 'Không thể đăng nhập với Apple';
+                showNotification(errorMessage, 'error');
+            }
+        },
+        (error) => {
+            showNotification('Đăng nhập Apple thất bại', 'error');
         }
     );
 
@@ -114,32 +141,22 @@ const SignInScreen = () => {
     };
 
     const handleBiometricLogin = async () => {
-        console.log('Bắt đầu xử lý FaceID login');
-        console.log('hasSavedCredentials:', hasSavedCredentials);
-        console.log('isBiometricAvailable:', isBiometricAvailable);
-
         if (!hasSavedCredentials) {
-            console.log('Chưa lưu credentials, hiển thị thông báo');
             showNotification('Bạn cần bật đăng nhập bằng FaceID/TouchID trong hồ sơ cá nhân trước.');
             return;
         }
 
         try {
-            console.log('Bắt đầu xác thực sinh trắc học');
             const credentials = await authenticate();
-            console.log('Kết quả xác thực:', credentials ? 'Thành công' : 'Thất bại');
 
             if (credentials) {
-                console.log('Đã lấy được credentials, tiến hành đăng nhập');
                 setValue('email', credentials.email);
                 setValue('password', credentials.password);
                 onSubmit({ email: credentials.email, password: credentials.password });
             } else {
-                console.log('Không lấy được credentials');
                 showNotification('Xác thực sinh trắc học thất bại. Vui lòng thử lại.');
             }
         } catch (error) {
-            console.error('Lỗi khi đăng nhập bằng sinh trắc học:', error);
             showNotification('Không thể xác thực sinh trắc học. Vui lòng thử lại.');
         }
     };
@@ -158,27 +175,19 @@ const SignInScreen = () => {
             if (!response.ok) {
                 setLoginError(resData.message || 'Đăng nhập thất bại');
                 showNotification('Tài khoản hoặc mật khẩu không chính xác', 'error');
-                console.error('Lỗi đăng nhập:', resData.message);
             } else {
                 try {
-                    // Lưu email đăng nhập cho xác thực sinh trắc học
                     await AsyncStorage.setItem(LAST_EMAIL_KEY, data.email);
 
-                    // Xử lý thông tin người dùng
                     let userId = '';
                     let userFullname = '';
                     let userRole = 'user';
 
                     if (resData.user) {
-                        // Xử lý thông tin người dùng
                         const user = resData.user;
-                        // Xử lý ID
                         userId = user._id || user.id || `user_${Date.now()}`;
-                        // Xử lý tên hiển thị
                         userFullname = user.fullname || user.name || user.username || data.email.split('@')[0];
-                        // Xử lý vai trò
                         userRole = user.role || 'user';
-                        console.log('Thông tin vai trò người dùng sau khi đăng nhập:', userRole);
                         
                         const completeUser = {
                             ...user,
@@ -192,11 +201,9 @@ const SignInScreen = () => {
                             employeeCode: user.employeeCode || 'N/A',
                         };
 
-                        // Sử dụng context để đăng nhập
                         await login(resData.token, completeUser);
 
                     } else {
-                        // Tạo thông tin người dùng mặc định nếu không có
                         userId = `user_${Date.now()}`;
                         userFullname = data.email.split('@')[0];
 
@@ -209,21 +216,17 @@ const SignInScreen = () => {
                         };
 
                         await AsyncStorage.setItem('user', JSON.stringify(defaultUser));
-                        console.warn('Không có thông tin user từ API, đã tạo thông tin mặc định');
                     }
 
-                    // Chuyển đến màn hình chính
                     navigation.reset({
                         index: 0,
                         routes: [{ name: 'Main', params: { screen: 'Home' } }],
                     });
                 } catch (storageError) {
-                    console.error('Lỗi khi lưu thông tin đăng nhập:', storageError);
                     showNotification('Đã xảy ra lỗi khi xử lý thông tin đăng nhập', 'error');
                 }
             }
         } catch (error) {
-            console.error('Lỗi kết nối:', error);
             showNotification('Lỗi kết nối máy chủ', 'error');
             setLoginError('Lỗi kết nối máy chủ');
         } finally {
@@ -331,6 +334,8 @@ const SignInScreen = () => {
                     <View className="flex-1 h-px bg-[#E0E0E0]" />
                 </View>
 
+                
+
                 {/* Nút đăng nhập Microsoft */}
                 <TouchableOpacity
                     className="w-full flex-row items-center justify-center rounded-full bg-secondary/10 py-3 mb-2"
@@ -341,6 +346,20 @@ const SignInScreen = () => {
                     </View>
                     <Text className="text-secondary font-bold text-base">Đăng nhập với Microsoft</Text>
                 </TouchableOpacity>
+
+                {/* Nút đăng nhập Apple - chỉ hiển thị trên iOS */}
+                {isAppleAvailable && (
+                    <TouchableOpacity
+                        className="w-full flex-row items-center justify-center rounded-full bg-secondary/10 py-3 mb-2"
+                        onPress={appleSignIn}
+                    >
+                        <View style={{ marginRight: 8 }}>
+                            <AppleIcon width={20} height={20} />
+                        </View>
+                        <Text className="text-secondary font-bold text-base">Đăng nhập với Apple</Text>
+                    </TouchableOpacity>
+                )}
+                
             </View>
             <View className="absolute bottom-12 w-full items-center mt-4">
                 <Text className="text-text-secondary  font-medium text-xs text-center mt-8">

@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 // @ts-ignore
 import { View, Text,TouchableOpacity, Animated, Easing, Dimensions, Image, Alert, SafeAreaView,
 } from 'react-native';
@@ -11,6 +11,7 @@ import { ROUTES } from '../../constants/routes';
 import { API_BASE_URL } from '../../config/constants';
 import { useAuth } from '../../context/AuthContext';
 import ApplogoFull from '../../assets/app-logo-full.svg';
+import NotificationModal from '../../components/NotificationModal';
 
 type RootStackParamList = {
     Welcome: undefined;
@@ -27,8 +28,10 @@ const WelcomeScreen = () => {
     const { checkAuth } = useAuth();
     const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
     const BANNER_WIDTH = 1100;
-    // Make banner height responsive to screen size
     const BANNER_HEIGHT = Math.min(480, screenHeight * 0.5);
+    const [showNotificationModal, setShowNotificationModal] = useState(false);
+    const [notificationMessage, setNotificationMessage] = useState('');
+    const [notificationType, setNotificationType] = useState<'success' | 'error'>('error');
 
     const translateX = useRef(new Animated.Value(0)).current;
 
@@ -50,12 +53,15 @@ const WelcomeScreen = () => {
         return () => { isMounted = false; };
     }, [translateX]);
 
-    // Sử dụng hook đăng nhập Microsoft
+    const showNotification = (message: string, type: 'success' | 'error' = 'error') => {
+        setNotificationMessage(message);
+        setNotificationType(type);
+        setShowNotificationModal(true);
+    };
+
     const { promptAsync  } = useMicrosoftLogin(
         async (token) => {
-            console.log('✅ Microsoft login successful in WelcomeScreen:', token);
             try {
-                // Call backend to check/create user based on Microsoft email
                 const response = await fetch(`${API_BASE_URL}/api/auth/microsoft/login`, {
                     method: 'POST',
                     headers: {
@@ -65,20 +71,10 @@ const WelcomeScreen = () => {
                 });
                 
                 const authData = await response.json();
-                console.log('🔍 Microsoft auth response:', authData);
                 
                 if (response.ok && authData.success) {
-                    // Use the system token and user data from our database
                     const { token: systemToken, user } = authData;
                     
-                    console.log('🎯 Microsoft user authenticated:', {
-                        name: user.fullname,
-                        email: user.email,
-                        isNewUser: user.isNewUser,
-                        role: user.role
-                    });
-                    
-                    // Save system token and user data to AsyncStorage
                     await AsyncStorage.setItem('authToken', systemToken);
                     await AsyncStorage.setItem('user', JSON.stringify(user));
                     await AsyncStorage.setItem('userId', user._id);
@@ -87,24 +83,23 @@ const WelcomeScreen = () => {
                     await AsyncStorage.setItem('userEmployeeCode', user.employeeCode);
                     await AsyncStorage.setItem('userAvatarUrl', user.avatarUrl || '');
                     
-                    console.log('🎯 Microsoft user info saved, triggering auth context update');
-                    
-                    // Trigger AuthContext to update authentication state
                     await checkAuth();
                     
-                    console.log('🚀 AuthContext updated, user should be authenticated now');
+                    showNotification('Đăng nhập Microsoft thành công!', 'success');
                 } else {
-                    throw new Error(authData.message || 'Microsoft authentication failed');
+                    const errorMessage = authData.message || 'Xác thực Microsoft thất bại';
+                    throw new Error(errorMessage);
                 }
                 
             } catch (error) {
-                console.error('❌ Error in Microsoft login flow:', error);
-                Alert.alert('Lỗi', 'Không thể đăng nhập với Microsoft');
+                const errorMessage = error.message.includes('Tài khoản chưa đăng ký') 
+                    ? 'Tài khoản chưa đăng ký' 
+                    : 'Không thể đăng nhập với Microsoft';
+                showNotification(errorMessage, 'error');
             }
         },
         (error) => {
-            console.log('❌ Microsoft login error in WelcomeScreen:', error);
-            Alert.alert('Lỗi đăng nhập', error);
+            showNotification('Đăng nhập Microsoft thất bại', 'error');
         }
     );
 
@@ -175,6 +170,12 @@ const WelcomeScreen = () => {
                     </TouchableOpacity>
                 </View>
             </View>
+            <NotificationModal
+                visible={showNotificationModal}
+                type={notificationType}
+                message={notificationMessage}
+                onClose={() => setShowNotificationModal(false)}
+            />
         </SafeAreaView>
     );
 };
