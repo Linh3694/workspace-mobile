@@ -126,14 +126,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Android App Bundle
+      - name: Build Android App Bundle (AAB)
         run: eas build --platform android --non-interactive --wait --profile production
         timeout-minutes: 60
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Prepare Google service account JSON
-        run: echo "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}" > service-account.json
 
       - name: Submit to Google Play Console
         if: ${{ github.event.inputs.submit_to_store == 'true' || github.ref == 'refs/heads/android' }}
@@ -141,18 +138,24 @@ jobs:
           eas submit --platform android \
             --latest \
             --non-interactive \
-            --profile production \
-            --key service-account.json \
-            --track ${{ github.event.inputs.release_track }}
+            --profile production
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Upload APK artifact
+      - name: Download built AAB for artifacts
+        if: always()
+        run: |
+          # Download the built AAB file from EAS
+          eas build:list --platform android --limit 1 --json | jq -r '.[0].artifacts.buildUrl' | xargs -I {} wget -O android-app.aab {}
+        continue-on-error: true
+
+      - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk-v${{ needs.version-bump.outputs.new_version || github.run_number }}
-          path: '*.apk'
+          name: android-aab-v${{ needs.version-bump.outputs.new_version || github.run_number }}
+          path: '*.aab'
           retention-days: 30
+        continue-on-error: true
 
       - name: Create Release
         if: ${{ github.ref == 'refs/heads/android' }}
@@ -166,16 +169,19 @@ jobs:
             ### 📝 Thay đổi
             - Build tự động từ commit: ${{ github.sha }}
             - Version được tự động cập nhật: ${{ needs.version-bump.outputs.new_version }}
+            - Sử dụng Android App Bundle (AAB) thay vì APK
+            - Tự động submit lên Google Play Store
 
             ### 📥 Tải về
-            - **Android APK**: Xem trong Assets bên dưới
+            - **Android AAB**: Xem trong Assets bên dưới
+            - **Google Play Store**: Ứng dụng sẽ có sẵn trên Play Store sau khi được duyệt
 
-            ### 📋 Hướng dẫn cài đặt Android
-            1. Tải file `.apk` về máy
-            2. Bật "Cài đặt từ nguồn không xác định" trong Settings
-            3. Mở file APK để cài đặt
+            ### 📋 Lưu ý
+            - File AAB được tối ưu hóa cho Google Play Store
+            - Kích thước nhỏ hơn và hiệu suất tốt hơn so với APK
+            - App sẽ tự động cập nhật thông qua Play Store
 
-          files: '*.apk'
+          files: '*.aab'
           draft: false
           prerelease: false
         env:
@@ -191,11 +197,12 @@ jobs:
         if: ${{ needs.build-android.result == 'success' }}
         run: |
           echo "✅ Build Android thành công!"
-          echo "🤖 APK đã được tạo và upload"
+          echo "📦 AAB (Android App Bundle) đã được tạo và submit lên Google Play"
           echo "🔖 Version mới: ${{ needs.version-bump.outputs.new_version }}"
+          echo "🚀 App sẽ có sẵn trên Google Play Store sau khi được duyệt"
 
       - name: Notify failure
         if: ${{ needs.build-android.result == 'failure' }}
         run: |
           echo "❌ Build Android thất bại!"
-          echo "Android status: ${{ needs.build-android.result }}" 
+          echo "Android status: ${{ needs.build-android.result }}"
