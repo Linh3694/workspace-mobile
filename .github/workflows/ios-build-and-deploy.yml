@@ -55,7 +55,7 @@ jobs:
           # Determine version type based on commit message or manual input
           VERSION_TYPE="${{ github.event.inputs.version_type || 'patch' }}"
 
-          # Check if commit message contains version bump keywords
+          # Check if commit message contains version bump keyword
           if git log -1 --pretty=%B | grep -i "breaking change\|major"; then
             VERSION_TYPE="major"
           elif git log -1 --pretty=%B | grep -i "feat\|feature\|minor"; then
@@ -144,4 +144,4 @@ jobs:
         if: ${{ needs.build-ios.result == 'failure' }}
         run: |
           echo "❌ Build iOS thất bại!"
-          echo "iOS status: ${{ needs.build-ios.result }}" 
+          echo "iOS status: ${{ needs.build-ios.result }}"
