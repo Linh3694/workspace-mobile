@@ -74,7 +74,7 @@ const ChatScreen = () => {
             return false;
         }
         
-        const senderId = typeof message.sender === 'object' 
+        const senderId = typeof message.sender === 'object' && message.sender !== null
             ? message.sender._id 
             : message.sender;
             
@@ -571,8 +571,8 @@ const ChatScreen = () => {
                         // Only mark read for the last visited chat
                         if (chat._id === lastVisitedChatId && chat.lastMessage) {
                             const lastMessage = chat.lastMessage;
-                            const lastMessageSenderId = typeof lastMessage.sender === 'object' 
-                                ? lastMessage.sender._id 
+                            const lastMessageSenderId = typeof lastMessage.sender === 'object' && lastMessage.sender !== null
+                                ? lastMessage.sender._id
                                 : lastMessage.sender;
                             
                             const currentReadBy = Array.isArray(lastMessage.readBy) 
@@ -878,8 +878,8 @@ const ChatScreen = () => {
         }) : '';
 
         // Kiểm tra xem tin nhắn đã được đọc chưa - IMPROVED LOGIC
-        const lastMessageSenderId = typeof item.lastMessage?.sender === 'object' 
-            ? item.lastMessage.sender._id 
+        const lastMessageSenderId = typeof item.lastMessage?.sender === 'object' && item.lastMessage?.sender !== null
+            ? item.lastMessage.sender._id
             : item.lastMessage?.sender;
         
         // Use the helper function for consistent unread checking
@@ -900,7 +900,7 @@ const ChatScreen = () => {
             }
 
             // Thêm tên người gửi cho group chat
-            if (isGroupChat && typeof item.lastMessage.sender === 'object') {
+            if (isGroupChat && typeof item.lastMessage.sender === 'object' && item.lastMessage.sender !== null) {
                 const senderName = item.lastMessage.sender.fullname;
                 if (lastMessageSenderId === currentUserId) {
                     lastMessageContent = `Bạn: ${lastMessageContent}`;

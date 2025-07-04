@@ -128,7 +128,7 @@ const MessageReactionModal = ({
     const actions = initializeActions(
         isPinned, 
         selectedMessage?.type || 'text', 
-        currentUserId === selectedMessage?.sender._id, 
+        currentUserId && selectedMessage?.sender && typeof selectedMessage.sender === 'object' && selectedMessage.sender._id === currentUserId, 
         selectedMessage?.createdAt || '',
         showPinOption
     );
@@ -181,7 +181,7 @@ const MessageReactionModal = ({
                 onCloseReactionBar();
                 onCloseActionBar();
             }}>
-                <View className={`flex-1 bg-black/50 justify-center ${selectedMessage && currentUserId && selectedMessage.sender._id === currentUserId ? 'items-end pr-[3%]' : 'items-start pl-[3%]'}`}>
+                <View className={`flex-1 bg-black/50 justify-center ${selectedMessage && currentUserId && selectedMessage.sender && typeof selectedMessage.sender === 'object' && selectedMessage.sender._id === currentUserId ? 'items-end pr-[3%]' : 'items-start pl-[3%]'}`}>
                     {/* Selected Message Preview */}
                     {selectedMessage && (
                         <View className={`bg-white p-3 rounded-xl max-w-[80%] mb-3 `}>

@@ -44,7 +44,7 @@ const GroupMessageBubble = memo(({
     highlightedMessageId,
     showSenderName = true
 }: GroupMessageBubbleProps) => {
-    const isMe = currentUserId && message.sender._id === currentUserId;
+    const isMe = currentUserId && message.sender && typeof message.sender === 'object' && message.sender._id === currentUserId;
     const senderInfo = typeof message.sender === 'object' ? message.sender : null;
 
     return (

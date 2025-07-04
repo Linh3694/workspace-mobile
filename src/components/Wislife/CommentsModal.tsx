@@ -77,7 +77,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
   const organizedComments = organizeComments();
 
   const getUserReaction = (): Reaction | null => {
-    return post.reactions.find(reaction => reaction.user._id === user?._id) || null;
+    return post.reactions.find(reaction => reaction.user?._id === user?._id) || null;
   };
 
   const getReactionCounts = () => {
@@ -176,7 +176,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
       const comment = post.comments.find(c => c._id === commentId);
       if (!comment) return;
       
-      const userReaction = comment.reactions.find(r => r.user._id === user?._id);
+      const userReaction = comment.reactions.find(r => r.user?._id === user?._id);
       
       let updatedPost: Post;
       if (userReaction) {
@@ -209,7 +209,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
       const comment = post.comments.find(c => c._id === commentId);
       if (!comment) return;
       
-      const userReaction = comment.reactions.find(r => r.user._id === user?._id);
+      const userReaction = comment.reactions.find(r => r.user?._id === user?._id);
       
       let updatedPost: Post;
       if (userReaction && userReaction.type === emojiCode) {
@@ -414,7 +414,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                         <View className="rounded-2xl px-4">
                             <View className="flex-row items-center justify-start gap-2">
                           <Text className="font-semibold text-base text-gray-900 mb-1">
-                            {comment.user.fullname}
+                            {comment.user ? comment.user.fullname : 'Ẩn danh'}
                          </Text>
                             <Text className="text-sm text-gray-500">
                               {formatRelativeTime(comment.createdAt)}
@@ -434,18 +434,18 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                               disabled={likingComment === comment._id}
                             >
                               <Text className={`text-sm font-bold ${
-                                comment.reactions.some(r => r.user._id === user?._id) 
+                                comment.reactions.some(r => r.user?._id === user?._id) 
                                   ? 'text-orange-500' 
                                   : 'text-gray-600'
                               }`}>
                                 {likingComment === comment._id ? 'Đang xử lý...' : 
-                                 comment.reactions.some(r => r.user._id === user?._id) ? 'Đã thích' : 'Thích'}
+                                 comment.reactions.some(r => r.user?._id === user?._id) ? 'Đã thích' : 'Thích'}
                               </Text>
                             </TouchableOpacity>
                             
                             <TouchableOpacity 
                               className="ml-4"
-                              onPress={() => handleReplyComment(comment._id, comment.user.fullname)}
+                              onPress={() => handleReplyComment(comment._id, comment.user ? comment.user.fullname : 'Ẩn danh')}
                             >
                               <Text className="text-sm text-gray-600 font-bold">
                                 Trả lời
@@ -500,7 +500,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                                             <View>
                                                 <View className="flex-row items-center justify-start gap-2">
                                       <Text className="font-semibold text-sm text-gray-900 mb-1">
-                                        {reply.user.fullname}
+                                        {reply.user ? reply.user.fullname : 'Ẩn danh'}
                                                 </Text>
                                                  <Text className="text-xs text-gray-500 font-medium">
                                           {formatRelativeTime(reply.createdAt)}
@@ -520,17 +520,17 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                                           onPress={() => handleCommentReaction(reply._id)}
                                         >
                                           <Text className={`text-xs font-medium ${
-                                            reply.reactions.some(r => r.user._id === user?._id) 
+                                            reply.reactions.some(r => r.user?._id === user?._id) 
                                               ? 'text-orange-500' 
                                               : 'text-gray-600'
                                           }`}>
-                                            {reply.reactions.some(r => r.user._id === user?._id) ? 'Đã thích' : 'Thích'}
+                                            {reply.reactions.some(r => r.user?._id === user?._id) ? 'Đã thích' : 'Thích'}
                                           </Text>
                                         </TouchableOpacity>
                                         
                                         <TouchableOpacity 
                                           className="ml-3"
-                                          onPress={() => handleReplyComment(comment._id, reply.user.fullname)}
+                                          onPress={() => handleReplyComment(comment._id, reply.user?._id)}
                                         >
                                           <Text className="text-xs text-gray-600 font-medium">
                                             Trả lời
@@ -593,12 +593,12 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                     <Text className="font-semibold text-gray-800">
                       {(() => {
                         const replyTarget = organizedComments.find(c => c._id === replyingTo);
-                        if (replyTarget) return replyTarget.user.fullname;
+                        if (replyTarget) return replyTarget.user ? replyTarget.user.fullname : 'Ẩn danh';
                         
                         // Tìm trong replies nếu không tìm thấy trong main comments
                         for (const comment of organizedComments) {
                           const reply = comment.replies?.find(r => r._id === replyingTo);
-                          if (reply) return reply.user.fullname;
+                          if (reply) return reply.user ? reply.user.fullname : 'Ẩn danh';
                         }
                         return 'comment';
                       })()}
