@@ -906,7 +906,7 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
       }
       
       const { isFirst, isLast } = getMessageGroupPosition(processedMessages, index, isDifferentDay);
-      const isMe = currentUserId && item.sender._id === currentUserId;
+      const isMe = currentUserId && item.sender && typeof item.sender === 'object' && item.sender._id === currentUserId;
       const showAvatar = !isMe && isFirst;
       
       return (

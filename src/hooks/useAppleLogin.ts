@@ -1,16 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { Platform } from 'react-native';
 
 type SuccessCb = (credential: AppleAuthentication.AppleAuthenticationCredential) => void;
 type ErrorCb = (error: string) => void;
 
-/**
- * Custom hook: Apple Authentication for iOS
- * Usage:
- *   const { signInAsync, isAvailable } = useAppleLogin(onSuccess, onError);
- *   // then <Button onPress={() => signInAsync()} />
- */
 export const useAppleLogin = (
   onSuccess: SuccessCb,
   onError: ErrorCb
@@ -20,16 +13,16 @@ export const useAppleLogin = (
 
   // Check if Apple Authentication is available
   useEffect(() => {
-    const checkAvailability = async () => {
-      if (Platform.OS === 'ios') {
-        try {
-          const available = await AppleAuthentication.isAvailableAsync();
-          setIsAvailable(available);
-        } catch (error) {
-          console.log('Apple Authentication not available:', error);
-          setIsAvailable(false);
+    const checkAvailability = async () => {    
+      // Apple Sign In is only available on iOS
+      try {
+        const available = await AppleAuthentication.isAvailableAsync();
+        setIsAvailable(available);
+        if (!available) {
+          console.warn('⚠️ Apple Authentication is not available on this device');
         }
-      } else {
+      } catch (error) {
+        console.error('❌ Apple Authentication availability check failed:', error);
         setIsAvailable(false);
       }
     };
@@ -51,15 +44,6 @@ export const useAppleLogin = (
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
       });
-
-      console.log('✅ Apple login successful:', {
-        user: credential.user,
-        email: credential.email,
-        fullName: credential.fullName,
-        identityToken: !!credential.identityToken,
-        authorizationCode: !!credential.authorizationCode
-      });
-
       onSuccess(credential);
     } catch (error: any) {
       console.error('❌ Apple login error:', error);

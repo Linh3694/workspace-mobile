@@ -47,9 +47,10 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   const [likeButtonPosition, setLikeButtonPosition] = useState<{ x: number; y: number } | undefined>(undefined);
   const likeButtonRef = React.useRef<View>(null);
 
-  const getUserReaction = (): Reaction | null => {
-    return post.reactions.find(reaction => reaction.user._id === user?._id) || null;
-  };
+  const getUserReaction = (): Reaction | null =>
+    post.reactions.find(
+      reaction => reaction.user?._id === user?._id
+    ) || null;
 
   const getReactionCounts = () => {
     const counts: Record<string, number> = {};
@@ -144,7 +145,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   const reactionCounts = getReactionCounts();
   const userReaction = getUserReaction();
   const totalReactions = post.reactions.length;
-  const isAuthor = post.author._id === user?._id;
+  const isAuthor = !!post.author && post.author._id === user?._id;
 
   const handleLikeButtonPress = () => {
     // Nếu modal đang mở thì đóng lại
@@ -181,13 +182,13 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
           </View>
           <View className="ml-3 flex-1">
             <Text className="font-semibold text-gray-900">
-              {post.author.fullname}
+              {post.author ? post.author.fullname : 'Ẩn danh'}
             </Text>
             <View className="flex-row items-center">
               <Text className="text-sm text-gray-500">
                 {formatRelativeTime(post.createdAt)}
               </Text>
-              {post.author.jobTitle && (
+              {post.author?.jobTitle && (
                 <>
                   <Text className="text-sm text-gray-400 mx-1">•</Text>
                   <Text className="text-sm text-gray-500">

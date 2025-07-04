@@ -20,18 +20,32 @@ class PostService {
   }
 
   async getNewsfeed(page = 1, limit = 10): Promise<PostsResponse['data']> {
-    const headers = await this.getAuthHeaders();
-    const response = await fetch(
-      `${API_BASE_URL}/api/posts/newsfeed?page=${page}&limit=${limit}`,
-      { headers }
-    );
+    try {
+      const headers = await this.getAuthHeaders();
+      console.log('🔍 [PostService] Fetching newsfeed:', `${API_BASE_URL}/api/posts/newsfeed?page=${page}&limit=${limit}`);
+      console.log('🔍 [PostService] Headers:', headers);
+      
+      const response = await fetch(
+        `${API_BASE_URL}/api/posts/newsfeed?page=${page}&limit=${limit}`,
+        { headers }
+      );
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch newsfeed');
+      console.log('🔍 [PostService] Response status:', response.status);
+      console.log('🔍 [PostService] Response ok:', response.ok);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('🔍 [PostService] Error response:', errorText);
+        throw new Error(`Failed to fetch newsfeed: ${response.status} ${errorText}`);
+      }
+
+      const data: PostsResponse = await response.json();
+      console.log('🔍 [PostService] Success response:', data);
+      return data.data;
+    } catch (error) {
+      console.error('🔍 [PostService] Fetch error:', error);
+      throw error;
     }
-
-    const data: PostsResponse = await response.json();
-    return data.data;
   }
 
   async searchPosts(query: string, page = 1, limit = 10): Promise<PostsResponse['data']> {
