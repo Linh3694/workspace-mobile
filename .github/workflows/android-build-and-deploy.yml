@@ -41,8 +41,6 @@ jobs:
     name: Auto Version Bump
     runs-on: ubuntu-latest
     if: ${{ github.ref == 'refs/heads/android' }}
-    outputs:
-      new_version: ${{ steps.version.outputs.new_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -58,40 +56,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Auto increment version
-        id: version
-        run: |
-          # Determine version type based on commit message or manual input
-          VERSION_TYPE="${{ github.event.inputs.version_type || 'patch' }}"
-
-          # Check if commit message contains version bump keywords
-          if git log -1 --pretty=%B | grep -i "breaking change\|major"; then
-            VERSION_TYPE="major"
-          elif git log -1 --pretty=%B | grep -i "feat\|feature\|minor"; then
-            VERSION_TYPE="minor"
-          fi
-
-          echo "Bumping version: $VERSION_TYPE"
-
-          # Run version update script and capture new version
-          NEW_VERSION=$(node scripts/update-version.js $VERSION_TYPE)
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "New version: $NEW_VERSION"
-
-          # Configure git
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-
-          # Commit version changes
-          if git diff --quiet app.json package.json; then
-            echo "No version changes to commit"
-          else
-            git add app.json package.json
-            git commit -m "🔖 Auto bump version to $NEW_VERSION [skip ci]"
-            git push origin ${{ github.ref_name }}
-            echo "Version changes committed and pushed"
-          fi
 
   build-android:
     name: Build Android
@@ -198,8 +162,6 @@ jobs:
         run: |
           echo "✅ Build Android thành công!"
           echo "📦 AAB (Android App Bundle) đã được tạo và submit lên Google Play"
-          echo "🔖 Version mới: ${{ needs.version-bump.outputs.new_version }}"
-          echo "🚀 App sẽ có sẵn trên Google Play Store sau khi được duyệt"
 
       - name: Notify failure
         if: ${{ needs.build-android.result == 'failure' }}
