@@ -52,7 +52,7 @@ const GroupSwipeableMessageBubble = memo(({
     onReply,
     showSenderName = true
 }: GroupSwipeableMessageBubbleProps) => {
-    const isMe = currentUserId && message.sender._id === currentUserId;
+    const isMe = currentUserId && message.sender && typeof message.sender === 'object' && message.sender._id === currentUserId;
     
     // Animation values cho swipe effect
     const translateX = useRef(new Animated.Value(0)).current;

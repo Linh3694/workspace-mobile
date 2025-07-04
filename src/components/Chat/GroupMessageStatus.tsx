@@ -23,14 +23,14 @@ const GroupMessageStatus: React.FC<GroupMessageStatusProps> = ({
     // Debug logging
     console.log('🔍 [GroupMessageStatus] Debug:', {
         currentUserId,
-        messageSenderId: message.sender._id,
+        messageSenderId: message.sender && typeof message.sender === 'object' ? message.sender._id : message.sender,
         messageId: message._id,
-        isMyMessage: currentUserId && message.sender._id === currentUserId,
+        isMyMessage: currentUserId && message.sender && typeof message.sender === 'object' && message.sender._id === currentUserId,
         chatParticipantsLength: chat?.participants?.length
     });
 
     // Chỉ hiển thị status cho tin nhắn của mình
-    if (!currentUserId || message.sender._id !== currentUserId) {
+    if (!currentUserId || !message.sender || typeof message.sender !== 'object' || message.sender._id !== currentUserId) {
         console.log('🔍 [GroupMessageStatus] Not showing - not my message');
         return null;
     }

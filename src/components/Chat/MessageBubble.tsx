@@ -101,7 +101,7 @@ const MessageBubble = memo(({
     onReplyPress,
     highlightedMessageId
 }: MessageBubbleProps) => {
-    const isMe = currentUserId && message.sender._id === currentUserId;    
+    const isMe = currentUserId && message.sender && typeof message.sender === 'object' && message.sender._id === currentUserId;    
 
     // Memoize emoji lookup
     const emoji = useMemo(() => 
@@ -548,13 +548,13 @@ const MessageBubble = memo(({
                                         {(() => {
                                             // Chỉ log khi có vấn đề với readBy
                                             if (!message.readBy || message.readBy.length === 0) {
-                                                console.log('🔍 [MessageBubble] No readBy data:', {
-                                                    messageId: message._id,
-                                                    readBy: message.readBy,
-                                                    isMe,
-                                                    currentUserId,
-                                                    messageSenderId: message.sender._id
-                                                });
+                                                                                            console.log('🔍 [MessageBubble] No readBy data:', {
+                                                messageId: message._id,
+                                                readBy: message.readBy,
+                                                isMe,
+                                                currentUserId,
+                                                messageSenderId: message.sender && typeof message.sender === 'object' ? message.sender._id : message.sender
+                                            });
                                             }
                                             return null;
                                         })()}
