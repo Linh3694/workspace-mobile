@@ -52,7 +52,6 @@
         "NSPhotoLibraryUsageDescription": "Ứng dụng cần quyền truy cập thư viện ảnh để gửi ảnh trong tin nhắn",
         "NSMicrophoneUsageDescription": "Ứng dụng cần quyền truy cập microphone để ghi âm",
         "NSFaceIDUsageDescription": "Ứng dụng cần sử dụng FaceID để xác thực đăng nhập an toàn",
-        "NSUserTrackingUsageDescription": "Ứng dụng muốn sử dụng dữ liệu của bạn để cung cấp trải nghiệm cá nhân hóa tốt hơn",
         "CFBundleAllowMixedLocalizations": true
       }
     },

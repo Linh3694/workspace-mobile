@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
-import { View, Text, TextInput, TouchableOpacity, Image, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Image, Pressable, Alert, ActivityIndicator, Platform } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -133,6 +133,12 @@ const SignInScreen = () => {
             showNotification('Đăng nhập Apple thất bại', 'error');
         }
     );
+
+    // Debug Apple Sign In availability
+    useEffect(() => {
+        console.log('🔍 [DEBUG] Apple Sign In availability:', isAppleAvailable);
+        console.log('🔍 [DEBUG] Platform:', Platform.OS);
+    }, [isAppleAvailable]);
 
     const showNotification = (message: string, type: 'success' | 'error' = 'error') => {
         setNotificationMessage(message);
@@ -333,9 +339,6 @@ const SignInScreen = () => {
                     <Text className="mx-2 text-text-secondary  font-medium text-sm">Đăng nhập với phương thức khác</Text>
                     <View className="flex-1 h-px bg-[#E0E0E0]" />
                 </View>
-
-                
-
                 {/* Nút đăng nhập Microsoft */}
                 <TouchableOpacity
                     className="w-full flex-row items-center justify-center rounded-full bg-secondary/10 py-3 mb-2"
@@ -358,6 +361,25 @@ const SignInScreen = () => {
                         </View>
                         <Text className="text-secondary font-bold text-base">Đăng nhập với Apple</Text>
                     </TouchableOpacity>
+                )}
+
+                {/* Debug info - chỉ hiển thị trong development */}
+                {__DEV__ && (
+                    <View className="mt-4 p-3 bg-gray-100 rounded-lg">
+                        <Text className="text-xs text-gray-600">
+                            🔍 Debug Info:{'\n'}
+                            Platform: {Platform.OS}{'\n'}
+                            Apple Available: {isAppleAvailable ? 'YES' : 'NO'}
+                        </Text>
+                        {Platform.OS === 'ios' && !isAppleAvailable && (
+                            <TouchableOpacity
+                                className="mt-2 w-full flex-row items-center justify-center rounded-full bg-red-500 py-2"
+                                onPress={appleSignIn}
+                            >
+                                <Text className="text-white font-bold text-sm">🧪 Test Apple Sign In (Force)</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
                 )}
                 
             </View>
