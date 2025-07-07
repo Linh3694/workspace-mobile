@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
-import { View, Text, TextInput, TouchableOpacity, Image, Pressable, Alert, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Image, Pressable, Alert, ActivityIndicator, Platform, ScrollView } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -241,8 +241,12 @@ const SignInScreen = () => {
     };
 
     return (
-        <View className="flex-1 bg-white items-center">
-            <View className="w-full mt-[15%] p-5">
+        <ScrollView
+            className="flex-1 bg-white"
+            contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 96 }}
+            keyboardShouldPersistTaps="handled"
+        >
+            <View className="w-full mt-[10%] p-[3%]">
                 {/* Logo và tiêu đề */}
                 <Image
                     source={require('../../assets/wellspring-logo.png')}
@@ -364,8 +368,8 @@ const SignInScreen = () => {
                 )}
                 
             </View>
-            <View className="absolute bottom-12 w-full items-center mt-4">
-                <Text className="text-text-secondary  font-medium text-xs text-center mt-8">
+            <View className="w-full items-center mt-4 mb-8">
+                <Text className="text-text-secondary font-medium text-xs text-center">
                     © Copyright 2025 Wellspring International Bilingual Schools.{"\n"}All Rights Reserved.
                 </Text>
             </View>
@@ -375,7 +379,7 @@ const SignInScreen = () => {
                 message={notificationMessage}
                 onClose={() => setShowNotificationModal(false)}
             />
-        </View>
+        </ScrollView>
     );
 };
 
