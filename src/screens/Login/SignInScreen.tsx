@@ -1,16 +1,6 @@
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Image,
-  Pressable,
-  Alert,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Image, Pressable, Alert, ActivityIndicator, Platform, ScrollView } from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
