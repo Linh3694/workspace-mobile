@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_BASE_URL } from '../config/constants';
+import { MICROSERVICES_BASE_URL } from '../config/constants';
 import { Message } from '../types/message';
 
 interface UseSocketProps {
@@ -34,7 +34,7 @@ export const useSocket = ({
   onMessageRevoked,
   onUserOnline,
   onUserOffline,
-  onUserStatus
+  onUserStatus,
 }: UseSocketProps) => {
   const socketRef = useRef<Socket | null>(null);
   const [otherTyping, setOtherTyping] = useState(false);
@@ -51,21 +51,21 @@ export const useSocket = ({
     }
 
     try {
-      console.log('🔌 Attempting socket connection to:', API_BASE_URL);
-      
+      console.log('🔌 Attempting socket connection to:', MICROSERVICES_BASE_URL);
+
       // Disconnect existing socket if any
       if (socketRef.current) {
         socketRef.current.disconnect();
       }
 
       // Create new socket connection với timeout và fallback
-      const socket = io(API_BASE_URL, {
+      const socket = io(MICROSERVICES_BASE_URL, {
         query: { token: authToken },
         transports: ['websocket'],
         timeout: 10000,
         reconnection: true,
         reconnectionAttempts: 3,
-        reconnectionDelay: 2000
+        reconnectionDelay: 2000,
       });
 
       socketRef.current = socket;
@@ -75,21 +75,21 @@ export const useSocket = ({
         console.log('✅ Socket connected successfully');
         setIsConnected(true);
         setConnectionAttempts(0);
-        
+
         // Chỉ join chat room, không emit userOnline vì đã có OnlineStatusContext handle
         socket.emit('joinChat', chatId);
-        
+
         // Tự động đánh dấu các tin nhắn hiện có là đã đọc khi mở chat
         if (isScreenActive && currentUserId) {
           setTimeout(() => {
             socket.emit('messageRead', {
               userId: currentUserId,
               chatId: chatId,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
             });
           }, 500);
         }
-        
+
         // Check online status của partner
         socket.emit('checkUserStatus', { userId: chatPartner._id });
       });
@@ -102,13 +102,15 @@ export const useSocket = ({
       socket.on('connect_error', (error) => {
         console.warn('⚠️ Socket connection failed:', error.message);
         setIsConnected(false);
-        
+
         const newAttempts = connectionAttempts + 1;
         setConnectionAttempts(newAttempts);
-        
+
         // Disable socket after 3 failed attempts
         if (newAttempts >= 3) {
-          console.warn('🚫 Disabling socket after 3 failed attempts. App will work in offline mode.');
+          console.warn(
+            '🚫 Disabling socket after 3 failed attempts. App will work in offline mode.'
+          );
           setIsSocketDisabled(true);
           if (socketRef.current) {
             socketRef.current.disconnect();
@@ -119,12 +121,11 @@ export const useSocket = ({
 
       // Message events
       socket.on('receiveMessage', (newMessage: Message) => {
-        
         // Reset typing indicator khi nhận tin nhắn mới từ người đang typing
         if (newMessage.sender._id === chatPartner._id) {
           setOtherTyping(false);
         }
-        
+
         onNewMessage(newMessage);
 
         // Auto-mark as read if screen is active and message is not from me
@@ -133,21 +134,21 @@ export const useSocket = ({
           socket.emit('messageRead', {
             userId: currentUserId,
             chatId: chatId,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
           });
-          
+
           // Backup với API call sau delay ngắn để đảm bảo
           setTimeout(async () => {
             const token = await AsyncStorage.getItem('authToken');
             if (token && currentUserId) {
               try {
-                await fetch(`${API_BASE_URL}/api/chats/messages/${chatId}/read`, {
+                await fetch(`${MICROSERVICES_BASE_URL}/api/chats/messages/${chatId}/read`, {
                   method: 'POST',
                   headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
                   },
-                  body: JSON.stringify({ userId: currentUserId })
+                  body: JSON.stringify({ userId: currentUserId }),
                 });
                 console.log('💬 [Socket] Backup API call completed');
               } catch (error) {
@@ -170,40 +171,41 @@ export const useSocket = ({
       socket.on('userStatus', onUserStatus);
 
       // Typing events
-      socket.on('userTyping', ({ userId, chatId: typingChatId }: { userId: string, chatId: string }) => {
-       
-        
-        if (typingChatId === chatId && userId === chatPartner._id) {
-          setOtherTyping(true);
-          
-          // Clear existing timeout
-          if (typingTimeoutRef.current) {
-            clearTimeout(typingTimeoutRef.current);
-          }
-          
-          // Auto-reset typing indicator after 4 seconds
-          typingTimeoutRef.current = setTimeout(() => {
-            setOtherTyping(false);
-          }, 4000);
-        }
-      });
+      socket.on(
+        'userTyping',
+        ({ userId, chatId: typingChatId }: { userId: string; chatId: string }) => {
+          if (typingChatId === chatId && userId === chatPartner._id) {
+            setOtherTyping(true);
 
-      socket.on('userStopTyping', ({ userId, chatId: typingChatId }: { userId: string, chatId: string }) => {
-     
-        
-        if (typingChatId === chatId && userId === chatPartner._id) {
-          setOtherTyping(false);
-          
-          if (typingTimeoutRef.current) {
-            clearTimeout(typingTimeoutRef.current);
-            typingTimeoutRef.current = null;
+            // Clear existing timeout
+            if (typingTimeoutRef.current) {
+              clearTimeout(typingTimeoutRef.current);
+            }
+
+            // Auto-reset typing indicator after 4 seconds
+            typingTimeoutRef.current = setTimeout(() => {
+              setOtherTyping(false);
+            }, 4000);
           }
         }
-      });
+      );
+
+      socket.on(
+        'userStopTyping',
+        ({ userId, chatId: typingChatId }: { userId: string; chatId: string }) => {
+          if (typingChatId === chatId && userId === chatPartner._id) {
+            setOtherTyping(false);
+
+            if (typingTimeoutRef.current) {
+              clearTimeout(typingTimeoutRef.current);
+              typingTimeoutRef.current = null;
+            }
+          }
+        }
+      );
 
       // Heartbeat events
-      socket.on('heartbeat', ({ onlineUsers }: { onlineUsers: string[] }) => {
-      });
+      socket.on('heartbeat', ({ onlineUsers }: { onlineUsers: string[] }) => {});
 
       // Không cần ping ở đây vì đã có trong useEffect riêng
       // const pingInterval = setInterval(() => {
@@ -220,18 +222,30 @@ export const useSocket = ({
       console.error('Socket setup error:', error);
       setIsConnected(false);
     }
-  }, [authToken, chatId, currentUserId, chatPartner._id, isScreenActive, onNewMessage, onMessageRead, onMessageRevoked, onUserOnline, onUserOffline, onUserStatus]);
+  }, [
+    authToken,
+    chatId,
+    currentUserId,
+    chatPartner._id,
+    isScreenActive,
+    onNewMessage,
+    onMessageRead,
+    onMessageRevoked,
+    onUserOnline,
+    onUserOffline,
+    onUserStatus,
+  ]);
 
   // Emit typing event
   const emitTyping = useCallback(() => {
     if (socketRef.current && socketRef.current.connected && chatId && currentUserId) {
       socketRef.current.emit('typing', { chatId, userId: currentUserId });
-      
+
       // Clear previous debounced call
       if (debouncedTypingRef.current) {
         clearTimeout(debouncedTypingRef.current);
       }
-      
+
       // Debounce stop typing
       debouncedTypingRef.current = setTimeout(() => {
         if (socketRef.current && socketRef.current.connected) {
@@ -262,7 +276,7 @@ export const useSocket = ({
       socketRef.current.emit('messageRead', {
         userId,
         chatId,
-        timestamp
+        timestamp,
       });
     }
   }, []);
@@ -277,18 +291,18 @@ export const useSocket = ({
   // Setup socket when component mounts
   useEffect(() => {
     let isUnmounted = false;
-    
+
     const initSocket = async () => {
       if (!authToken || !chatId || !currentUserId || isUnmounted) return;
-      
+
       await setupSocket();
     };
-    
+
     initSocket();
 
     return () => {
       isUnmounted = true;
-      
+
       // Clear all timeouts
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
@@ -315,13 +329,13 @@ export const useSocket = ({
     // Tăng thời gian heartbeat và ping để giảm spam
     heartbeatInterval = setInterval(() => {
       if (isUnmounted) return;
-      
+
       if (socketRef.current?.connected) {
         // Chỉ emit heartbeat, không emit userOnline liên tục
-        socketRef.current.emit('heartbeat', { 
+        socketRef.current.emit('heartbeat', {
           userId: currentUserId,
           chatId: chatId,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         });
       }
     }, 30000); // Tăng từ 5 giây lên 30 giây
@@ -340,6 +354,6 @@ export const useSocket = ({
     emitStopTyping,
     emitUserOnline,
     emitMessageRead,
-    checkUserStatus
+    checkUserStatus,
   };
-}; 
+};

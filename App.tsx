@@ -22,8 +22,12 @@ import SvgSplash from './src/assets/splash.svg';
 import { Image } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Linking from 'expo-linking';
+import * as Device from 'expo-device';
+import Constants from 'expo-constants';
+import axios from 'axios';
 
 import './global.css';
+import './src/config/i18n';
 
 // Cấu hình linking cho deep links
 const linking = {
@@ -95,15 +99,15 @@ export default function App() {
   useEffect(() => {
     const handleDeepLink = async (url: string) => {
       console.log('🔍 [App] Deep link received:', url);
-      
+
       if (url.includes('staffportal://auth/success')) {
         try {
           const urlObj = new URL(url);
           const token = urlObj.searchParams.get('token');
           const error = urlObj.searchParams.get('error');
-          
+
           console.log('🔍 [App] Deep link params:', { token: !!token, error });
-          
+
           if (error) {
             console.log('❌ [App] Deep link error:', error);
             Toast.show({
@@ -113,19 +117,19 @@ export default function App() {
             });
             return;
           }
-          
+
           if (token) {
             console.log('✅ [App] Deep link token received, saving...');
-            
+
             // Lưu token vào AsyncStorage
             await AsyncStorage.setItem('authToken', token);
-            
+
             // Có thể thêm logic để fetch user info từ token ở đây
             Toast.show({
               type: 'success',
               text1: 'Đăng nhập Microsoft thành công!',
             });
-            
+
             // Navigate to main app (sẽ được xử lý bởi AuthContext)
             // Context sẽ detect token và chuyển màn hình
           }
@@ -177,6 +181,7 @@ export default function App() {
       chatId?: string;
       type?: string;
       senderId?: string;
+      employeeCode?: string;
     };
     console.log('Phản hồi thông báo:', data);
 
@@ -189,7 +194,21 @@ export default function App() {
         // Nếu chưa khởi tạo xong, đặt route ban đầu
         setInitialRoute({
           name: 'TicketDetail',
-          params: { ticketId: data.ticketId }
+          params: { ticketId: data.ticketId },
+        });
+      }
+    } else if (data?.type === 'attendance') {
+      // Xử lý khi nhận thông báo chấm công
+      console.log('📋 Nhận thông báo chấm công cho nhân viên:', data.employeeCode);
+
+      if (navigationRef.current) {
+        // Điều hướng về Home để xem thông tin chấm công mới nhất
+        navigationRef.current.navigate('Main');
+      } else {
+        // Nếu chưa khởi tạo xong, đặt route ban đầu
+        setInitialRoute({
+          name: 'Main',
+          params: { refreshAttendance: true },
         });
       }
     } else if (data?.type === 'new_chat_message') {
@@ -202,14 +221,14 @@ export default function App() {
             if (!token) return;
 
             const response = await fetch(`${API_BASE_URL}/api/users/${data.senderId}`, {
-              headers: { 'Authorization': `Bearer ${token}` }
+              headers: { Authorization: `Bearer ${token}` },
             });
 
             if (response.ok) {
               const userData = await response.json();
               navigationRef.current?.navigate('ChatDetail', {
                 chatId: data.chatId,
-                user: userData
+                user: userData,
               });
             }
           } catch (error) {
@@ -224,8 +243,8 @@ export default function App() {
           name: 'ChatInit',
           params: {
             chatId: data.chatId,
-            senderId: data.senderId
-          }
+            senderId: data.senderId,
+          },
         });
       }
     }
@@ -238,7 +257,9 @@ export default function App() {
     });
 
     // Lắng nghe khi người dùng tương tác với thông báo
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(
+      handleNotificationResponse
+    );
 
     return () => {
       if (notificationListener.current) {
@@ -248,6 +269,113 @@ export default function App() {
         Notifications.removeNotificationSubscription(responseListener.current);
       }
     };
+  }, []);
+
+  // Setup push notifications khi app khởi động
+  useEffect(() => {
+    const setupPushNotifications = async () => {
+      // Kiểm tra xem thiết bị có phải là thiết bị thật không
+      if (!Device.isDevice) {
+        console.log('Thiết bị giả lập không hỗ trợ thông báo đẩy!');
+        return;
+      }
+
+      // Kiểm tra quyền thông báo
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+
+      // Nếu chưa được cấp quyền, yêu cầu quyền
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+
+      // Nếu không được cấp quyền, thông báo cho người dùng
+      if (finalStatus !== 'granted') {
+        console.log('Bạn cần cấp quyền thông báo để nhận thông báo!');
+        return;
+      }
+
+      try {
+        // Lấy projectId từ Constants
+        const projectId = Constants?.expoConfig?.extra?.eas?.projectId;
+
+        if (!projectId) {
+          console.error('Không tìm thấy projectId trong app.json');
+          return;
+        }
+
+        // Lấy token thiết bị
+        const token = await Notifications.getExpoPushTokenAsync({
+          projectId,
+        });
+
+        console.log('📱 App.tsx Push token:', token.data);
+
+        // Lưu token vào AsyncStorage
+        await AsyncStorage.setItem('pushToken', token.data);
+
+        // Gửi token lên server
+        setTimeout(() => registerDeviceToken(token.data), 2000); // Delay để đảm bảo auth token đã có
+      } catch (error) {
+        console.error('❌ Lỗi khi thiết lập thông báo đẩy:', error);
+      }
+    };
+
+    // Đăng ký token thiết bị với server
+    const registerDeviceToken = async (token: string) => {
+      try {
+        const authToken = await AsyncStorage.getItem('authToken');
+
+        if (!authToken) {
+          console.log('⏰ User chưa đăng nhập, sẽ thử lại sau...');
+          // Thử lại sau 5 giây
+          setTimeout(() => registerDeviceToken(token), 5000);
+          return;
+        }
+
+        // Debug: Decode JWT để thấy user info
+        try {
+          const base64Url = authToken.split('.')[1];
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          const jsonPayload = decodeURIComponent(
+            atob(base64)
+              .split('')
+              .map((c) => {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+              })
+              .join('')
+          );
+          const decoded = JSON.parse(jsonPayload);
+          console.log('🔍 App.tsx JWT full payload:', decoded);
+          console.log('🔍 App.tsx JWT user info:', {
+            userId: decoded.userId || decoded.name || decoded.sub,
+            employeeId: decoded.employee_id || decoded.employeeId || decoded.employeeCode,
+            fullname: decoded.fullname || decoded.full_name || decoded.name,
+            email: decoded.email,
+          });
+        } catch (jwtError) {
+          console.warn('❌ Could not decode JWT:', jwtError);
+        }
+
+        const response = await axios.post(
+          `${API_BASE_URL}/api/notification/register-device`,
+          { deviceToken: token },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${authToken}`,
+            },
+          }
+        );
+
+        console.log('✅ App.tsx Push token registered successfully:', response.data);
+      } catch (error) {
+        console.error('❌ App.tsx Lỗi đăng ký token thiết bị:', error);
+      }
+    };
+
+    setupPushNotifications();
   }, []);
 
   // Kiểm tra xem có thông báo nào mở ứng dụng không
@@ -279,10 +407,7 @@ export default function App() {
         <SafeAreaProvider>
           <AuthProvider>
             <OnlineStatusProvider>
-              <NavigationContainer
-                ref={navigationRef}
-                linking={linking}
-              >
+              <NavigationContainer ref={navigationRef} linking={linking}>
                 <AppNavigator />
               </NavigationContainer>
               <StatusBar style="auto" />
@@ -293,11 +418,7 @@ export default function App() {
         {/* Sweep overlay */}
         <Animated.View
           pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            { transform: [{ translateX: sweep }] },
-          ]}
-        >
+          style={[StyleSheet.absoluteFill, { transform: [{ translateX: sweep }] }]}>
           {/* @ts-ignore */}
           <LinearGradient
             colors={['rgba(255,255,255,0)', 'rgba(255,255,255,0.5)', 'rgba(255,255,255,0)']}

@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
-import { View, Text, TextInput, TouchableOpacity, Image, Pressable, Alert, ActivityIndicator, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Image,
+  Pressable,
+  Alert,
+  ActivityIndicator,
+  Platform,
+} from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -8,7 +18,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { typography } from '../../theme/typography';
-import { useMicrosoftLogin } from '../../hooks/useMicrosoftLogin';
+import { useMicrosoftAuthV2 } from '../../hooks/useMicrosoftAuthV2';
 import { useAppleLogin } from '../../hooks/useAppleLogin';
 import MicrosoftIcon from '../../assets/microsoft.svg';
 import AppleIcon from '../../assets/apple.svg';
@@ -20,363 +30,450 @@ import { ROUTES } from '../../constants/routes';
 import { API_BASE_URL } from '../../config/constants';
 import { useAuth } from '../../context/AuthContext';
 import { useBiometricAuth } from '../../hooks/useBiometricAuth';
+import { useLanguage } from '../../hooks/useLanguage';
 import NotificationModal from '../../components/NotificationModal';
 
 type RootStackParamList = {
-    Main: { screen: string };
-    Login: undefined;
+  Main: { screen: string };
+  Login: undefined;
 };
 
-const schema = yup.object().shape({
-    email: yup.string().required('Email là bắt buộc').email('Email không hợp lệ'),
-    password: yup.string().required('Mật khẩu là bắt buộc'),
-});
+// Schema được tạo bên trong component để có thể sử dụng t()
 
 // Define the key name for AsyncStorage
 const LAST_EMAIL_KEY = 'WELLSPRING_LAST_EMAIL';
 
 const SignInScreen = () => {
-    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-    const { control, handleSubmit, formState: { errors }, setValue, getValues } = useForm({
-        resolver: yupResolver(schema),
-    });
-    const [loading, setLoading] = useState(false);
-    const [loginError, setLoginError] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
-    const { login, checkAuth } = useAuth();
-    const {
-        isBiometricAvailable,
-        hasSavedCredentials,
-        isAuthenticating,
-        authenticate
-    } = useBiometricAuth();
-    const [showBiometricModal, setShowBiometricModal] = useState(false);
-    const [showNotificationModal, setShowNotificationModal] = useState(false);
-    const [notificationMessage, setNotificationMessage] = useState('');
-    const [notificationType, setNotificationType] = useState<'success' | 'error'>('error');
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { t } = useLanguage();
 
-    const {  promptAsync } = useMicrosoftLogin(
-        async (token) => {
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/auth/microsoft/login`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-                
-                const authData = await response.json();
-                
-                if (response.ok && authData.success) {
-                    const { token: systemToken, user } = authData;
-                    
-                    await login(systemToken, user);
-                    await checkAuth();
-                    
-                    showNotification('Đăng nhập Microsoft thành công!', 'success');
-                } else {
-                    const errorMessage = authData.message || 'Xác thực Microsoft thất bại';
-                    throw new Error(errorMessage);
-                }
-                
-            } catch (error) {
-                const errorMessage = error.message.includes('Tài khoản chưa đăng ký') 
-                    ? 'Tài khoản chưa đăng ký' 
-                    : 'Không thể đăng nhập với Microsoft';
-                showNotification(errorMessage, 'error');
-            }
-        },
-        (error) => {
-            showNotification('Đăng nhập Microsoft thất bại', 'error');
+  const schema = yup.object().shape({
+    email: yup.string().required(t('auth.email_required')).email(t('auth.email_invalid')),
+    password: yup.string().required(t('auth.password_required')),
+  });
+  const {
+    control,
+    handleSubmit,
+    formState: { errors },
+    setValue,
+    getValues,
+  } = useForm({
+    resolver: yupResolver(schema),
+  });
+  const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const { login, checkAuth, loginWithMicrosoft } = useAuth();
+  const { isBiometricAvailable, hasSavedCredentials, isAuthenticating, authenticate } =
+    useBiometricAuth();
+  const [showBiometricModal, setShowBiometricModal] = useState(false);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState('');
+  const [notificationType, setNotificationType] = useState<'success' | 'error'>('error');
+
+  const { promptAsync, isReady } = useMicrosoftAuthV2(
+    async (authResponse) => {
+      try {
+        // Use the new loginWithMicrosoft method from AuthContext
+        await loginWithMicrosoft(authResponse);
+
+        showNotification(`${t('auth.welcome')} ${authResponse.user?.full_name || ''}!`, 'success');
+      } catch (error) {
+        console.error('❌ [SignInScreen] Error processing Microsoft auth:', error);
+        showNotification(t('auth.login_failed'), 'error');
+      }
+    },
+    (error, errorCode) => {
+      // Show user-friendly error messages
+      if (errorCode === 'USER_NOT_REGISTERED') {
+        showNotification(error, 'error');
+      } else if (errorCode === 'USER_CANCELLED') {
+        // Don't show notification for user cancellation
+        return;
+      } else {
+        showNotification(error || t('auth.microsoft_login') + ' thất bại', 'error');
+      }
+    }
+  );
+
+  const {
+    signInAsync: appleSignIn,
+    isAvailable: isAppleAvailable,
+    isLoading: isAppleLoading,
+  } = useAppleLogin(
+    async (credential) => {
+      try {
+        console.log('🍎 [SignInScreen] Starting Apple login with credential:', {
+          user: credential.user,
+          email: credential.email,
+          fullName: credential.fullName,
+          identityTokenLength: credential.identityToken?.length || 0,
+        });
+
+        const response = await fetch(`${API_BASE_URL}/api/auth/apple/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            identityToken: credential.identityToken,
+            user: credential.user,
+            email: credential.email,
+            fullName: credential.fullName,
+          }),
+        });
+
+        console.log('🍎 [SignInScreen] Apple API response status:', response.status);
+
+        const authData = await response.json();
+
+        console.log('🍎 [SignInScreen] Apple API response data:', {
+          success: authData.success,
+          hasToken: !!authData.token,
+          hasUser: !!authData.user,
+          message: authData.message,
+          error: authData.error,
+        });
+
+        if (response.ok && authData.success) {
+          const { token: systemToken, user } = authData;
+
+          await login(systemToken, user);
+          await checkAuth();
+
+          showNotification(
+            `Chào mừng ${user?.fullname || credential.fullName?.givenName || ''}!`,
+            'success'
+          );
+        } else {
+          const errorMessage = authData.message || 'Xác thực Apple thất bại';
+          throw new Error(errorMessage);
         }
-    );
+      } catch (error) {
+        console.error('❌ [SignInScreen] Error processing Apple auth:', error);
+        console.error('❌ [SignInScreen] Error details:', {
+          message: error?.message,
+          name: error?.name,
+          stack: error?.stack,
+        });
 
-    const { signInAsync: appleSignIn, isAvailable: isAppleAvailable } = useAppleLogin(
-        async (credential) => {
-            try {
-                const response = await fetch(`${API_BASE_URL}/api/auth/apple/login`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        identityToken: credential.identityToken,
-                        user: credential.user,
-                        email: credential.email,
-                        fullName: credential.fullName
-                    })
-                });
-                
-                const authData = await response.json();
-                
-                if (response.ok && authData.success) {
-                    const { token: systemToken, user } = authData;
-                    
-                    await login(systemToken, user);
-                    await checkAuth();
-                    
-                    showNotification('Đăng nhập Apple thành công!', 'success');
-                } else {
-                    const errorMessage = authData.message || 'Xác thực Apple thất bại';
-                    throw new Error(errorMessage);
-                }
-                
-            } catch (error) {
-                const errorMessage = error.message.includes('Tài khoản chưa đăng ký') 
-                    ? 'Tài khoản chưa đăng ký' 
-                    : 'Không thể đăng nhập với Apple';
-                showNotification(errorMessage, 'error');
-            }
-        },
-        (error) => {
-            showNotification('Đăng nhập Apple thất bại', 'error');
-        }
-    );
+        let errorMessage = 'Lỗi xử lý đăng nhập. Vui lòng thử lại.';
 
-    // Debug Apple Sign In availability
-    useEffect(() => {
-        console.log('🔍 [DEBUG] Apple Sign In availability:', isAppleAvailable);
-        console.log('🔍 [DEBUG] Platform:', Platform.OS);
-    }, [isAppleAvailable]);
-
-    const showNotification = (message: string, type: 'success' | 'error' = 'error') => {
-        setNotificationMessage(message);
-        setNotificationType(type);
-        setShowNotificationModal(true);
-    };
-
-    const handleBiometricLogin = async () => {
-        if (!hasSavedCredentials) {
-            showNotification('Bạn cần bật đăng nhập bằng FaceID/TouchID trong hồ sơ cá nhân trước.');
-            return;
+        if (error?.message) {
+          if (
+            error.message.includes('Tài khoản chưa đăng ký') ||
+            error.message.includes('chưa được đăng ký')
+          ) {
+            errorMessage =
+              'Tài khoản Apple chưa được đăng ký trong hệ thống. Vui lòng liên hệ quản trị viên.';
+          } else if (
+            error.message.includes('Network request failed') ||
+            error.message.includes('timeout')
+          ) {
+            errorMessage = 'Lỗi kết nối mạng. Vui lòng kiểm tra internet và thử lại.';
+          } else if (error.message.includes('Invalid') || error.message.includes('malformed')) {
+            errorMessage = 'Dữ liệu xác thực không hợp lệ. Vui lòng thử lại.';
+          } else {
+            // Keep the original error message if it's specific
+            errorMessage = error.message.length > 5 ? error.message : errorMessage;
+          }
         }
 
+        showNotification(errorMessage, 'error');
+      }
+    },
+    (error) => {
+      console.error('❌ [SignInScreen] Apple login hook error:', error);
+
+      // Show user-friendly error messages similar to Microsoft login
+      if (error.includes('hủy') || error.includes('cancelled') || error.includes('canceled')) {
+        console.log('🚫 [SignInScreen] Apple login cancelled by user');
+        // Don't show notification for user cancellation
+        return;
+      } else if (error.includes('chưa đăng ký') || error.includes('not registered')) {
+        showNotification(error, 'error');
+      } else if (error.includes('không khả dụng') || error.includes('not available')) {
+        showNotification('Apple Sign In không khả dụng trên thiết bị này', 'error');
+      } else {
+        // Provide more specific error message
+        const errorMessage =
+          error && error.length > 10
+            ? error
+            : 'Đăng nhập Apple thất bại. Vui lòng kiểm tra kết nối và thử lại.';
+        showNotification(errorMessage, 'error');
+      }
+    }
+  );
+
+  // Debug Apple Sign In availability
+  useEffect(() => {
+    console.log('🔍 [DEBUG] Apple Sign In availability:', isAppleAvailable);
+    console.log('🔍 [DEBUG] Platform:', Platform.OS);
+  }, [isAppleAvailable]);
+
+  const showNotification = (message: string, type: 'success' | 'error' = 'error') => {
+    setNotificationMessage(message);
+    setNotificationType(type);
+    setShowNotificationModal(true);
+  };
+
+  const handleBiometricLogin = async () => {
+    if (!hasSavedCredentials) {
+      showNotification('Bạn cần bật đăng nhập bằng FaceID/TouchID trong hồ sơ cá nhân trước.');
+      return;
+    }
+
+    try {
+      const credentials = await authenticate();
+
+      if (credentials) {
+        setValue('email', credentials.email);
+        setValue('password', credentials.password);
+        onSubmit({ email: credentials.email, password: credentials.password });
+      } else {
+        showNotification('Xác thực sinh trắc học thất bại. Vui lòng thử lại.');
+      }
+    } catch (error) {
+      showNotification('Không thể xác thực sinh trắc học. Vui lòng thử lại.');
+    }
+  };
+
+  const onSubmit = async (data: any) => {
+    setLoading(true);
+    setLoginError('');
+    try {
+      // Cập nhật để sử dụng Frappe API endpoint
+      const response = await fetch(
+        `${API_BASE_URL}/api/method/erp.api.erp_common_user.auth.login`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({
+            email: data.email,
+            username: data.email, // Có thể là email hoặc username
+            password: data.password,
+            provider: 'local',
+          }),
+        }
+      );
+      const resData = await response.json();
+
+      // Debug: Log the actual response structure
+      console.log('🔍 [SignInScreen] API Response Structure:', JSON.stringify(resData, null, 2));
+
+      // Frappe API trả về data trong resData.message
+      const apiResponse = resData.message || resData;
+
+      if (!response.ok || apiResponse.status !== 'success') {
+        const errorMessage = apiResponse.message || resData.message || 'Đăng nhập thất bại';
+        setLoginError(errorMessage);
+        showNotification('Tài khoản hoặc mật khẩu không chính xác', 'error');
+      } else {
         try {
-            const credentials = await authenticate();
+          await AsyncStorage.setItem(LAST_EMAIL_KEY, data.email);
 
-            if (credentials) {
-                setValue('email', credentials.email);
-                setValue('password', credentials.password);
-                onSubmit({ email: credentials.email, password: credentials.password });
-            } else {
-                showNotification('Xác thực sinh trắc học thất bại. Vui lòng thử lại.');
-            }
-        } catch (error) {
-            showNotification('Không thể xác thực sinh trắc học. Vui lòng thử lại.');
+          // Xử lý response từ Frappe API
+          if (apiResponse.user) {
+            const user = apiResponse.user;
+            const userId = user.email; // Frappe sử dụng email làm user ID
+            const userFullname = user.full_name || user.username || data.email.split('@')[0];
+            const userRole = user.role || 'user';
+
+            const completeUser = {
+              _id: userId,
+              email: user.email,
+              fullname: userFullname,
+              username: user.username,
+              role: userRole,
+              jobTitle: user.job_title || 'N/A',
+              department: user.department || 'N/A',
+              avatar: user.avatar || 'https://via.placeholder.com/150',
+              needProfileUpdate: false,
+              employeeCode: user.employee_code || 'N/A',
+              provider: user.provider || 'local',
+            };
+
+            // Lưu JWT token từ Frappe
+            await login(apiResponse.token, completeUser);
+          } else {
+            // Fallback nếu không có user data
+            const defaultUser = {
+              _id: data.email,
+              fullname: data.email.split('@')[0],
+              email: data.email,
+              role: 'user',
+              department: 'user',
+            };
+
+            await AsyncStorage.setItem('user', JSON.stringify(defaultUser));
+          }
+
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Main', params: { screen: 'Home' } }],
+          });
+        } catch (storageError) {
+          console.error('Storage error:', storageError);
+          showNotification('Đã xảy ra lỗi khi xử lý thông tin đăng nhập', 'error');
         }
-    };
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      showNotification('Lỗi kết nối máy chủ', 'error');
+      setLoginError('Lỗi kết nối máy chủ');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const onSubmit = async (data: any) => {
-        setLoading(true);
-        setLoginError('');
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: data.email, password: data.password })
-            });
-            const resData = await response.json();
-
-            if (!response.ok) {
-                setLoginError(resData.message || 'Đăng nhập thất bại');
-                showNotification('Tài khoản hoặc mật khẩu không chính xác', 'error');
-            } else {
-                try {
-                    await AsyncStorage.setItem(LAST_EMAIL_KEY, data.email);
-
-                    let userId = '';
-                    let userFullname = '';
-                    let userRole = 'user';
-
-                    if (resData.user) {
-                        const user = resData.user;
-                        userId = user._id || user.id || `user_${Date.now()}`;
-                        userFullname = user.fullname || user.name || user.username || data.email.split('@')[0];
-                        userRole = user.role || 'user';
-                        
-                        const completeUser = {
-                            ...user,
-                            _id: userId,
-                            fullname: userFullname,
-                            role: userRole,
-                            jobTitle: user.jobTitle || 'N/A',
-                            department: user.department || 'N/A',
-                            avatar: user.avatar || 'https://via.placeholder.com/150',
-                            needProfileUpdate: user.needProfileUpdate || false,
-                            employeeCode: user.employeeCode || 'N/A',
-                        };
-
-                        await login(resData.token, completeUser);
-
-                    } else {
-                        userId = `user_${Date.now()}`;
-                        userFullname = data.email.split('@')[0];
-
-                        const defaultUser = {
-                            _id: userId,
-                            fullname: userFullname,
-                            email: data.email,
-                            role: 'user',
-                            department: 'user'
-                        };
-
-                        await AsyncStorage.setItem('user', JSON.stringify(defaultUser));
-                    }
-
-                    navigation.reset({
-                        index: 0,
-                        routes: [{ name: 'Main', params: { screen: 'Home' } }],
-                    });
-                } catch (storageError) {
-                    showNotification('Đã xảy ra lỗi khi xử lý thông tin đăng nhập', 'error');
-                }
-            }
-        } catch (error) {
-            showNotification('Lỗi kết nối máy chủ', 'error');
-            setLoginError('Lỗi kết nối máy chủ');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <View className="flex-1 bg-white items-center">
-            <View className="w-full mt-[15%] p-5">
-                {/* Logo và tiêu đề */}
-                <Image
-                    source={require('../../assets/wellspring-logo.png')}
-                    className="w-[30%] h-16 mb-6"
-                    resizeMode="cover"
-                />
-                <Text className="font-bold text-xl text-primary self-start">Đăng nhập</Text>
-                {/* Email */}
-                <Text className="self-start mt-6 text-primary font-medium">Tên đăng nhập <Text className="text-error">*</Text></Text>
-                <Controller
-                    control={control}
-                    name="email"
-                    render={({ field: { onChange, onBlur, value } }) => (
-                        <TextInput
-                            className="w-full h-12 border border-[#ddd]  font-medium rounded-xl px-3 mt-2 bg-white"
-                            placeholder="example@wellspring.edu.vn"
-                            autoCapitalize="none"
-                            keyboardType="email-address"
-                            onBlur={onBlur}
-                            onChangeText={onChange}
-                            value={value}
-                        />
-                    )}
-                />
-                {errors.email && <Text className="text-error self-start ml-2">{errors.email.message}</Text>}
-                {/* Password */}
-                <Text className="self-start mt-4 text-primary  font-medium">Mật khẩu <Text className="text-error">*</Text></Text>
-                <Controller
-                    control={control}
-                    name="password"
-                    render={({ field: { onChange, onBlur, value } }) => (
-                        <View className="relative w-full">
-                            <TextInput
-                                className={`w-full h-12 border font-medium rounded-xl px-3 mt-2 bg-white pr-12 ${loginError ? 'border-error' : 'border-[#ddd]'}`}
-                                placeholder="Nhập mật khẩu"
-                                secureTextEntry={!showPassword}
-                                onBlur={onBlur}
-                                onChangeText={onChange}
-                                value={value}
-                            />
-                            <Pressable
-                                style={{
-                                    position: 'absolute',
-                                    right: 10,
-                                    top: '60%',
-                                    transform: [{ translateY: -12 }],
-                                    zIndex: 10,
-                                }}
-                                onPress={() => setShowPassword((prev) => !prev)}
-                                hitSlop={8}
-                            >
-                                <VisibilityIcon width={24} height={24} />
-                            </Pressable>
-                        </View>
-                    )}
-                />
-                {errors.password && <Text className="text-error self-start ml-2">{errors.password.message}</Text>}
-
-                {/* Nút FaceID - luôn hiển thị */}
-                <TouchableOpacity
-                    className="items-center mt-6 mb-4"
-                    onPress={handleBiometricLogin}
-                    disabled={loading || isAuthenticating}
-                    style={{ opacity: loading || isAuthenticating ? 0.5 : 1 }}
-                >
-                    {isAuthenticating ? (
-                        <ActivityIndicator size="large" color="#009483" />
-                    ) : (
-                        <View className="items-center">
-                                <FaceIdIcon width={62} height={62} color="#F05023" />
-                        </View>
-                    )}
-                </TouchableOpacity>
-
-                {/* Nút đăng nhập */}
-                <TouchableOpacity
-                    className="w-full bg-secondary rounded-full py-3 items-center mt-2"
-                    onPress={handleSubmit(onSubmit)}
-                    disabled={loading || isAuthenticating}
-                >
-                    <Text className="text-white font-bold text-base">
-                        {loading || isAuthenticating ? 'Đang đăng nhập...' : 'Đăng nhập'}
-                    </Text>
-                </TouchableOpacity>
-
-                {/* Quên mật khẩu */}
-                <TouchableOpacity className="w-full items-center mt-4">
-                    <Text className="text-text-secondary  font-medium text-base">Quên mật khẩu?</Text>
-                </TouchableOpacity>
-
-                {/* Phân cách */}
-                <View className="flex-row items-center my-6">
-                    <View className="flex-1 h-px bg-[#E0E0E0]" />
-                    <Text className="mx-2 text-text-secondary  font-medium text-sm">Đăng nhập với phương thức khác</Text>
-                    <View className="flex-1 h-px bg-[#E0E0E0]" />
-                </View>
-                {/* Nút đăng nhập Microsoft */}
-                <TouchableOpacity
-                    className="w-full flex-row items-center justify-center rounded-full bg-secondary/10 py-3 mb-2"
-                    onPress={() => promptAsync()}
-                >
-                    <View style={{ marginRight: 8 }}>
-                        <MicrosoftIcon width={20} height={20} />
-                    </View>
-                    <Text className="text-secondary font-bold text-base">Đăng nhập với Microsoft</Text>
-                </TouchableOpacity>
-
-                {/* Nút đăng nhập Apple - chỉ hiển thị trên iOS */}
-                {isAppleAvailable && (
-                    <TouchableOpacity
-                        className="w-full flex-row items-center justify-center rounded-full bg-secondary/10 py-3 mb-2"
-                        onPress={appleSignIn}
-                    >
-                        <View style={{ marginRight: 8 }}>
-                            <AppleIcon width={20} height={20} />
-                        </View>
-                        <Text className="text-secondary font-bold text-base">Đăng nhập với Apple</Text>
-                    </TouchableOpacity>
-                )}
-                
-            </View>
-            <View className="absolute bottom-12 w-full items-center mt-4">
-                <Text className="text-text-secondary  font-medium text-xs text-center mt-8">
-                    © Copyright 2025 Wellspring International Bilingual Schools.{"\n"}All Rights Reserved.
-                </Text>
-            </View>
-            <NotificationModal
-                visible={showNotificationModal}
-                type={notificationType}
-                message={notificationMessage}
-                onClose={() => setShowNotificationModal(false)}
+  return (
+    <View className="flex-1 items-center bg-white">
+      <View className="mt-[15%] w-full p-5">
+        {/* Logo và tiêu đề */}
+        <Image
+          source={require('../../assets/wellspring-logo.png')}
+          className="mb-6 h-16 w-[30%]"
+          resizeMode="cover"
+        />
+        <Text className="self-start font-bold text-xl text-primary">Đăng nhập</Text>
+        {/* Email */}
+        <Text className="mt-6 self-start font-medium text-primary">
+          Tên đăng nhập <Text className="text-error">*</Text>
+        </Text>
+        <Controller
+          control={control}
+          name="email"
+          render={({ field: { onChange, onBlur, value } }) => (
+            <TextInput
+              className="mt-2 h-12 w-full rounded-xl  border border-[#ddd] bg-white px-3 font-medium"
+              placeholder="example@wellspring.edu.vn"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              onBlur={onBlur}
+              onChangeText={onChange}
+              value={value}
             />
+          )}
+        />
+        {errors.email && <Text className="ml-2 self-start text-error">{errors.email.message}</Text>}
+        {/* Password */}
+        <Text className="mt-4 self-start font-medium  text-primary">
+          Mật khẩu <Text className="text-error">*</Text>
+        </Text>
+        <Controller
+          control={control}
+          name="password"
+          render={({ field: { onChange, onBlur, value } }) => (
+            <View className="relative w-full">
+              <TextInput
+                className={`mt-2 h-12 w-full rounded-xl border bg-white px-3 pr-12 font-medium ${loginError ? 'border-error' : 'border-[#ddd]'}`}
+                placeholder="Nhập mật khẩu"
+                secureTextEntry={!showPassword}
+                onBlur={onBlur}
+                onChangeText={onChange}
+                value={value}
+              />
+              <Pressable
+                style={{
+                  position: 'absolute',
+                  right: 10,
+                  top: '60%',
+                  transform: [{ translateY: -12 }],
+                  zIndex: 10,
+                }}
+                onPress={() => setShowPassword((prev) => !prev)}
+                hitSlop={8}>
+                <VisibilityIcon width={24} height={24} />
+              </Pressable>
+            </View>
+          )}
+        />
+        {errors.password && (
+          <Text className="ml-2 self-start text-error">{errors.password.message}</Text>
+        )}
+
+        {/* Nút FaceID - luôn hiển thị */}
+        <TouchableOpacity
+          className="mb-4 mt-6 items-center"
+          onPress={handleBiometricLogin}
+          disabled={loading || isAuthenticating}
+          style={{ opacity: loading || isAuthenticating ? 0.5 : 1 }}>
+          {isAuthenticating ? (
+            <ActivityIndicator size="large" color="#009483" />
+          ) : (
+            <View className="items-center">
+              <FaceIdIcon width={62} height={62} color="#F05023" />
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Nút đăng nhập */}
+        <TouchableOpacity
+          className="mt-2 w-full items-center rounded-full bg-secondary py-3"
+          onPress={handleSubmit(onSubmit)}
+          disabled={loading || isAuthenticating}>
+          <Text className="font-bold text-base text-white">
+            {loading || isAuthenticating ? 'Đang đăng nhập...' : 'Đăng nhập'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Quên mật khẩu */}
+        <TouchableOpacity className="mt-4 w-full items-center">
+          <Text className="font-medium  text-base text-text-secondary">Quên mật khẩu?</Text>
+        </TouchableOpacity>
+
+        {/* Phân cách */}
+        <View className="my-6 flex-row items-center">
+          <View className="h-px flex-1 bg-[#E0E0E0]" />
+          <Text className="mx-2 font-medium  text-sm text-text-secondary">
+            Đăng nhập với phương thức khác
+          </Text>
+          <View className="h-px flex-1 bg-[#E0E0E0]" />
         </View>
-    );
+        {/* Nút đăng nhập Microsoft */}
+        <TouchableOpacity
+          className="mb-2 w-full flex-row items-center justify-center rounded-full bg-secondary/10 py-3"
+          onPress={() => promptAsync()}
+          disabled={!isReady}
+          style={{ opacity: isReady ? 1 : 0.6 }}>
+          <View style={{ marginRight: 8 }}>
+            <MicrosoftIcon width={20} height={20} />
+          </View>
+          <Text className="font-bold text-base text-secondary">Đăng nhập với Microsoft</Text>
+        </TouchableOpacity>
+
+        {/* Nút đăng nhập Apple - chỉ hiển thị trên iOS */}
+        {isAppleAvailable && (
+          <TouchableOpacity
+            className="mb-2 w-full flex-row items-center justify-center rounded-full bg-secondary/10 py-3"
+            onPress={appleSignIn}
+            disabled={isAppleLoading}
+            style={{ opacity: isAppleLoading ? 0.6 : 1 }}>
+            <View style={{ marginRight: 8 }}>
+              <AppleIcon width={20} height={20} />
+            </View>
+            <Text className="font-bold text-base text-secondary">
+              {isAppleLoading ? 'Đang xử lý...' : 'Đăng nhập với Apple'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      <View className="absolute bottom-12 mt-4 w-full items-center">
+        <Text className="mt-8  text-center font-medium text-xs text-text-secondary">
+          © Copyright 2025 Wellspring International Bilingual Schools.{'\n'}All Rights Reserved.
+        </Text>
+      </View>
+      <NotificationModal
+        visible={showNotificationModal}
+        type={notificationType}
+        message={notificationMessage}
+        onClose={() => setShowNotificationModal(false)}
+      />
+    </View>
+  );
 };
 
-export default SignInScreen; 
+export default SignInScreen;

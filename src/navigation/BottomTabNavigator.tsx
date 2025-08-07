@@ -16,88 +16,92 @@ import ProfileIcon from '../assets/profile.svg';
 const Tab = createBottomTabNavigator();
 
 const tabBarLabel = (label: string, focused: boolean) => (
-    <Text className={focused ? 'text-sm font-medium text-[#0A2240] mt-1' : 'text-sm font-medium text-gray-400 mt-1'}>{label}</Text>
+  <Text
+    className={
+      focused ? 'mt-1 font-medium text-sm text-[#0A2240]' : 'mt-1 font-medium text-sm text-gray-400'
+    }>
+    {label}
+  </Text>
 );
 
 const HIDDEN_ROUTES = ['ChatDetail'];
 
 const BottomTabNavigator = ({ route }: { route: any }) => {
-    const initialRouteName = route?.params?.screen || ROUTES.TABS.HOME;
-    return (
-        <Tab.Navigator
-            screenOptions={{
-                headerShown: false,
-                tabBarStyle: {
-                    borderTopWidth: 1,
-                    height: 90,
-                    paddingBottom: 16,
-                    paddingTop: 8,
-                },
-            }}
-            initialRouteName={initialRouteName}
-        >
-            <Tab.Screen
-                name={ROUTES.MAIN.HOME}
-                component={HomeScreen}
-                options={{
-                    tabBarIcon: ({ focused }) => (
-                        <View className="items-center">
-                            <MenuIcon width={28} height={28} />
-                        </View>
-                    ),
-                    tabBarLabel: ({ focused }) => tabBarLabel('WisWork', focused),
-                }}
-            /> 
-            <Tab.Screen
-                name={ROUTES.MAIN.CHAT}
-                component={ChatScreen}
-                options={({ route }) => ({
-                    tabBarIcon: ({ focused }) => (
-                        <View className="items-center">
-                            <ChatIcon width={28} height={28} />
-                        </View>
-                    ),
-                    tabBarLabel: ({ focused }) => tabBarLabel('WisCom', focused),
-                })}
-            />
-            <Tab.Screen
-                name={ROUTES.MAIN.WISLIFE}
-                component={WislifeScreen}
-                options={{
-                    tabBarIcon: ({ focused }) => (
-                        <View className="items-center">
-                            <WislifeIcon width={28} height={28} />
-                        </View>
-                    ),
-                    tabBarLabel: ({ focused }) => tabBarLabel('Wislife', focused),
-                }}
-            />
-            {/* <Tab.Screen
-                name={ROUTES.MAIN.NOTIFICATIONS}
-                component={NotificationsScreen}
-                options={{
-                    tabBarIcon: ({ focused }) => (
-                        <View className="items-center">
-                            <NotificationIcon width={28} height={28} />
-                        </View>
-                    ),
-                    tabBarLabel: ({ focused }) => tabBarLabel('Thông báo', focused),
-                }}
-            /> */}
-            <Tab.Screen
-                name={ROUTES.MAIN.PROFILE}
-                component={ProfileScreen}
-                options={{
-                    tabBarIcon: ({ focused }) => (
-                        <View className="items-center">
-                            <ProfileIcon width={28} height={28} />
-                        </View>
-                    ),
-                    tabBarLabel: ({ focused }) => tabBarLabel('WisMe', focused),
-                }}
-            />
-        </Tab.Navigator>
-    );
+  const initialRouteName = route?.params?.screen || ROUTES.TABS.HOME;
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: {
+          borderTopWidth: 1,
+          height: 90,
+          paddingBottom: 16,
+          paddingTop: 8,
+        },
+      }}
+      initialRouteName={initialRouteName}>
+      <Tab.Screen
+        name={ROUTES.MAIN.HOME}
+        component={HomeScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <View className="items-center">
+              <MenuIcon width={28} height={28} />
+            </View>
+          ),
+          tabBarLabel: ({ focused }) => tabBarLabel('WisWork', focused),
+        }}
+      />
+      <Tab.Screen
+        name={ROUTES.MAIN.CHAT}
+        component={ChatScreen}
+        options={({ route }) => ({
+          tabBarIcon: ({ focused }) => (
+            <View className="items-center">
+              <ChatIcon width={28} height={28} />
+            </View>
+          ),
+          tabBarLabel: ({ focused }) => tabBarLabel('WisCom', focused),
+        })}
+      />
+      <Tab.Screen
+        name={ROUTES.MAIN.WISLIFE}
+        component={WislifeScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <View className="items-center">
+              <WislifeIcon width={28} height={28} />
+            </View>
+          ),
+          tabBarLabel: ({ focused }) => tabBarLabel('Wislife', focused),
+        }}
+      />
+      {/* <Tab.Screen
+         name={ROUTES.MAIN.NOTIFICATIONS}
+         component={NotificationsScreen}
+         options={{
+           tabBarIcon: ({ focused }) => (
+             <View className="items-center">
+               <NotificationIcon width={28} height={28} />
+             </View>
+           ),
+           tabBarLabel: ({ focused }) => tabBarLabel('Thông báo', focused),
+         }}
+       /> */}
+      <Tab.Screen
+        name={ROUTES.MAIN.PROFILE}
+        component={ProfileScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <View className="items-center">
+              <ProfileIcon width={28} height={28} />
+            </View>
+          ),
+          tabBarLabel: ({ focused }) => tabBarLabel('WisMe', focused),
+        }}
+      />
+    </Tab.Navigator>
+  );
 };
 
-export default BottomTabNavigator; 
+export default BottomTabNavigator;
