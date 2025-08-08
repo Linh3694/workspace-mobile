@@ -22,7 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import ConfirmModal from '../../components/ConfirmModal';
 import Wismelogo from '../../assets/wisme.svg';
 import { getAvatar } from '../../utils/avatar';
-import { MICROSERVICES_BASE_URL } from '../../config/constants.js';
+import { BASE_URL } from '../../config/constants.js';
 import FaceID from '../../assets/faceid-gray.svg';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
@@ -33,7 +33,7 @@ import StandardHeader from '../../components/Common/StandardHeader';
 import { userService } from '../../services/userService';
 
 const ProfileScreen = () => {
-  const { logout, user, refreshUserData } = useAuth();
+  const { logout, user, refreshUserData, bumpAvatarCacheBust } = useAuth();
   const { hasSavedCredentials, removeCredentials, saveCredentialsFromProfile } = useBiometricAuth();
   const { getCurrentLanguageName, showLanguageSelector, t } = useLanguage();
   const [biometricEnabled, setBiometricEnabled] = useState(false);
@@ -45,6 +45,19 @@ const ProfileScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
+  // Debug user avatar fields when user changes
+  useEffect(() => {
+    if (user) {
+      console.log('[Profile] user avatar fields:', {
+        avatar: (user as any).avatar,
+        avatarUrl: (user as any).avatarUrl,
+        avatar_url: (user as any).avatar_url,
+        user_image: (user as any).user_image,
+        fullname: user.fullname,
+      });
+    }
+  }, [user]);
 
   // Kiểm tra xem sinh trắc học có được bật không
   useEffect(() => {
@@ -104,11 +117,7 @@ const ProfileScreen = () => {
 
   const handleImageError = () => {
     if (!avatarError) {
-      // Only log once per session
-      console.log(
-        '🖼️ [ProfileScreen] Avatar load error, switching to fallback for user:',
-        user?.fullname
-      );
+      // Only mark error once per session
     }
     setAvatarError(true);
   };
@@ -186,13 +195,27 @@ const ProfileScreen = () => {
         if (refreshUserData) {
           await refreshUserData();
         }
+        // Bump cache-bust so URL khác đi khi mở lại app
+        if (bumpAvatarCacheBust) {
+          await bumpAvatarCacheBust();
+        }
+        // Cập nhật hiển thị avatar ngay lập tức bằng URL nhận từ server
+        if (result.avatar_url) {
+          try {
+            const temp = getAvatar({
+              fullname: user?.fullname || 'Unknown',
+              avatar_url: result.avatar_url,
+            } as any);
+            const withTs = `${temp}${temp.includes('?') ? '&' : '?'}ts=${Date.now()}`;
+            setLocalAvatarUrl(withTs);
+          } catch {}
+        }
         setAvatarError(false);
         Alert.alert('Thành công', result.message || 'Đã cập nhật ảnh đại diện');
       } else {
         Alert.alert('Lỗi', result.message || 'Không thể tải lên ảnh');
       }
-    } catch (error) {
-      console.error('Error uploading avatar:', error);
+    } catch (_error) {
       Alert.alert('Lỗi', 'Có lỗi xảy ra khi tải lên ảnh');
     } finally {
       setUploadingAvatar(false);
@@ -215,13 +238,17 @@ const ProfileScreen = () => {
               if (refreshUserData) {
                 await refreshUserData();
               }
+              // Bump cache-bust để chắc chắn tránh cache ảnh cũ
+              if (bumpAvatarCacheBust) {
+                await bumpAvatarCacheBust();
+              }
               setAvatarError(false);
+              setLocalAvatarUrl(null);
               Alert.alert('Thành công', result.message || 'Đã xóa ảnh đại diện');
             } else {
               Alert.alert('Lỗi', result.message || 'Không thể xóa ảnh');
             }
-          } catch (error) {
-            console.error('Error removing avatar:', error);
+          } catch (_error) {
             Alert.alert('Lỗi', 'Có lỗi xảy ra khi xóa ảnh');
           } finally {
             setUploadingAvatar(false);
@@ -317,7 +344,7 @@ const ProfileScreen = () => {
       console.log('🔔 Registering push token with notification service via nginx proxy');
 
       await axios.post(
-        `${MICROSERVICES_BASE_URL}/api/notification/register-device`,
+        `${BASE_URL}/api/notification/register-device`,
         { deviceToken: token },
         {
           headers: {
@@ -353,7 +380,7 @@ const ProfileScreen = () => {
       console.log('🔔 Unregistering push token with notification service via nginx proxy');
 
       await axios.post(
-        `${MICROSERVICES_BASE_URL}/api/notification/unregister-device`,
+        `${BASE_URL}/api/notification/unregister-device`,
         { deviceToken: pushToken },
         {
           headers: {
@@ -413,11 +440,21 @@ const ProfileScreen = () => {
             <TouchableOpacity onPress={handleChangeAvatar} disabled={uploadingAvatar}>
               <Image
                 source={{
-                  uri: avatarError ? getFallbackAvatar() : getAvatar(user),
+                  uri: (() => {
+                    const uri = avatarError
+                      ? getFallbackAvatar()
+                      : localAvatarUrl || getAvatar(user);
+                    console.log('[Profile][Image] rendering URI:', uri);
+                    return uri;
+                  })(),
+                  headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
                 }}
+                key={`${localAvatarUrl || getAvatar(user)}`}
                 className="h-24 w-24 rounded-full"
-                onError={handleImageError}
-                onLoad={() => setAvatarError(false)}
+                onError={(e) => {
+                  console.warn('[Profile][Image] onError:', e?.nativeEvent?.error);
+                  handleImageError();
+                }}
               />
 
               {/* Edit overlay */}
@@ -466,7 +503,6 @@ const ProfileScreen = () => {
             </View>
           </View>
         </View>
-
         {/* Settings Section */}
         <View className="mt-8 rounded-2xl border-t border-[#E5E5E5]">
           <View className="gap-8 p-5">

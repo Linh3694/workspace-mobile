@@ -96,12 +96,6 @@ const GroupTypingIndicator: React.FC<GroupTypingIndicatorProps> = ({
                 {(() => {
                     const user = typingUsers[0];
                     const avatarUrl = getAvatar(user);
-                    console.log('🖼️ [GroupTypingIndicator] Avatar debug:', {
-                        user,
-                        avatarUrl,
-                        fullname: user?.fullname,
-                        avatarUrl_prop: user?.avatarUrl
-                    });
                     return (
                         <Image
                             source={{ uri: avatarUrl }}
@@ -110,12 +104,6 @@ const GroupTypingIndicator: React.FC<GroupTypingIndicatorProps> = ({
                                 height: 32,
                                 borderRadius: 16,
                                 backgroundColor: '#F3F4F6'
-                            }}
-                            onError={(error) => {
-                                console.error('🖼️ [GroupTypingIndicator] Avatar load error:', error.nativeEvent.error);
-                            }}
-                            onLoad={() => {
-                                console.log('🖼️ [GroupTypingIndicator] Avatar loaded successfully:', avatarUrl);
                             }}
                         />
                     );

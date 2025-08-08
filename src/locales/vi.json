@@ -112,7 +112,7 @@
     "tickets": "Tickets",
     "devices": "Thiết bị",
     "documents": "Tài liệu",
-    "wislife": "Wislife",
+    "wislife": "Social",
     "chat": "Chat",
     "quick_actions": "Thao tác nhanh",
     "recent_activities": "Hoạt động gần đây",
@@ -227,7 +227,7 @@
     "filter_devices": "Lọc thiết bị"
   },
   "wislife": {
-    "title": "Wislife",
+    "title": "Social",
     "posts": "Bài đăng",
     "create_post": "Tạo bài đăng mới",
     "like": "Thích",

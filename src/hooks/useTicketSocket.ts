@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import io, { Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MICROSERVICES_BASE_URL } from '../config/constants';
+import { BASE_URL } from '../config/constants';
 
 interface Message {
   _id: string;
@@ -89,7 +89,7 @@ export const useTicketSocket = ({
 
         console.log(`🔄 Connecting to socket (attempt ${retryCount + 1})`);
 
-        const socket = io(MICROSERVICES_BASE_URL, {
+        const socket = io(BASE_URL, {
           query: { token },
           transports: ['websocket'],
           timeout: 10000,

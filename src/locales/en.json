@@ -112,7 +112,7 @@
     "tickets": "Tickets",
     "devices": "Devices",
     "documents": "Documents",
-    "wislife": "Wislife",
+    "wislife": "Social",
     "chat": "Chat",
     "quick_actions": "Quick actions",
     "recent_activities": "Recent activities",
@@ -227,7 +227,7 @@
     "filter_devices": "Filter devices"
   },
   "wislife": {
-    "title": "Wislife",
+    "title": "Social",
     "posts": "Posts",
     "create_post": "Create new post",
     "like": "Like",

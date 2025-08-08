@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MICROSERVICES_BASE_URL } from '../config/constants';
+import { BASE_URL } from '../config/constants';
 import { Message } from '../types/message';
 
 interface UseSocketProps {
@@ -51,7 +51,7 @@ export const useSocket = ({
     }
 
     try {
-      console.log('🔌 Attempting socket connection to:', MICROSERVICES_BASE_URL);
+      console.log('🔌 Attempting socket connection to:', BASE_URL);
 
       // Disconnect existing socket if any
       if (socketRef.current) {
@@ -59,7 +59,7 @@ export const useSocket = ({
       }
 
       // Create new socket connection với timeout và fallback
-      const socket = io(MICROSERVICES_BASE_URL, {
+      const socket = io(BASE_URL, {
         query: { token: authToken },
         transports: ['websocket'],
         timeout: 10000,
@@ -142,7 +142,7 @@ export const useSocket = ({
             const token = await AsyncStorage.getItem('authToken');
             if (token && currentUserId) {
               try {
-                await fetch(`${MICROSERVICES_BASE_URL}/api/chats/messages/${chatId}/read`, {
+                await fetch(`${BASE_URL}/api/chats/messages/${chatId}/read`, {
                   method: 'POST',
                   headers: {
                     Authorization: `Bearer ${token}`,

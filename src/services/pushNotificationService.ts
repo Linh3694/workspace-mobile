@@ -2,7 +2,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MICROSERVICES_BASE_URL } from '../config/constants';
+import { BASE_URL } from '../config/constants';
 
 interface PushNotificationData {
   type?: string;
@@ -140,7 +140,7 @@ class PushNotificationService {
         return;
       }
 
-      const response = await fetch(`${MICROSERVICES_BASE_URL}/api/notification/register-device`, {
+      const response = await fetch(`${BASE_URL}/api/notification/register-device`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

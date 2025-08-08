@@ -73,7 +73,7 @@ const BottomTabNavigator = ({ route }: { route: any }) => {
               <WislifeIcon width={28} height={28} />
             </View>
           ),
-          tabBarLabel: ({ focused }) => tabBarLabel('Wislife', focused),
+          tabBarLabel: ({ focused }) => tabBarLabel('Social', focused),
         }}
       />
       {/* <Tab.Screen

@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiBaseUrl } from '../config/constants';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 export const userService = {
   /**
@@ -12,33 +13,50 @@ export const userService = {
       const token = await AsyncStorage.getItem('authToken');
       const apiBaseUrl = getApiBaseUrl();
 
-      // First test if auth works
-      console.log('🧪 [uploadAvatar] Testing auth endpoint first...');
-      const testResponse = await fetch(
-        `${apiBaseUrl}/api/method/erp.api.erp_common_user.auth.get_current_user`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-      console.log('🧪 [uploadAvatar] Auth test status:', testResponse.status);
-
       // Create FormData
       const formData = new FormData();
-      formData.append('avatar', {
-        uri: imageUri,
-        type: 'image/jpeg',
-        name: 'user-avatar.jpg',
-      } as any);
+      // Detect extension and convert HEIC/HEIF to JPEG
+      const getExtensionFromUri = (uri: string): string => {
+        try {
+          const clean = uri.split('?')[0].split('#')[0];
+          const lastDotIndex = clean.lastIndexOf('.');
+          if (lastDotIndex === -1) return '';
+          return clean.substring(lastDotIndex + 1).toLowerCase();
+        } catch {
+          return '';
+        }
+      };
 
-      console.log(
-        '📤 [uploadAvatar] Uploading to:',
-        `${apiBaseUrl}/api/method/erp.api.erp_common_user.auth.upload_avatar`
-      );
-      console.log('📤 [uploadAvatar] Token exists:', !!token);
+      const ext = getExtensionFromUri(imageUri);
+      const needsConvert = ext === 'heic' || ext === 'heif' || ext === '';
+
+      let uploadUri = imageUri;
+      let uploadExt = ext || 'jpg';
+      let mimeType = 'image/jpeg';
+
+      if (!needsConvert) {
+        if (ext === 'png') mimeType = 'image/png';
+        else if (ext === 'gif') mimeType = 'image/gif';
+        else if (ext === 'webp') mimeType = 'image/webp';
+        else mimeType = 'image/jpeg';
+      } else {
+        // Convert to JPEG for unsupported or unknown types
+        const manipulated = await ImageManipulator.manipulateAsync(imageUri, [], {
+          compress: 0.9,
+          format: ImageManipulator.SaveFormat.JPEG,
+        });
+        uploadUri = manipulated.uri;
+        uploadExt = 'jpg';
+        mimeType = 'image/jpeg';
+      }
+
+      const fileObj: any = {
+        uri: uploadUri,
+        type: mimeType,
+        name: `user-avatar.${uploadExt}`,
+      };
+
+      formData.append('avatar', fileObj);
 
       // Try the original upload_avatar endpoint in auth.py first
       const response = await fetch(
@@ -47,26 +65,36 @@ export const userService = {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
-            // Don't set Content-Type for FormData, let the browser set it with boundary
+            // Let React Native set the correct multipart boundary automatically
+            Accept: 'application/json',
           },
           body: formData,
         }
       );
 
-      console.log('📤 [uploadAvatar] Response status:', response.status);
-      console.log('📤 [uploadAvatar] Response headers:', response.headers);
-
-      const responseText = await response.text();
-      console.log('📤 [uploadAvatar] Response text:', responseText);
-
-      let data;
+      // Read raw text first to robustly handle non-JSON error bodies from proxies/servers
+      const rawText = await response.text();
+      let data: any = null;
       try {
-        data = JSON.parse(responseText);
-      } catch (e) {
-        console.error('📤 [uploadAvatar] Failed to parse JSON:', e);
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        // Non-JSON response. Try to give a helpful message based on status/body
+        const lower = rawText.toLowerCase();
+        if (response.status === 413 || lower.includes('request entity too large')) {
+          return {
+            success: false,
+            message: 'Ảnh quá lớn. Vui lòng chọn ảnh dưới 5MB.',
+          };
+        }
+        if (response.status === 401 || response.status === 403 || lower.includes('please login')) {
+          return {
+            success: false,
+            message: 'Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.',
+          };
+        }
         return {
           success: false,
-          message: `Invalid response format: ${responseText.substring(0, 200)}`,
+          message: `Phản hồi không hợp lệ (HTTP ${response.status}).`,
         };
       }
 
@@ -85,24 +113,23 @@ export const userService = {
             message: data.message,
           };
         } else {
-          console.log('📤 [uploadAvatar] Unexpected success format:', data);
           return {
             success: false,
             message: 'Upload completed but avatar URL not found in response',
           };
         }
       } else {
+        // Frappe may wrap errors under message/exception
+        const errMsg =
+          (data && (data.message || data.exception || data.error)) ||
+          (typeof data === 'string' ? data : '') ||
+          `Upload failed with status ${response.status}`;
         return {
           success: false,
-          message:
-            data.message ||
-            data.exception ||
-            data.error ||
-            `Upload failed with status ${response.status}`,
+          message: errMsg,
         };
       }
-    } catch (error) {
-      console.error('Error uploading avatar:', error);
+    } catch {
       return {
         success: false,
         message: 'Network error occurred',
@@ -142,8 +169,7 @@ export const userService = {
           message: data.message || data.exception || 'Delete failed',
         };
       }
-    } catch (error) {
-      console.error('Error deleting avatar:', error);
+    } catch {
       return {
         success: false,
         message: 'Network error occurred',
@@ -186,8 +212,7 @@ export const userService = {
           message: data.message || data.exception || 'Get avatar failed',
         };
       }
-    } catch (error) {
-      console.error('Error getting avatar URL:', error);
+    } catch {
       return {
         success: false,
         message: 'Network error occurred',

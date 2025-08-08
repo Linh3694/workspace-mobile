@@ -1,6 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 // @ts-ignore
-import { View,Text,ScrollView,RefreshControl,TouchableOpacity,Alert,ActivityIndicator,Image } from 'react-native';
+import {
+  View,
+  Text,
+  ScrollView,
+  RefreshControl,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  Image,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PostCard from '../../components/Wislife/PostCard';
@@ -35,13 +44,13 @@ const WislifeScreen = () => {
       }
 
       const response = await postService.getNewsfeed(pageNum, 10);
-      
+
       if (pageNum === 1 || isRefresh) {
         setPosts(response.posts);
       } else {
-        setPosts(prev => [...prev, ...response.posts]);
+        setPosts((prev) => [...prev, ...response.posts]);
       }
-      
+
       setHasNextPage(response.pagination.hasNext);
       setPage(pageNum);
     } catch (error) {
@@ -84,23 +93,22 @@ const WislifeScreen = () => {
   }, [searchQuery, fetchPosts]);
 
   const handlePostCreated = useCallback((newPost: Post) => {
-    setPosts(prev => [newPost, ...prev]);
+    setPosts((prev) => [newPost, ...prev]);
     setIsCreateModalVisible(false);
   }, []);
 
-  const handlePostUpdate = useCallback((updatedPost: Post) => {
-    setPosts(prev => 
-      prev.map(post => 
-        post._id === updatedPost._id ? updatedPost : post
-      )
-    );
-    if (selectedPost && selectedPost._id === updatedPost._id) {
-      setSelectedPost(updatedPost);
-    }
-  }, [selectedPost]);
+  const handlePostUpdate = useCallback(
+    (updatedPost: Post) => {
+      setPosts((prev) => prev.map((post) => (post._id === updatedPost._id ? updatedPost : post)));
+      if (selectedPost && selectedPost._id === updatedPost._id) {
+        setSelectedPost(updatedPost);
+      }
+    },
+    [selectedPost]
+  );
 
   const handlePostDelete = useCallback((postId: string) => {
-    setPosts(prev => prev.filter(post => post._id !== postId));
+    setPosts((prev) => prev.filter((post) => post._id !== postId));
   }, []);
 
   const handleCommentPress = useCallback((post: Post) => {
@@ -122,10 +130,7 @@ const WislifeScreen = () => {
       <StandardHeader
         logo={<WislifeIcon width={130} height={50} />}
         rightButton={
-          <TouchableOpacity 
-            onPress={() => setIsCreateModalVisible(true)}
-            className="ml-3"
-          >
+          <TouchableOpacity onPress={() => setIsCreateModalVisible(true)} className="ml-3">
             <Ionicons name="search" size={24} color="#6B7280" />
           </TouchableOpacity>
         }
@@ -134,34 +139,14 @@ const WislifeScreen = () => {
       {/* Create Post Section */}
       <TouchableOpacity
         onPress={() => setIsCreateModalVisible(true)}
-        className="mx-4 mt-5 border-b border-gray-300 pb-5"
-      >
+        className="mx-4 mt-5 border-b border-gray-300 pb-5">
         <View className="flex-row items-center">
-          <View className="flex-row items-center flex-1">
-            <View className="w-10 h-10 rounded-full overflow-hidden bg-gray-300">
-              <Image 
-                source={{
-                  uri: (() => {
-                    console.log('=== WislifeScreen Avatar Debug ===');
-                    console.log('User object:', JSON.stringify(user, null, 2));
-                    const avatarUri = getAvatar(user);
-                    console.log('Generated avatar URI:', avatarUri);
-                    return avatarUri;
-                  })()
-                }} 
-                className="w-full h-full"
-                onError={(error) => {
-                  console.log('WislifeScreen avatar error:', error.nativeEvent.error);
-                }}
-                onLoad={() => {
-                  console.log('WislifeScreen avatar loaded successfully');
-                }}
-              />
+          <View className="flex-1 flex-row items-center">
+            <View className="h-10 w-10 overflow-hidden rounded-full bg-gray-300">
+              <Image source={{ uri: getAvatar(user) }} className="h-full w-full" />
             </View>
             <View className="ml-3 flex-1">
-              <Text className="font-semibold text-gray-900">
-                {user?.fullname}
-              </Text>
+              <Text className="font-semibold text-gray-900">{user?.fullname}</Text>
               <Text className="text-sm text-gray-500">Có gì mới?</Text>
             </View>
           </View>
@@ -182,15 +167,11 @@ const WislifeScreen = () => {
         onScroll={({ nativeEvent }) => {
           const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
           const paddingToBottom = 20;
-          if (
-            layoutMeasurement.height + contentOffset.y >=
-            contentSize.height - paddingToBottom
-          ) {
+          if (layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom) {
             loadMorePosts();
           }
         }}
-        scrollEventThrottle={400}
-      >
+        scrollEventThrottle={400}>
         {loading && page === 1 ? (
           <View className="pb-4">
             {[...Array(3)].map((_, index) => (
@@ -200,10 +181,8 @@ const WislifeScreen = () => {
         ) : posts.length === 0 ? (
           <View className="flex-1 items-center justify-center py-20">
             <Ionicons name="document-text-outline" size={64} color="#D1D5DB" />
-            <Text className="mt-4 text-lg font-medium text-gray-500">
-              Chưa có bài viết nào
-            </Text>
-            <Text className="mt-2 text-gray-400 text-center px-8">
+            <Text className="mt-4 font-medium text-lg text-gray-500">Chưa có bài viết nào</Text>
+            <Text className="mt-2 px-8 text-center text-gray-400">
               Hãy là người đầu tiên chia sẻ những khoảnh khắc đặc biệt
             </Text>
           </View>
@@ -218,9 +197,9 @@ const WislifeScreen = () => {
                 onCommentPress={handleCommentPress}
               />
             ))}
-            
+
             {loading && page > 1 && (
-              <View className="py-4 items-center">
+              <View className="items-center py-4">
                 <ActivityIndicator size="small" color="#FF7A00" />
               </View>
             )}
@@ -248,4 +227,4 @@ const WislifeScreen = () => {
   );
 };
 
-export default WislifeScreen; 
+export default WislifeScreen;

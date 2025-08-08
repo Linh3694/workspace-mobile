@@ -20,7 +20,7 @@ const GroupAvatar: React.FC<GroupAvatarProps> = ({
   groupAvatar,
   participants,
   currentUserId,
-  style
+  style,
 }) => {
   const [imageError, setImageError] = useState(false);
 
@@ -29,27 +29,25 @@ const GroupAvatar: React.FC<GroupAvatarProps> = ({
     // Xử lý đặc biệt cho ticket-icon.svg
     if (groupAvatar === 'ticket-icon.svg') {
       return (
-        <View 
-          className="relative overflow-hidden items-center justify-center"
-          style={[{ width: size, height: size }, style]}
-        >
+        <View
+          className="relative items-center justify-center overflow-hidden"
+          style={[{ width: size, height: size }, style]}>
           <TicketIcon width={size} height={size} />
         </View>
       );
     }
-    
+
     // Xử lý đặc biệt cho ticket.svg (nếu có)
     if (groupAvatar === 'ticket.svg') {
       return (
-        <View 
-          className="relative overflow-hidden items-center justify-center"
-          style={[{ width: size, height: size }, style]}
-        >
+        <View
+          className="relative items-center justify-center overflow-hidden"
+          style={[{ width: size, height: size }, style]}>
           <TicketIcon width={size} height={size} />
         </View>
       );
     }
-    
+
     return (
       <View className="relative overflow-hidden" style={[{ width: size, height: size }, style]}>
         <Image
@@ -57,13 +55,10 @@ const GroupAvatar: React.FC<GroupAvatarProps> = ({
           className="rounded-full"
           style={{ width: size, height: size, borderRadius: size / 2 }}
           resizeMode="cover"
-          onError={(error) => {
-            console.error('🖼️ [GroupAvatar] Group avatar load error:', error.nativeEvent.error);
-            console.error('🖼️ [GroupAvatar] Attempted URL:', processImageUrl(groupAvatar));
+          onError={() => {
             setImageError(true);
           }}
           onLoad={() => {
-            console.log('🖼️ [GroupAvatar] Group avatar loaded successfully:', processImageUrl(groupAvatar));
             setImageError(false);
           }}
         />
@@ -72,16 +67,14 @@ const GroupAvatar: React.FC<GroupAvatarProps> = ({
   }
 
   // Lọc bỏ current user và lấy tối đa 4 thành viên đầu tiên
-  const displayUsers = participants
-    .slice(0, 4);
+  const displayUsers = participants.slice(0, 4);
 
   // Nếu không có thành viên nào để hiển thị, hiển thị icon mặc định
   if (displayUsers.length === 0) {
     return (
-      <View 
-        className="relative overflow-hidden items-center justify-center bg-blue-100"
-        style={[{ width: size, height: size, borderRadius: size / 2 }, style]}
-      >
+      <View
+        className="relative items-center justify-center overflow-hidden bg-blue-100"
+        style={[{ width: size, height: size, borderRadius: size / 2 }, style]}>
         <MaterialIcons name="group" size={size * 0.5} color="#007AFF" />
       </View>
     );
@@ -95,15 +88,13 @@ const GroupAvatar: React.FC<GroupAvatarProps> = ({
 
     if (displayUsers.length === 1) {
       // 1 thành viên: 1 ảnh lớn
-      return (
-        <UserAvatar user={displayUsers[0]} size={size} />
-      );
+      return <UserAvatar user={displayUsers[0]} size={size} />;
     }
 
     if (displayUsers.length === 2) {
       // 2 thành viên: sắp xếp ngang với overlap, avatar phải thấp hơn
       return (
-        <View className="flex-row items-start justify-center mt-1">
+        <View className="mt-1 flex-row items-start justify-center">
           <UserAvatar user={displayUsers[0]} size={avatarSize} />
           <View style={{ marginLeft: -avatarSize * 0.3, marginTop: avatarSize * 0.5 }}>
             <UserAvatar user={displayUsers[1]} size={avatarSize} />
@@ -143,19 +134,15 @@ const GroupAvatar: React.FC<GroupAvatarProps> = ({
         <View className="flex-row" style={{ marginTop: -avatarSize * 0.2 }}>
           <UserAvatar user={displayUsers[2]} size={avatarSize} />
           {remainingCount > 0 ? (
-            <View 
-              className="bg-gray-600 items-center justify-center border-2 border-white rounded-full"
-              style={{ 
-                width: avatarSize, 
-                height: avatarSize, 
+            <View
+              className="items-center justify-center rounded-full border-2 border-white bg-gray-600"
+              style={{
+                width: avatarSize,
+                height: avatarSize,
                 marginLeft: -avatarSize * 0.3,
-                zIndex: 10
-              }}
-            >
-              <Text 
-                className="text-white font-semibold"
-                style={{ fontSize: avatarSize * 0.25 }}
-              >
+                zIndex: 10,
+              }}>
+              <Text className="font-semibold text-white" style={{ fontSize: avatarSize * 0.25 }}>
                 +{remainingCount}
               </Text>
             </View>
@@ -204,4 +191,4 @@ const UserAvatar: React.FC<UserAvatarProps> = ({ user, size }) => {
   );
 };
 
-export default GroupAvatar; 
+export default GroupAvatar;

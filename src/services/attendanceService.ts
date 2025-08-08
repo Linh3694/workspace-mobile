@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MICROSERVICES_BASE_URL } from '../config/constants';
+import { BASE_URL } from '../config/constants';
 
 interface AttendanceRecord {
   _id: string;
@@ -312,7 +312,7 @@ class AttendanceService {
       const todayDateString = `${year}-${month}-${day}`;
 
       const response = await fetch(
-        `${MICROSERVICES_BASE_URL}/api/attendance/employee/${employeeCode}` +
+        `${BASE_URL}/api/attendance/employee/${employeeCode}` +
           `?date=${encodeURIComponent(todayDateString)}&includeRawData=true`,
         { headers }
       );
@@ -370,7 +370,7 @@ class AttendanceService {
       const rawRecord = await this.retryApiCall(async () => {
         const headers = await this.getAuthHeaders();
 
-        const apiUrl = `${MICROSERVICES_BASE_URL}/api/attendance/employee/${employeeCode}?date=${encodeURIComponent(todayDateString)}`;
+        const apiUrl = `${BASE_URL}/api/attendance/employee/${employeeCode}?date=${encodeURIComponent(todayDateString)}`;
         console.log(`📞 API URL: ${apiUrl}`);
 
         const response = await fetch(apiUrl, { headers });
@@ -431,10 +431,9 @@ class AttendanceService {
       if (endDate) params.append('endDate', endDate);
       if (employeeCode) params.append('employeeCode', employeeCode);
 
-      const response = await fetch(
-        `${MICROSERVICES_BASE_URL}/api/attendance/records?${params.toString()}`,
-        { headers }
-      );
+      const response = await fetch(`${BASE_URL}/api/attendance/records?${params.toString()}`, {
+        headers,
+      });
 
       if (!response.ok) {
         throw new Error('Failed to fetch attendance records');

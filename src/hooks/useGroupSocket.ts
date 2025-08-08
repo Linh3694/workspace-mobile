@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MICROSERVICES_BASE_URL } from '../config/constants';
+import { BASE_URL } from '../config/constants';
 import { Message } from '../types/message';
 
 interface TypingUser {
@@ -72,7 +72,7 @@ export const useGroupSocket = ({
       }
 
       // Create new socket connection
-      const socket = io(`${MICROSERVICES_BASE_URL}/groupchat`, {
+      const socket = io(`${BASE_URL}/groupchat`, {
         query: { token: authToken },
         transports: ['websocket'],
         timeout: 10000,
@@ -83,7 +83,7 @@ export const useGroupSocket = ({
       });
 
       console.log('🔌 [GroupSocket] ========= SOCKET SETUP =========');
-      console.log('🔌 [GroupSocket] Connection URL:', `${MICROSERVICES_BASE_URL}/groupchat`);
+      console.log('🔌 [GroupSocket] Connection URL:', `${BASE_URL}/groupchat`);
       console.log('🔌 [GroupSocket] Auth token provided:', !!authToken);
       console.log('🔌 [GroupSocket] Target chatId:', chatId);
       console.log('🔌 [GroupSocket] ==========================================');
@@ -259,7 +259,7 @@ export const useGroupSocket = ({
             const token = await AsyncStorage.getItem('authToken');
             if (token && currentUserId) {
               try {
-                await fetch(`${MICROSERVICES_BASE_URL}/api/chats/messages/${chatId}/read`, {
+                await fetch(`${BASE_URL}/api/chats/messages/${chatId}/read`, {
                   method: 'POST',
                   headers: {
                     Authorization: `Bearer ${token}`,
@@ -309,7 +309,7 @@ export const useGroupSocket = ({
             try {
               const token = await AsyncStorage.getItem('authToken');
               if (token) {
-                const response = await fetch(`${MICROSERVICES_BASE_URL}/api/users/${userId}`, {
+                const response = await fetch(`${BASE_URL}/api/users/${userId}`, {
                   headers: { Authorization: `Bearer ${token}` },
                 });
                 if (response.ok) {

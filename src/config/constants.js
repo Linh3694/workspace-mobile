@@ -1,7 +1,9 @@
 // Thay đổi IP này thành IP của máy chủ của bạn
 // Sử dụng Frappe backend với microservices
 export const API_BASE_URL = 'https://admin.sis.wellspring.edu.vn'; // Frappe framework
-export const MICROSERVICES_BASE_URL = 'https://admin.sis.wellspring.edu.vn'; // Microservices
+
+// Tất cả services (Frappe + Microservices) dùng chung base domain
+export const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL || 'https://admin.sis.wellspring.edu.vn';
 
 // Helper function để lấy API base URL
 export const getApiBaseUrl = () => {

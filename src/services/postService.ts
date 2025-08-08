@@ -1,12 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_BASE_URL } from '../config/constants';
+import { BASE_URL } from '../config/constants';
 import { Post, PostsResponse, CreatePostResponse, CreatePostData, MediaFile } from '../types/post';
 
 class PostService {
   private async getAuthHeaders() {
     const token = await AsyncStorage.getItem('authToken');
     return {
-      'Authorization': `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     };
   }
@@ -14,7 +14,7 @@ class PostService {
   private async getMultipartHeaders() {
     const token = await AsyncStorage.getItem('authToken');
     return {
-      'Authorization': `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
       // Don't set Content-Type for multipart, let fetch set it
     };
   }
@@ -22,13 +22,15 @@ class PostService {
   async getNewsfeed(page = 1, limit = 10): Promise<PostsResponse['data']> {
     try {
       const headers = await this.getAuthHeaders();
-      console.log('🔍 [PostService] Fetching newsfeed:', `${API_BASE_URL}/api/posts/newsfeed?page=${page}&limit=${limit}`);
-      console.log('🔍 [PostService] Headers:', headers);
-      
-      const response = await fetch(
-        `${API_BASE_URL}/api/posts/newsfeed?page=${page}&limit=${limit}`,
-        { headers }
+      console.log(
+        '🔍 [PostService] Fetching newsfeed:',
+        `${BASE_URL}/api/social/newsfeed?page=${page}&limit=${limit}`
       );
+      console.log('🔍 [PostService] Headers:', headers);
+
+      const response = await fetch(`${BASE_URL}/api/social/newsfeed?page=${page}&limit=${limit}`, {
+        headers,
+      });
 
       console.log('🔍 [PostService] Response status:', response.status);
       console.log('🔍 [PostService] Response ok:', response.ok);
@@ -51,7 +53,7 @@ class PostService {
   async searchPosts(query: string, page = 1, limit = 10): Promise<PostsResponse['data']> {
     const headers = await this.getAuthHeaders();
     const response = await fetch(
-      `${API_BASE_URL}/api/posts/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`,
+      `${BASE_URL}/api/social/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`,
       { headers }
     );
 
@@ -65,7 +67,7 @@ class PostService {
 
   async createPost(postData: CreatePostData): Promise<Post> {
     const headers = await this.getMultipartHeaders();
-    
+
     const formData = new FormData();
     formData.append('content', postData.content);
     formData.append('type', postData.type || 'Chia sẻ');
@@ -94,14 +96,17 @@ class PostService {
       });
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/posts`, {
+    // Lưu ý: cần dấu '/' cuối để Nginx match location /api/social/
+    const response = await fetch(`${BASE_URL}/api/social/`, {
       method: 'POST',
       headers,
       body: formData,
     });
 
     if (!response.ok) {
-      throw new Error('Failed to create post');
+      const errorText = await response.text().catch(() => '');
+      console.error('🔴 [PostService] Create post failed:', response.status, errorText);
+      throw new Error(`Failed to create post: ${response.status} ${errorText}`);
     }
 
     const data: CreatePostResponse = await response.json();
@@ -110,7 +115,7 @@ class PostService {
 
   async updatePost(postId: string, postData: Partial<CreatePostData>): Promise<Post> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/api/posts/${postId}`, {
+    const response = await fetch(`${BASE_URL}/api/social/${postId}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(postData),
@@ -126,7 +131,7 @@ class PostService {
 
   async deletePost(postId: string): Promise<void> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/api/posts/${postId}`, {
+    const response = await fetch(`${BASE_URL}/api/social/${postId}`, {
       method: 'DELETE',
       headers,
     });
@@ -138,7 +143,7 @@ class PostService {
 
   async addReaction(postId: string, type: string): Promise<Post> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/reactions`, {
+    const response = await fetch(`${BASE_URL}/api/social/${postId}/reactions`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ type }),
@@ -154,7 +159,7 @@ class PostService {
 
   async removeReaction(postId: string): Promise<Post> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/reactions`, {
+    const response = await fetch(`${BASE_URL}/api/social/${postId}/reactions`, {
       method: 'DELETE',
       headers,
     });
@@ -169,7 +174,7 @@ class PostService {
 
   async addComment(postId: string, content: string): Promise<Post> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/comments`, {
+    const response = await fetch(`${BASE_URL}/api/social/${postId}/comments`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ content }),
@@ -185,7 +190,7 @@ class PostService {
 
   async deleteComment(postId: string, commentId: string): Promise<Post> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/comments/${commentId}`, {
+    const response = await fetch(`${BASE_URL}/api/social/${postId}/comments/${commentId}`, {
       method: 'DELETE',
       headers,
     });
@@ -201,7 +206,7 @@ class PostService {
   async getTrendingPosts(limit = 10, timeFrame = 7): Promise<Post[]> {
     const headers = await this.getAuthHeaders();
     const response = await fetch(
-      `${API_BASE_URL}/api/posts/trending?limit=${limit}&timeFrame=${timeFrame}`,
+      `${BASE_URL}/api/social/trending?limit=${limit}&timeFrame=${timeFrame}`,
       { headers }
     );
 
@@ -216,7 +221,7 @@ class PostService {
   async getPersonalizedFeed(page = 1, limit = 10): Promise<PostsResponse['data']> {
     const headers = await this.getAuthHeaders();
     const response = await fetch(
-      `${API_BASE_URL}/api/posts/personalized?page=${page}&limit=${limit}`,
+      `${BASE_URL}/api/social/personalized?page=${page}&limit=${limit}`,
       { headers }
     );
 
@@ -233,11 +238,14 @@ class PostService {
   // Thêm reaction cho comment
   async addCommentReaction(postId: string, commentId: string, type: string): Promise<Post> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/comments/${commentId}/reactions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ type }),
-    });
+    const response = await fetch(
+      `${BASE_URL}/api/social/${postId}/comments/${commentId}/reactions`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ type }),
+      }
+    );
 
     if (!response.ok) {
       throw new Error('Failed to add comment reaction');
@@ -250,10 +258,13 @@ class PostService {
   // Xóa reaction khỏi comment
   async removeCommentReaction(postId: string, commentId: string): Promise<Post> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/comments/${commentId}/reactions`, {
-      method: 'DELETE',
-      headers,
-    });
+    const response = await fetch(
+      `${BASE_URL}/api/social/${postId}/comments/${commentId}/reactions`,
+      {
+        method: 'DELETE',
+        headers,
+      }
+    );
 
     if (!response.ok) {
       throw new Error('Failed to remove comment reaction');
@@ -266,7 +277,7 @@ class PostService {
   // Reply comment
   async replyComment(postId: string, commentId: string, content: string): Promise<Post> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/api/posts/${postId}/comments/${commentId}/replies`, {
+    const response = await fetch(`${BASE_URL}/api/social/${postId}/comments/${commentId}/replies`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ content }),
@@ -281,4 +292,4 @@ class PostService {
   }
 }
 
-export const postService = new PostService(); 
+export const postService = new PostService();
