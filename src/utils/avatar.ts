@@ -31,66 +31,22 @@ export const getAvatar = (
 
     // Full URL already
     if (/^https?:\/\//i.test(raw)) {
-      const finalUrl = encodeURI(`${raw}`);
-      console.log('[Avatar][getAvatar]', {
-        raw,
-        finalUrl,
-        from: {
-          avatarUrl: (user as any).avatarUrl,
-          avatar_url: (user as any).avatar_url,
-          user_image: (user as any).user_image,
-          avatar: (user as any).avatar,
-        },
-      });
-      return maybeAddCacheBust(finalUrl);
+      return maybeAddCacheBust(raw);
     }
 
     // Already absolute path
     if (raw.startsWith('/')) {
-      const finalUrl = encodeURI(`${API_BASE_URL}${raw}`);
-      console.log('[Avatar][getAvatar]', {
-        raw,
-        finalUrl,
-        from: {
-          avatarUrl: (user as any).avatarUrl,
-          avatar_url: (user as any).avatar_url,
-          user_image: (user as any).user_image,
-          avatar: (user as any).avatar,
-        },
-      });
-      return maybeAddCacheBust(finalUrl);
+      return maybeAddCacheBust(`${API_BASE_URL}${raw}`);
     }
 
     // Starts with files/...
     if (raw.startsWith('files/')) {
-      const finalUrl = encodeURI(`${API_BASE_URL}/${raw}`);
-      console.log('[Avatar][getAvatar]', {
-        raw,
-        finalUrl,
-        from: {
-          avatarUrl: (user as any).avatarUrl,
-          avatar_url: (user as any).avatar_url,
-          user_image: (user as any).user_image,
-          avatar: (user as any).avatar,
-        },
-      });
-      return maybeAddCacheBust(finalUrl);
+      return maybeAddCacheBust(`${API_BASE_URL}/${raw}`);
     }
 
     // Starts with Avatar/... (missing files prefix)
     if (raw.startsWith('Avatar/')) {
-      const finalUrl = encodeURI(`${API_BASE_URL}/files/${raw}`);
-      console.log('[Avatar][getAvatar]', {
-        raw,
-        finalUrl,
-        from: {
-          avatarUrl: (user as any).avatarUrl,
-          avatar_url: (user as any).avatar_url,
-          user_image: (user as any).user_image,
-          avatar: (user as any).avatar,
-        },
-      });
-      return maybeAddCacheBust(finalUrl);
+      return maybeAddCacheBust(`${API_BASE_URL}/files/${raw}`);
     }
 
     // If it already contains a path segment, just prefix with base
@@ -98,51 +54,18 @@ export const getAvatar = (
       // Ensure it has files/ prefix if looks like a frappe file path without leading directory
       const normalized =
         raw.startsWith('files/') || raw.startsWith('public/files/') ? raw : `files/${raw}`;
-      const finalUrl = encodeURI(`${API_BASE_URL}/${normalized}`);
-      console.log('[Avatar][getAvatar]', {
-        raw,
-        finalUrl,
-        from: {
-          avatarUrl: (user as any).avatarUrl,
-          avatar_url: (user as any).avatar_url,
-          user_image: (user as any).user_image,
-          avatar: (user as any).avatar,
-        },
-      });
-      return maybeAddCacheBust(finalUrl);
+      return maybeAddCacheBust(`${API_BASE_URL}/${normalized}`);
     }
 
     // Plain filename (no path): prefer /files/<filename>
     // Detect common image extensions
     const isLikelyImageFile = /\.(png|jpe?g|gif|webp|svg)$/i.test(raw);
     if (isLikelyImageFile) {
-      const finalUrl = encodeURI(`${API_BASE_URL}/files/${raw}`);
-      console.log('[Avatar][getAvatar]', {
-        raw,
-        finalUrl,
-        from: {
-          avatarUrl: (user as any).avatarUrl,
-          avatar_url: (user as any).avatar_url,
-          user_image: (user as any).user_image,
-          avatar: (user as any).avatar,
-        },
-      });
-      return maybeAddCacheBust(finalUrl);
+      return maybeAddCacheBust(`${API_BASE_URL}/files/${raw}`);
     }
 
     // Fallback default location under files/Avatar
-    const finalUrl = encodeURI(`${API_BASE_URL}/files/Avatar/${raw}`);
-    console.log('[Avatar][getAvatar]', {
-      raw,
-      finalUrl,
-      from: {
-        avatarUrl: (user as any).avatarUrl,
-        avatar_url: (user as any).avatar_url,
-        user_image: (user as any).user_image,
-        avatar: (user as any).avatar,
-      },
-    });
-    return maybeAddCacheBust(finalUrl);
+    return maybeAddCacheBust(`${API_BASE_URL}/files/Avatar/${raw}`);
   }
 
   const fallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullname)}&background=F97316&color=ffffff`;

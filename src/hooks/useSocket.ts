@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BASE_URL } from '../config/constants';
+import { CHAT_SOCKET_URL, CHAT_SOCKET_PATH, CHAT_SERVICE_URL } from '../config/constants';
 import { Message } from '../types/message';
 
 interface UseSocketProps {
@@ -51,15 +51,21 @@ export const useSocket = ({
     }
 
     try {
-      console.log('🔌 Attempting socket connection to:', BASE_URL);
+      console.log(
+        '🔌 Attempting socket connection to:',
+        CHAT_SOCKET_URL,
+        'path:',
+        CHAT_SOCKET_PATH
+      );
 
       // Disconnect existing socket if any
       if (socketRef.current) {
         socketRef.current.disconnect();
       }
 
-      // Create new socket connection với timeout và fallback
-      const socket = io(BASE_URL, {
+      // Create new socket connection đúng chat-service qua Nginx path riêng
+      const socket = io(CHAT_SOCKET_URL, {
+        path: CHAT_SOCKET_PATH,
         query: { token: authToken },
         transports: ['websocket'],
         timeout: 10000,
@@ -142,7 +148,7 @@ export const useSocket = ({
             const token = await AsyncStorage.getItem('authToken');
             if (token && currentUserId) {
               try {
-                await fetch(`${BASE_URL}/api/chats/messages/${chatId}/read`, {
+                await fetch(`${CHAT_SERVICE_URL}/messages/${chatId}/read`, {
                   method: 'POST',
                   headers: {
                     Authorization: `Bearer ${token}`,

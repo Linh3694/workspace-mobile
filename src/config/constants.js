@@ -10,6 +10,17 @@ export const getApiBaseUrl = () => {
   return process.env.EXPO_PUBLIC_API_BASE_URL || API_BASE_URL;
 };
 
+// Chat service endpoint (proxied by nginx)
+export const CHAT_SERVICE_URL = 'https://admin.sis.wellspring.edu.vn/api/chat';
+
+// Socket.IO URL for Chat Service (sử dụng path riêng để tránh conflict với SIS)
+export const CHAT_SOCKET_URL = 'https://admin.sis.wellspring.edu.vn';
+export const CHAT_SOCKET_PATH = '/chat-socket.io/';
+
+// User management endpoints (Frappe RPC API)
+export const USER_API_BASE =
+  'https://admin.sis.wellspring.edu.vn/api/method/erp.api.erp_common_user.user_management';
+
 // Các địa chỉ API khác để kiểm tra thử
 export const API_URLS = {
   FRAPPE_LOCAL: 'http://localhost:8000',

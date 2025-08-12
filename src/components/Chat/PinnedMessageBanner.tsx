@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { View, Text, Image, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { API_BASE_URL } from '../../config/constants';
+import { BASE_URL } from '../../config/constants';
 import ConfirmModal from '../../components/ConfirmModal';
 import NotificationModal from '../../components/NotificationModal';
 import { Message } from '../../types/message';

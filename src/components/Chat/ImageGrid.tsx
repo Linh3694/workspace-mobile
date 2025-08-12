@@ -1,7 +1,7 @@
 import React, { useMemo, memo } from 'react';
 // @ts-ignore
 import { View, Image, TouchableOpacity, Text, Dimensions, GestureResponderEvent } from 'react-native';
-import { API_BASE_URL } from '../../config/constants';
+import { BASE_URL } from '../../config/constants';
 import { processImageUrl } from '../../utils/image';
 
 type ImageGridProps = {

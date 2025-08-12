@@ -1,13 +1,33 @@
-import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo, memo } from 'react';
+// @ts-nocheck
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  memo,
+} from 'react';
 // @ts-ignore
-import { View, Text, FlatList, TouchableOpacity, SafeAreaView, Platform, KeyboardAvoidingView, Animated, ImageBackground, Keyboard } from 'react-native';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  SafeAreaView,
+  Platform,
+  KeyboardAvoidingView,
+  Animated,
+  ImageBackground,
+  Keyboard,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
-import { API_BASE_URL } from '../../config/constants';
+import { BASE_URL, CHAT_SERVICE_URL } from '../../config/constants';
 import GroupAvatar from '../../components/Chat/GroupAvatar';
 import GroupSwipeableMessageBubble from '../../components/Chat/GroupSwipeableMessageBubble';
 import GroupTypingIndicator from '../../components/Chat/GroupTypingIndicator';
@@ -22,10 +42,14 @@ import ConfirmModal from '../../components/ConfirmModal';
 import ImageGrid from '../../components/Chat/ImageGrid';
 import type { GroupInfo, Message, User } from '../../types/message';
 import { NotificationType } from '../../types/chat';
-import { CustomEmoji } from '../../hooks/useEmojis';
-import { formatMessageTime, formatMessageDate, getAvatar, isDifferentDay } from '../../utils/messageUtils';
+import { CustomEmoji, useEmojis } from '../../hooks/useEmojis';
+import {
+  formatMessageTime,
+  formatMessageDate,
+  getAvatar,
+  isDifferentDay,
+} from '../../utils/messageUtils';
 import { getMessageGroupPosition } from '../../utils/messageGroupUtils';
-import { useEmojis } from '../../hooks/useEmojis';
 import { useGroupSocket } from '../../hooks/useGroupSocket';
 import { useGroupMessageOperations } from '../../hooks/useGroupMessageOperations';
 import { ROUTES } from '../../constants/routes';
@@ -54,7 +78,10 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showReactionModal, setShowReactionModal] = useState(false);
-  const [reactionModalPosition, setReactionModalPosition] = useState<{ x: number, y: number } | null>(null);
+  const [reactionModalPosition, setReactionModalPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [viewerVisible, setViewerVisible] = useState(false);
   const [viewerImages, setViewerImages] = useState<{ uri: string }[]>([]);
   const [viewerInitialIndex, setViewerInitialIndex] = useState(0);
@@ -72,9 +99,9 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
   }>({
     visible: false,
     type: 'success',
-    message: ''
+    message: '',
   });
-  
+
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const route = useRoute();
   const { chat } = route.params as { chat: GroupInfo };
@@ -85,104 +112,115 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
 
   // Custom hooks
   const { customEmojis } = useEmojis();
-  
+
   // Group message operations
   const groupMessageOps = useGroupMessageOperations({
     groupInfo,
-    currentUserId
+    currentUserId,
   });
 
   // Socket event handlers
-  const handleGroupMemberAdded = useCallback((data: { chatId: string; newMember: any; addedBy: any }) => {
-    if (data.chatId === groupInfo?._id) {
-      setGroupInfo(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          participants: [...prev.participants, data.newMember]
-        };
-      });
-      setNotification({
-        visible: true,
-        type: 'success',
-        message: `${data.newMember.fullname} đã được thêm vào nhóm`
-      });
-    }
-  }, [groupInfo?._id]);
-
-  const handleGroupMemberRemoved = useCallback((data: { chatId: string; removedUserId: string; removedBy: any }) => {
-    if (data.chatId === groupInfo?._id) {
-      if (data.removedUserId === currentUserId) {
-        // Current user was removed
-        setNotification({
-          visible: true,
-          type: 'error',
-          message: 'Bạn đã bị xóa khỏi nhóm'
-        });
-        setTimeout(() => navigation.goBack(), 2000);
-      } else {
-        // Someone else was removed
-        setGroupInfo(prev => {
+  const handleGroupMemberAdded = useCallback(
+    (data: { chatId: string; newMember: any; addedBy: any }) => {
+      if (data.chatId === groupInfo?._id) {
+        setGroupInfo((prev) => {
           if (!prev) return prev;
-          const removedUser = prev.participants.find(p => p._id === data.removedUserId);
           return {
             ...prev,
-            participants: prev.participants.filter(p => p._id !== data.removedUserId)
+            participants: [...prev.participants, data.newMember],
           };
         });
         setNotification({
           visible: true,
           type: 'success',
-          message: 'Một thành viên đã bị xóa khỏi nhóm'
+          message: `${data.newMember.fullname} đã được thêm vào nhóm`,
         });
       }
-    }
-  }, [groupInfo?._id, currentUserId, navigation]);
+    },
+    [groupInfo?._id]
+  );
 
-  const handleGroupInfoUpdated = useCallback((data: { chatId: string; changes: any; updatedBy: any }) => {
-    if (data.chatId === groupInfo?._id) {
-      setGroupInfo(prev => prev ? { ...prev, ...data.changes } : prev);
-      setNotification({
-        visible: true,
-        type: 'success',
-        message: 'Thông tin nhóm đã được cập nhật'
-      });
-    }
-  }, [groupInfo?._id]);
-
-  const handleMessagePinned = useCallback((data: { chatId: string; message: Message }) => {
-    if (data.chatId === groupInfo?._id) {
-      // Cập nhật message trong danh sách
-      groupMessageOps.setMessages(prev =>
-        prev.map(msg => msg._id === data.message._id ? data.message : msg)
-      );
-      
-      // Thêm vào pinned messages nếu chưa có
-      setPinnedMessages(prev => {
-        const exists = prev.find(msg => msg._id === data.message._id);
-        if (!exists) {
-          return [...prev, data.message];
+  const handleGroupMemberRemoved = useCallback(
+    (data: { chatId: string; removedUserId: string; removedBy: any }) => {
+      if (data.chatId === groupInfo?._id) {
+        if (data.removedUserId === currentUserId) {
+          // Current user was removed
+          setNotification({
+            visible: true,
+            type: 'error',
+            message: 'Bạn đã bị xóa khỏi nhóm',
+          });
+          setTimeout(() => navigation.goBack(), 2000);
+        } else {
+          // Someone else was removed
+          setGroupInfo((prev) => {
+            if (!prev) return prev;
+            const removedUser = prev.participants.find((p) => p._id === data.removedUserId);
+            return {
+              ...prev,
+              participants: prev.participants.filter((p) => p._id !== data.removedUserId),
+            };
+          });
+          setNotification({
+            visible: true,
+            type: 'success',
+            message: 'Một thành viên đã bị xóa khỏi nhóm',
+          });
         }
-        return prev.map(msg => msg._id === data.message._id ? data.message : msg);
-      });
-    }
-  }, [groupInfo?._id, groupMessageOps.setMessages]);
+      }
+    },
+    [groupInfo?._id, currentUserId, navigation]
+  );
 
-  const handleMessageUnpinned = useCallback((data: { chatId: string; messageId: string }) => {
-    if (data.chatId === groupInfo?._id) {
-      // Cập nhật message trong danh sách
-      groupMessageOps.setMessages(prev =>
-        prev.map(msg => 
-          msg._id === data.messageId 
-            ? { ...msg, isPinned: false } 
-            : msg
-        )
-      );
-      
-      // Xóa khỏi pinned messages
-      setPinnedMessages(prev => prev.filter(msg => msg._id !== data.messageId));
-    }
-  }, [groupInfo?._id, groupMessageOps.setMessages]);
+  const handleGroupInfoUpdated = useCallback(
+    (data: { chatId: string; changes: any; updatedBy: any }) => {
+      if (data.chatId === groupInfo?._id) {
+        setGroupInfo((prev) => (prev ? { ...prev, ...data.changes } : prev));
+        setNotification({
+          visible: true,
+          type: 'success',
+          message: 'Thông tin nhóm đã được cập nhật',
+        });
+      }
+    },
+    [groupInfo?._id]
+  );
+
+  const handleMessagePinned = useCallback(
+    (data: { chatId: string; message: Message }) => {
+      if (data.chatId === groupInfo?._id) {
+        // Cập nhật message trong danh sách
+        groupMessageOps.setMessages((prev) =>
+          prev.map((msg) => (msg._id === data.message._id ? data.message : msg))
+        );
+
+        // Thêm vào pinned messages nếu chưa có
+        setPinnedMessages((prev) => {
+          const exists = prev.find((msg) => msg._id === data.message._id);
+          if (!exists) {
+            return [...prev, data.message];
+          }
+          return prev.map((msg) => (msg._id === data.message._id ? data.message : msg));
+        });
+      }
+    },
+    [groupInfo?._id, groupMessageOps.setMessages]
+  );
+
+  const handleMessageUnpinned = useCallback(
+    (data: { chatId: string; messageId: string }) => {
+      if (data.chatId === groupInfo?._id) {
+        // Cập nhật message trong danh sách
+        groupMessageOps.setMessages((prev) =>
+          prev.map((msg) => (msg._id === data.messageId ? { ...msg, isPinned: false } : msg))
+        );
+
+        // Xóa khỏi pinned messages
+        setPinnedMessages((prev) => prev.filter((msg) => msg._id !== data.messageId));
+      }
+    },
+    [groupInfo?._id, groupMessageOps.setMessages]
+  );
 
   // Group socket - Only create when we have necessary data
   const groupSocket = useGroupSocket({
@@ -195,7 +233,7 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
     onMessageRevoked: groupMessageOps.handleMessageRevoked,
     onGroupMemberAdded: handleGroupMemberAdded,
     onGroupMemberRemoved: handleGroupMemberRemoved,
-    onGroupInfoUpdated: handleGroupInfoUpdated
+    onGroupInfoUpdated: handleGroupInfoUpdated,
   });
 
   // Initialize data
@@ -214,9 +252,12 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
 
   useEffect(() => {
     if (currentUserId && groupInfo) {
-      const isGroupAdmin = groupInfo.admins.some(admin => admin._id === currentUserId);
+      const isGroupAdmin = groupInfo.admins.some((admin) => admin._id === currentUserId);
       console.log('👑 [Admin Check] currentUserId:', currentUserId);
-      console.log('👑 [Admin Check] groupInfo.admins:', groupInfo.admins.map(a => ({ id: a._id, name: a.fullname })));
+      console.log(
+        '👑 [Admin Check] groupInfo.admins:',
+        groupInfo.admins.map((a) => ({ id: a._id, name: a.fullname }))
+      );
       console.log('👑 [Admin Check] isGroupAdmin:', isGroupAdmin);
       setIsAdmin(isGroupAdmin);
     }
@@ -259,12 +300,12 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
   useEffect(() => {
     const unsubscribeFocus = navigation.addListener('focus', () => {
       setIsScreenActive(true);
-      
+
       // Emit messageRead ngay lập tức khi focus
       if (currentUserId && groupInfo?._id && groupSocket.socket && groupSocket.isConnected) {
         groupSocket.emitMessageRead(currentUserId, groupInfo._id);
       }
-      
+
       setTimeout(() => {
         if (currentUserId && groupInfo?._id) {
           const fetchToken = async () => {
@@ -295,8 +336,8 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
         const decoded: any = jwtDecode(token);
         const userId = decoded._id || decoded.id;
 
-        const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
-          headers: { Authorization: `Bearer ${token}` }
+        const response = await fetch(`${BASE_URL}/api/users/${userId}`, {
+          headers: { Authorization: `Bearer ${token}` },
         });
 
         if (response.ok) {
@@ -316,8 +357,8 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
       const token = await AsyncStorage.getItem('authToken');
       if (!token || !groupInfo?._id) return;
 
-      const response = await fetch(`${API_BASE_URL}/api/chats/${groupInfo._id}/pinned-messages`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const response = await fetch(`${CHAT_SERVICE_URL}/${groupInfo._id}/pinned-messages`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response.ok) {
@@ -332,7 +373,7 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
   // Pin/Unpin message
   const handlePinMessage = async (messageId: string, shouldPin: boolean) => {
     console.log('📌 [Pin] Starting pin/unpin:', { messageId, shouldPin });
-    
+
     try {
       const token = await AsyncStorage.getItem('authToken');
       if (!token) {
@@ -340,11 +381,11 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
         return false;
       }
 
-      const endpoint = `${API_BASE_URL}/api/chats/message/${messageId}/pin`;
+      const endpoint = `${CHAT_SERVICE_URL}/message/${messageId}/pin`;
       const method = shouldPin ? 'POST' : 'DELETE';
-      
+
       console.log('📌 [Pin] Making API request to:', endpoint, 'with method:', method);
-      
+
       const response = await fetch(endpoint, {
         method: method,
         headers: {
@@ -359,7 +400,7 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
       if (response.ok) {
         const responseText = await response.text();
         console.log('📌 [Pin] Raw response:', responseText);
-        
+
         let updatedMessage;
         try {
           updatedMessage = JSON.parse(responseText);
@@ -368,28 +409,28 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
           console.error('📌 [Pin] Response was:', responseText);
           return false;
         }
-        
+
         console.log('📌 [Pin] Updated message:', updatedMessage);
-        
+
         // Cập nhật messages list
-        groupMessageOps.setMessages(prev =>
-          prev.map(msg => msg._id === updatedMessage._id ? updatedMessage : msg)
+        groupMessageOps.setMessages((prev) =>
+          prev.map((msg) => (msg._id === updatedMessage._id ? updatedMessage : msg))
         );
 
         // Cập nhật pinned messages list
         if (shouldPin) {
-          setPinnedMessages(prev => [...prev, updatedMessage]);
+          setPinnedMessages((prev) => [...prev, updatedMessage]);
           setNotification({
             visible: true,
             type: 'success',
-            message: 'Đã ghim tin nhắn'
+            message: 'Đã ghim tin nhắn',
           });
         } else {
-          setPinnedMessages(prev => prev.filter(msg => msg._id !== messageId));
+          setPinnedMessages((prev) => prev.filter((msg) => msg._id !== messageId));
           setNotification({
             visible: true,
             type: 'success',
-            message: 'Đã bỏ ghim tin nhắn'
+            message: 'Đã bỏ ghim tin nhắn',
           });
         }
 
@@ -397,7 +438,7 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
       } else {
         const errorText = await response.text();
         console.error('📌 [Pin] API error:', response.status, errorText);
-        
+
         // Try to parse as JSON, if fails show raw text
         let errorMessage = 'Không thể ghim/bỏ ghim tin nhắn';
         try {
@@ -406,13 +447,13 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
         } catch {
           errorMessage = errorText || errorMessage;
         }
-        
+
         setNotification({
           visible: true,
           type: 'error',
-          message: errorMessage
+          message: errorMessage,
         });
-        
+
         return false;
       }
     } catch (error) {
@@ -420,7 +461,7 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
       setNotification({
         visible: true,
         type: 'error',
-        message: 'Lỗi kết nối. Vui lòng thử lại.'
+        message: 'Lỗi kết nối. Vui lòng thử lại.',
       });
       return false;
     }
@@ -432,8 +473,8 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
       const token = await AsyncStorage.getItem('authToken');
       if (!token) return false;
 
-      const forwardPromises = chatIds.map(chatId =>
-        fetch(`${API_BASE_URL}/api/chats/message/forward`, {
+      const forwardPromises = chatIds.map((chatId) =>
+        fetch(`${CHAT_SERVICE_URL}/message/forward`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -447,13 +488,13 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
       );
 
       const results = await Promise.all(forwardPromises);
-      const successCount = results.filter(res => res.ok).length;
+      const successCount = results.filter((res) => res.ok).length;
 
       if (successCount > 0) {
         setNotification({
           visible: true,
           type: 'success',
-          message: `Đã chuyển tiếp tin nhắn đến ${successCount} cuộc trò chuyện`
+          message: `Đã chuyển tiếp tin nhắn đến ${successCount} cuộc trò chuyện`,
         });
         setShowForwardSheet(false);
         setForwardMessage(null);
@@ -469,9 +510,12 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
   // Handle forward message for ForwardMessageSheet - sửa lại signature
   const handleForwardMessageToUser = async (userId: string) => {
     if (!forwardMessage) return;
-    
-    console.log('🔄 [Forward] Starting forward message:', { forwardMessage: forwardMessage._id, toUserId: userId });
-    
+
+    console.log('🔄 [Forward] Starting forward message:', {
+      forwardMessage: forwardMessage._id,
+      toUserId: userId,
+    });
+
     try {
       const token = await AsyncStorage.getItem('authToken');
       if (!token) {
@@ -480,7 +524,7 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
       }
 
       console.log('🔄 [Forward] Making API request...');
-      const response = await fetch(`${API_BASE_URL}/api/chats/message/forward`, {
+      const response = await fetch(`${CHAT_SERVICE_URL}/message/forward`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -497,22 +541,22 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
       if (response.ok) {
         const responseData = await response.json();
         console.log('🔄 [Forward] Success response:', responseData);
-        
+
         setNotification({
           visible: true,
           type: 'success',
-          message: 'Đã chuyển tiếp tin nhắn'
+          message: 'Đã chuyển tiếp tin nhắn',
         });
         setShowForwardSheet(false);
         setForwardMessage(null);
       } else {
         const errorData = await response.json();
         console.error('🔄 [Forward] API error:', response.status, errorData);
-        
+
         setNotification({
           visible: true,
           type: 'error',
-          message: errorData.message || 'Không thể chuyển tiếp tin nhắn'
+          message: errorData.message || 'Không thể chuyển tiếp tin nhắn',
         });
       }
     } catch (error) {
@@ -520,7 +564,7 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
       setNotification({
         visible: true,
         type: 'error',
-        message: 'Không thể chuyển tiếp tin nhắn'
+        message: 'Không thể chuyển tiếp tin nhắn',
       });
     }
   };
@@ -534,37 +578,45 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
   };
 
   // Handle input change with typing indicator
-  const handleInputChange = useCallback((text: string) => {
-  
-    
-    setInput(text);
-    
-    // Only emit typing if we have text and socket is connected
-    if (text.trim() && groupSocket.socket && groupSocket.isConnected && groupInfo?._id && currentUserId) {
-      groupSocket.emitTyping();
-    } else if (!text.trim() && groupSocket.socket && groupSocket.isConnected) {
-      // Stop typing when input is empty
-      groupSocket.emitStopTyping();
-    }
-  }, [groupInfo?._id, currentUserId, groupSocket]);
+  const handleInputChange = useCallback(
+    (text: string) => {
+      setInput(text);
+
+      // Only emit typing if we have text and socket is connected
+      if (
+        text.trim() &&
+        groupSocket.socket &&
+        groupSocket.isConnected &&
+        groupInfo?._id &&
+        currentUserId
+      ) {
+        groupSocket.emitTyping();
+      } else if (!text.trim() && groupSocket.socket && groupSocket.isConnected) {
+        // Stop typing when input is empty
+        groupSocket.emitStopTyping();
+      }
+    },
+    [groupInfo?._id, currentUserId, groupSocket]
+  );
 
   // Send message
-  const sendMessage = useCallback(async (emojiParam?: CustomEmoji) => {
-    if (!input.trim() && !emojiParam) return;
+  const sendMessage = useCallback(
+    async (emojiParam?: CustomEmoji) => {
+      if (!input.trim() && !emojiParam) return;
 
-    
+      const replyToMessage = replyTo;
+      setReplyTo(null);
 
-    const replyToMessage = replyTo;
-    setReplyTo(null);
+      const result = await groupMessageOps.sendMessage(input, emojiParam, replyToMessage?._id);
 
-    const result = await groupMessageOps.sendMessage(input, emojiParam, replyToMessage?._id);
-    
-    if (result && result._id) {
-      setInput('');
-    } else {
-      setReplyTo(replyToMessage);
-    }
-  }, [input, groupMessageOps.sendMessage, replyTo]);
+      if (result && result._id) {
+        setInput('');
+      } else {
+        setReplyTo(replyToMessage);
+      }
+    },
+    [input, groupMessageOps.sendMessage, replyTo]
+  );
 
   // Handle message long press
   const handleMessageLongPressIn = (message: Message, event: any) => {
@@ -573,7 +625,7 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
       if (event?.nativeEvent?.pageX !== undefined && event?.nativeEvent?.pageY !== undefined) {
         setReactionModalPosition({
           x: event.nativeEvent.pageX,
-          y: event.nativeEvent.pageY
+          y: event.nativeEvent.pageY,
         });
       } else {
         setReactionModalPosition({ x: 200, y: 400 });
@@ -583,13 +635,13 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
         Animated.timing(messageScaleAnim, {
           toValue: 1.05,
           duration: 200,
-          useNativeDriver: true
+          useNativeDriver: true,
         }),
         Animated.timing(messageScaleAnim, {
           toValue: 1,
           duration: 100,
-          useNativeDriver: true
-        })
+          useNativeDriver: true,
+        }),
       ]).start();
 
       setShowReactionModal(true);
@@ -610,8 +662,8 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
 
   // Handle image press
   const handleImagePress = (images: string[], index: number) => {
-    const processedImages = images.map(url => ({
-      uri: url.startsWith('http') ? url : `${API_BASE_URL}${url}`
+    const processedImages = images.map((url) => ({
+      uri: url.startsWith('http') ? url : `${BASE_URL}${url}`,
     }));
     setViewerImages(processedImages);
     setViewerInitialIndex(index);
@@ -630,13 +682,16 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
     }
   };
 
-  // Upload nhiều ảnh sử dụng groupMessageOps  
-  const uploadMultipleImages = useCallback(async (images: any[]) => {
-    const result = await groupMessageOps.uploadMultipleAttachments(images, 'image');
-    if (result) {
-      // Animate layout change if needed
-    }
-  }, [groupMessageOps.uploadMultipleAttachments]);
+  // Upload nhiều ảnh sử dụng groupMessageOps
+  const uploadMultipleImages = useCallback(
+    async (images: any[]) => {
+      const result = await groupMessageOps.uploadMultipleAttachments(images, 'image');
+      if (result) {
+        // Animate layout change if needed
+      }
+    },
+    [groupMessageOps.uploadMultipleAttachments]
+  );
 
   // Handle send emoji
   const handleSendEmoji = async (emoji: CustomEmoji) => {
@@ -649,25 +704,22 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
     if (!selectedMessage) return false;
     try {
       const token = await AsyncStorage.getItem('authToken');
-      const res = await fetch(
-        `${API_BASE_URL}/api/chats/message/${selectedMessage._id}/react`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            emojiCode: reaction.code,
-            isCustom: reaction.isCustom,
-          }),
-        }
-      );
+      const res = await fetch(`${CHAT_SERVICE_URL}/message/${selectedMessage._id}/react`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          emojiCode: reaction.code,
+          isCustom: reaction.isCustom,
+        }),
+      });
       if (!res.ok) return false;
-      
+
       const updatedMessage: Message = await res.json();
-      groupMessageOps.setMessages(prev =>
-        prev.map(msg => msg._id === updatedMessage._id ? updatedMessage : msg)
+      groupMessageOps.setMessages((prev) =>
+        prev.map((msg) => (msg._id === updatedMessage._id ? updatedMessage : msg))
       );
       closeReactionModal();
       return true;
@@ -708,7 +760,7 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
           setNotification({
             visible: true,
             type: 'success',
-            message: 'Đã sao chép tin nhắn'
+            message: 'Đã sao chép tin nhắn',
           });
         }
         closeReactionModal();
@@ -734,16 +786,21 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
     if (showReactionModal && selectedMessage) {
       console.log('📌 [GroupChatDetailScreen] Rendering MessageReactionModal with:');
       console.log('📌 [GroupChatDetailScreen] isAdmin:', isAdmin);
-      console.log('📌 [GroupChatDetailScreen] showPinOption: true (Cho phép tất cả thành viên pin tin nhắn)');
+      console.log(
+        '📌 [GroupChatDetailScreen] showPinOption: true (Cho phép tất cả thành viên pin tin nhắn)'
+      );
       console.log('📌 [GroupChatDetailScreen] selectedMessage.isPinned:', selectedMessage.isPinned);
       console.log('📌 [GroupChatDetailScreen] currentUserId:', currentUserId);
-      console.log('📌 [GroupChatDetailScreen] selectedMessage.sender._id:', selectedMessage.sender._id);
+      console.log(
+        '📌 [GroupChatDetailScreen] selectedMessage.sender._id:',
+        selectedMessage.sender._id
+      );
     }
   }, [showReactionModal, selectedMessage, isAdmin, currentUserId]);
 
   // Remove image from imagesToSend
   const removeImage = (idx: number) => {
-    setImagesToSend(prev => prev.filter((_, i) => i !== idx));
+    setImagesToSend((prev) => prev.filter((_, i) => i !== idx));
   };
 
   // Handle send with images
@@ -787,15 +844,20 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
     for (let i = 0; i < groupMessageOps.messages.length; i++) {
       const item = groupMessageOps.messages[i];
       const prevMsg = groupMessageOps.messages[i - 1];
-      const isDifferentDay = prevMsg?.createdAt && (new Date(item.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString());
-      const timeGap = prevMsg?.createdAt ? (new Date(item.createdAt).getTime() - new Date(prevMsg.createdAt).getTime()) : null;
-      const showTime = !prevMsg?.createdAt || isDifferentDay || (!!timeGap && timeGap > 10 * 60 * 1000);
-      
+      const isDifferentDay =
+        prevMsg?.createdAt &&
+        new Date(item.createdAt).toDateString() !== new Date(prevMsg.createdAt).toDateString();
+      const timeGap = prevMsg?.createdAt
+        ? new Date(item.createdAt).getTime() - new Date(prevMsg.createdAt).getTime()
+        : null;
+      const showTime =
+        !prevMsg?.createdAt || isDifferentDay || (!!timeGap && timeGap > 10 * 60 * 1000);
+
       if (showTime) {
         messagesWithTime.push({
           type: 'time',
           time: item.createdAt,
-          _id: `time-${item.createdAt}-${item._id}`
+          _id: `time-${item.createdAt}-${item._id}`,
         });
       }
       messagesWithTime.push(item);
@@ -804,91 +866,93 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
   }, [groupMessageOps.messages]);
 
   // Handle reply message press
-  const handleReplyMessagePress = useCallback((message: Message) => {
-    try {
-      
-      // Tìm index của tin nhắn trong danh sách messages gốc
-      const messageIndex = groupMessageOps.messages.findIndex(msg => msg._id === message._id);
-      
-      if (messageIndex === -1) {
+  const handleReplyMessagePress = useCallback(
+    (message: Message) => {
+      try {
+        // Tìm index của tin nhắn trong danh sách messages gốc
+        const messageIndex = groupMessageOps.messages.findIndex((msg) => msg._id === message._id);
+
+        if (messageIndex === -1) {
+          setNotification({
+            visible: true,
+            type: 'error',
+            message: 'Không tìm thấy tin nhắn được trả lời',
+          });
+          return;
+        }
+
+        // Highlight tin nhắn
+        setHighlightedMessageId(message._id);
+
+        // Đợi một chút để React re-render và processedMessages được cập nhật
+        setTimeout(() => {
+          // Tính toán index trong processedMessages (có thể có time separators)
+          let targetIndex = -1;
+          for (let i = 0; i < processedMessages.length; i++) {
+            if (processedMessages[i]._id === message._id) {
+              targetIndex = i;
+              break;
+            }
+          }
+
+          if (targetIndex !== -1 && flatListRef.current) {
+            // Sử dụng scrollToIndex với error handling
+            flatListRef.current.scrollToIndex({
+              index: targetIndex,
+              animated: true,
+              viewPosition: 0.5,
+              viewOffset: 0,
+            });
+
+            // Backup method nếu scrollToIndex fails
+            setTimeout(() => {
+              if (flatListRef.current) {
+                try {
+                  flatListRef.current.scrollToIndex({
+                    index: targetIndex,
+                    animated: false,
+                    viewPosition: 0.5,
+                  });
+                } catch (scrollError) {
+                  // Fallback: scroll to approximate position
+                  const estimatedOffset = targetIndex * 80; // Estimate message height
+                  flatListRef.current.scrollToOffset({
+                    offset: estimatedOffset,
+                    animated: true,
+                  });
+                }
+              }
+            }, 100);
+          }
+        }, 200); // Đợi 200ms để React re-render
+
+        // Tắt highlight sau 3 giây
+        setTimeout(() => {
+          setHighlightedMessageId(null);
+        }, 3000);
+      } catch (error) {
+        console.error('💬 [GroupChatDetailScreen] Error navigating to replied message:', error);
         setNotification({
           visible: true,
           type: 'error',
-          message: 'Không tìm thấy tin nhắn được trả lời'
+          message: 'Không thể cuộn đến tin nhắn được trả lời',
         });
-        return;
       }
-
-      // Highlight tin nhắn
-      setHighlightedMessageId(message._id);
-
-      // Đợi một chút để React re-render và processedMessages được cập nhật
-      setTimeout(() => {
-        // Tính toán index trong processedMessages (có thể có time separators)
-        let targetIndex = -1;
-        for (let i = 0; i < processedMessages.length; i++) {
-          if (processedMessages[i]._id === message._id) {
-            targetIndex = i;
-            break;
-          }
-        }
-
-        if (targetIndex !== -1 && flatListRef.current) {
-          
-          // Sử dụng scrollToIndex với error handling
-          flatListRef.current.scrollToIndex({
-            index: targetIndex,
-            animated: true,
-            viewPosition: 0.5,
-            viewOffset: 0
-          });
-
-          // Backup method nếu scrollToIndex fails
-          setTimeout(() => {
-            if (flatListRef.current) {
-              try {
-                flatListRef.current.scrollToIndex({
-                  index: targetIndex,
-                  animated: false,
-                  viewPosition: 0.5
-                });
-              } catch (scrollError) {
-                // Fallback: scroll to approximate position
-                const estimatedOffset = targetIndex * 80; // Estimate message height
-                flatListRef.current.scrollToOffset({
-                  offset: estimatedOffset,
-                  animated: true
-                });
-              }
-            }
-          }, 100);
-        }
-      }, 200); // Đợi 200ms để React re-render
-      
-      // Tắt highlight sau 3 giây
-      setTimeout(() => {
-        setHighlightedMessageId(null);
-      }, 3000);
-      
-    } catch (error) {
-      console.error('💬 [GroupChatDetailScreen] Error navigating to replied message:', error);
-      setNotification({
-        visible: true,
-        type: 'error',
-        message: 'Không thể cuộn đến tin nhắn được trả lời'
-      });
-    }
-  }, [groupMessageOps.messages, processedMessages]);
+    },
+    [groupMessageOps.messages, processedMessages]
+  );
 
   // Handle pinned message press
-  const handlePinnedMessagePress = useCallback((message: Message) => {
-    handleReplyMessagePress(message);
-  }, [handleReplyMessagePress]);
+  const handlePinnedMessagePress = useCallback(
+    (message: Message) => {
+      handleReplyMessagePress(message);
+    },
+    [handleReplyMessagePress]
+  );
 
   // Render message item
   const renderItem = useCallback(
     ({ item, index }: { item: Message | any; index: number }) => {
-
       if (item.type === 'time') {
         const d = new Date(item.time);
         const days = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
@@ -904,11 +968,15 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
           </View>
         );
       }
-      
+
       const { isFirst, isLast } = getMessageGroupPosition(processedMessages, index, isDifferentDay);
-      const isMe = currentUserId && item.sender && typeof item.sender === 'object' && item.sender._id === currentUserId;
+      const isMe =
+        currentUserId &&
+        item.sender &&
+        typeof item.sender === 'object' &&
+        item.sender._id === currentUserId;
       const showAvatar = !isMe && isFirst;
-      
+
       return (
         <View>
           <GroupSwipeableMessageBubble
@@ -925,7 +993,9 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
             messageScaleAnim={messageScaleAnim}
             formatMessageTime={formatMessageTime}
             getAvatar={getAvatar}
-            isLatestMessage={item._id === groupMessageOps.messages[groupMessageOps.messages.length - 1]?._id}
+            isLatestMessage={
+              item._id === groupMessageOps.messages[groupMessageOps.messages.length - 1]?._id
+            }
             onReplyPress={handleReplyMessagePress}
             highlightedMessageId={highlightedMessageId}
             onReply={handleSwipeReply}
@@ -935,11 +1005,21 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
       );
     },
     [
-      processedMessages, groupInfo, currentUserId, customEmojis,
-      handleMessageLongPressIn, handleMessageLongPressOut,
-      handleImagePress, messageScaleAnim, formatMessageTime,
-      getAvatar, groupMessageOps.messages, highlightedMessageId,
-      handleReplyMessagePress, handleSwipeReply, isDifferentDay
+      processedMessages,
+      groupInfo,
+      currentUserId,
+      customEmojis,
+      handleMessageLongPressIn,
+      handleMessageLongPressOut,
+      handleImagePress,
+      messageScaleAnim,
+      formatMessageTime,
+      getAvatar,
+      groupMessageOps.messages,
+      highlightedMessageId,
+      handleReplyMessagePress,
+      handleSwipeReply,
+      isDifferentDay,
     ]
   );
 
@@ -965,21 +1045,19 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
         style={{
           flex: 1,
           paddingTop: Platform.OS === 'android' ? insets.top : 0,
-        }}
-      >
+        }}>
         <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
           <KeyboardAvoidingView
             style={{ flex: 1 }}
             behavior="padding"
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-            enabled
-          >
+            enabled>
             {/* Header */}
             <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12 }}>
               <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 8 }}>
                 <MaterialIcons name="arrow-back-ios" size={32} color="#009483" />
               </TouchableOpacity>
-              
+
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 12 }}>
                 <GroupAvatar
                   size={48}
@@ -993,7 +1071,13 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
                     {groupInfo?.name}
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 12, color: '#444', fontFamily: 'Inter', fontWeight: 'medium' }}>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: '#444',
+                        fontFamily: 'Inter',
+                        fontWeight: 'medium',
+                      }}>
                       {groupInfo?.participants.length} thành viên
                     </Text>
                   </View>
@@ -1002,8 +1086,7 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
 
               <TouchableOpacity
                 onPress={() => navigation.navigate(ROUTES.SCREENS.GROUP_INFO as any, { groupInfo })}
-                style={{ padding: 8 }}
-              >
+                style={{ padding: 8 }}>
                 <MaterialIcons name="info" size={24} color="#009483" />
               </TouchableOpacity>
             </View>
@@ -1043,7 +1126,7 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
                 contentContainerStyle={{
                   paddingVertical: 10,
                   paddingHorizontal: 8,
-                  paddingBottom: keyboardVisible ? 10 : (insets.bottom + 50),
+                  paddingBottom: keyboardVisible ? 10 : insets.bottom + 50,
                   flexGrow: 1,
                 }}
                 removeClippedSubviews={true}
@@ -1052,27 +1135,34 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
                 updateCellsBatchingPeriod={100}
                 initialNumToRender={25}
                 onEndReachedThreshold={0.3}
-                onEndReached={groupMessageOps.hasMoreMessages ? groupMessageOps.handleLoadMore : undefined}
+                onEndReached={
+                  groupMessageOps.hasMoreMessages ? groupMessageOps.handleLoadMore : undefined
+                }
                 legacyImplementation={false}
                 onScroll={() => {
                   // Emit messageRead khi user scroll để đảm bảo real-time tracking
-                  if (currentUserId && groupInfo?._id && groupSocket.socket && groupSocket.isConnected) {
+                  if (
+                    currentUserId &&
+                    groupInfo?._id &&
+                    groupSocket.socket &&
+                    groupSocket.isConnected
+                  ) {
                     groupSocket.emitMessageRead(currentUserId, groupInfo._id);
                   }
                 }}
                 scrollEventThrottle={2000} // Throttle để tránh spam
                 onScrollToIndexFailed={(info) => {
                   console.warn('📱 [GroupChatDetailScreen] ScrollToIndex failed:', info);
-                  
+
                   // Thử scroll đến vị trí gần đúng bằng offset
                   const estimatedOffset = info.index * 80; // Ước tính chiều cao tin nhắn
-                  
+
                   setTimeout(() => {
                     if (flatListRef.current) {
                       try {
                         flatListRef.current.scrollToOffset({
                           offset: Math.min(estimatedOffset, info.highestMeasuredFrameIndex * 80),
-                          animated: true
+                          animated: true,
                         });
                       } catch (error) {
                         flatListRef.current.scrollToEnd({ animated: true });
@@ -1084,7 +1174,7 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
             </View>
 
             {/* Chat Input Bar */}
-            <ChatInputBar 
+            <ChatInputBar
               input={input}
               handleInputChange={handleInputChange}
               imagesToSend={imagesToSend}
@@ -1122,17 +1212,32 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
             animationType="fade"
             backgroundColor="rgba(0, 0, 0, 0.95)"
             HeaderComponent={({ imageIndex }) => (
-              <View style={{
-                padding: 16,
-                paddingTop: Platform.OS === 'ios' ? 50 : 16,
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                width: '100%'
-              }}>
+              <View
+                style={{
+                  padding: 16,
+                  paddingTop: Platform.OS === 'ios' ? 50 : 16,
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  width: '100%',
+                }}>
                 <TouchableOpacity onPress={() => setViewerVisible(false)} style={{ padding: 8 }}>
-                  <Text style={{ color: 'white', fontSize: 16, fontFamily: 'Inter', fontWeight: 'medium' }}>✕</Text>
+                  <Text
+                    style={{
+                      color: 'white',
+                      fontSize: 16,
+                      fontFamily: 'Inter',
+                      fontWeight: 'medium',
+                    }}>
+                    ✕
+                  </Text>
                 </TouchableOpacity>
-                <Text style={{ color: 'white', fontSize: 16, fontFamily: 'Inter', fontWeight: 'medium' }}>
+                <Text
+                  style={{
+                    color: 'white',
+                    fontSize: 16,
+                    fontFamily: 'Inter',
+                    fontWeight: 'medium',
+                  }}>
                   {imageIndex + 1}/{viewerImages.length}
                 </Text>
               </View>
@@ -1154,7 +1259,6 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
             isPinned={selectedMessage?.isPinned || false}
             onRequestRevoke={() => {}}
           />
-
         </SafeAreaView>
       </ImageBackground>
 
@@ -1163,7 +1267,7 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
         visible={notification.visible}
         type={notification.type}
         message={notification.message}
-        onClose={() => setNotification(prev => ({ ...prev, visible: false }))}
+        onClose={() => setNotification((prev) => ({ ...prev, visible: false }))}
       />
 
       {/* Forward Message Sheet */}
@@ -1183,4 +1287,4 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
   );
 };
 
-export default GroupChatDetailScreen; 
+export default GroupChatDetailScreen;

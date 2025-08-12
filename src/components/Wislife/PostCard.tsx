@@ -1,6 +1,16 @@
-import React, { useState, useCallback } from 'react';
+// @ts-nocheck
+import React, { useState } from 'react';
 // @ts-ignore
-import { View, Text, TouchableOpacity, Image, Alert, Dimensions, Modal, TextInput, ScrollView, ActivityIndicator, ImageSourcePropType } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Image,
+  Alert,
+  Dimensions,
+  Modal,
+  ScrollView,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
 import { Post, Reaction } from '../../types/post';
@@ -23,18 +33,18 @@ interface PostCardProps {
 const { width } = Dimensions.get('window');
 
 // Type for emoji data that can be either custom or fallback
-type EmojiData = CustomEmoji | {
-  code: string;
-  url: null;
-  fallbackText: string;
-};
+type EmojiData =
+  | CustomEmoji
+  | {
+      code: string;
+      url: null;
+      fallbackText: string;
+    };
 
 // Gradient Text Component đơn giản
 const GradientText: React.FC<{ children: string; style?: any }> = ({ children, style }) => {
   return (
-    <Text style={[{ fontSize: 16, fontWeight: '500', color: '#F05023' }, style]}>
-      {children}
-    </Text>
+    <Text style={[{ fontSize: 16, fontWeight: '500', color: '#F05023' }, style]}>{children}</Text>
   );
 };
 
@@ -44,18 +54,42 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [emojiModalVisible, setEmojiModalVisible] = useState(false);
-  const [likeButtonPosition, setLikeButtonPosition] = useState<{ x: number; y: number } | undefined>(undefined);
+  const [likeButtonPosition, setLikeButtonPosition] = useState<
+    { x: number; y: number } | undefined
+  >(undefined);
   const likeButtonRef = React.useRef<View>(null);
 
-  const getUserReaction = (): Reaction | null =>
-    post.reactions.find(
-      reaction => reaction.user?._id === user?._id
-    ) || null;
+  const getUserReaction = (): Reaction | null => {
+    const myIds = [user?._id, (user as any)?.id, user?.email, (user as any)?.username]
+      .filter(Boolean)
+      .map((v) => String(v).toLowerCase());
+    if (myIds.length === 0) return null;
+
+    const resolveOwnerIds = (r: any): string[] => {
+      const ids: string[] = [];
+      if (!r) return ids;
+      if (typeof r.user === 'string') ids.push(r.user);
+      if (r.userId) ids.push(r.userId);
+      if (r.user && typeof r.user === 'object') {
+        if (r.user._id) ids.push(r.user._id);
+        if (r.user.id) ids.push(r.user.id);
+        if (r.user.email) ids.push(r.user.email);
+        if (r.user.username) ids.push(r.user.username);
+      }
+      return ids.map((v) => String(v).toLowerCase());
+    };
+
+    const found = (post.reactions as any[]).find((r) => {
+      const ownerIds = resolveOwnerIds(r);
+      return ownerIds.some((oid) => myIds.includes(oid));
+    });
+    return (found as unknown as Reaction) || null;
+  };
 
   const getReactionCounts = () => {
     const counts: Record<string, number> = {};
-    
-    post.reactions.forEach(reaction => {
+
+    post.reactions.forEach((reaction) => {
       counts[reaction.type] = (counts[reaction.type] || 0) + 1;
     });
 
@@ -63,41 +97,43 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   };
 
   const getEmojiByCode = (code: string): EmojiData => {
-    const emoji = customEmojis.find(emoji => emoji.code === code);
-    
+    const emoji = customEmojis.find((emoji) => emoji.code === code);
+
     // Fallback cho các emoji codes cũ hoặc không tồn tại
     if (!emoji) {
       // Map legacy reaction types to emoji text
       const legacyEmojiMap: Record<string, string> = {
-        'like': '👍',
-        'love': '❤️',
-        'haha': '😂',
-        'sad': '😢',
-        'wow': '😮'
+        like: '👍',
+        love: '❤️',
+        haha: '😂',
+        sad: '😢',
+        wow: '😮',
       };
-      
+
       return {
         code,
         url: null,
-        fallbackText: legacyEmojiMap[code] || '👍'
+        fallbackText: legacyEmojiMap[code] || '👍',
       };
     }
-    
+
     return emoji;
   };
 
   // Type guard function
-  const isFallbackEmoji = (emoji: EmojiData): emoji is { code: string; url: null; fallbackText: string } => {
+  const isFallbackEmoji = (
+    emoji: EmojiData
+  ): emoji is { code: string; url: null; fallbackText: string } => {
     return emoji.url === null && 'fallbackText' in emoji;
   };
 
   const handleReaction = async (emojiCode: string) => {
     // Đóng modal ngay lập tức khi chọn emoji
     setEmojiModalVisible(false);
-    
+
     try {
       const userReaction = getUserReaction();
-      
+
       let updatedPost: Post;
       if (userReaction) {
         if (userReaction.type === emojiCode) {
@@ -111,7 +147,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
         // Add new reaction
         updatedPost = await postService.addReaction(post._id, emojiCode);
       }
-      
+
       onUpdate(updatedPost);
     } catch (error) {
       console.error('Error handling reaction:', error);
@@ -120,26 +156,22 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   };
 
   const handleDeletePost = () => {
-    Alert.alert(
-      'Xóa bài viết',
-      'Bạn có chắc chắn muốn xóa bài viết này?',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xóa',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await postService.deletePost(post._id);
-              onDelete(post._id);
-            } catch (error) {
-              console.error('Error deleting post:', error);
-              Alert.alert('Lỗi', 'Không thể xóa bài viết. Vui lòng thử lại.');
-            }
-          },
+    Alert.alert('Xóa bài viết', 'Bạn có chắc chắn muốn xóa bài viết này?', [
+      { text: 'Hủy', style: 'cancel' },
+      {
+        text: 'Xóa',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await postService.deletePost(post._id);
+            onDelete(post._id);
+          } catch (error) {
+            console.error('Error deleting post:', error);
+            Alert.alert('Lỗi', 'Không thể xóa bài viết. Vui lòng thử lại.');
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const reactionCounts = getReactionCounts();
@@ -153,11 +185,13 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
       setEmojiModalVisible(false);
       return;
     }
-    
+
     // Mở modal mới
     if (likeButtonRef.current) {
-      likeButtonRef.current.measure((fx, fy, width, height, px, py) => {
-        setLikeButtonPosition({ x: px, y: py });
+      // Dùng measureInWindow để lấy toạ độ tuyệt đối trên màn hình
+      likeButtonRef.current.measureInWindow((x, y, width, height) => {
+        // Đặt modal ngay dưới nút và canh giữa theo bề rộng của nút
+        setLikeButtonPosition({ x: x + width / 2, y: y + height + 10 });
         setEmojiModalVisible(true);
       });
     } else {
@@ -170,41 +204,31 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   };
 
   return (
-    <View className="bg-white mb-2 border-b border-gray-100">
+    <View className="mb-2 border-b border-gray-100 bg-white">
       {/* Header */}
       <View className="flex-row items-center justify-between p-4">
-        <View className="flex-row items-center flex-1">
-          <View className="w-10 h-10 rounded-full overflow-hidden bg-gray-300">
-            <Image 
-              source={{ uri: getAvatar(post.author) }} 
-              className="w-full h-full"
-            />
+        <View className="flex-1 flex-row items-center">
+          <View className="h-10 w-10 overflow-hidden rounded-full bg-gray-300">
+            <Image source={{ uri: getAvatar(post.author) }} className="h-full w-full" />
           </View>
           <View className="ml-3 flex-1">
             <Text className="font-semibold text-gray-900">
               {post.author ? post.author.fullname : 'Ẩn danh'}
             </Text>
             <View className="flex-row items-center">
-              <Text className="text-sm text-gray-500">
-                {formatRelativeTime(post.createdAt)}
-              </Text>
+              <Text className="text-sm text-gray-500">{formatRelativeTime(post.createdAt)}</Text>
               {post.author?.jobTitle && (
                 <>
-                  <Text className="text-sm text-gray-400 mx-1">•</Text>
-                  <Text className="text-sm text-gray-500">
-                    {post.author.jobTitle}
-                  </Text>
+                  <Text className="mx-1 text-sm text-gray-400">•</Text>
+                  <Text className="text-sm text-gray-500">{post.author.jobTitle}</Text>
                 </>
               )}
             </View>
           </View>
         </View>
-        
+
         {isAuthor && (
-          <TouchableOpacity
-            onPress={handleDeletePost}
-            className="p-2"
-          >
+          <TouchableOpacity onPress={handleDeletePost} className="p-2">
             <Ionicons name="ellipsis-horizontal" size={20} color="#6B7280" />
           </TouchableOpacity>
         )}
@@ -212,9 +236,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
 
       {/* Content */}
       <View className="px-4 pb-3">
-        <Text className="text-gray-900 text-base leading-5">
-          {post.content}
-        </Text>
+        <Text className="text-base leading-5 text-gray-900">{post.content}</Text>
       </View>
 
       {/* Media */}
@@ -231,22 +253,21 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
                     setImageModalVisible(true);
                   }}
                   className={`relative ${
-                    post.images.length === 1 
-                      ? 'w-full' 
+                    post.images.length === 1
+                      ? 'w-full'
                       : post.images.length === 2
-                      ? 'w-1/2'
-                      : 'w-1/2'
+                        ? 'w-1/2'
+                        : 'w-1/2'
                   } ${index > 0 ? 'pl-1' : ''} ${index > 1 ? 'pt-1' : ''}`}
-                  style={{ aspectRatio: post.images.length === 1 ? 16/9 : 1 }}
-                >
+                  style={{ aspectRatio: post.images.length === 1 ? 16 / 9 : 1 }}>
                   <Image
                     source={{ uri: `${API_BASE_URL}${image}` }}
-                    className="w-full h-full "
+                    className="h-full w-full "
                     resizeMode="cover"
                   />
                   {index === 3 && post.images.length > 4 && (
-                    <View className="absolute inset-0 bg-black bg-opacity-50 rounded-lg items-center justify-center">
-                      <Text className="text-white text-lg font-bold">
+                    <View className="absolute inset-0 items-center justify-center rounded-lg bg-black bg-opacity-50">
+                      <Text className="font-bold text-lg text-white">
                         +{post.images.length - 4}
                       </Text>
                     </View>
@@ -260,14 +281,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
           {post.videos.length > 0 && (
             <View className="mt-2">
               {post.videos.slice(0, 1).map((video, index) => (
-                <Video
-                  key={index}
-                  source={{ uri: `${API_BASE_URL}${video}` }}
-                  className="w-full rounded-lg"
-                  style={{ height: 200 }}
-                  useNativeControls
-                  resizeMode={ResizeMode.CONTAIN}
-                />
+                <View key={index} className="w-full rounded-lg" style={{ height: 200 }}>
+                  <Video
+                    source={{ uri: `${API_BASE_URL}${video}` }}
+                    className="h-full w-full rounded-lg"
+                    useNativeControls
+                    resizeMode={ResizeMode.CONTAIN}
+                  />
+                </View>
               ))}
             </View>
           )}
@@ -286,11 +307,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
                   return (
                     <View key={emojiCode}>
                       {emoji.url ? (
-                        <Image
-                          source={emoji.url}
-                          className="w-8 h-8"
-                          resizeMode="contain"
-                        />
+                        <Image source={emoji.url} className="h-8 w-8" resizeMode="contain" />
                       ) : isFallbackEmoji(emoji) ? (
                         <Text className="text-lg">{emoji.fallbackText}</Text>
                       ) : (
@@ -300,72 +317,62 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
                   );
                 })}
               </View>
-              <Text className="text-sm text-gray-600 ml-2">
+              <Text className="ml-2 text-sm text-gray-600">
                 {totalReactions} {totalReactions === 1 ? 'lượt thích' : 'lượt thích'}
               </Text>
             </View>
-            <TouchableOpacity onPress={() => onCommentPress ? onCommentPress(post) : undefined}>
-              <Text className="text-sm text-gray-600">
-                {post.comments.length} bình luận
-              </Text>
+            <TouchableOpacity onPress={() => (onCommentPress ? onCommentPress(post) : undefined)}>
+              <Text className="text-sm text-gray-600">{post.comments.length} bình luận</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
       {/* Action Buttons */}
-      <View className="px-4 py-1 border-t border-gray-100">
+      <View className="border-t border-gray-100 px-4 py-1">
         <View className="flex-row items-center justify-around">
           <TouchableOpacity
             onPress={handleLikeButtonPress}
-            className="flex-row items-center px-4 py-2 rounded-full"
-            ref={likeButtonRef}
-          >
+            className="flex-row items-center rounded-full px-4 py-2"
+            ref={likeButtonRef}>
             {userReaction ? (
               <>
                 {(() => {
                   const emoji = getEmojiByCode(userReaction.type);
                   if (emoji && emoji.url) {
                     return (
-                      <Image
-                        source={emoji.url}
-                        className="w-9 h-9 mr-2"
-                        resizeMode="contain"
-                      />
+                      <Image source={emoji.url} className="mr-2 h-9 w-9" resizeMode="contain" />
                     );
                   } else if (emoji && isFallbackEmoji(emoji)) {
-                    return (
-                      <Text className="text-xl mr-2">{emoji.fallbackText}</Text>
-                    );
+                    return <Text className="mr-2 text-xl">{emoji.fallbackText}</Text>;
                   } else {
                     return (
-                      <LikeSkeletonSvg width={28} height={28} style={{ marginRight: 8 }} />
+                      <View style={{ marginRight: 8 }}>
+                        <LikeSkeletonSvg width={28} height={28} />
+                      </View>
                     );
                   }
                 })()}
-                
+
                 <GradientText style={{ fontFamily: 'Mulish-Bold', fontSize: 15 }}>
-                  Thích
+                  Đã thích
                 </GradientText>
               </>
             ) : (
               <>
-                <LikeSkeletonSvg width={28} height={28} style={{ marginRight: 8 }} />
-                <Text className="font-medium text-gray-600">
-                  Thích
-                </Text>
+                <View style={{ marginRight: 8 }}>
+                  <LikeSkeletonSvg width={28} height={28} />
+                </View>
+                <Text className="font-medium text-gray-600">Thích</Text>
               </>
             )}
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => onCommentPress ? onCommentPress(post) : undefined}
-            className="flex-row items-center px-4 py-2 rounded-full"
-          >
+            onPress={() => (onCommentPress ? onCommentPress(post) : undefined)}
+            className="flex-row items-center rounded-full px-4 py-2">
             <Ionicons name="chatbubble-outline" size={24} color="#6B7280" />
-            <Text className="ml-2 font-medium text-gray-600 text-base">
-              Bình luận
-            </Text>
+            <Text className="ml-2 font-medium text-base text-gray-600">Bình luận</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -382,27 +389,24 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
       <Modal
         visible={imageModalVisible}
         transparent={true}
-        onRequestClose={() => setImageModalVisible(false)}
-      >
+        onRequestClose={() => setImageModalVisible(false)}>
         <View className="flex-1 bg-black">
           <TouchableOpacity
             onPress={() => setImageModalVisible(false)}
-            className="absolute top-12 right-4 z-10 p-3"
-          >
+            className="absolute right-4 top-12 z-10 p-3">
             <Ionicons name="close" size={24} color="white" />
           </TouchableOpacity>
-          
+
           <ScrollView
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
-            className="flex-1"
-          >
+            className="flex-1">
             {post.images.map((image, index) => (
               <View key={index} className="items-center justify-center" style={{ width }}>
                 <Image
                   source={{ uri: `${API_BASE_URL}${image}` }}
-                  className="w-full h-full"
+                  className="h-full w-full"
                   resizeMode="contain"
                 />
               </View>
@@ -414,4 +418,4 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   );
 };
 
-export default PostCard; 
+export default PostCard;

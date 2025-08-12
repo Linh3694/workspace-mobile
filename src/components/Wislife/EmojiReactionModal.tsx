@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
-import { View, Text, TouchableOpacity, Modal, Dimensions, Animated, Easing, TouchableWithoutFeedback, Image, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Modal,
+  Dimensions,
+  Animated,
+  Easing,
+  TouchableWithoutFeedback,
+  Image,
+  ScrollView,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useEmojis } from '../../hooks/useEmojis';
 
@@ -37,7 +48,7 @@ const EmojiReactionModal: React.FC<EmojiReactionModalProps> = ({
           duration: 200,
           easing: Easing.out(Easing.back(1.5)),
           useNativeDriver: true,
-        })
+        }),
       ]).start();
     } else {
       Animated.parallel([
@@ -50,32 +61,27 @@ const EmojiReactionModal: React.FC<EmojiReactionModalProps> = ({
           toValue: 0.5,
           duration: 150,
           useNativeDriver: true,
-        })
+        }),
       ]).start();
     }
   }, [visible]);
 
-  if (!visible) return null;
+  // Chỉ render khi đã có toạ độ neo để tránh hiển thị ở giữa màn hình
+  if (!visible || !position) return null;
 
-  const modalWidth = 250;
-  const modalHeight = 60;
-  const modalTop = position ? Math.min(height - modalHeight - 10, position.y + 60) : height / 2 - modalHeight / 2;
-  const modalLeft = position 
-    ? Math.max(10, Math.min(width - modalWidth - 10, position.x - modalWidth / 2)) 
-    : (width - modalWidth) / 2;
+  const modalWidth = 280;
+  const modalHeight = 64;
+  // position.x được coi là tâm của nút Like; position.y là đáy của nút Like
+  const modalTop = Math.min(height - modalHeight - 10, position.y);
+  const modalLeft = Math.max(10, Math.min(width - modalWidth - 10, position.x - modalWidth / 2));
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="none"
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <TouchableWithoutFeedback onPress={onClose}>
         <View className="flex-1" style={{ position: 'relative' }}>
           <TouchableWithoutFeedback onPress={() => {}}>
             <Animated.View
-              className="bg-white rounded-full shadow-lg px-3 py-2 absolute"
+              className="absolute rounded-full bg-white px-3 py-2 shadow-lg"
               style={{
                 opacity: fadeAnim,
                 transform: [{ scale: scaleAnim }],
@@ -90,19 +96,17 @@ const EmojiReactionModal: React.FC<EmojiReactionModalProps> = ({
                 },
                 shadowOpacity: 0.3,
                 shadowRadius: 10,
-              }}
-            >
+              }}>
               {loading ? (
-                <View className="py-3 px-4">
-                  <Text className="text-gray-500 text-center">Đang tải...</Text>
+                <View className="px-4 py-3">
+                  <Text className="text-center text-gray-500">Đang tải...</Text>
                 </View>
               ) : (
-                <ScrollView 
-                  horizontal 
+                <ScrollView
+                  horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={{ alignItems: 'center', paddingHorizontal: 5 }}
-                  className="max-h-12"
-                >
+                  className="max-h-12">
                   <View className="flex-row items-center justify-center">
                     {customEmojis.map((emoji, index) => (
                       <TouchableOpacity
@@ -114,21 +118,14 @@ const EmojiReactionModal: React.FC<EmojiReactionModalProps> = ({
                         onPressOut={() => setHoveredIndex(null)}
                         className="items-center justify-center px-1 py-1"
                         style={{
-                          transform: [
-                            { scale: hoveredIndex === index ? 1.4 : 1 }
-                          ],
-                        }}
-                      >
-                        <Image
-                          source={emoji.url}
-                          className="w-10 h-10"
-                          resizeMode="contain"
-                        />
+                          transform: [{ scale: hoveredIndex === index ? 1.4 : 1 }],
+                        }}>
+                        <Image source={emoji.url} className="h-10 w-10" resizeMode="contain" />
                       </TouchableOpacity>
                     ))}
                   </View>
                 </ScrollView>
-              )}              
+              )}
             </Animated.View>
           </TouchableWithoutFeedback>
         </View>
@@ -137,4 +134,4 @@ const EmojiReactionModal: React.FC<EmojiReactionModalProps> = ({
   );
 };
 
-export default EmojiReactionModal; 
+export default EmojiReactionModal;

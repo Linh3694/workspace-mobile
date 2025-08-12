@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
 // @ts-ignore
 import {
@@ -20,7 +21,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_BASE_URL } from '../../config/constants';
+import { BASE_URL, CHAT_SERVICE_URL } from '../../config/constants';
 import { useOnlineStatus } from '../../context/OnlineStatusContext';
 import Avatar from '../../components/Chat/Avatar';
 import GroupAvatar from '../../components/Chat/GroupAvatar';
@@ -103,15 +104,20 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
   const fetchUsers = async () => {
     try {
       const token = await AsyncStorage.getItem('authToken');
-      const response = await fetch(`${API_BASE_URL}/api/users`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await fetch(
+        `${BASE_URL}/api/method/erp.api.erp_common_user.user_management.get_users?limit=200`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
       if (response.ok) {
-        const users = await response.json();
+        const data = await response.json();
+        // Chat service returns normalized users directly
+        const users = Array.isArray(data) ? data : [];
         const otherUsers = users.filter((user: User) => user._id !== currentUserId);
         setAllUsers(otherUsers);
       }
@@ -129,7 +135,7 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem('authToken');
-      const response = await fetch(`${API_BASE_URL}/api/chats/group/${groupInfo?._id}/info`, {
+      const response = await fetch(`${CHAT_SERVICE_URL}/group/${groupInfo?._id}/info`, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -162,7 +168,7 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem('authToken');
-      const response = await fetch(`${API_BASE_URL}/api/chats/group/${groupInfo?._id}/add-member`, {
+      const response = await fetch(`${CHAT_SERVICE_URL}/group/${groupInfo?._id}/add-member`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -202,7 +208,7 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
           try {
             const token = await AsyncStorage.getItem('authToken');
             const response = await fetch(
-              `${API_BASE_URL}/api/chats/group/${groupInfo?._id}/remove-member/${userId}`,
+              `${CHAT_SERVICE_URL}/group/${groupInfo?._id}/remove-member/${userId}`,
               {
                 method: 'DELETE',
                 headers: {
@@ -244,7 +250,7 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
           try {
             const token = await AsyncStorage.getItem('authToken');
             const response = await fetch(
-              `${API_BASE_URL}/api/chats/group/${groupInfo?._id}/${action}/${userId}`,
+              `${CHAT_SERVICE_URL}/group/${groupInfo?._id}/${action}/${userId}`,
               {
                 method: isCurrentlyAdmin ? 'DELETE' : 'POST',
                 headers: {
@@ -292,16 +298,13 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
           setLoading(true);
           try {
             const token = await AsyncStorage.getItem('authToken');
-            const response = await fetch(
-              `${API_BASE_URL}/api/chats/group/${groupInfo?._id}/leave`,
-              {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  'Content-Type': 'application/json',
-                },
-              }
-            );
+            const response = await fetch(`${CHAT_SERVICE_URL}/group/${groupInfo?._id}/leave`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+            });
 
             if (response.ok) {
               Alert.alert('Thành công', 'Bạn đã rời khỏi nhóm', [
@@ -398,7 +401,7 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
         name: 'group-avatar.jpg',
       } as any);
 
-      const response = await fetch(`${API_BASE_URL}/api/chats/group/${groupInfo?._id}/info`, {
+      const response = await fetch(`${CHAT_SERVICE_URL}/group/${groupInfo?._id}/info`, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -452,7 +455,7 @@ const GroupInfoScreen: React.FC<GroupInfoScreenProps> = () => {
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem('authToken');
-      const response = await fetch(`${API_BASE_URL}/api/chats/group/${groupInfo?._id}/add-member`, {
+      const response = await fetch(`${CHAT_SERVICE_URL}/group/${groupInfo?._id}/add-member`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

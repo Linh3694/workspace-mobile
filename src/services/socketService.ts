@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client';
-import { BASE_URL } from '../config/constants';
+import { CHAT_SOCKET_URL, CHAT_SOCKET_PATH } from '../config/constants';
 
 let socket: Socket | null = null;
 let groupSocket: Socket | null = null;
@@ -7,7 +7,8 @@ let groupSocket: Socket | null = null;
 // Socket cho chat 1-1
 export const getSocket = (token: string): Socket => {
   if (!socket) {
-    socket = io(BASE_URL, {
+    socket = io(CHAT_SOCKET_URL, {
+      path: CHAT_SOCKET_PATH,
       query: { token },
       transports: ['websocket'],
       reconnection: true,
@@ -21,7 +22,8 @@ export const getSocket = (token: string): Socket => {
 // Socket riêng cho groupchat
 export const getGroupSocket = (token: string): Socket => {
   if (!groupSocket) {
-    groupSocket = io(`${BASE_URL}/groupchat`, {
+    groupSocket = io(`${CHAT_SOCKET_URL}/groupchat`, {
+      path: CHAT_SOCKET_PATH,
       query: { token },
       transports: ['websocket'],
       reconnection: true,

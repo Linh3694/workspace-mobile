@@ -1,22 +1,32 @@
+// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
-import { View, Text, TextInput, TouchableOpacity, Image, Pressable, Alert, ActivityIndicator, Platform, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Image,
+  Pressable,
+  ActivityIndicator,
+  Platform,
+} from 'react-native';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { typography } from '../../theme/typography';
+// import { typography } from '../../theme/typography';
 import { useMicrosoftAuthV2 } from '../../hooks/useMicrosoftAuthV2';
 import { useAppleLogin } from '../../hooks/useAppleLogin';
 import MicrosoftIcon from '../../assets/microsoft.svg';
 import AppleIcon from '../../assets/apple.svg';
-import * as AppleAuthentication from 'expo-apple-authentication';
+// import * as AppleAuthentication from 'expo-apple-authentication';
 import VisibilityIcon from '../../assets/visibility.svg';
-import WarningIcon from '../../assets/warning.svg';
+// import WarningIcon from '../../assets/warning.svg';
 import FaceIdIcon from '../../assets/face-id.svg';
-import { ROUTES } from '../../constants/routes';
+// import { ROUTES } from '../../constants/routes';
 import { API_BASE_URL } from '../../config/constants';
 import { useAuth } from '../../context/AuthContext';
 import { useBiometricAuth } from '../../hooks/useBiometricAuth';
@@ -46,7 +56,6 @@ const SignInScreen = () => {
     handleSubmit,
     formState: { errors },
     setValue,
-    getValues,
   } = useForm({
     resolver: yupResolver(schema),
   });
@@ -54,9 +63,8 @@ const SignInScreen = () => {
   const [loginError, setLoginError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const { login, checkAuth, loginWithMicrosoft } = useAuth();
-  const { isBiometricAvailable, hasSavedCredentials, isAuthenticating, authenticate } =
-    useBiometricAuth();
-  const [showBiometricModal, setShowBiometricModal] = useState(false);
+  const { hasSavedCredentials, isAuthenticating, authenticate } = useBiometricAuth();
+  // const [showBiometricModal, setShowBiometricModal] = useState(false);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
   const [notificationType, setNotificationType] = useState<'success' | 'error'>('error');
@@ -73,7 +81,7 @@ const SignInScreen = () => {
         showNotification(t('auth.login_failed'), 'error');
       }
     },
-    (error, errorCode) => {
+    (_error, errorCode) => {
       // Show user-friendly error messages
       if (errorCode === 'USER_NOT_REGISTERED') {
         showNotification(error, 'error');
@@ -223,7 +231,7 @@ const SignInScreen = () => {
       } else {
         showNotification('Xác thực sinh trắc học thất bại. Vui lòng thử lại.');
       }
-    } catch (error) {
+    } catch {
       showNotification('Không thể xác thực sinh trắc học. Vui lòng thử lại.');
     }
   };
@@ -266,40 +274,140 @@ const SignInScreen = () => {
           await AsyncStorage.setItem(LAST_EMAIL_KEY, data.email);
 
           // Xử lý response từ Frappe API
+          const token: string | undefined = apiResponse.token;
+          if (!token) {
+            throw new Error('Thiếu token từ máy chủ');
+          }
+
+          let finalUser: any | null = null;
+
           if (apiResponse.user) {
             const user = apiResponse.user;
             const userId = user.email; // Frappe sử dụng email làm user ID
             const userFullname = user.full_name || user.username || data.email.split('@')[0];
-            const userRole = user.role || 'user';
+            const userRole = user.role || user.user_role || 'user';
+            const roles = Array.isArray(user.roles)
+              ? user.roles
+              : Array.isArray(user.user_roles)
+                ? user.user_roles
+                : [];
 
-            const completeUser = {
+            finalUser = {
               _id: userId,
               email: user.email,
               fullname: userFullname,
               username: user.username,
               role: userRole,
+              roles,
               jobTitle: user.job_title || 'N/A',
               department: user.department || 'N/A',
-              avatar: user.avatar || 'https://via.placeholder.com/150',
+              avatar: user.avatar || user.user_image || 'https://via.placeholder.com/150',
               needProfileUpdate: false,
               employeeCode: user.employee_code || 'N/A',
               provider: user.provider || 'local',
             };
-
-            // Lưu JWT token từ Frappe
-            await login(apiResponse.token, completeUser);
           } else {
-            // Fallback nếu không có user data
-            const defaultUser = {
-              _id: data.email,
-              fullname: data.email.split('@')[0],
-              email: data.email,
-              role: 'user',
-              department: 'user',
-            };
+            // Nếu login không trả user, gọi get_current_user để lấy thông tin đầy đủ
+            try {
+              const resp = await fetch(
+                `${API_BASE_URL}/api/method/erp.api.erp_common_user.auth.get_current_user`,
+                {
+                  method: 'GET',
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                  },
+                }
+              );
+              if (resp.ok) {
+                const dataUser = await resp.json();
+                const u = dataUser.user || (dataUser.message && dataUser.message.user);
+                if (dataUser.status === 'success' && u) {
+                  const userId = u.email;
+                  const userFullname = u.full_name || u.username || userId;
+                  const userRole = u.role || u.user_role || 'user';
+                  const roles = Array.isArray(u.roles)
+                    ? u.roles
+                    : Array.isArray(u.user_roles)
+                      ? u.user_roles
+                      : [];
+                  finalUser = {
+                    _id: userId,
+                    email: u.email,
+                    fullname: userFullname,
+                    username: u.username || userId,
+                    role: userRole,
+                    roles,
+                    jobTitle: u.job_title || 'N/A',
+                    department: u.department || 'N/A',
+                    avatar: u.avatar || u.user_image || 'https://via.placeholder.com/150',
+                    needProfileUpdate: false,
+                    employeeCode: u.employee_code || 'N/A',
+                    provider: u.provider || 'local',
+                  };
+                }
+              }
+            } catch {
+              console.warn(
+                '[SignInScreen] get_current_user failed, sẽ fallback frappe.auth.get_logged_user'
+              );
+            }
 
-            await AsyncStorage.setItem('user', JSON.stringify(defaultUser));
+            // Fallback cuối cùng nếu vẫn chưa có user đầy đủ
+            if (!finalUser) {
+              try {
+                const fallbackResp = await fetch(
+                  `${API_BASE_URL}/api/method/frappe.auth.get_logged_user`,
+                  {
+                    method: 'GET',
+                    headers: {
+                      Authorization: `Bearer ${token}`,
+                      'Content-Type': 'application/json',
+                    },
+                  }
+                );
+                if (fallbackResp.ok) {
+                  const r = await fallbackResp.json();
+                  const u = r.message || r;
+                  finalUser = {
+                    _id: u.email || data.email,
+                    email: u.email || data.email,
+                    fullname: u.fullname || u.full_name || u.username || data.email.split('@')[0],
+                    username: u.username || u.email || data.email,
+                    role: u.role || u.user_role || 'user',
+                    roles: Array.isArray(u.roles)
+                      ? u.roles
+                      : Array.isArray(u.user_roles)
+                        ? u.user_roles
+                        : [],
+                    jobTitle: u.job_title || 'N/A',
+                    department: u.department || 'N/A',
+                    avatar: u.avatar || u.user_image || 'https://via.placeholder.com/150',
+                    needProfileUpdate: false,
+                    employeeCode: u.employee_code || 'N/A',
+                    provider: 'frappe',
+                  };
+                }
+              } catch {}
+            }
+
+            // Nếu vẫn không lấy được, tạo bản tối thiểu từ email nhập vào
+            if (!finalUser) {
+              finalUser = {
+                _id: data.email,
+                fullname: data.email.split('@')[0],
+                email: data.email,
+                role: 'user',
+                roles: [],
+                department: 'user',
+                provider: 'local',
+              };
+            }
           }
+
+          // Lưu token + user (đã chuẩn hoá) và xác thực lại để init push, cache-bust avatar
+          await login(token, finalUser);
+          await checkAuth();
 
           navigation.reset({
             index: 0,

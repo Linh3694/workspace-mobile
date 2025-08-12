@@ -34,7 +34,7 @@ const MessageContent: React.FC<MessageContentProps> = ({
             return (
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
                     <Image
-                        source={{ uri: emoji.url?.startsWith('http') ? emoji.url : `${require('../../config/constants').API_BASE_URL}${emoji.url}` }}
+                        source={{ uri: emoji.url?.startsWith('http') ? emoji.url : `${require('../../config/constants').BASE_URL}${emoji.url}` }}
                         style={{ width: 48, height: 48, borderRadius: 8 }}
                         resizeMode="contain"
                     />

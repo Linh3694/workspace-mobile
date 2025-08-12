@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BASE_URL } from '../config/constants';
+import { CHAT_SERVICE_URL, CHAT_SOCKET_URL, CHAT_SOCKET_PATH, BASE_URL } from '../config/constants';
 import { Message } from '../types/message';
 
 interface TypingUser {
@@ -71,8 +71,9 @@ export const useGroupSocket = ({
         setJoinedRoom(null);
       }
 
-      // Create new socket connection
-      const socket = io(`${BASE_URL}/groupchat`, {
+      // Create new socket connection vào namespace group với path riêng qua Nginx
+      const socket = io(`${CHAT_SOCKET_URL}/groupchat`, {
+        path: CHAT_SOCKET_PATH,
         query: { token: authToken },
         transports: ['websocket'],
         timeout: 10000,
@@ -83,7 +84,7 @@ export const useGroupSocket = ({
       });
 
       console.log('🔌 [GroupSocket] ========= SOCKET SETUP =========');
-      console.log('🔌 [GroupSocket] Connection URL:', `${BASE_URL}/groupchat`);
+      console.log('🔌 [GroupSocket] Connection URL:', `${CHAT_SOCKET_URL}/groupchat`);
       console.log('🔌 [GroupSocket] Auth token provided:', !!authToken);
       console.log('🔌 [GroupSocket] Target chatId:', chatId);
       console.log('🔌 [GroupSocket] ==========================================');
@@ -259,7 +260,7 @@ export const useGroupSocket = ({
             const token = await AsyncStorage.getItem('authToken');
             if (token && currentUserId) {
               try {
-                await fetch(`${BASE_URL}/api/chats/messages/${chatId}/read`, {
+                await fetch(`${CHAT_SERVICE_URL}/messages/${chatId}/read`, {
                   method: 'POST',
                   headers: {
                     Authorization: `Bearer ${token}`,

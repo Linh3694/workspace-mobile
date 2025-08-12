@@ -244,6 +244,7 @@ class MicrosoftAuthService {
         await AsyncStorage.setItem('userJobTitle', response.user.job_title || '');
         await AsyncStorage.setItem('userDepartment', response.user.department || '');
         await AsyncStorage.setItem('userRole', response.user.user_role || 'user');
+        await AsyncStorage.setItem('userRoles', JSON.stringify(response.user.roles || []));
         await AsyncStorage.setItem('userEmployeeCode', response.user.employee_code || '');
         await AsyncStorage.setItem('userAvatarUrl', response.user.user_image || '');
 

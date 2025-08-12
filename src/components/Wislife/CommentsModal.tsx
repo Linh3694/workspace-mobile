@@ -1,6 +1,20 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 // @ts-ignore
-import { View, Text, Modal, TouchableOpacity, ScrollView, TextInput, Image, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  Modal,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  Image,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Post, Comment, Reaction } from '../../types/post';
@@ -20,33 +34,30 @@ interface CommentsModalProps {
 }
 
 // Type for emoji data that can be either custom or fallback
-type EmojiData = CustomEmoji | {
-  code: string;
-  url: null;
-  fallbackText: string;
-};
+type EmojiData =
+  | CustomEmoji
+  | {
+      code: string;
+      url: null;
+      fallbackText: string;
+    };
 
 // Gradient Text Component đơn giản
 const GradientText: React.FC<{ children: string; style?: any }> = ({ children, style }) => {
   return (
-    <Text style={[{ fontSize: 16, fontWeight: '500', color: '#F05023' }, style]}>
-      {children}
-    </Text>
+    <Text style={[{ fontSize: 16, fontWeight: '500', color: '#F05023' }, style]}>{children}</Text>
   );
 };
 
-const CommentsModal: React.FC<CommentsModalProps> = ({
-  visible,
-  onClose,
-  post,
-  onUpdate,
-}) => {
+const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, onUpdate }) => {
   const { user } = useAuth();
   const { customEmojis } = useEmojis();
   const [commentText, setCommentText] = useState('');
   const [loading, setLoading] = useState(false);
   const [emojiModalVisible, setEmojiModalVisible] = useState(false);
-  const [reactionButtonPosition, setReactionButtonPosition] = useState<{ x: number; y: number } | undefined>(undefined);
+  const [reactionButtonPosition, setReactionButtonPosition] = useState<
+    { x: number; y: number } | undefined
+  >(undefined);
   const reactionsRef = React.useRef<View>(null);
   const likeButtonRef = React.useRef<View>(null);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -57,33 +68,56 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
   // Sắp xếp comments từ mới nhất đến cũ nhất và nhóm replies
   const organizeComments = () => {
     // Tách main comments và replies
-    const mainComments = post.comments.filter(comment => !comment.parentComment);
-    const replies = post.comments.filter(comment => comment.parentComment);
-    
+    const mainComments = post.comments.filter((comment) => !comment.parentComment);
+    const replies = post.comments.filter((comment) => comment.parentComment);
+
     // Sort main comments từ mới đến cũ
-    const sortedMainComments = [...mainComments].sort((a, b) => 
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    const sortedMainComments = [...mainComments].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-    
+
     // Tạo cấu trúc comments với replies
-    return sortedMainComments.map(mainComment => ({
+    return sortedMainComments.map((mainComment) => ({
       ...mainComment,
       replies: replies
-        .filter(reply => reply.parentComment === mainComment._id)
-        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) // replies sort cũ đến mới
+        .filter((reply) => reply.parentComment === mainComment._id)
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()), // replies sort cũ đến mới
     }));
   };
 
   const organizedComments = organizeComments();
 
   const getUserReaction = (): Reaction | null => {
-    return post.reactions.find(reaction => reaction.user?._id === user?._id) || null;
+    const myIds = [user?._id, (user as any)?.id, user?.email, (user as any)?.username]
+      .filter(Boolean)
+      .map((v) => String(v).toLowerCase());
+    if (myIds.length === 0) return null;
+
+    const resolveOwnerIds = (r: any): string[] => {
+      const ids: string[] = [];
+      if (!r) return ids;
+      if (typeof r.user === 'string') ids.push(r.user);
+      if (r.userId) ids.push(r.userId);
+      if (r.user && typeof r.user === 'object') {
+        if (r.user._id) ids.push(r.user._id);
+        if (r.user.id) ids.push(r.user.id);
+        if (r.user.email) ids.push(r.user.email);
+        if (r.user.username) ids.push(r.user.username);
+      }
+      return ids.map((v) => String(v).toLowerCase());
+    };
+
+    const found = (post.reactions as any[]).find((r) => {
+      const ownerIds = resolveOwnerIds(r);
+      return ownerIds.some((oid) => myIds.includes(oid));
+    });
+    return (found as unknown as Reaction) || null;
   };
 
   const getReactionCounts = () => {
     const counts: Record<string, number> = {};
-    
-    post.reactions.forEach(reaction => {
+
+    post.reactions.forEach((reaction) => {
       counts[reaction.type] = (counts[reaction.type] || 0) + 1;
     });
 
@@ -91,41 +125,43 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
   };
 
   const getEmojiByCode = (code: string): EmojiData => {
-    const emoji = customEmojis.find(emoji => emoji.code === code);
-    
+    const emoji = customEmojis.find((emoji) => emoji.code === code);
+
     // Fallback cho các emoji codes cũ hoặc không tồn tại
     if (!emoji) {
       // Map legacy reaction types to emoji text
       const legacyEmojiMap: Record<string, string> = {
-        'like': '👍',
-        'love': '❤️',
-        'haha': '😂',
-        'sad': '😢',
-        'wow': '😮'
+        like: '👍',
+        love: '❤️',
+        haha: '😂',
+        sad: '😢',
+        wow: '😮',
       };
-      
+
       return {
         code,
         url: null,
-        fallbackText: legacyEmojiMap[code] || '👍'
+        fallbackText: legacyEmojiMap[code] || '👍',
       };
     }
-    
+
     return emoji;
   };
 
   // Type guard function
-  const isFallbackEmoji = (emoji: EmojiData): emoji is { code: string; url: null; fallbackText: string } => {
+  const isFallbackEmoji = (
+    emoji: EmojiData
+  ): emoji is { code: string; url: null; fallbackText: string } => {
     return emoji.url === null && 'fallbackText' in emoji;
   };
 
   const handleReaction = async (emojiCode: string) => {
     // Đóng modal ngay lập tức khi chọn emoji
     setEmojiModalVisible(false);
-    
+
     try {
       const userReaction = getUserReaction();
-      
+
       let updatedPost: Post;
       if (userReaction) {
         if (userReaction.type === emojiCode) {
@@ -139,7 +175,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
         // Add new reaction
         updatedPost = await postService.addReaction(post._id, emojiCode);
       }
-      
+
       onUpdate(updatedPost);
     } catch (error) {
       console.error('Error handling reaction:', error);
@@ -153,10 +189,10 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
       setEmojiModalVisible(false);
       return;
     }
-    // Đo vị trí của like button và hiển thị modal ngay dưới đó
+    // Đo vị trí của like button và hiển thị modal ngay dưới đó, canh giữa
     if (likeButtonRef.current) {
       likeButtonRef.current.measureInWindow((x, y, width, height) => {
-        setReactionButtonPosition({ x: x, y: y + height + 10 });
+        setReactionButtonPosition({ x: x + width / 2, y: y + height + 10 });
         setEmojiModalVisible(true);
       });
     } else {
@@ -171,13 +207,13 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
   const handleLikeComment = async (commentId: string) => {
     try {
       setLikingComment(commentId);
-      
+
       // Kiểm tra xem user đã like comment này chưa
-      const comment = post.comments.find(c => c._id === commentId);
+      const comment = post.comments.find((c) => c._id === commentId);
       if (!comment) return;
-      
-      const userReaction = comment.reactions.find(r => r.user?._id === user?._id);
-      
+
+      const userReaction = comment.reactions.find((r) => r.user?._id === user?._id);
+
       let updatedPost: Post;
       if (userReaction) {
         // User đã like, remove reaction
@@ -186,7 +222,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
         // User chưa like, add reaction với type 'like'
         updatedPost = await postService.addCommentReaction(post._id, commentId, 'like');
       }
-      
+
       onUpdate(updatedPost);
     } catch (error) {
       console.error('Error liking comment:', error);
@@ -196,21 +232,25 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
     }
   };
 
-  const handleCommentReaction = (commentId: string) => {
+  const handleCommentReaction = (commentId: string, event?: GestureResponderEvent) => {
     setSelectedCommentId(commentId);
+    // Nếu có sự kiện, dùng toạ độ tại điểm bấm để neo modal ngay bên dưới
+    if (event?.nativeEvent?.pageX !== undefined && event?.nativeEvent?.pageY !== undefined) {
+      setReactionButtonPosition({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY + 10 });
+    }
     setCommentReactionModalVisible(true);
   };
 
   const handleCommentReactionSelect = async (commentId: string, emojiCode: string) => {
     try {
       setCommentReactionModalVisible(false);
-      
+
       // Kiểm tra xem user đã có reaction loại này chưa
-      const comment = post.comments.find(c => c._id === commentId);
+      const comment = post.comments.find((c) => c._id === commentId);
       if (!comment) return;
-      
-      const userReaction = comment.reactions.find(r => r.user?._id === user?._id);
-      
+
+      const userReaction = comment.reactions.find((r) => r.user?._id === user?._id);
+
       let updatedPost: Post;
       if (userReaction && userReaction.type === emojiCode) {
         // Cùng loại reaction, remove it
@@ -219,7 +259,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
         // Khác loại hoặc chưa có reaction, add/update reaction
         updatedPost = await postService.addCommentReaction(post._id, commentId, emojiCode);
       }
-      
+
       onUpdate(updatedPost);
     } catch (error) {
       console.error('Error adding comment reaction:', error);
@@ -269,14 +309,16 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
   const renderCommentContent = (content: string) => {
     // Tách text thành các phần để highlight @mentions
     // Chỉ match tên người thật: @ + từ đầu viết hoa + tối đa 2 từ tiếp theo cũng viết hoa
-    const parts = content.split(/(@[A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ][a-zàáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]*(?:\s+[A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ][a-zàáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]*){0,2})/g);
-    
+    const parts = content.split(
+      /(@[A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ][a-zàáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]*(?:\s+[A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ][a-zàáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]*){0,2})/g
+    );
+
     return (
-      <Text className="text-gray-800 text-base leading-5">
+      <Text className="text-base leading-5 text-gray-800">
         {parts.map((part, index) => {
           if (part.startsWith('@') && part.trim().length > 1) {
             return (
-              <Text key={index} className="text-blue-500 font-medium">
+              <Text key={index} className="font-bold text-orange-500">
                 {part.trim()}
               </Text>
             );
@@ -289,7 +331,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
 
   const getUniqueReactionTypes = (reactions: Reaction[]): string[] => {
     const types: string[] = [];
-    reactions.forEach(reaction => {
+    reactions.forEach((reaction) => {
       if (!types.includes(reaction.type)) {
         types.push(reaction.type);
       }
@@ -302,14 +344,13 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
+      onRequestClose={onClose}>
       <SafeAreaView className="flex-1 bg-white">
         {/* Reactions Section */}
         {totalReactions > 0 && (
           <View className="px-4 py-3" ref={reactionsRef}>
             <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center flex-1">
+              <View className="flex-1 flex-row items-center">
                 <View className="flex-row">
                   {Object.entries(reactionCounts).map(([emojiCode, count]) => {
                     const emoji = getEmojiByCode(emojiCode);
@@ -317,60 +358,49 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                     return (
                       <View key={emojiCode}>
                         {emoji.url ? (
-                          <Image
-                            source={emoji.url}
-                            className="w-8 h-8"
-                            resizeMode="contain"
-                          />
+                          <Image source={emoji.url} className="h-8 w-8" resizeMode="contain" />
                         ) : isFallbackEmoji(emoji) ? (
-                          <Text className="text-sm font-medium">{emoji.fallbackText}</Text>
+                          <Text className="font-medium text-sm">{emoji.fallbackText}</Text>
                         ) : (
-                          <Text className="text-sm font-medium">👍</Text>
+                          <Text className="font-medium text-sm">👍</Text>
                         )}
                       </View>
                     );
                   })}
                 </View>
-                <Text className="text-base font-semibold text-[#757575] ml-2">
-                  {totalReactions === 1 
-                    ? (userReaction ? 'Bạn' : '1 người')
-                    : userReaction 
-                      ? `Bạn và ${totalReactions - 1} người khác` 
+                <Text className="ml-2 font-semibold text-base text-[#757575]">
+                  {totalReactions === 1
+                    ? userReaction
+                      ? 'Bạn'
+                      : '1 người'
+                    : userReaction
+                      ? `Bạn và ${totalReactions - 1} người khác`
                       : `${totalReactions} người khác`}
                 </Text>
               </View>
               {/* Reaction Button */}
               <TouchableOpacity
                 onPress={handleLikeButtonPress}
-                className="flex-row items-center px-3 py-2 rounded-full mr-5"
-                ref={likeButtonRef}
-              >
+                className="mr-5 flex-row items-center rounded-full px-3 py-2"
+                ref={likeButtonRef}>
                 {userReaction ? (
                   <>
                     {(() => {
                       const emoji = getEmojiByCode(userReaction.type);
                       if (emoji && emoji.url) {
                         return (
-                          <Image
-                            source={emoji.url}
-                            className="w-8 h-8 mr-1"
-                            resizeMode="contain"
-                          />
+                          <Image source={emoji.url} className="mr-1 h-8 w-8" resizeMode="contain" />
                         );
                       } else if (emoji && isFallbackEmoji(emoji)) {
                         return (
-                          <Text className="text-lg mr-1 font-semibold">{emoji.fallbackText}</Text>
+                          <Text className="mr-1 font-semibold text-lg">{emoji.fallbackText}</Text>
                         );
                       } else {
-                        return (
-                          <LikeSkeletonSvg width={24} height={24} />
-                        );
+                        return <LikeSkeletonSvg width={24} height={24} />;
                       }
                     })()}
-                    
-                    <GradientText style={{ fontSize: 13 }}>
-                      Thích
-                    </GradientText>
+
+                    <GradientText style={{ fontSize: 13 }}>Đã thích</GradientText>
                   </>
                 ) : (
                   <>
@@ -382,20 +412,19 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
           </View>
         )}
 
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           className="flex-1"
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 60}
-        >
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 60}>
           {/* Comments List */}
           <ScrollView className="flex-1 px-4">
             {post.comments.length === 0 ? (
               <View className="flex-1 items-center justify-center py-10">
                 <Ionicons name="chatbubble-outline" size={64} color="#D1D5DB" />
-                <Text className="mt-4 text-lg font-medium text-gray-500">
+                <Text className="mt-4 font-medium text-lg text-gray-500">
                   Chưa có bình luận nào
                 </Text>
-                <Text className="mt-2 text-gray-400 text-center px-8">
+                <Text className="mt-2 px-8 text-center text-gray-400">
                   Hãy là người đầu tiên bình luận về bài viết này
                 </Text>
               </View>
@@ -404,60 +433,105 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                 {organizedComments.map((comment) => (
                   <View key={comment._id} className="mb-6">
                     <View className="flex-row">
-                      <View className="w-10 h-10 rounded-full overflow-hidden mr-1">
-                        <Image 
-                          source={{ uri: getAvatar(comment.user) }} 
-                          className="w-full h-full"
+                      <View className="mr-1 h-10 w-10 overflow-hidden rounded-full">
+                        <Image
+                          source={{ uri: getAvatar(comment.user) }}
+                          className="h-full w-full"
                         />
                       </View>
                       <View className="flex-1">
                         <View className="rounded-2xl px-4">
-                            <View className="flex-row items-center justify-start gap-2">
-                          <Text className="font-semibold text-base text-gray-900 mb-1">
-                            {comment.user ? comment.user.fullname : 'Ẩn danh'}
-                         </Text>
-                            <Text className="text-sm text-gray-500">
+                          <View className="flex-row items-center justify-start gap-2">
+                            <Text className="mb-1 font-semibold text-base text-gray-900">
+                              {comment.user ? comment.user.fullname : 'Ẩn danh'}
+                            </Text>
+                            <Text className="mb-1 text-sm text-gray-500">
                               {formatRelativeTime(comment.createdAt)}
-                                        </Text>
-                                        </View>
+                            </Text>
+                          </View>
                           {renderCommentContent(comment.content)}
                         </View>
-                        
-                        {/* Actions và Reactions trên cùng một hàng */}
-                        <View className="flex-row items-center justify-between mt-2">
-                          {/* Bên trái: Time và Action buttons */}
-                          <View className="flex-row items-center flex-1">
-                           
-                            <TouchableOpacity 
+                        <View className="mt-2 flex-row items-center justify-between">
+                          <View className="flex-1 flex-row items-center">
+                            <TouchableOpacity
                               className="ml-4"
-                              onPress={() => handleCommentReaction(comment._id)}
-                              disabled={likingComment === comment._id}
-                            >
-                              <Text className={`text-sm font-bold ${
-                                comment.reactions.some(r => r.user?._id === user?._id) 
-                                  ? 'text-orange-500' 
-                                  : 'text-gray-600'
-                              }`}>
-                                {likingComment === comment._id ? 'Đang xử lý...' : 
-                                 comment.reactions.some(r => r.user?._id === user?._id) ? 'Đã thích' : 'Thích'}
-                              </Text>
+                              onPress={(e) => handleCommentReaction(comment._id, e)}
+                              disabled={likingComment === comment._id}>
+                              <View className="flex-row items-center">
+                                {(() => {
+                                  const myReaction = comment.reactions.find(
+                                    (r) => r.user?._id === user?._id
+                                  );
+                                  if (!myReaction) return null;
+                                  const emoji = getEmojiByCode(myReaction.type);
+                                  if (emoji && emoji.url) {
+                                    return (
+                                      <Image
+                                        source={emoji.url}
+                                        className="mr-1 h-4 w-4"
+                                        resizeMode="contain"
+                                      />
+                                    );
+                                  } else if (emoji && isFallbackEmoji(emoji)) {
+                                    return (
+                                      <Text className="mr-1 text-base">{emoji.fallbackText}</Text>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                                {(() => {
+                                  const reacted = comment.reactions.some((r: any) => {
+                                    const ids = [
+                                      r?.user?._id,
+                                      r?.user?.id,
+                                      r?.userId,
+                                      r?.user?.email,
+                                      typeof r?.user === 'string' ? r.user : undefined,
+                                    ]
+                                      .filter(Boolean)
+                                      .map((v) => String(v).toLowerCase());
+                                    const myIds = [
+                                      user?._id,
+                                      (user as any)?.id,
+                                      user?.email,
+                                      (user as any)?.username,
+                                    ]
+                                      .filter(Boolean)
+                                      .map((v) => String(v).toLowerCase());
+                                    return ids.some((id) => myIds.includes(id));
+                                  });
+                                  const label =
+                                    likingComment === comment._id
+                                      ? 'Đang xử lý...'
+                                      : reacted
+                                        ? 'Đã thích'
+                                        : 'Thích';
+                                  return (
+                                    <Text
+                                      className="font-bold text-sm"
+                                      style={{ color: reacted ? '#F05023' : '#6B7280' }}>
+                                      {label}
+                                    </Text>
+                                  );
+                                })()}
+                              </View>
                             </TouchableOpacity>
-                            
-                            <TouchableOpacity 
+
+                            <TouchableOpacity
                               className="ml-4"
-                              onPress={() => handleReplyComment(comment._id, comment.user ? comment.user.fullname : 'Ẩn danh')}
-                            >
-                              <Text className="text-sm text-gray-600 font-bold">
-                                Trả lời
-                              </Text>
+                              onPress={() =>
+                                handleReplyComment(
+                                  comment._id,
+                                  comment.user ? comment.user.fullname : 'Ẩn danh'
+                                )
+                              }>
+                              <Text className="font-bold text-sm text-gray-600">Trả lời</Text>
                             </TouchableOpacity>
                           </View>
-
-                          {/* Bên phải: Comment Reactions */}
                           {comment.reactions.length > 0 && (
                             <View className="flex-row items-center">
-                                            <View className="flex-row items-center px-2 py-1">
-                                                 <Text className="text-sm text-gray-600 mr-1">
+                              <View className="flex-row items-center px-2 py-1">
+                                <Text className="mr-1 text-sm text-gray-600">
                                   {comment.reactions.length}
                                 </Text>
                                 {getUniqueReactionTypes(comment.reactions).map((reactionType) => {
@@ -467,7 +541,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                                       {emoji.url ? (
                                         <Image
                                           source={emoji.url}
-                                          className="w-6 h-6"
+                                          className="h-6 w-6"
                                           resizeMode="contain"
                                         />
                                       ) : isFallbackEmoji(emoji) ? (
@@ -478,7 +552,6 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                                     </View>
                                   );
                                 })}
-                               
                               </View>
                             </View>
                           )}
@@ -490,49 +563,144 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                             {comment.replies.map((reply) => (
                               <View key={reply._id} className="mb-4">
                                 <View className="flex-row">
-                                  <View className="w-8 h-8 rounded-full overflow-hidden bg-gray-300 mr-3">
-                                    <Image 
-                                      source={{ uri: getAvatar(reply.user) }} 
-                                      className="w-full h-full"
+                                  <View className="mr-3 h-8 w-8 overflow-hidden rounded-full bg-gray-300">
+                                    <Image
+                                      source={{ uri: getAvatar(reply.user) }}
+                                      className="h-full w-full"
                                     />
                                   </View>
                                   <View className="flex-1">
-                                            <View>
-                                                <View className="flex-row items-center justify-start gap-2">
-                                      <Text className="font-semibold text-sm text-gray-900 mb-1">
-                                        {reply.user ? reply.user.fullname : 'Ẩn danh'}
-                                                </Text>
-                                                 <Text className="text-xs text-gray-500 font-medium">
+                                    <View>
+                                      <View className="flex-row items-center justify-start gap-2">
+                                        <Text className="mb-1 font-semibold text-sm text-gray-900">
+                                          {reply.user ? reply.user.fullname : 'Ẩn danh'}
+                                        </Text>
+                                        <Text className="mb-1 font-medium text-xs text-gray-500">
                                           {formatRelativeTime(reply.createdAt)}
-                                                    </Text>
-                                                    </View>
+                                        </Text>
+                                      </View>
                                       {renderCommentContent(reply.content)}
                                     </View>
-                                    
+
                                     {/* Actions và Reactions cho reply trên cùng một hàng */}
-                                    <View className="flex-row items-center justify-between mt-1">
+                                    <View className="mt-1 flex-row items-center justify-between">
                                       {/* Bên trái: Time và Action buttons */}
-                                      <View className="flex-row items-center flex-1">
-                                       
-                                        
-                                        <TouchableOpacity 
+                                      <View className="flex-1 flex-row items-center">
+                                        <TouchableOpacity
                                           className="ml-1"
-                                          onPress={() => handleCommentReaction(reply._id)}
-                                        >
-                                          <Text className={`text-xs font-medium ${
-                                            reply.reactions.some(r => r.user?._id === user?._id) 
-                                              ? 'text-orange-500' 
-                                              : 'text-gray-600'
-                                          }`}>
-                                            {reply.reactions.some(r => r.user?._id === user?._id) ? 'Đã thích' : 'Thích'}
-                                          </Text>
+                                          onPress={(e) => handleCommentReaction(reply._id, e)}>
+                                          <View className="flex-row items-center">
+                                            {(() => {
+                                              const myReaction = reply.reactions.find(
+                                                (r) => r.user?._id === user?._id
+                                              );
+                                              if (!myReaction) return null;
+                                              const emoji = getEmojiByCode(myReaction.type);
+                                              if (emoji && emoji.url) {
+                                                return (
+                                                  <Image
+                                                    source={emoji.url}
+                                                    className="mr-1 h-4 w-4"
+                                                    resizeMode="contain"
+                                                  />
+                                                );
+                                              } else if (emoji && isFallbackEmoji(emoji)) {
+                                                return (
+                                                  <Text className="mr-1 text-xs">
+                                                    {emoji.fallbackText}
+                                                  </Text>
+                                                );
+                                              }
+                                              return null;
+                                            })()}
+                                            <Text
+                                              className={`font-medium text-xs ${
+                                                reply.reactions.some((r: any) => {
+                                                  const ids = [
+                                                    r?.user?._id,
+                                                    r?.user?.id,
+                                                    r?.userId,
+                                                    r?.user?.email,
+                                                    typeof r?.user === 'string'
+                                                      ? r.user
+                                                      : undefined,
+                                                  ]
+                                                    .filter(Boolean)
+                                                    .map((v) => String(v).toLowerCase());
+                                                  const myIds = [
+                                                    user?._id,
+                                                    (user as any)?.id,
+                                                    user?.email,
+                                                    (user as any)?.username,
+                                                  ]
+                                                    .filter(Boolean)
+                                                    .map((v) => String(v).toLowerCase());
+                                                  return ids.some((id) => myIds.includes(id));
+                                                })
+                                                  ? 'text-orange-500'
+                                                  : 'text-gray-600'
+                                              }`}
+                                              style={{
+                                                color: reply.reactions.some((r: any) => {
+                                                  const ids = [
+                                                    r?.user?._id,
+                                                    r?.user?.id,
+                                                    r?.userId,
+                                                    r?.user?.email,
+                                                    typeof r?.user === 'string'
+                                                      ? r.user
+                                                      : undefined,
+                                                  ]
+                                                    .filter(Boolean)
+                                                    .map((v) => String(v).toLowerCase());
+                                                  const myIds = [
+                                                    user?._id,
+                                                    (user as any)?.id,
+                                                    user?.email,
+                                                    (user as any)?.username,
+                                                  ]
+                                                    .filter(Boolean)
+                                                    .map((v) => String(v).toLowerCase());
+                                                  return ids.some((id) => myIds.includes(id));
+                                                })
+                                                  ? '#F05023'
+                                                  : '#6B7280',
+                                              }}>
+                                              {reply.reactions.some((r: any) => {
+                                                const ids = [
+                                                  r?.user?._id,
+                                                  r?.user?.id,
+                                                  r?.userId,
+                                                  r?.user?.email,
+                                                  typeof r?.user === 'string' ? r.user : undefined,
+                                                ]
+                                                  .filter(Boolean)
+                                                  .map((v) => String(v).toLowerCase());
+                                                const myIds = [
+                                                  user?._id,
+                                                  (user as any)?.id,
+                                                  user?.email,
+                                                  (user as any)?.username,
+                                                ]
+                                                  .filter(Boolean)
+                                                  .map((v) => String(v).toLowerCase());
+                                                return ids.some((id) => myIds.includes(id));
+                                              })
+                                                ? 'Đã thích'
+                                                : 'Thích'}
+                                            </Text>
+                                          </View>
                                         </TouchableOpacity>
-                                        
-                                        <TouchableOpacity 
+
+                                        <TouchableOpacity
                                           className="ml-3"
-                                          onPress={() => handleReplyComment(comment._id, reply.user?._id)}
-                                        >
-                                          <Text className="text-xs text-gray-600 font-medium">
+                                          onPress={() =>
+                                            handleReplyComment(
+                                              reply._id,
+                                              reply.user ? reply.user.fullname : 'Ẩn danh'
+                                            )
+                                          }>
+                                          <Text className="font-medium text-xs text-gray-600">
                                             Trả lời
                                           </Text>
                                         </TouchableOpacity>
@@ -541,29 +709,32 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                                       {/* Bên phải: Reply Reactions */}
                                       {reply.reactions.length > 0 && (
                                         <View className="flex-row items-center">
-                                                        <View className="flex-row items-center ">
-                                                            <Text className="text-sm text-gray-600 mr-1">
+                                          <View className="flex-row items-center ">
+                                            <Text className="mr-1 text-sm text-gray-600">
                                               {reply.reactions.length}
                                             </Text>
-                                            {getUniqueReactionTypes(reply.reactions).map((reactionType) => {
-                                              const emoji = getEmojiByCode(reactionType);
-                                              return (
-                                                <View key={reactionType} className="mr-1">
-                                                  {emoji.url ? (
-                                                    <Image
-                                                      source={emoji.url}
-                                                      className="w-6 h-6"
-                                                      resizeMode="contain"
-                                                    />
-                                                  ) : isFallbackEmoji(emoji) ? (
-                                                    <Text className="text-sm">{emoji.fallbackText}</Text>
-                                                  ) : (
-                                                    <Text className="text-sm">👍</Text>
-                                                  )}
-                                                </View>
-                                              );
-                                            })}
-                                            
+                                            {getUniqueReactionTypes(reply.reactions).map(
+                                              (reactionType) => {
+                                                const emoji = getEmojiByCode(reactionType);
+                                                return (
+                                                  <View key={reactionType} className="mr-1">
+                                                    {emoji.url ? (
+                                                      <Image
+                                                        source={emoji.url}
+                                                        className="h-6 w-6"
+                                                        resizeMode="contain"
+                                                      />
+                                                    ) : isFallbackEmoji(emoji) ? (
+                                                      <Text className="text-sm">
+                                                        {emoji.fallbackText}
+                                                      </Text>
+                                                    ) : (
+                                                      <Text className="text-sm">👍</Text>
+                                                    )}
+                                                  </View>
+                                                );
+                                              }
+                                            )}
                                           </View>
                                         </View>
                                       )}
@@ -583,21 +754,22 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
           </ScrollView>
 
           {/* Comment Input */}
-          <View className="px-4 py-3 border-t border-gray-200 bg-white">
+          <View className="border-t border-gray-200 bg-white px-4 py-3">
             {/* Reply indicator */}
             {replyingTo && (
-              <View className="flex-row items-center justify-between mb-2 p-2 bg-gray-50 rounded-lg">
+              <View className="mb-2 flex-row items-center justify-between rounded-lg bg-gray-50 p-2">
                 <View className="flex-1">
                   <Text className="text-sm text-gray-600">
                     Đang trả lời{' '}
                     <Text className="font-semibold text-gray-800">
                       {(() => {
-                        const replyTarget = organizedComments.find(c => c._id === replyingTo);
-                        if (replyTarget) return replyTarget.user ? replyTarget.user.fullname : 'Ẩn danh';
-                        
+                        const replyTarget = organizedComments.find((c) => c._id === replyingTo);
+                        if (replyTarget)
+                          return replyTarget.user ? replyTarget.user.fullname : 'Ẩn danh';
+
                         // Tìm trong replies nếu không tìm thấy trong main comments
                         for (const comment of organizedComments) {
-                          const reply = comment.replies?.find(r => r._id === replyingTo);
+                          const reply = comment.replies?.find((r) => r._id === replyingTo);
                           if (reply) return reply.user ? reply.user.fullname : 'Ẩn danh';
                         }
                         return 'comment';
@@ -610,15 +782,12 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                 </TouchableOpacity>
               </View>
             )}
-            
+
             <View className="flex-row items-center">
-              <View className="w-10 h-10 rounded-full overflow-hidden bg-gray-300 mr-3">
-                <Image 
-                  source={{ uri: getAvatar(user) }} 
-                  className="w-full h-full"
-                />
+              <View className="mr-3 h-10 w-10 overflow-hidden rounded-full bg-gray-300">
+                <Image source={{ uri: getAvatar(user) }} className="h-full w-full" />
               </View>
-              <View className="flex-1 flex-row items-center bg-gray-100 rounded-full px-4 py-3">
+              <View className="flex-1 flex-row items-center rounded-full bg-gray-100 px-4 py-3">
                 <TextInput
                   className="flex-1 text-base"
                   placeholder="Nhập tin nhắn..."
@@ -627,12 +796,12 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                   onChangeText={setCommentText}
                   multiline
                   textAlignVertical="center"
-                  style={{ 
+                  style={{
                     minHeight: 24,
                     maxHeight: 100,
                     textAlign: 'left',
                     paddingTop: 0,
-                    paddingBottom: 0
+                    paddingBottom: 0,
                   }}
                 />
                 <TouchableOpacity
@@ -640,8 +809,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
                   disabled={!commentText.trim() || loading}
                   className={`ml-2 p-1 ${
                     commentText.trim() && !loading ? 'opacity-100' : 'opacity-50'
-                  }`}
-                >
+                  }`}>
                   {loading ? (
                     <ActivityIndicator size="small" color="#FF7A00" />
                   ) : (
@@ -666,11 +834,13 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
       <EmojiReactionModal
         visible={commentReactionModalVisible}
         onClose={() => setCommentReactionModalVisible(false)}
-        onEmojiSelect={(emojiCode) => selectedCommentId && handleCommentReactionSelect(selectedCommentId, emojiCode)}
-        position={undefined}
+        onEmojiSelect={(emojiCode) =>
+          selectedCommentId && handleCommentReactionSelect(selectedCommentId, emojiCode)
+        }
+        position={reactionButtonPosition}
       />
     </Modal>
   );
 };
 
-export default CommentsModal; 
+export default CommentsModal;

@@ -17,7 +17,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { getAvatar } from '../../utils/avatar';
-import { API_BASE_URL } from '../../config/constants.js';
+import { BASE_URL } from '../../config/constants.js';
 import { useOnlineStatus } from '../../context/OnlineStatusContext';
 import { User } from '../../navigation/AppNavigator';
 
@@ -60,17 +60,22 @@ const ChatInfoScreen: React.FC<ChatInfoScreenProps> = () => {
         return;
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/users/${chatPartner._id}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await fetch(
+        `${BASE_URL}/api/method/erp.api.erp_common_user.user_management.get_user_by_id?user_email=${chatPartner._id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
       if (response.ok) {
         const contentType = response.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
-          const userData = await response.json();
+          const data = await response.json();
+          // Chat service returns normalized user directly
+          const userData = data;
           console.log('✅ Fetched full user info:', userData);
           setFullUserInfo(userData);
         } else {

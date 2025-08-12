@@ -1,7 +1,7 @@
 import React, { useMemo, useCallback, memo } from 'react';
 import { View, Text, TouchableOpacity, Image, FlatList } from 'react-native';
 import { CustomEmoji } from '../../hooks/useEmojis';
-import { API_BASE_URL } from '../../config/constants';
+import { BASE_URL } from '../../config/constants';
 
 interface EmojiPickerProps {
     customEmojis: CustomEmoji[];

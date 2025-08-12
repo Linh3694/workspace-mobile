@@ -30,7 +30,6 @@ class PushNotificationService {
   private onAttendanceNotification?: (data: PushNotificationData) => void;
 
   constructor() {
-    // Set default notification handler
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,

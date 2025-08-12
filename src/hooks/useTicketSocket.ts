@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import io, { Socket } from 'socket.io-client';
+import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BASE_URL } from '../config/constants';
+import { CHAT_SOCKET_URL, CHAT_SOCKET_PATH } from '../config/constants';
 
 interface Message {
   _id: string;
@@ -89,7 +89,8 @@ export const useTicketSocket = ({
 
         console.log(`🔄 Connecting to socket (attempt ${retryCount + 1})`);
 
-        const socket = io(BASE_URL, {
+        const socket = io(CHAT_SOCKET_URL, {
+          path: CHAT_SOCKET_PATH,
           query: { token },
           transports: ['websocket'],
           timeout: 10000,

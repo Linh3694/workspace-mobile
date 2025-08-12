@@ -28,12 +28,19 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 // Helper function to normalize user data from different API responses
 const normalizeUserData = (userData: any, defaultProvider = 'local') => {
+  const roles: string[] = Array.isArray(userData.roles)
+    ? userData.roles
+    : Array.isArray(userData.user_roles)
+      ? userData.user_roles
+      : [];
+
   return {
-    _id: userData._id || userData.id || userData.email,
+    _id: userData._id || userData.id || userData.email || userData.name,
     email: userData.email,
     fullname: userData.fullname || userData.full_name || userData.username || userData.email,
     username: userData.username || userData.email,
     role: userData.role || userData.user_role || 'user',
+    roles,
     jobTitle: userData.jobTitle || userData.job_title || '',
     department: userData.department || '',
     avatar:
@@ -55,7 +62,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // --- Avatar cache-bust helpers ---
   const getAvatarBustKey = (identifier?: string) => `avatarCacheBust:${identifier || ''}`;
 
-  const attachAvatarCacheBust = async (rawUser: any) => {
+  const attachAvatarCacheBust = useCallback(async (rawUser: any) => {
     try {
       const identifier = rawUser?._id || rawUser?.email || '';
       const stored = await AsyncStorage.getItem(getAvatarBustKey(identifier));
@@ -64,7 +71,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     } catch {
       return rawUser;
     }
-  };
+  }, []);
 
   const bumpAvatarCacheBust = async () => {
     try {
@@ -78,6 +85,68 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.warn('[Auth] bumpAvatarCacheBust failed', e);
     }
   };
+
+  // Đồng bộ user data mới nhất từ Frappe (bao gồm roles)
+  const refreshUserData = useCallback(async () => {
+    try {
+      console.log('=== Refreshing User Data ===');
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token) return;
+
+      const resp = await fetch(
+        `${getApiBaseUrl()}/api/method/erp.api.erp_common_user.auth.get_current_user`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!resp.ok) {
+        console.warn('refreshUserData failed with status:', resp.status);
+        return;
+      }
+
+      const data = await resp.json();
+      if (data && data.status === 'success' && data.user) {
+        const userData = data.user;
+        console.log('[Auth][refreshUserData] raw avatar fields:', {
+          avatar_url: userData.avatar_url,
+          user_image: userData.user_image,
+          avatar: userData.avatar,
+          avatarUrl: userData.avatarUrl,
+        });
+        let normalized = normalizeUserData(userData, user?.provider || 'local');
+
+        // Thử lấy URL avatar mới nhất từ endpoint chuyên dụng (tránh cache tầng CDN)
+        try {
+          const avatarResp = await userService.getAvatarUrl(userData.email);
+          if (avatarResp.success && avatarResp.avatar_url) {
+            normalized.avatar = avatarResp.avatar_url;
+          }
+        } catch (e) {
+          console.warn('[refreshUserData] getAvatarUrl failed', e);
+        }
+
+        normalized = await attachAvatarCacheBust(normalized);
+        console.log('[Auth][refreshUserData] normalized.avatar:', normalized.avatar);
+        setUser(normalized);
+        await AsyncStorage.setItem('user', JSON.stringify(normalized));
+        await AsyncStorage.setItem('userId', normalized._id);
+        await AsyncStorage.setItem('userFullname', normalized.fullname);
+        await AsyncStorage.setItem('userJobTitle', normalized.jobTitle || 'N/A');
+        await AsyncStorage.setItem('userDepartment', normalized.department || '');
+        await AsyncStorage.setItem('userRole', normalized.role || 'user');
+        await AsyncStorage.setItem('userRoles', JSON.stringify(normalized.roles || []));
+        await AsyncStorage.setItem('userEmployeeCode', normalized.employeeCode || '');
+        await AsyncStorage.setItem('userAvatarUrl', normalized.avatar || '');
+      }
+    } catch (error) {
+      console.error('Lỗi khi lấy thông tin người dùng:', error);
+    }
+  }, [user?.provider, attachAvatarCacheBust]);
 
   // Đăng xuất - wrapped in useCallback để ổn định dependency cho các hook khác
   const logout = useCallback(async () => {
@@ -106,6 +175,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       await AsyncStorage.removeItem('userRole');
       await AsyncStorage.removeItem('userEmployeeCode');
       await AsyncStorage.removeItem('userAvatarUrl');
+      await AsyncStorage.removeItem('userRoles');
       setUser(null);
     } catch (error) {
       console.error('Lỗi khi đăng xuất:', error);
@@ -271,6 +341,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               await AsyncStorage.setItem('userRole', normalizedUser.role);
               await AsyncStorage.setItem('userEmployeeCode', normalizedUser.employeeCode);
               await AsyncStorage.setItem('userAvatarUrl', normalizedUser.avatar);
+              await AsyncStorage.setItem('userRoles', JSON.stringify(normalizedUser.roles || []));
 
               // Initialize push notifications after successful authentication
               try {
@@ -319,6 +390,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             await AsyncStorage.setItem('userRole', normalizedUser.role);
             await AsyncStorage.setItem('userEmployeeCode', normalizedUser.employeeCode);
             await AsyncStorage.setItem('userAvatarUrl', normalizedUser.avatar);
+            await AsyncStorage.setItem('userRoles', JSON.stringify(normalizedUser.roles || []));
 
             // Initialize push notifications after successful authentication
             try {
@@ -355,7 +427,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     setLoading(false);
     return false;
-  }, [logout]);
+  }, [logout, attachAvatarCacheBust, refreshUserData]);
 
   // Gọi checkAuth sau khi định nghĩa để tránh lỗi dùng trước khi khai báo
   useEffect(() => {
@@ -383,6 +455,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         );
         const role = userData.role || userData.user_role || 'user';
         await AsyncStorage.setItem('userRole', role);
+        const roles = Array.isArray(userData.roles)
+          ? userData.roles
+          : Array.isArray(userData.user_roles)
+            ? userData.user_roles
+            : [];
+        await AsyncStorage.setItem('userRoles', JSON.stringify(roles));
         await AsyncStorage.setItem(
           'userAvatarUrl',
           userData.avatarUrl || userData.user_image || ''
@@ -429,6 +507,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       // Set normalized user state
       setUser(normalizedUser);
+      // Ensure roles are stored for module access control
+      try {
+        await AsyncStorage.setItem('userRoles', JSON.stringify(normalizedUser.roles || []));
+      } catch (e) {
+        console.warn('[loginWithMicrosoft] Failed to store userRoles', e);
+      }
 
       // Initialize push notifications after successful Microsoft login
       try {
@@ -462,66 +546,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.log('Đã xóa thông tin đăng nhập FaceID/TouchID');
     } catch (error) {
       console.error('Lỗi khi xóa thông tin đăng nhập FaceID/TouchID:', error);
-    }
-  };
-
-  const refreshUserData = async () => {
-    try {
-      console.log('=== Refreshing User Data ===');
-      const token = await AsyncStorage.getItem('authToken');
-      if (!token) return;
-
-      const resp = await fetch(
-        `${getApiBaseUrl()}/api/method/erp.api.erp_common_user.auth.get_current_user`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      if (!resp.ok) {
-        console.warn('refreshUserData failed with status:', resp.status);
-        return;
-      }
-
-      const data = await resp.json();
-      if (data && data.status === 'success' && data.user) {
-        const userData = data.user;
-        console.log('[Auth][refreshUserData] raw avatar fields:', {
-          avatar_url: userData.avatar_url,
-          user_image: userData.user_image,
-          avatar: userData.avatar,
-          avatarUrl: userData.avatarUrl,
-        });
-        let normalized = normalizeUserData(userData, user?.provider || 'local');
-
-        // Thử lấy URL avatar mới nhất từ endpoint chuyên dụng (tránh cache tầng CDN)
-        try {
-          const avatarResp = await userService.getAvatarUrl(userData.email);
-          if (avatarResp.success && avatarResp.avatar_url) {
-            normalized.avatar = avatarResp.avatar_url;
-          }
-        } catch (e) {
-          console.warn('[refreshUserData] getAvatarUrl failed', e);
-        }
-
-        normalized = await attachAvatarCacheBust(normalized);
-        console.log('[Auth][refreshUserData] normalized.avatar:', normalized.avatar);
-        setUser(normalized);
-        await AsyncStorage.setItem('user', JSON.stringify(normalized));
-        await AsyncStorage.setItem('userId', normalized._id);
-        await AsyncStorage.setItem('userFullname', normalized.fullname);
-        await AsyncStorage.setItem('userJobTitle', normalized.jobTitle || 'N/A');
-        await AsyncStorage.setItem('userDepartment', normalized.department || '');
-        await AsyncStorage.setItem('userRole', normalized.role || 'user');
-        await AsyncStorage.setItem('userEmployeeCode', normalized.employeeCode || '');
-        await AsyncStorage.setItem('userAvatarUrl', normalized.avatar || '');
-      }
-    } catch (error) {
-      console.error('Lỗi khi lấy thông tin người dùng:', error);
     }
   };
 

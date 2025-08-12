@@ -24,208 +24,211 @@ import ChatInfoScreen from '../screens/Chat/ChatInfoScreen';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export type User = {
-    _id: string;
-    email: string;
-    fullname: string;
-    avatarUrl?: string;
-    role?: string;
-    lastSeen?: number;
-    isOnline?: boolean;
-    employeeCode?: string;
-    department?: string;
-    phone?: string;
+  _id: string;
+  email: string;
+  fullname: string;
+  avatarUrl?: string;
+  role?: string;
+  lastSeen?: number;
+  isOnline?: boolean;
+  employeeCode?: string;
+  department?: string;
+  phone?: string;
 };
 
 export type RootStackParamList = {
-    [ROUTES.SCREENS.WELCOME]: undefined;
-    [ROUTES.SCREENS.LOGIN]: undefined;
-    [ROUTES.SCREENS.MAIN]: {
-        screen?: string;
-        params?: {
-            forwardMode?: boolean;
-            ticketId?: string;
-        }
+  [ROUTES.SCREENS.WELCOME]: undefined;
+  [ROUTES.SCREENS.LOGIN]: undefined;
+  [ROUTES.SCREENS.MAIN]: {
+    screen?: string;
+    params?: {
+      forwardMode?: boolean;
+      ticketId?: string;
     };
-    [ROUTES.SCREENS.CHAT_DETAIL]: { user: User; chatId?: string };
-    [ROUTES.SCREENS.CHAT_INIT]: { chatId: string; senderId: string };
-    [ROUTES.SCREENS.CHAT_INFO]: { user: User; chatId?: string };
-    [ROUTES.SCREENS.CREATE_GROUP]: { preSelectedUsers?: User[] } | undefined;
-    [ROUTES.SCREENS.GROUP_CHAT_DETAIL]: { chat: any };
-    [ROUTES.SCREENS.GROUP_INFO]: { groupInfo: any };
-    [ROUTES.SCREENS.TICKET_DETAIL]: { ticketId: string };
-    [ROUTES.SCREENS.TICKET_CREATE]: undefined;
-    [ROUTES.SCREENS.TICKET_ADMIN_DETAIL]: { ticketId: string };
-    [ROUTES.SCREENS.TICKET_GUEST_DETAIL]: { ticketId: string };
-    [ROUTES.SCREENS.TICKET]: undefined;
-    [ROUTES.SCREENS.TICKET_ADMIN]: undefined;
-    [ROUTES.SCREENS.TICKET_GUEST]: undefined;
-    [ROUTES.SCREENS.DEVICES]: { refresh?: boolean } | undefined;
-    [ROUTES.SCREENS.DEVICE_DETAIL]: { deviceId: string; deviceType: 'laptop' | 'monitor' | 'printer' | 'projector' | 'tool' };
-    [ROUTES.SCREENS.DEVICE_ASSIGNMENT_HISTORY]: { deviceId: string; deviceType: 'laptop' | 'monitor' | 'printer' | 'projector' | 'tool'; deviceName: string };
+  };
+  [ROUTES.SCREENS.CHAT_DETAIL]: { user: User; chatId?: string };
+  [ROUTES.SCREENS.CHAT_INIT]: { chatId: string; senderId: string };
+  [ROUTES.SCREENS.CHAT_INFO]: { user: User; chatId?: string };
+  [ROUTES.SCREENS.CREATE_GROUP]: { preSelectedUsers?: User[] } | undefined;
+  [ROUTES.SCREENS.GROUP_CHAT_DETAIL]: { chat: any };
+  [ROUTES.SCREENS.GROUP_INFO]: { groupInfo: any };
+  [ROUTES.SCREENS.TICKET_DETAIL]: { ticketId: string };
+  [ROUTES.SCREENS.TICKET_CREATE]: undefined;
+  [ROUTES.SCREENS.TICKET_ADMIN_DETAIL]: { ticketId: string };
+  [ROUTES.SCREENS.TICKET_GUEST_DETAIL]: { ticketId: string };
+  [ROUTES.SCREENS.TICKET]: undefined;
+  [ROUTES.SCREENS.TICKET_ADMIN]: undefined;
+  [ROUTES.SCREENS.TICKET_GUEST]: undefined;
+  [ROUTES.SCREENS.DEVICES]: { refresh?: boolean } | undefined;
+  [ROUTES.SCREENS.DEVICE_DETAIL]: {
+    deviceId: string;
+    deviceType: 'laptop' | 'monitor' | 'printer' | 'projector' | 'tool';
+  };
+  [ROUTES.SCREENS.DEVICE_ASSIGNMENT_HISTORY]: {
+    deviceId: string;
+    deviceType: 'laptop' | 'monitor' | 'printer' | 'projector' | 'tool';
+    deviceName: string;
+  };
 };
 
 const MainTabWrapper = ({ route }: { route: any }) => <BottomTabNavigator route={route} />;
 
 const AppNavigator = () => {
-    const [ticketComponent, setTicketComponent] = useState(() => TicketGuestScreen);
-    const { isAuthenticated, loading } = useAuth();
+  const [ticketComponent, setTicketComponent] = useState(() => TicketGuestScreen);
+  const { isAuthenticated, loading } = useAuth();
 
-    useEffect(() => {
-        const checkUserRole = async () => {
-            try {
-                // Kiểm tra trực tiếp từ AsyncStorage
-                const storedRole = await AsyncStorage.getItem('userRole');
-                console.log('AppNavigator - UserRole from AsyncStorage:', storedRole);
-                
-                const userData = await AsyncStorage.getItem('user');
-                if (userData) {
-                    const user = JSON.parse(userData);
-                    const role = (user.role || '').toLowerCase().trim();
-                    console.log('AppNavigator - Current user role from user object:', role);
-                    
-                    // Kiểm tra cụ thể cho user
-                    if (role === 'user' || storedRole === 'user') {
-                        console.log('Người dùng có vai trò USER -> setTicketComponent to TicketGuestScreen');
-                        setTicketComponent(() => TicketGuestScreen);
-                        return;
-                    }
+  useEffect(() => {
+    const checkUserRole = async () => {
+      try {
+        const storedRole = (await AsyncStorage.getItem('userRole'))?.toLowerCase().trim();
+        const storedRolesStr = await AsyncStorage.getItem('userRoles');
+        const storedRoles: string[] = storedRolesStr ? JSON.parse(storedRolesStr) : [];
+        console.log('AppNavigator - userRole:', storedRole, 'userRoles:', storedRoles);
 
-                    // Phân quyền: superadmin, admin, technical -> TicketAdminScreen
-                    if (['superadmin', 'admin', 'technical'].includes(role)) {
-                        console.log('Người dùng có vai trò', role, '-> điều hướng đến TicketAdminScreen');
-                        setTicketComponent(() => TicketAdminScreen);
-                    } else {
-                        console.log('Người dùng có vai trò không xác định:', role, '-> điều hướng đến TicketGuestScreen');
-                        setTicketComponent(() => TicketGuestScreen);
-                    }
-                } else {
-                    console.log('Không tìm thấy thông tin người dùng, mặc định điều hướng đến TicketGuestScreen');
-                    setTicketComponent(() => TicketGuestScreen);
-                }
-            } catch (error) {
-                console.error('Lỗi khi kiểm tra role:', error);
-                setTicketComponent(() => TicketGuestScreen);
-            }
-        };
+        const userData = await AsyncStorage.getItem('user');
+        if (userData) {
+          const user = JSON.parse(userData);
+          const role = (user.role || storedRole || '').toLowerCase().trim();
+          const roles = Array.isArray(user.roles) ? user.roles : storedRoles;
 
-        if (isAuthenticated) {
-            checkUserRole();
+          // Nếu user có bất kỳ role admin nào trong frappe -> admin ticket
+          const adminRoles = [
+            'System Manager',
+            'Administrator',
+            'IT Support',
+            'Helpdesk',
+            'Admin',
+            'Technical',
+          ];
+          const hasAdminRole =
+            roles.some((r: string) => adminRoles.includes(r)) ||
+            ['superadmin', 'admin', 'technical'].includes(role);
+
+          if (hasAdminRole) {
+            setTicketComponent(() => TicketAdminScreen);
+          } else {
+            setTicketComponent(() => TicketGuestScreen);
+          }
+        } else {
+          setTicketComponent(() => TicketGuestScreen);
         }
-    }, [isAuthenticated]);
+      } catch (error) {
+        console.error('Lỗi khi kiểm tra role:', error);
+        setTicketComponent(() => TicketGuestScreen);
+      }
+    };
 
-    if (loading) {
-        // Có thể thêm màn hình loading ở đây
-        return null;
+    if (isAuthenticated) {
+      checkUserRole();
     }
+  }, [isAuthenticated]);
 
-    return (
-            <Stack.Navigator
-                key="AppStackNavigator"
-                id={undefined}
-                screenOptions={{
-                    headerShown: false,
-                    animation: 'slide_from_right',
-                }}
-            >
-                {!isAuthenticated ? (
-                    // Auth Stack
-                    <>
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.WELCOME}
-                            component={WelcomeScreen}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.LOGIN}
-                            component={LoginScreen}
-                        />
-                    </>
-                ) : (
-                    // App Stack
-                    <>
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.MAIN}
-                            component={MainTabWrapper}
-                            initialParams={{ screen: 'Home' }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.TICKET}
-                            component={ticketComponent}
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.CHAT_DETAIL}
-                            component={ChatDetailScreen}
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.CHAT_INFO}
-                            component={ChatInfoScreen}
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.CREATE_GROUP}
-                            component={CreateGroupScreen}
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.GROUP_CHAT_DETAIL}
-                            component={GroupChatDetailScreen}
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.GROUP_INFO}
-                            component={GroupInfoScreen}
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.CHAT_INIT}
-                            component={ChatInitScreen}
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.TICKET_CREATE}
-                            component={TicketCreate}
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.TICKET_ADMIN_DETAIL}
-                            component={TicketAdminDetail}
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.TICKET_GUEST_DETAIL}
-                            component={TicketGuestDetail}
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.TICKET_ADMIN}
-                            component={TicketAdminScreen}
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.TICKET_GUEST}
-                            component={TicketGuestScreen}
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.DEVICES}
-                            component={DevicesScreen}
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.DEVICE_DETAIL}
-                            component={DevicesDetailScreen}
-                            options={{ headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name={ROUTES.SCREENS.DEVICE_ASSIGNMENT_HISTORY}
-                            component={DeviceAssignmentHistoryScreen}
-                            options={{ headerShown: false }}
-                        />
-                    </>
-                )}
-            </Stack.Navigator>
-    );
+  if (loading) {
+    // Có thể thêm màn hình loading ở đây
+    return null;
+  }
+
+  return (
+    <Stack.Navigator
+      key="AppStackNavigator"
+      id={undefined}
+      screenOptions={{
+        headerShown: false,
+        animation: 'slide_from_right',
+      }}>
+      {!isAuthenticated ? (
+        // Auth Stack
+        <>
+          <Stack.Screen name={ROUTES.SCREENS.WELCOME} component={WelcomeScreen} />
+          <Stack.Screen name={ROUTES.SCREENS.LOGIN} component={LoginScreen} />
+        </>
+      ) : (
+        // App Stack
+        <>
+          <Stack.Screen
+            name={ROUTES.SCREENS.MAIN}
+            component={MainTabWrapper}
+            initialParams={{ screen: 'Home' }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.TICKET}
+            component={ticketComponent}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.CHAT_DETAIL}
+            component={ChatDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.CHAT_INFO}
+            component={ChatInfoScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.CREATE_GROUP}
+            component={CreateGroupScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.GROUP_CHAT_DETAIL}
+            component={GroupChatDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.GROUP_INFO}
+            component={GroupInfoScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.CHAT_INIT}
+            component={ChatInitScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.TICKET_CREATE}
+            component={TicketCreate}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.TICKET_ADMIN_DETAIL}
+            component={TicketAdminDetail}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.TICKET_GUEST_DETAIL}
+            component={TicketGuestDetail}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.TICKET_ADMIN}
+            component={TicketAdminScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.TICKET_GUEST}
+            component={TicketGuestScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.DEVICES}
+            component={DevicesScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.DEVICE_DETAIL}
+            component={DevicesDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.DEVICE_ASSIGNMENT_HISTORY}
+            component={DeviceAssignmentHistoryScreen}
+            options={{ headerShown: false }}
+          />
+        </>
+      )}
+    </Stack.Navigator>
+  );
 };
 
 export default AppNavigator;

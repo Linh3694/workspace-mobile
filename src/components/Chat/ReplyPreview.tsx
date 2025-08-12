@@ -4,7 +4,7 @@ import { View, Text, Image, TouchableOpacity } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { Message } from '../../types/message';
-import { API_BASE_URL } from '../../config/constants';
+import { BASE_URL } from '../../config/constants';
 import { processImageUrl } from '../../utils/image';
 import MessageContent from './MessageContent';
 

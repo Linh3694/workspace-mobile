@@ -1,20 +1,35 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config/constants.js';
-import { Device, DeviceType, DevicesResponse, DeviceFilter, Laptop, Monitor, Printer, Projector, Tool } from '../types/devices';
+import {
+  Device,
+  DeviceType,
+  DevicesResponse,
+  DeviceFilter,
+  Laptop,
+  Monitor,
+  Printer,
+  Projector,
+  Tool,
+} from '../types/devices';
 
 class DeviceService {
   private async getAuthHeaders() {
     const token = await AsyncStorage.getItem('authToken');
     return {
-      'Authorization': `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     };
   }
 
   // Get laptops with pagination
-  async getLaptops(page: number = 1, limit: number = 20): Promise<{ devices: Laptop[], pagination: any }> {
+  async getLaptops(
+    page: number = 1,
+    limit: number = 20
+  ): Promise<{ devices: Laptop[]; pagination: any }> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/api/laptops?page=${page}&limit=${limit}`, { headers });
+    const response = await fetch(`${API_BASE_URL}/api/laptops?page=${page}&limit=${limit}`, {
+      headers,
+    });
 
     if (!response.ok) {
       throw new Error('Failed to fetch laptops');
@@ -23,14 +38,19 @@ class DeviceService {
     const data = await response.json();
     return {
       devices: data.populatedLaptops || [],
-      pagination: data.pagination || {}
+      pagination: data.pagination || {},
     };
   }
 
   // Get monitors with pagination
-  async getMonitors(page: number = 1, limit: number = 20): Promise<{ devices: Monitor[], pagination: any }> {
+  async getMonitors(
+    page: number = 1,
+    limit: number = 20
+  ): Promise<{ devices: Monitor[]; pagination: any }> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/api/monitors?page=${page}&limit=${limit}`, { headers });
+    const response = await fetch(`${API_BASE_URL}/api/monitors?page=${page}&limit=${limit}`, {
+      headers,
+    });
 
     if (!response.ok) {
       throw new Error('Failed to fetch monitors');
@@ -39,14 +59,19 @@ class DeviceService {
     const data = await response.json();
     return {
       devices: data.populatedMonitors || [],
-      pagination: data.pagination || {}
+      pagination: data.pagination || {},
     };
   }
 
   // Get printers with pagination
-  async getPrinters(page: number = 1, limit: number = 20): Promise<{ devices: Printer[], pagination: any }> {
+  async getPrinters(
+    page: number = 1,
+    limit: number = 20
+  ): Promise<{ devices: Printer[]; pagination: any }> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/api/printers?page=${page}&limit=${limit}`, { headers });
+    const response = await fetch(`${API_BASE_URL}/api/printers?page=${page}&limit=${limit}`, {
+      headers,
+    });
 
     if (!response.ok) {
       throw new Error('Failed to fetch printers');
@@ -55,14 +80,19 @@ class DeviceService {
     const data = await response.json();
     return {
       devices: data.populatedPrinters || [],
-      pagination: data.pagination || {}
+      pagination: data.pagination || {},
     };
   }
 
   // Get projectors with pagination
-  async getProjectors(page: number = 1, limit: number = 20): Promise<{ devices: Projector[], pagination: any }> {
+  async getProjectors(
+    page: number = 1,
+    limit: number = 20
+  ): Promise<{ devices: Projector[]; pagination: any }> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/api/projectors?page=${page}&limit=${limit}`, { headers });
+    const response = await fetch(`${API_BASE_URL}/api/projectors?page=${page}&limit=${limit}`, {
+      headers,
+    });
 
     if (!response.ok) {
       throw new Error('Failed to fetch projectors');
@@ -71,14 +101,19 @@ class DeviceService {
     const data = await response.json();
     return {
       devices: data.populatedProjectors || [],
-      pagination: data.pagination || {}
+      pagination: data.pagination || {},
     };
   }
 
   // Get tools with pagination
-  async getTools(page: number = 1, limit: number = 20): Promise<{ devices: Tool[], pagination: any }> {
+  async getTools(
+    page: number = 1,
+    limit: number = 20
+  ): Promise<{ devices: Tool[]; pagination: any }> {
     const headers = await this.getAuthHeaders();
-    const response = await fetch(`${API_BASE_URL}/api/tools?page=${page}&limit=${limit}`, { headers });
+    const response = await fetch(`${API_BASE_URL}/api/tools?page=${page}&limit=${limit}`, {
+      headers,
+    });
 
     if (!response.ok) {
       throw new Error('Failed to fetch tools');
@@ -87,12 +122,16 @@ class DeviceService {
     const data = await response.json();
     return {
       devices: data.populatedTools || [],
-      pagination: data.pagination || {}
+      pagination: data.pagination || {},
     };
   }
 
   // Get devices by type with pagination
-  async getDevicesByType(deviceType: DeviceType, page: number = 1, limit: number = 20): Promise<{ devices: Device[], pagination: any }> {
+  async getDevicesByType(
+    deviceType: DeviceType,
+    page: number = 1,
+    limit: number = 20
+  ): Promise<{ devices: Device[]; pagination: any }> {
     switch (deviceType) {
       case 'laptop':
         return await this.getLaptops(page, limit);
@@ -117,10 +156,16 @@ class DeviceService {
         this.getMonitors(1, 100),
         this.getPrinters(1, 100),
         this.getProjectors(1, 100),
-        this.getTools(1, 100)
+        this.getTools(1, 100),
       ]);
 
-      return [...laptops.devices, ...monitors.devices, ...printers.devices, ...projectors.devices, ...tools.devices];
+      return [
+        ...laptops.devices,
+        ...monitors.devices,
+        ...printers.devices,
+        ...projectors.devices,
+        ...tools.devices,
+      ];
     } catch (error) {
       console.error('Error fetching all devices:', error);
       throw error;
@@ -129,17 +174,20 @@ class DeviceService {
 
   // Filter devices locally
   filterDevices(devices: Device[], filter: DeviceFilter): Device[] {
-    return devices.filter(device => {
+    return devices.filter((device) => {
       // Search filter
       if (filter.search) {
         const searchLower = filter.search.toLowerCase();
-        const matchesSearch = 
+        const matchesSearch =
           device.name.toLowerCase().includes(searchLower) ||
           device.serial.toLowerCase().includes(searchLower) ||
           (device.manufacturer && device.manufacturer.toLowerCase().includes(searchLower)) ||
-          device.assigned.some(user => user.fullname.toLowerCase().includes(searchLower)) ||
+          device.assigned.some((user) => {
+            const userName = user.fullname || user.full_name || user.name || '';
+            return userName.toLowerCase().includes(searchLower);
+          }) ||
           (device.room && device.room.name.toLowerCase().includes(searchLower));
-        
+
         if (!matchesSearch) return false;
       }
 
@@ -172,15 +220,15 @@ class DeviceService {
 
   // Get filter options for a specific device type
   async getFilterOptions(deviceType: DeviceType): Promise<{
-    statuses: string[],
-    types: string[],
-    manufacturers: string[],
-    departments: string[],
-    yearRange: [number, number]
+    statuses: string[];
+    types: string[];
+    manufacturers: string[];
+    departments: string[];
+    yearRange: [number, number];
   }> {
     const headers = await this.getAuthHeaders();
     let endpoint = '';
-    
+
     switch (deviceType) {
       case 'laptop':
         endpoint = '/api/laptops/filter-options';
@@ -203,7 +251,7 @@ class DeviceService {
           types: [],
           manufacturers: [],
           departments: [],
-          yearRange: [2015, 2024]
+          yearRange: [2015, 2024],
         };
     }
 
@@ -224,7 +272,7 @@ class DeviceService {
         types: [],
         manufacturers: [],
         departments: [],
-        yearRange: [2015, 2024]
+        yearRange: [2015, 2024],
       };
     }
   }
@@ -233,7 +281,7 @@ class DeviceService {
   async getDeviceById(deviceType: DeviceType, id: string): Promise<Device | null> {
     const headers = await this.getAuthHeaders();
     let endpoint = '';
-    
+
     switch (deviceType) {
       case 'laptop':
         endpoint = `/api/laptops/${id}`;
@@ -310,11 +358,15 @@ class DeviceService {
   }
 
   // Create device log
-  async createDeviceLog(deviceType: DeviceType, deviceId: string, logData: {
-    type: 'maintenance' | 'software' | 'assignment' | 'general';
-    title: string;
-    description: string;
-  }): Promise<any> {
+  async createDeviceLog(
+    deviceType: DeviceType,
+    deviceId: string,
+    logData: {
+      type: 'maintenance' | 'software' | 'assignment' | 'general';
+      title: string;
+      description: string;
+    }
+  ): Promise<any> {
     const headers = await this.getAuthHeaders();
     let endpoint = '';
 
@@ -341,7 +393,7 @@ class DeviceService {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method: 'POST',
       headers,
-      body: JSON.stringify(logData)
+      body: JSON.stringify(logData),
     });
 
     if (!response.ok) {
@@ -353,10 +405,14 @@ class DeviceService {
   }
 
   // Revoke device
-  async revokeDevice(deviceType: DeviceType, deviceId: string, revokeData: {
-    reasons: string[];
-    status?: string;
-  }): Promise<Device> {
+  async revokeDevice(
+    deviceType: DeviceType,
+    deviceId: string,
+    revokeData: {
+      reasons: string[];
+      status?: string;
+    }
+  ): Promise<Device> {
     const headers = await this.getAuthHeaders();
     let endpoint = '';
 
@@ -383,7 +439,7 @@ class DeviceService {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method: 'POST',
       headers,
-      body: JSON.stringify(revokeData)
+      body: JSON.stringify(revokeData),
     });
 
     if (!response.ok) {
@@ -396,4 +452,4 @@ class DeviceService {
   }
 }
 
-export default new DeviceService(); 
+export default new DeviceService();
