@@ -47,7 +47,7 @@ export type RootStackParamList = {
     };
   };
   [ROUTES.SCREENS.CHAT_DETAIL]: { user: User; chatId?: string };
-  [ROUTES.SCREENS.CHAT_INIT]: { chatId: string; senderId: string };
+  [ROUTES.SCREENS.CHAT_INIT]: { chatId?: string; senderId?: string };
   [ROUTES.SCREENS.CHAT_INFO]: { user: User; chatId?: string };
   [ROUTES.SCREENS.CREATE_GROUP]: { preSelectedUsers?: User[] } | undefined;
   [ROUTES.SCREENS.GROUP_CHAT_DETAIL]: { chat: any };

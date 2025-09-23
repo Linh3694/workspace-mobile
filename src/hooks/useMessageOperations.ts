@@ -109,6 +109,7 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
       console.log('🔗 [loadMessages] chatId:', chatId, 'page:', pageNum, 'append:', append);
       if (!chatId || typeof chatId !== 'string' || chatId.length !== 24) {
         console.warn('❌ [loadMessages] Invalid chatId:', chatId);
+        // Không coi là lỗi khẩn: nếu chưa có chatId (chưa có lịch sử), chỉ tắt loading
         setIsLoadingMore(false);
         if (!append) setLoading(false);
         return;
@@ -138,7 +139,7 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
 
         // Gọi API với pagination
         const url = `${CHAT_SERVICE_URL}/messages/${chatId}?page=${pageNum}&limit=20`;
-        console.log('🔗 Fetching messages:', url, 'token:', token.substring(0, 8) + '...');
+        console.log('📥 [loadMessages] GET', url);
 
         const response = await fetch(url, {
           headers: {
@@ -147,6 +148,8 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
           },
         });
 
+        console.log('📥 [loadMessages] Status:', response.status, response.statusText);
+        console.log('📥 [loadMessages] Content-Type:', response.headers.get('content-type'));
         if (response.ok) {
           const contentType = response.headers.get('content-type');
           if (!contentType || !contentType.includes('application/json')) {
@@ -234,6 +237,12 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
           // Lưu vào storage (chỉ lưu khi không append để tránh duplicate)
           if (!append && sortedMessages.length > 0) {
             await saveMessagesToStorage(chatId, sortedMessages);
+          }
+
+          // Hoàn tất: tắt loading
+          setIsLoadingMore(false);
+          if (!append) {
+            setLoading(false);
           }
         } else {
           const contentType = response.headers.get('content-type');
@@ -477,7 +486,7 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
       }
 
       try {
-        console.log('🌐 Posting to:', url, 'body:', body);
+        console.log('📤 [sendMessage] POST', url, 'body:', body);
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
@@ -493,7 +502,8 @@ export const useMessageOperations = ({ chat, currentUserId }: UseMessageOperatio
         });
 
         clearTimeout(timeoutId);
-        console.log('📡 Response status:', res.status);
+        console.log('📤 [sendMessage] Status:', res.status, res.statusText);
+        console.log('📤 [sendMessage] Content-Type:', res.headers.get('content-type'));
 
         if (!res.ok) {
           const contentType = res.headers.get('content-type');

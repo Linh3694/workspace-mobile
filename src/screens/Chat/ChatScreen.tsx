@@ -216,6 +216,7 @@ const ChatScreen = () => {
       try {
         const token = await AsyncStorage.getItem('authToken');
         const usersUrl = `${BASE_URL}/api/users/?t=${Date.now()}`;
+        console.log('👥 [ChatScreen] GET users:', usersUrl);
         const usersRes = await fetch(usersUrl, {
           headers: token
             ? { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-store' }
@@ -233,6 +234,51 @@ const ChatScreen = () => {
             // Chat service already returns normalized users
             const users = Array.isArray(usersData) ? usersData : [];
             setUsers(users);
+
+            // Xác định currentUserId theo email từ token/AsyncStorage, map sang _id của chat-service
+            try {
+              let myEmail: string | null = null;
+              if (token) {
+                try {
+                  const decoded: any = jwtDecode(token);
+                  myEmail = decoded.email || decoded.sub || null;
+                } catch {}
+              }
+              if (!myEmail) {
+                const userStr = await AsyncStorage.getItem('user');
+                if (userStr) {
+                  const cachedUser = JSON.parse(userStr);
+                  myEmail = cachedUser?.email || null;
+                }
+              }
+
+              if (myEmail) {
+                const me = users.find(
+                  (u: any) => (u.email || '').toLowerCase() === myEmail!.toLowerCase()
+                );
+                if (me && me._id) {
+                  setCurrentUserId(me._id);
+                  console.log(
+                    '👤 [ChatScreen] currentUserId resolved from users list:',
+                    me._id,
+                    myEmail
+                  );
+                  // Sau khi có currentUserId, tải danh sách chat gần đây
+                  await fetchChats(true);
+                } else {
+                  console.log(
+                    '⚠️ [ChatScreen] Cannot map email to chat-service user _id. email=',
+                    myEmail,
+                    'usersCount=',
+                    users.length
+                  );
+                }
+              } else {
+                console.log('⚠️ [ChatScreen] Cannot determine my email from token/AsyncStorage');
+              }
+            } catch (mapErr) {
+              console.warn('⚠️ [ChatScreen] Error mapping current user id:', mapErr);
+            }
           }
         } else {
           // Không xoá danh sách khi lỗi tạm thời (như 304)
@@ -245,7 +291,10 @@ const ChatScreen = () => {
             // decode JWT to get the current user's id
             const userId = decoded._id || decoded.id;
             if (userId) {
+              console.log('👤 [ChatScreen] currentUserId decoded:', userId);
               setCurrentUserId(userId);
+              // Gọi tải danh sách gần đây ngay sau khi biết currentUserId
+              fetchChats(true);
             }
           } catch (err) {}
         }
@@ -483,13 +532,14 @@ const ChatScreen = () => {
     try {
       const token = await AsyncStorage.getItem('authToken');
       if (!token) {
-        console.log('No auth token for fetchChats');
+        console.log('🟡 [fetchChats] No auth token');
         return;
       }
 
       const url = forceRefresh
         ? `${CHAT_SERVICE_URL}/list?t=${Date.now()}`
         : `${CHAT_SERVICE_URL}/list`;
+      console.log('📥 [fetchChats] GET', url);
 
       const res = await fetch(url, {
         headers: {
@@ -498,16 +548,19 @@ const ChatScreen = () => {
         },
       });
 
+      console.log('📥 [fetchChats] Status:', res.status, res.statusText);
+      console.log('📥 [fetchChats] Content-Type:', res.headers.get('content-type'));
+
       if (!res.ok) {
         const contentType = res.headers.get('content-type');
         if (contentType && contentType.includes('text/html')) {
-          console.warn(`💡 Chats API endpoint not available (Status: ${res.status})`);
+          console.warn(`💡 [fetchChats] HTML response (Status: ${res.status})`);
           console.warn('Backend server may not be running or endpoint not implemented yet.');
           return;
         }
 
         const errorText = await res.text();
-        console.warn('Chats API unavailable:', res.status, errorText);
+        console.warn('⚠️ [fetchChats] Error body:', errorText.substring(0, 300));
         return;
       }
 
@@ -520,6 +573,7 @@ const ChatScreen = () => {
       }
 
       const data = await res.json();
+      console.log('📥 [fetchChats] JSON length:', Array.isArray(data) ? data.length : 'n/a');
       if (Array.isArray(data)) {
         console.log('💾 [fetchChats] Received chats data:', data.length, 'chats');
 
@@ -578,6 +632,7 @@ const ChatScreen = () => {
   // Refresh chats khi màn hình được focus để cập nhật trạng thái đã đọc
   useFocusEffect(
     React.useCallback(() => {
+      console.log('🔎 [ChatScreen] focus, currentUserId =', currentUserId);
       if (!currentUserId) return;
 
       let isMounted = true;
@@ -589,6 +644,7 @@ const ChatScreen = () => {
       };
 
       // Refresh ngay lập tức khi focus
+      console.log('🔄 [ChatScreen] focus -> refreshChats');
       refreshChats();
 
       return () => {
@@ -809,6 +865,10 @@ const ChatScreen = () => {
         const token = await AsyncStorage.getItem('authToken');
         if (!token) return;
 
+        console.log('📤 [forward] POST', `${CHAT_SERVICE_URL}/message/forward`, {
+          messageId: messageToForwardId,
+          targetChatId: chat._id,
+        });
         const response = await fetch(`${CHAT_SERVICE_URL}/message/forward`, {
           method: 'POST',
           headers: {
@@ -820,6 +880,7 @@ const ChatScreen = () => {
             targetChatId: chat._id,
           }),
         });
+        console.log('📤 [forward] Status:', response.status, response.statusText);
 
         if (response.ok) {
           Alert.alert('Thành công', 'Đã chuyển tiếp tin nhắn');
@@ -865,6 +926,8 @@ const ChatScreen = () => {
   const renderUser = useCallback(
     ({ item }: { item: User }) => {
       const handleUserPress = () => {
+        console.log('👆 [UserPress] item:', { _id: item._id, fullname: item.fullname });
+        console.log('👆 [UserPress] existingChat:', existingChat?._id);
         // Tìm chat 1-1 hiện có với user này (chỉ những chat có tin nhắn)
         const existingChat =
           chats && Array.isArray(chats)
@@ -883,10 +946,12 @@ const ChatScreen = () => {
 
         if (existingChat) {
           // Nếu đã có chat 1-1 với tin nhắn, navigate với chatId
+          console.log('🧭 [UserPress] navigate ChatDetail with existing chatId', existingChat._id);
           navigation.navigate('ChatDetail', { user: item, chatId: existingChat._id });
         } else {
           // Nếu chưa có chat hoặc chat chưa có tin nhắn, chỉ navigate với user
           // ChatDetailScreen sẽ tự tạo chat khi gửi tin nhắn đầu tiên
+          console.log('🧭 [UserPress] navigate ChatDetail with user only');
           navigation.navigate('ChatDetail', { user: item });
         }
       };

@@ -10,7 +10,7 @@ import { ROUTES } from '../../constants/routes';
 type Props = NativeStackScreenProps<RootStackParamList, 'ChatInit'>;
 
 const ChatInitScreen = ({ route, navigation }: Props) => {
-  const { chatId, senderId } = route.params;
+  const { chatId, senderId } = route.params || ({} as any);
 
   console.log('🚀 [ChatInit] Screen loaded with params:', {
     chatId,
@@ -24,8 +24,17 @@ const ChatInitScreen = ({ route, navigation }: Props) => {
         // Validate params trước khi tiếp tục
         if (!senderId || senderId === 'undefined' || typeof senderId !== 'string') {
           console.error('❌ [ChatInit] Invalid senderId:', senderId);
-          // Quay về màn hình chính nếu senderId invalid
-          navigation.replace('Main', {});
+          // Nếu thiếu senderId nhưng có chatId thì vào luôn ChatDetail (server sẽ resolve participants)
+          if (chatId && typeof chatId === 'string') {
+            navigation.replace('ChatDetail', {
+              chatId,
+              // user sẽ được ChatDetail tự nạp từ chatId
+              user: { _id: '', email: '', fullname: '' } as any,
+            });
+          } else {
+            // Quay về màn hình chính nếu cả 2 đều thiếu
+            navigation.replace('Main', {});
+          }
           return;
         }
 

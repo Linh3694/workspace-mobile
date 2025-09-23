@@ -332,19 +332,21 @@ const GroupChatDetailScreen: React.FC<GroupChatDetailScreenProps> = () => {
   const fetchCurrentUser = async () => {
     try {
       const token = await AsyncStorage.getItem('authToken');
-      if (token) {
-        const decoded: any = jwtDecode(token);
-        const userId = decoded._id || decoded.id;
+      if (!token) return;
 
-        const response = await fetch(`${BASE_URL}/api/users/${userId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+      // Lấy user hiện tại trực tiếp từ chat-service để có _id đúng
+      const response = await fetch(`${BASE_URL}/api/users/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-        if (response.ok) {
-          const userData = await response.json();
-          setCurrentUser(userData);
-          setCurrentUserId(userId);
+      if (response.ok) {
+        const me = await response.json();
+        if (me && me._id) {
+          setCurrentUser(me);
+          setCurrentUserId(me._id);
         }
+      } else {
+        console.warn('[GroupChatDetail] /api/users/me failed:', response.status);
       }
     } catch (err) {
       console.error('Error fetching current user:', err);
