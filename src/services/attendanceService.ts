@@ -79,7 +79,6 @@ class AttendanceService {
         if (attempt < maxRetries) {
           // Exponential backoff
           const waitTime = delay * Math.pow(2, attempt - 1);
-          console.log(`Retrying in ${waitTime}ms...`);
           await new Promise((resolve) => setTimeout(resolve, waitTime));
         } else {
           console.error(`All ${maxRetries} attempts failed`);
@@ -93,7 +92,6 @@ class AttendanceService {
   private getCachedData(key: string): any | null {
     const cached = this.cache.get(key);
     if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
-      console.log(`Cache hit for key: ${key}`);
       return cached.data;
     }
     return null;
@@ -110,7 +108,6 @@ class AttendanceService {
   // Clear cache manually
   clearCache(): void {
     this.cache.clear();
-    console.log('🗑️ Attendance cache cleared');
   }
 
   // Clear old cache entries for different dates
@@ -126,59 +123,8 @@ class AttendanceService {
 
     keysToDelete.forEach((key) => {
       this.cache.delete(key);
-      console.log(`🗑️ Cleared old cache: ${key}`);
     });
 
-    console.log(`🧹 Cleared ${keysToDelete.length} old cache entries for ${employeeCode}`);
-  }
-
-  // Debug method để xem tất cả cache keys
-  debugCacheStatus(employeeCode: string): void {
-    console.log('🔍 === CACHE DEBUG STATUS ===');
-    console.log(`📅 Current VN Date: ${this.getCurrentVNDateString()}`);
-    console.log(`👤 Employee Code: ${employeeCode}`);
-    console.log(`📊 Total cache entries: ${this.cache.size}`);
-
-    for (const [key, value] of this.cache) {
-      if (key.includes(employeeCode)) {
-        const age = (Date.now() - value.timestamp) / 1000;
-        console.log(`🔑 ${key} | Age: ${age.toFixed(1)}s | Has Data: ${value.data ? 'YES' : 'NO'}`);
-      }
-    }
-    console.log('=========================');
-  }
-
-  // Debug method để kiểm tra raw data
-  debugAttendanceData(record: AttendanceRecord): void {
-    console.log('🔍 === DEBUG ATTENDANCE RECORD ===');
-    console.log('📋 Employee Code:', record.employeeCode);
-    console.log('📅 Date:', record.date);
-    console.log('⏰ Check In Time:', record.checkInTime);
-    console.log('🏁 Check Out Time:', record.checkOutTime);
-    console.log('🔢 Total Check Ins:', record.totalCheckIns);
-
-    if (record.checkInTime) {
-      console.log('🔄 Formatted Check In:', this.formatTime(record.checkInTime));
-    }
-    if (record.checkOutTime) {
-      console.log('🔄 Formatted Check Out:', this.formatTime(record.checkOutTime));
-    }
-
-    if (record.rawData && record.rawData.length > 0) {
-      console.log('📊 Raw Data Count:', record.rawData.length);
-      console.log('📊 First Raw Timestamp:', record.rawData[0].timestamp);
-      console.log('📊 Last Raw Timestamp:', record.rawData[record.rawData.length - 1].timestamp);
-
-      // Analyze for duplicates
-      this.debugDuplicateAttendance(record);
-
-      // Show unique times
-      const uniqueTimes = this.getRawAttendanceTimes(record);
-      console.log('✅ Unique formatted times:', uniqueTimes);
-    } else {
-      console.log('❌ No rawData available');
-    }
-    console.log('=================================');
   }
 
   // Method để force refresh data (clear cache và fetch lại)
@@ -186,20 +132,14 @@ class AttendanceService {
     const todayDateString = this.getCurrentVNDateString();
     const cacheKey = `today-attendance-${employeeCode}-${todayDateString}`;
 
-    console.log(`🔄 Force refreshing attendance for ${employeeCode} on ${todayDateString}`);
 
     // Clear cache cho ngày hiện tại
     this.cache.delete(cacheKey);
-    console.log(`🗑️ Cleared current cache: ${cacheKey}`);
 
     // Clear tất cả cache cũ cho employee này
     this.clearOldDateCache(employeeCode);
 
-    // Debug cache status
-    this.debugCacheStatus(employeeCode);
-
     // Fetch lại data
-    console.log(`📞 Fetching fresh data...`);
     return await this.getTodayAttendance(employeeCode);
   }
 
@@ -241,11 +181,7 @@ class AttendanceService {
         return false;
       });
 
-      if (originalCount !== cleanRawData.length) {
-        console.log(
-          `🧹 Frontend cleanup: ${originalCount} → ${cleanRawData.length} rawData entries`
-        );
-      }
+     
     }
 
     // Recalculate totalCheckIns based on clean rawData
@@ -281,21 +217,14 @@ class AttendanceService {
   // Get current VN date string (YYYY-MM-DD)
   private getCurrentVNDateString(): string {
     const now = new Date();
-
-    // Debug current time
-    console.log(`🕐 Current UTC time: ${now.toISOString()}`);
-    console.log(`🕐 Current local time: ${now.toString()}`);
-
     // Lấy thời gian VN hiện tại (UTC + 7h)
     const vnTime = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-    console.log(`🇻🇳 VN time: ${vnTime.toISOString()}`);
 
     const year = vnTime.getUTCFullYear();
     const month = String(vnTime.getUTCMonth() + 1).padStart(2, '0');
     const day = String(vnTime.getUTCDate()).padStart(2, '0');
 
     const dateString = `${year}-${month}-${day}`;
-    console.log(`📅 Generated VN date string: ${dateString}`);
 
     return dateString;
   }
@@ -341,37 +270,21 @@ class AttendanceService {
     const todayDateString = this.getCurrentVNDateString();
     const cacheKey = `today-attendance-${employeeCode}-${todayDateString}`;
 
-    console.log(`🔍 Fetching attendance for employee: ${employeeCode} on date: ${todayDateString}`);
-    console.log(`🔑 Cache key: ${cacheKey}`);
-    console.log(`🚀 Force refresh: ${forceRefresh}`);
-
     // Check cache first (shorter cache for today data - 1 minute) - UNLESS force refresh
     if (!forceRefresh) {
       const cached = this.cache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < 60000) {
-        // 1 phút cache cho data hôm nay
-        console.log(`✅ Cache hit for today attendance: ${employeeCode}`);
         return cached.data;
-      } else if (cached) {
-        console.log(
-          `❌ Cache expired for: ${cacheKey}, age: ${(Date.now() - cached.timestamp) / 1000}s`
-        );
-      } else {
-        console.log(`❌ No cache found for: ${cacheKey}`);
       }
     } else {
-      console.log(`🗑️ Force refresh requested - skipping cache check`);
-      // Clear current cache entry for fresh fetch
       this.cache.delete(cacheKey);
     }
 
     try {
-      console.log(`🌐 Making API call for date: ${todayDateString}`);
       const rawRecord = await this.retryApiCall(async () => {
         const headers = await this.getAuthHeaders();
 
         const apiUrl = `${BASE_URL}/api/attendance/employee/${employeeCode}?date=${encodeURIComponent(todayDateString)}`;
-        console.log(`📞 API URL: ${apiUrl}`);
 
         const response = await fetch(apiUrl, { headers });
 
@@ -381,10 +294,7 @@ class AttendanceService {
         }
 
         const data = await response.json();
-        console.log(`📊 API Response:`, data);
-
         const record = data.data?.records?.[0] || null;
-        console.log(`📋 Found record:`, record ? 'YES' : 'NO');
 
         return record;
       });
@@ -394,13 +304,6 @@ class AttendanceService {
 
       // Cache the result
       this.setCachedData(cacheKey, record);
-
-      if (record) {
-        console.log(`✅ Successfully fetched attendance for ${todayDateString}`);
-        this.debugAttendanceData(record);
-      } else {
-        console.log(`❌ No attendance record found for ${todayDateString}`);
-      }
 
       return record;
     } catch (error) {
@@ -460,10 +363,6 @@ class AttendanceService {
         return '--:--';
       }
 
-      // Debug log để trace vấn đề
-      console.log(`🕐 Formatting time: ${timeString}`);
-      console.log(`📅 Parsed date: ${date.toISOString()}`);
-
       // FIXED: Backend now correctly returns UTC timestamps
       // Simple conversion: UTC + 7 hours = VN time
       const utcTime = new Date(timeString);
@@ -473,7 +372,6 @@ class AttendanceService {
       const vnMinutes = vnTime.getUTCMinutes();
 
       const result = `${String(vnHours).padStart(2, '0')}:${String(vnMinutes).padStart(2, '0')}`;
-      console.log(`⏰ UTC: ${timeString} → VN: ${result}`);
 
       return result;
     } catch (error) {
@@ -562,41 +460,6 @@ class AttendanceService {
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   }
 
-  // Debug duplicates trong rawData
-  debugDuplicateAttendance(record: AttendanceRecord): void {
-    if (!record.rawData || record.rawData.length === 0) return;
-
-    console.log('🔍 === DUPLICATE ANALYSIS ===');
-    console.log(`👤 Employee: ${record.employeeCode}`);
-    console.log(`📅 Date: ${record.date}`);
-    console.log(`📊 Total rawData entries: ${record.rawData.length}`);
-    console.log(`📊 Reported totalCheckIns: ${record.totalCheckIns}`);
-
-    // Group by formatted time
-    const timeGroups = new Map<string, any[]>();
-
-    record.rawData.forEach((item) => {
-      const formattedTime = this.formatTime(item.timestamp);
-      if (!timeGroups.has(formattedTime)) {
-        timeGroups.set(formattedTime, []);
-      }
-      timeGroups.get(formattedTime)!.push(item);
-    });
-
-    console.log(`🕐 Unique times: ${timeGroups.size}`);
-
-    // Show duplicates
-    for (const [time, items] of timeGroups) {
-      if (items.length > 1) {
-        console.log(`⚠️  DUPLICATE TIME: ${time} (${items.length} entries)`);
-        items.forEach((item, index) => {
-          console.log(`   ${index + 1}. Device: ${item.deviceId}, Recorded: ${item.recordedAt}`);
-        });
-      }
-    }
-
-    console.log('===========================');
-  }
 
   // Tính toán working hours (giờ làm việc)
   calculateWorkingHours(record: AttendanceRecord): string {
@@ -636,9 +499,211 @@ class AttendanceService {
     for (const key of attendanceKeys) {
       this.cache.delete(key);
     }
+  }
 
-    console.log(`🧹 [FORCE CLEAN] Cleared ${attendanceKeys.length} attendance cache entries`);
-    console.log(`📊 Remaining cache entries: ${this.cache.size}`);
+  // ===== Teacher class assignments (homeroom/vice/teaching) =====
+  async fetchCampuses(): Promise<Array<{ name: string; title_vn?: string; title_en?: string }>> {
+    try {
+      const headers = await this.getAuthHeaders();
+      const res = await fetch(
+        `${BASE_URL}/api/method/erp.api.erp_sis.campus.get_campuses`,
+        { headers }
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
+      const rows = data?.data || data || [];
+      return Array.isArray(rows) ? rows : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  async getAllClassesForCurrentCampus(): Promise<Array<{ name: string; title?: string; short_title?: string }>> {
+    try {
+      const headers = await this.getAuthHeaders();
+      const campusId = (await AsyncStorage.getItem('currentCampusId')) || '';
+      const url = new URL(`${BASE_URL}/api/method/erp.api.erp_sis.sis_class.get_all_classes`);
+      url.searchParams.set('page', '1');
+      url.searchParams.set('limit', '500');
+      if (campusId) url.searchParams.set('campus_id', campusId);
+      const res = await fetch(url.toString(), { headers });
+      if (!res.ok) {
+        const text = await res.text();
+        console.warn('[attendanceService] getAllClassesForCurrentCampus failed:', res.status, text);
+        return [];
+      }
+      const json = await res.json();
+      const rows = (json && (json.data || json.message?.data)) || [];
+      return Array.isArray(rows) ? rows : [];
+    } catch (e) {
+      console.warn('[attendanceService] getAllClassesForCurrentCampus error', e);
+      return [];
+    }
+  }
+  async fetchTeacherClassAssignments(userId?: string): Promise<{
+    homeroom_class_ids: string[];
+    vice_homeroom_class_ids: string[];
+    teaching_class_ids: string[];
+  } | null> {
+    try {
+      const headers = await this.getAuthHeaders();
+      const url = new URL(`${BASE_URL}/api/method/erp.api.erp_sis.teacher.get_teacher_class_assignments`);
+      if (userId) url.searchParams.set('user_id', userId);
+      try {
+        const campusId = await AsyncStorage.getItem('currentCampusId');
+        const selectedCampus = await AsyncStorage.getItem('selectedCampus');
+        console.log('[attendanceService] fetchTeacherClassAssignments request:', {
+          url: url.toString(),
+          userId,
+          campusId,
+          selectedCampus,
+        });
+      } catch {}
+      const res = await fetch(url.toString(), { method: 'GET', headers });
+      if (!res.ok) {
+        const text = await res.text();
+        console.warn('[attendanceService] fetchTeacherClassAssignments failed:', res.status, text);
+        return null;
+      }
+      const data = await res.json();
+      try {
+        console.log('[attendanceService] fetchTeacherClassAssignments raw:', JSON.stringify(data)?.slice(0, 1000));
+      } catch {}
+      const payload = (data && (data.data || data.message?.data)) || data;
+      const out = {
+        homeroom_class_ids: payload?.homeroom_class_ids || [],
+        vice_homeroom_class_ids: payload?.vice_homeroom_class_ids || [],
+        teaching_class_ids: payload?.teaching_class_ids || [],
+      };
+      console.log('[attendanceService] teacher assignments:', {
+        homeroomCount: out.homeroom_class_ids.length,
+        viceCount: out.vice_homeroom_class_ids.length,
+        teachingCount: out.teaching_class_ids.length,
+        preview: {
+          homeroom: out.homeroom_class_ids.slice(0, 5),
+          vice: out.vice_homeroom_class_ids.slice(0, 5),
+          teaching: out.teaching_class_ids.slice(0, 5),
+        },
+        debug: payload?.debug,
+      });
+      if (
+        out.homeroom_class_ids.length === 0 &&
+        out.vice_homeroom_class_ids.length === 0 &&
+        out.teaching_class_ids.length === 0
+      ) {
+        // Force fallback to FE-like logic when BE returns empty
+        return null;
+      }
+      return out;
+    } catch (e) {
+      console.error('[attendanceService] fetchTeacherClassAssignments error', e);
+      return null;
+    }
+  }
+
+  // FE-like logic: derive assignments by calling class list + teacher week
+  private getCurrentWeekRange() {
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMonday = (day === 0 ? -6 : 1) - day;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMonday);
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const toIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { weekStart: toIso(monday), weekEnd: toIso(sunday) };
+  }
+
+  async syncTeacherAssignmentsLikeWeb(userEmail: string): Promise<{
+    homeroom_class_ids: string[];
+    vice_homeroom_class_ids: string[];
+    teaching_class_ids: string[];
+    teacher_id?: string;
+  } | null> {
+    try {
+      const headers = await this.getAuthHeaders();
+      const campusId = (await AsyncStorage.getItem('currentCampusId')) || '';
+
+      // 1) Resolve teacher_id by user email via get_all_teachers
+      console.log('[attendanceService] -> GET get_all_teachers');
+      const tRes = await fetch(`${BASE_URL}/api/method/erp.api.erp_sis.teacher.get_all_teachers`, { headers });
+      if (!tRes.ok) {
+        const txt = await tRes.text();
+        console.warn('[attendanceService] get_all_teachers failed', tRes.status, txt);
+        return null;
+      }
+      const tJson = await tRes.json();
+      try { console.log('[attendanceService] get_all_teachers raw:', JSON.stringify(tJson)?.slice(0, 800)); } catch {}
+      const teacherList = (tJson && (tJson.data || tJson.message?.data)) || [];
+      console.log('[attendanceService] get_all_teachers count:', Array.isArray(teacherList) ? teacherList.length : 'n/a');
+      const norm = (s: any) => String(s || '').trim().toLowerCase();
+      const teacher = Array.isArray(teacherList)
+        ? teacherList.find((t: any) => norm(t?.user_id) === norm(userEmail) || norm(t?.email) === norm(userEmail))
+        : null;
+      const teacherId: string = teacher?.name || teacher?.id || '';
+      console.log('[attendanceService] resolved teacher:', { userEmail, teacherId });
+
+      // 2) Fetch classes (all or large page)
+      const classesUrl = new URL(`${BASE_URL}/api/method/erp.api.erp_sis.sis_class.get_all_classes`);
+      classesUrl.searchParams.set('page', '1');
+      classesUrl.searchParams.set('limit', '500');
+      if (campusId) classesUrl.searchParams.set('campus_id', campusId);
+      console.log('[attendanceService] -> GET get_all_classes', classesUrl.toString());
+      const cRes = await fetch(classesUrl.toString(), { headers });
+      if (!cRes.ok) {
+        const txt = await cRes.text();
+        console.warn('[attendanceService] get_all_classes failed', cRes.status, txt);
+        return null;
+      }
+      const cJson = await cRes.json();
+      try { console.log('[attendanceService] get_all_classes raw:', JSON.stringify(cJson)?.slice(0, 800)); } catch {}
+      const classes = (cJson && (cJson.data || cJson.message?.data)) || [];
+      console.log('[attendanceService] get_all_classes count:', Array.isArray(classes) ? classes.length : 'n/a');
+
+      // 3) Filter homeroom/vice by teacherId
+      const homeroom_class_ids = classes
+        .filter((c: any) => c?.homeroom_teacher === teacherId)
+        .map((c: any) => String(c?.name || ''))
+        .filter(Boolean);
+      const vice_homeroom_class_ids = classes
+        .filter((c: any) => c?.vice_homeroom_teacher === teacherId)
+        .map((c: any) => String(c?.name || ''))
+        .filter(Boolean);
+
+      // 4) Fetch teacher week to compute teaching classes
+      const { weekStart, weekEnd } = this.getCurrentWeekRange();
+      const weekUrl = new URL(`${BASE_URL}/api/method/erp.api.erp_sis.timetable.get_teacher_week`);
+      // FE passes user.email; BE resolves via user_id mapping
+      weekUrl.searchParams.set('teacher_id', userEmail || teacherId);
+      weekUrl.searchParams.set('week_start', weekStart);
+      weekUrl.searchParams.set('week_end', weekEnd);
+      if (campusId) weekUrl.searchParams.set('campus_id', campusId);
+      console.log('[attendanceService] -> GET get_teacher_week', weekUrl.toString());
+      const wRes = await fetch(weekUrl.toString(), { headers });
+      let teaching_class_ids: string[] = [];
+      if (wRes.ok) {
+        const wJson = await wRes.json();
+        try { console.log('[attendanceService] get_teacher_week raw:', JSON.stringify(wJson)?.slice(0, 800)); } catch {}
+        const entries = (wJson && (wJson.data || wJson.message?.data)) || [];
+        console.log('[attendanceService] get_teacher_week entries:', Array.isArray(entries) ? entries.length : 'n/a');
+        teaching_class_ids = Array.from(new Set(entries.map((e: any) => String(e?.class_id || '')).filter(Boolean)));
+      } else {
+        const txt = await wRes.text();
+        console.warn('[attendanceService] get_teacher_week failed', wRes.status, txt);
+      }
+
+      const out = { homeroom_class_ids, vice_homeroom_class_ids, teaching_class_ids, teacher_id: teacherId };
+      console.log('[attendanceService] FE-like assignments:', {
+        teacherId,
+        homeroomCount: homeroom_class_ids.length,
+        viceCount: vice_homeroom_class_ids.length,
+        teachingCount: teaching_class_ids.length,
+      });
+      return out;
+    } catch (e) {
+      console.error('[attendanceService] syncTeacherAssignmentsLikeWeb error', e);
+      return null;
+    }
   }
 }
 

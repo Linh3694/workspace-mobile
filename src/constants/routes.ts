@@ -21,6 +21,8 @@ export const ROUTES = {
     DEVICE_DETAIL: 'DeviceDetail',
     DEVICE_ASSIGNMENT_HISTORY: 'DeviceAssignmentHistory',
     WISLIFE: 'Social',
+    ATTENDANCE_HOME: 'AttendanceHome',
+    ATTENDANCE_DETAIL: 'AttendanceDetail',
   },
   // Tab names trong bottom navigation
   TABS: {

@@ -1,42 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  SafeAreaView,
-  TouchableOpacity,
-  Switch,
-  Alert,
-  Modal,
-  TextInput,
-  Pressable,
-  Image,
-  ScrollView,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
+// @ts-ignore
+import { View, Text, SafeAreaView, TouchableOpacity, Switch, Alert, Image, ScrollView, Platform, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../context/AuthContext';
-import { useBiometricAuth } from '../../hooks/useBiometricAuth';
+// Biometric removed per requirement
 import { useLanguage } from '../../hooks/useLanguage';
 import { Ionicons } from '@expo/vector-icons';
 import ConfirmModal from '../../components/ConfirmModal';
 import Wismelogo from '../../assets/wisme.svg';
 import { getAvatar } from '../../utils/avatar';
 import { BASE_URL } from '../../config/constants.js';
-import FaceID from '../../assets/faceid-gray.svg';
+// FaceID icon removed per requirement
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
 import StandardHeader from '../../components/Common/StandardHeader';
+import SelectModal from '../../components/SelectModal';
+import attendanceService from '../../services/attendanceService';
 import { userService } from '../../services/userService';
 
 const ProfileScreen = () => {
   const { logout, user, refreshUserData, bumpAvatarCacheBust } = useAuth();
-  const { hasSavedCredentials, removeCredentials, saveCredentialsFromProfile } = useBiometricAuth();
+  // Biometric hooks removed
   const { getCurrentLanguageName, showLanguageSelector, t } = useLanguage();
-  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  // const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -46,6 +35,9 @@ const ProfileScreen = () => {
   const [avatarError, setAvatarError] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
+  const [campusOptions, setCampusOptions] = useState<Array<{ name: string; title_vn?: string; title_en?: string }>>([]);
+  const [campusSelectorVisible, setCampusSelectorVisible] = useState(false);
+  const [selectedCampus, setSelectedCampus] = useState<string | null>(null); // stores campus_id like campus-1
   // Debug user avatar fields when user changes
   useEffect(() => {
     if (user) {
@@ -59,10 +51,54 @@ const ProfileScreen = () => {
     }
   }, [user]);
 
-  // Kiểm tra xem sinh trắc học có được bật không
+  // Helper: derive campuses from roles like web FE
+  const buildCampusesFromRoles = React.useCallback(() => {
+    try {
+      const roles: string[] = Array.isArray((user as any)?.roles) ? (user as any).roles : [];
+      const campusRoles = roles.filter((r) => typeof r === 'string' && r.startsWith('Campus '));
+      return campusRoles.map((role: string, idx: number) => {
+        const title = role.replace('Campus ', '').trim();
+        return { name: `campus-${idx + 1}`, title_vn: title, title_en: title };
+      });
+    } catch {
+      return [] as Array<{ name: string; title_vn?: string; title_en?: string }>;
+    }
+  }, [user?.roles]);
+
+  // Load campuses for selector
   useEffect(() => {
-    setBiometricEnabled(hasSavedCredentials);
-  }, [hasSavedCredentials]);
+    (async () => {
+      try {
+        const cachedId = await AsyncStorage.getItem('currentCampusId');
+        if (cachedId) setSelectedCampus(cachedId);
+      } catch {}
+      try {
+        let rows = await attendanceService.fetchCampuses();
+        if (!rows || rows.length === 0) {
+          rows = buildCampusesFromRoles();
+        }
+        setCampusOptions(rows || []);
+        // Default selection: try saved title mapping or first
+        if (!selectedCampus && rows && rows.length > 0) {
+          const savedTitle = await AsyncStorage.getItem('selectedCampus');
+          if (savedTitle) {
+            const hit = rows.find((c) => c.title_vn === savedTitle || c.title_en === savedTitle || c.name === savedTitle);
+            if (hit) {
+              await AsyncStorage.setItem('currentCampusId', hit.name);
+              setSelectedCampus(hit.name);
+              return;
+            }
+          }
+          await AsyncStorage.setItem('currentCampusId', rows[0].name);
+          await AsyncStorage.setItem('selectedCampus', rows[0].title_vn || rows[0].title_en || rows[0].name);
+          setSelectedCampus(rows[0].name);
+        }
+      } catch {}
+    })();
+  }, [buildCampusesFromRoles]);
+
+  // Kiểm tra xem sinh trắc học có được bật không
+  // Biometric toggle removed
 
   // Kiểm tra trạng thái thông báo khi component mount
   useEffect(() => {
@@ -73,47 +109,13 @@ const ProfileScreen = () => {
     await logout();
   };
 
-  const handleEnableBiometric = () => {
-    setPassword('');
-    setShowPasswordModal(true);
-  };
+  // Removed biometric enable flow
 
-  const handleSubmitPassword = async () => {
-    if (!password.trim()) {
-      Alert.alert(t('common.error'), t('auth.enter_password'));
-      return;
-    }
+  // Removed biometric save password flow
 
-    setIsLoading(true);
-    try {
-      const success = await saveCredentialsFromProfile(password);
-      if (success) {
-        setBiometricEnabled(true);
-        setShowPasswordModal(false);
-      }
-    } catch (error) {
-      console.error('Lỗi khi bật xác thực sinh trắc học:', error);
-      Alert.alert(t('common.error'), 'Không thể bật xác thực sinh trắc học. Vui lòng thử lại sau.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Removed biometric toggle
 
-  const toggleBiometricAuth = async (value: boolean) => {
-    if (value === false) {
-      setShowConfirmModal(true);
-    } else {
-      handleEnableBiometric();
-    }
-  };
-
-  const handleConfirmDisable = async () => {
-    const success = await removeCredentials();
-    if (success) {
-      setBiometricEnabled(false);
-    }
-    setShowConfirmModal(false);
-  };
+  // Removed biometric disable flow
 
   const handleImageError = () => {
     if (!avatarError) {
@@ -521,19 +523,7 @@ const ProfileScreen = () => {
               />
             </View>
 
-            {/* FaceID */}
-            <View className="flex-row items-center justify-between">
-              <View className="flex-1 flex-row items-center">
-                <FaceID width={20} height={20} />
-                <Text className="ml-5 font-medium text-black">{t('profile.faceid')}</Text>
-              </View>
-              <Switch
-                trackColor={{ false: '#D1D5DB', true: '#F97316' }}
-                thumbColor={'#FFFFFF'}
-                value={biometricEnabled}
-                onValueChange={toggleBiometricAuth}
-              />
-            </View>
+            {/* FaceID removed */}
 
             {/* Language */}
             <TouchableOpacity
@@ -549,6 +539,25 @@ const ProfileScreen = () => {
               </View>
             </TouchableOpacity>
 
+            {/* Campus selector */}
+            <TouchableOpacity
+              className="flex-row items-center justify-between"
+              onPress={() => setCampusSelectorVisible(true)}>
+              <View className="flex-1 flex-row items-center">
+                <Ionicons name="school-outline" size={20} color="#757575" />
+                <Text className="ml-5 font-medium text-black">{t('profile.campus') || 'Trường học'}</Text>
+              </View>
+              <View className="flex-row items-center">
+                <Text className="mr-2 font-medium text-black">
+                  {(() => {
+                    const cur = campusOptions.find((c) => c.name === selectedCampus);
+                    return cur?.title_vn || cur?.title_en || selectedCampus || '—';
+                  })()}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color="#757575" />
+              </View>
+            </TouchableOpacity>
+
             {/* Logout */}
             <TouchableOpacity onPress={handleLogout} className="flex-row items-center">
               <Ionicons name="log-out-outline" size={20} color="#EF4444" />
@@ -558,67 +567,29 @@ const ProfileScreen = () => {
         </View>
       </ScrollView>
 
-      {/* Modal xác nhận tắt FaceID/TouchID */}
-      <ConfirmModal
-        visible={showConfirmModal}
-        title={t('auth.disable_biometric')}
-        message={t('auth.disable_biometric_message')}
-        onCancel={() => setShowConfirmModal(false)}
-        onConfirm={handleConfirmDisable}
+      {/* Biometric confirm modal removed */}
+
+      {/* Biometric password modal removed */}
+
+      {/* Campus Select Modal */}
+      <SelectModal
+        visible={campusSelectorVisible}
+        title={t('profile.select_campus') || 'Chọn Trường/Campus'}
+        options={campusOptions}
+        keyExtractor={(c) => c.name}
+        renderLabel={(c) => c.title_vn || c.title_en || c.name}
+        onCancel={() => setCampusSelectorVisible(false)}
+        onSelect={async (item) => {
+          try {
+            const id = (item as any).name;
+            const title = (item as any).title_vn || (item as any).title_en || id;
+            await AsyncStorage.setItem('currentCampusId', id);
+            await AsyncStorage.setItem('selectedCampus', String(title));
+            setSelectedCampus(id);
+          } catch {}
+          setCampusSelectorVisible(false);
+        }}
       />
-
-      {/* Modal nhập mật khẩu để bật xác thực sinh trắc học */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={showPasswordModal}
-        onRequestClose={() => setShowPasswordModal(false)}>
-        <Pressable
-          className="flex-1 items-center justify-center bg-black/50"
-          onPress={() => setShowPasswordModal(false)}>
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            className="w-[85%] rounded-2xl bg-white p-6 shadow-lg">
-            <Text className="mb-4 font-bold text-xl text-gray-800">
-              {t('auth.enable_biometric')}
-            </Text>
-            <Text className="mb-4 text-base text-gray-600">{t('auth.enter_current_password')}</Text>
-
-            <View className="relative mb-6">
-              <TextInput
-                className="h-12 w-full rounded-xl border border-gray-300 bg-white px-4 pr-12"
-                placeholder={t('auth.enter_password')}
-                secureTextEntry={!showPassword}
-                value={password}
-                onChangeText={setPassword}
-              />
-              <Pressable
-                className="absolute right-3 top-3"
-                onPress={() => setShowPassword(!showPassword)}>
-                <Ionicons
-                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                  size={24}
-                  color="#666"
-                />
-              </Pressable>
-            </View>
-
-            <View className="flex-row justify-end space-x-3">
-              <TouchableOpacity onPress={() => setShowPasswordModal(false)} className="px-6 py-3">
-                <Text className="font-medium text-gray-600">{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleSubmitPassword}
-                disabled={isLoading}
-                className="rounded-lg bg-secondary px-6 py-3">
-                <Text className="font-medium text-white">
-                  {isLoading ? t('common.processing') : t('common.confirm')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </SafeAreaView>
   );
 };

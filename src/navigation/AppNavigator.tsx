@@ -20,6 +20,8 @@ import DevicesDetailScreen from '../screens/Devices/DevicesDetailScreen';
 import DeviceAssignmentHistoryScreen from '../screens/Devices/DeviceAssignmentHistoryScreen';
 import { useAuth } from '../context/AuthContext';
 import ChatInfoScreen from '../screens/Chat/ChatInfoScreen';
+import AttendanceHome from '../screens/Attendance/AttendanceHome';
+import AttendanceDetail from '../screens/Attendance/AttendanceDetail';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -223,6 +225,16 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.DEVICE_ASSIGNMENT_HISTORY}
             component={DeviceAssignmentHistoryScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.ATTENDANCE_HOME}
+            component={AttendanceHome}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.ATTENDANCE_DETAIL}
+            component={AttendanceDetail}
             options={{ headerShown: false }}
           />
         </>

@@ -264,13 +264,24 @@ const HomeScreen = () => {
     navigation.navigate(ROUTES.SCREENS.DEVICES);
   };
 
-  const menuItems = [
+  const navigateToAttendance = () => {
+    navigation.navigate(ROUTES.SCREENS.ATTENDANCE_HOME as any);
+  };
+
+  // Role-based menu configuration
+  const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
+  const hasMobileTeacher = roles.includes('Mobile Teacher');
+  const hasMobileIT = roles.includes('Mobile IT');
+  const hasMobileBOD = roles.includes('Mobile BOD');
+
+  const allItems = [
     {
       id: 1,
       title: t('home.tickets'),
       component: TicketIcon,
       description: 'Ứng dụng Ticket',
       onPress: navigateToTicket,
+      key: 'tickets',
     },
     {
       id: 2,
@@ -278,22 +289,37 @@ const HomeScreen = () => {
       component: DevicesIcon,
       description: 'Quản lý thiết bị',
       onPress: navigateToDevices,
+      key: 'devices',
     },
     {
       id: 3,
-      title: t('home.documents'),
-      component: DocumentIcon,
-      description: 'Quản lý tài liệu',
-      onPress: () => {},
+      title: 'Điểm danh',
+      component: DocumentIcon, // Placeholder icon
+      description: 'Điểm danh nhân viên/giáo viên',
+      onPress: navigateToAttendance,
+      key: 'attendance',
     },
     {
       id: 4,
-      title: 'Thư viện',
-      component: LibraryIcon,
-      description: 'Quản lý thư viện',
+      title: 'Sổ liên lạc',
+      component: LibraryIcon, // Placeholder icon
+      description: 'Sổ liên lạc',
       onPress: () => {},
+      key: 'contactbook',
     },
   ];
+
+  let menuItems = allItems.filter(() => false);
+  if (hasMobileBOD) {
+    menuItems = allItems;
+  } else if (hasMobileIT) {
+    menuItems = allItems.filter((i) => ['tickets', 'devices'].includes(i.key));
+  } else if (hasMobileTeacher) {
+    menuItems = allItems.filter((i) => ['tickets', 'attendance', 'contactbook'].includes(i.key));
+  } else {
+    // Default minimal access
+    menuItems = allItems.filter((i) => i.key === 'tickets');
+  }
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<string[]>([]);

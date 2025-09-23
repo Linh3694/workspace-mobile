@@ -28,16 +28,35 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 // Helper function to normalize user data from different API responses
 const normalizeUserData = (userData: any, defaultProvider = 'local') => {
+  // Rearrange name to "Họ đệm + Tên" (move first token to the end)
+  const reorderVietnameseName = (name?: string) => {
+    try {
+      if (!name) return '';
+      const tokens = String(name)
+        .split(' ')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (tokens.length < 2) return name;
+      const first = tokens[0];
+      const rest = tokens.slice(1).join(' ');
+      return `${rest} ${first}`.trim();
+    } catch {
+      return name || '';
+    }
+  };
   const roles: string[] = Array.isArray(userData.roles)
     ? userData.roles
     : Array.isArray(userData.user_roles)
       ? userData.user_roles
       : [];
 
+  const rawFullname =
+    userData.fullname || userData.full_name || userData.username || userData.email;
+
   return {
     _id: userData._id || userData.id || userData.email || userData.name,
     email: userData.email,
-    fullname: userData.fullname || userData.full_name || userData.username || userData.email,
+    fullname: reorderVietnameseName(rawFullname),
     username: userData.username || userData.email,
     role: userData.role || userData.user_role || 'user',
     roles,
@@ -52,6 +71,11 @@ const normalizeUserData = (userData: any, defaultProvider = 'local') => {
     needProfileUpdate: userData.needProfileUpdate || false,
     employeeCode: userData.employeeCode || userData.employee_code || '',
     provider: userData.provider || defaultProvider,
+    teacher_info: userData.teacher_info || {
+      homeroom_class_ids: [],
+      vice_homeroom_class_ids: [],
+      teaching_class_ids: [],
+    },
   };
 };
 
@@ -86,6 +110,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const hasRequiredMobileRole = (roles: string[] = []): boolean => {
+    const required = new Set(['Mobile IT', 'Mobile Teacher', 'Mobile BOD']);
+    return roles.some((r) => required.has(r));
+  };
+
+  const persistTeacherInfo = async (ti: any) => {
+    try {
+      const homeroom = Array.isArray(ti?.homeroom_class_ids) ? ti.homeroom_class_ids : [];
+      const vice = Array.isArray(ti?.vice_homeroom_class_ids) ? ti.vice_homeroom_class_ids : [];
+      const teaching = Array.isArray(ti?.teaching_class_ids) ? ti.teaching_class_ids : [];
+      await AsyncStorage.setItem('teacherHomeroomClassIds', JSON.stringify(homeroom));
+      await AsyncStorage.setItem('teacherViceHomeroomClassIds', JSON.stringify(vice));
+      await AsyncStorage.setItem('teacherTeachingClassIds', JSON.stringify(teaching));
+    } catch (e) {
+      console.warn('[Auth] persistTeacherInfo failed', e);
+    }
+  };
+
   // Đồng bộ user data mới nhất từ Frappe (bao gồm roles)
   const refreshUserData = useCallback(async () => {
     try {
@@ -110,8 +152,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       const data = await resp.json();
-      if (data && data.status === 'success' && data.user) {
-        const userData = data.user;
+      const ok = (data && data.success === true) || (data && data.status === 'success');
+      const payload = (data && data.data) || data;
+      const userData = payload && payload.user;
+      if (ok && userData) {
         console.log('[Auth][refreshUserData] raw avatar fields:', {
           avatar_url: userData.avatar_url,
           user_image: userData.user_image,
@@ -119,6 +163,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           avatarUrl: userData.avatarUrl,
         });
         let normalized = normalizeUserData(userData, user?.provider || 'local');
+        const roles = normalized.roles || [];
+        if (!hasRequiredMobileRole(roles)) {
+          console.warn('[Auth][refreshUserData] User lacks mobile roles');
+          await logout();
+          return;
+        }
 
         // Thử lấy URL avatar mới nhất từ endpoint chuyên dụng (tránh cache tầng CDN)
         try {
@@ -132,6 +182,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         normalized = await attachAvatarCacheBust(normalized);
         console.log('[Auth][refreshUserData] normalized.avatar:', normalized.avatar);
+        console.log('[Auth][refreshUserData] roles:', normalized.roles);
+        console.log('[Auth][refreshUserData] teacher_info:', {
+          homeroom: normalized.teacher_info?.homeroom_class_ids?.length || 0,
+          vice: normalized.teacher_info?.vice_homeroom_class_ids?.length || 0,
+          teaching: normalized.teacher_info?.teaching_class_ids?.length || 0,
+          preview: normalized.teacher_info,
+        });
         setUser(normalized);
         await AsyncStorage.setItem('user', JSON.stringify(normalized));
         await AsyncStorage.setItem('userId', normalized._id);
@@ -142,6 +199,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         await AsyncStorage.setItem('userRoles', JSON.stringify(normalized.roles || []));
         await AsyncStorage.setItem('userEmployeeCode', normalized.employeeCode || '');
         await AsyncStorage.setItem('userAvatarUrl', normalized.avatar || '');
+        await persistTeacherInfo(normalized.teacher_info);
+        console.log('[Auth][refreshUserData] teacher_info persisted to AsyncStorage');
       }
     } catch (error) {
       console.error('Lỗi khi lấy thông tin người dùng:', error);
@@ -322,6 +381,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
               // Normalize user data to match UI expectations
               let normalizedUser = normalizeUserData(userData, userData.provider || 'local');
+              const roles = normalizedUser.roles || [];
+              if (!hasRequiredMobileRole(roles)) {
+                console.warn('[checkAuth] User lacks mobile roles');
+                await logout();
+                setLoading(false);
+                return false;
+              }
               normalizedUser = await attachAvatarCacheBust(normalizedUser);
 
               console.log('✅ [checkAuth] Normalized user data:', {
@@ -342,6 +408,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               await AsyncStorage.setItem('userEmployeeCode', normalizedUser.employeeCode);
               await AsyncStorage.setItem('userAvatarUrl', normalizedUser.avatar);
               await AsyncStorage.setItem('userRoles', JSON.stringify(normalizedUser.roles || []));
+              await persistTeacherInfo(normalizedUser.teacher_info);
 
               // Initialize push notifications after successful authentication
               try {
@@ -378,6 +445,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
             // Normalize user data from Frappe endpoint
             let normalizedUser = normalizeUserData(userData, 'frappe');
+            const roles = normalizedUser.roles || [];
+            if (!hasRequiredMobileRole(roles)) {
+              console.warn('[checkAuth fallback] User lacks mobile roles');
+              await logout();
+              setLoading(false);
+              return false;
+            }
             normalizedUser = await attachAvatarCacheBust(normalizedUser);
 
             setUser(normalizedUser);
@@ -391,6 +465,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             await AsyncStorage.setItem('userEmployeeCode', normalizedUser.employeeCode);
             await AsyncStorage.setItem('userAvatarUrl', normalizedUser.avatar);
             await AsyncStorage.setItem('userRoles', JSON.stringify(normalizedUser.roles || []));
+            await persistTeacherInfo(normalizedUser.teacher_info);
 
             // Initialize push notifications after successful authentication
             try {
@@ -443,33 +518,36 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       // Save user information
       if (userData) {
-        const withBust = await attachAvatarCacheBust(userData);
+        const normalized = normalizeUserData(userData, userData.provider || 'local');
+        const roles = normalized.roles || [];
+        if (!hasRequiredMobileRole(roles)) {
+          console.warn('[login] User does not have required mobile roles');
+          await AsyncStorage.removeItem('authToken');
+          throw new Error('NO_MOBILE_ACCESS');
+        }
+        const withBust = await attachAvatarCacheBust(normalized);
         await AsyncStorage.setItem('user', JSON.stringify(withBust));
-        await AsyncStorage.setItem('userId', userData._id || userData.id || userData.email);
-        await AsyncStorage.setItem('userFullname', userData.fullname || userData.full_name);
-        await AsyncStorage.setItem('userJobTitle', userData.jobTitle || userData.job_title || '');
-        await AsyncStorage.setItem('userDepartment', userData.department || '');
+        await AsyncStorage.setItem('userId', withBust._id || withBust.id || withBust.email);
+        await AsyncStorage.setItem('userFullname', withBust.fullname || withBust.full_name);
+        await AsyncStorage.setItem('userJobTitle', withBust.jobTitle || withBust.job_title || '');
+        await AsyncStorage.setItem('userDepartment', withBust.department || '');
         await AsyncStorage.setItem(
           'userEmployeeCode',
-          userData.employeeCode || userData.employee_code || ''
+          withBust.employeeCode || withBust.employee_code || ''
         );
-        const role = userData.role || userData.user_role || 'user';
+        const role = withBust.role || withBust.user_role || 'user';
         await AsyncStorage.setItem('userRole', role);
-        const roles = Array.isArray(userData.roles)
-          ? userData.roles
-          : Array.isArray(userData.user_roles)
-            ? userData.user_roles
-            : [];
         await AsyncStorage.setItem('userRoles', JSON.stringify(roles));
         await AsyncStorage.setItem(
           'userAvatarUrl',
-          userData.avatarUrl || userData.user_image || ''
+          withBust.avatar || withBust.avatarUrl || withBust.user_image || ''
         );
         setUser(withBust);
+        await persistTeacherInfo(withBust.teacher_info);
         console.log('✅ [login] User data saved with full info:', {
-          fullname: userData.fullname || userData.full_name,
-          jobTitle: userData.jobTitle || userData.job_title,
-          department: userData.department,
+          fullname: withBust.fullname || withBust.full_name,
+          jobTitle: withBust.jobTitle || withBust.job_title,
+          department: withBust.department,
           role: role,
         });
 
@@ -479,6 +557,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           console.log('✅ [login] Push notifications initialized');
         } catch (pushError) {
           console.warn('⚠️ [login] Failed to initialize push notifications:', pushError);
+        }
+
+        // Fetch enriched user info (teacher_info, latest avatar, roles) from API
+        try {
+          await refreshUserData();
+        } catch (e) {
+          console.warn('[login] refreshUserData after login failed', e);
         }
       }
     } catch (error) {
@@ -503,6 +588,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       // Create normalized user object for context (matching the format from local login)
       let normalizedUser = normalizeUserData(authResponse.user, 'microsoft');
+      const roles = normalizedUser.roles || [];
+      if (!hasRequiredMobileRole(roles)) {
+        console.warn('[loginWithMicrosoft] User lacks required mobile roles');
+        await AsyncStorage.removeItem('authToken');
+        await AsyncStorage.removeItem('user');
+        throw new Error('NO_MOBILE_ACCESS');
+      }
       normalizedUser = await attachAvatarCacheBust(normalizedUser);
 
       // Set normalized user state
@@ -513,6 +605,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       } catch (e) {
         console.warn('[loginWithMicrosoft] Failed to store userRoles', e);
       }
+      await persistTeacherInfo(normalizedUser.teacher_info);
 
       // Initialize push notifications after successful Microsoft login
       try {
@@ -520,6 +613,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         console.log('✅ [loginWithMicrosoft] Push notifications initialized');
       } catch (pushError) {
         console.warn('⚠️ [loginWithMicrosoft] Failed to initialize push notifications:', pushError);
+      }
+
+      // Fetch enriched user info (teacher_info, latest avatar, roles) from API
+      try {
+        await refreshUserData();
+      } catch (e) {
+        console.warn('[loginWithMicrosoft] refreshUserData after login failed', e);
       }
 
       console.log(

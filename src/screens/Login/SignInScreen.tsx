@@ -25,11 +25,11 @@ import AppleIcon from '../../assets/apple.svg';
 // import * as AppleAuthentication from 'expo-apple-authentication';
 import VisibilityIcon from '../../assets/visibility.svg';
 // import WarningIcon from '../../assets/warning.svg';
-import FaceIdIcon from '../../assets/face-id.svg';
+// Removed FaceID per new requirement
 // import { ROUTES } from '../../constants/routes';
 import { API_BASE_URL } from '../../config/constants';
 import { useAuth } from '../../context/AuthContext';
-import { useBiometricAuth } from '../../hooks/useBiometricAuth';
+// Removed biometric auth per new requirement
 import { useLanguage } from '../../hooks/useLanguage';
 import NotificationModal from '../../components/NotificationModal';
 
@@ -63,7 +63,6 @@ const SignInScreen = () => {
   const [loginError, setLoginError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const { login, checkAuth, loginWithMicrosoft } = useAuth();
-  const { hasSavedCredentials, isAuthenticating, authenticate } = useBiometricAuth();
   // const [showBiometricModal, setShowBiometricModal] = useState(false);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
@@ -215,26 +214,7 @@ const SignInScreen = () => {
     setShowNotificationModal(true);
   };
 
-  const handleBiometricLogin = async () => {
-    if (!hasSavedCredentials) {
-      showNotification('Bạn cần bật đăng nhập bằng FaceID/TouchID trong hồ sơ cá nhân trước.');
-      return;
-    }
-
-    try {
-      const credentials = await authenticate();
-
-      if (credentials) {
-        setValue('email', credentials.email);
-        setValue('password', credentials.password);
-        onSubmit({ email: credentials.email, password: credentials.password });
-      } else {
-        showNotification('Xác thực sinh trắc học thất bại. Vui lòng thử lại.');
-      }
-    } catch {
-      showNotification('Không thể xác thực sinh trắc học. Vui lòng thử lại.');
-    }
-  };
+  // Biometric login removed
 
   const onSubmit = async (data: any) => {
     setLoading(true);
@@ -406,8 +386,16 @@ const SignInScreen = () => {
           }
 
           // Lưu token + user (đã chuẩn hoá) và xác thực lại để init push, cache-bust avatar
-          await login(token, finalUser);
-          await checkAuth();
+          try {
+            await login(token, finalUser);
+            await checkAuth();
+          } catch (e) {
+            if (e?.message === 'NO_MOBILE_ACCESS') {
+              showNotification('Bạn không có quyền đăng nhập hệ thống.', 'error');
+              return;
+            }
+            throw e;
+          }
 
           navigation.reset({
             index: 0,
@@ -493,28 +481,15 @@ const SignInScreen = () => {
           <Text className="ml-2 self-start text-error">{errors.password.message}</Text>
         )}
 
-        {/* Nút FaceID - luôn hiển thị */}
-        <TouchableOpacity
-          className="mb-4 mt-6 items-center"
-          onPress={handleBiometricLogin}
-          disabled={loading || isAuthenticating}
-          style={{ opacity: loading || isAuthenticating ? 0.5 : 1 }}>
-          {isAuthenticating ? (
-            <ActivityIndicator size="large" color="#009483" />
-          ) : (
-            <View className="items-center">
-              <FaceIdIcon width={62} height={62} color="#F05023" />
-            </View>
-          )}
-        </TouchableOpacity>
+        {/* FaceID removed */}
 
         {/* Nút đăng nhập */}
         <TouchableOpacity
           className="mt-2 w-full items-center rounded-full bg-secondary py-3"
           onPress={handleSubmit(onSubmit)}
-          disabled={loading || isAuthenticating}>
+          disabled={loading}>
           <Text className="font-bold text-base text-white">
-            {loading || isAuthenticating ? 'Đang đăng nhập...' : 'Đăng nhập'}
+            {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
           </Text>
         </TouchableOpacity>
 

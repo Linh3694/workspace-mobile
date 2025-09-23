@@ -1,14 +1,6 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 // @ts-ignore
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Animated,
-  Easing,
-  Dimensions,
-  SafeAreaView,
-} from 'react-native';
+import { View, Text, TouchableOpacity, Animated, Easing, Dimensions, SafeAreaView} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -102,7 +94,7 @@ const WelcomeScreen = () => {
             <Text
               className="mt-2 text-center text-lg text-[#00687F]"
               style={{ fontFamily: 'Mulish-Bold' }}>
-              Tối ưu vận hành, nâng tầm chất lượng
+Wellspring Innovation Spaces
             </Text>
           </View>
         </View>

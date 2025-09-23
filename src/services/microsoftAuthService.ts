@@ -92,29 +92,17 @@ class MicrosoftAuthService {
       console.log('📝 [MicrosoftAuthService] State:', state);
       console.log('📝 [MicrosoftAuthService] RedirectUri:', redirectUri);
 
-      const url = new URL(
-        `${this.baseUrl}/api/method/erp.api.erp_common_user.mobile_microsoft_auth.mobile_microsoft_callback`
-      );
-      url.searchParams.set('code', authorizationCode);
-      if (state) {
-        url.searchParams.set('state', state);
-      }
-      if (redirectUri) {
-        url.searchParams.set('redirect_uri', redirectUri);
-        console.log('✅ [MicrosoftAuthService] Added redirect_uri to request:', redirectUri);
-      } else {
-        console.log('⚠️ [MicrosoftAuthService] No redirectUri provided!');
-      }
+      const endpoint = `${this.baseUrl}/api/method/erp.api.erp_common_user.mobile_microsoft_auth.mobile_microsoft_callback`;
+      console.log('📤 [MicrosoftAuthService] POST to:', endpoint);
 
-      console.log('📤 [MicrosoftAuthService] Request URL:', url.toString());
-
-      const response = await fetch(url.toString(), {
-        method: 'GET',
+      const response = await fetch(endpoint, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
           'User-Agent': 'WellspringMobile/2.0',
         },
+        body: JSON.stringify({ code: authorizationCode, state, redirect_uri: redirectUri }),
       });
 
       console.log('🎯 [MicrosoftAuthService] Response status:', response.status);
@@ -127,16 +115,32 @@ class MicrosoftAuthService {
         console.log('📋 [MicrosoftAuthService] Full response data:', JSON.stringify(data, null, 2));
         console.log('📋 [MicrosoftAuthService] Full result:', JSON.stringify(result, null, 2));
 
-        console.log('✅ [MicrosoftAuthService] Authentication result:', {
-          success: result.success,
-          hasToken: !!result.token,
-          hasUser: !!result.user,
-          userEmail: result.user?.email,
-          error: result.error,
-          errorCode: result.error_code,
+        // Normalize to flat shape: { success, token, user, expires_in, error, error_code }
+        let normalized: MicrosoftAuthResponse;
+        if (result && typeof result === 'object' && 'data' in result) {
+          const payload: any = (result as any).data || {};
+          normalized = {
+            success: !!(result as any).success,
+            token: payload.token,
+            user: payload.user,
+            expires_in: payload.expires_in,
+            error: (result as any).error,
+            error_code: (result as any).error_code,
+          } as MicrosoftAuthResponse;
+        } else {
+          normalized = result as MicrosoftAuthResponse;
+        }
+
+        console.log('✅ [MicrosoftAuthService] Authentication result (normalized):', {
+          success: normalized.success,
+          hasToken: !!normalized.token,
+          hasUser: !!normalized.user,
+          userEmail: normalized.user?.email,
+          error: normalized.error,
+          errorCode: normalized.error_code,
         });
 
-        return result;
+        return normalized;
       } else {
         const errorText = await response.text();
         console.error('❌ [MicrosoftAuthService] Server error:', response.status, errorText);
@@ -195,13 +199,29 @@ class MicrosoftAuthService {
         const data = await response.json();
         const result = data.message || data;
 
-        console.log('✅ [MicrosoftAuthService] Token authentication result:', {
-          success: result.success,
-          hasToken: !!result.token,
-          userEmail: result.user?.email,
+        // Normalize shape to flat
+        let normalized: MicrosoftAuthResponse;
+        if (result && typeof result === 'object' && 'data' in result) {
+          const payload: any = (result as any).data || {};
+          normalized = {
+            success: !!(result as any).success,
+            token: payload.token,
+            user: payload.user,
+            expires_in: payload.expires_in,
+            error: (result as any).error,
+            error_code: (result as any).error_code,
+          } as MicrosoftAuthResponse;
+        } else {
+          normalized = result as MicrosoftAuthResponse;
+        }
+
+        console.log('✅ [MicrosoftAuthService] Token authentication result (normalized):', {
+          success: normalized.success,
+          hasToken: !!normalized.token,
+          userEmail: normalized.user?.email,
         });
 
-        return result;
+        return normalized;
       } else {
         const errorText = await response.text();
         console.error('❌ [MicrosoftAuthService] Token auth error:', errorText);

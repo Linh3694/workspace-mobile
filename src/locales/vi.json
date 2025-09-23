@@ -10,7 +10,8 @@
     "vietnamese": "Tiếng Việt",
     "english": "English",
     "change_language": "Đổi ngôn ngữ",
-    "language_changed": "Đã thay đổi ngôn ngữ thành công"
+    "language_changed": "Đã thay đổi ngôn ngữ thành công",
+    "campus": "Campus"
   },
   "common": {
     "success": "Thành công",
