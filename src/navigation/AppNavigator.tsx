@@ -4,24 +4,19 @@ import BottomTabNavigator from './BottomTabNavigator';
 import WelcomeScreen from '../screens/Login/WelcomeScreen';
 import LoginScreen from '../screens/Login/SignInScreen';
 import { ROUTES } from '../constants/routes';
-import ChatDetailScreen from '../screens/Chat/ChatDetailScreen';
-import CreateGroupScreen from '../screens/Chat/CreateGroupScreen';
-import GroupChatDetailScreen from '../screens/Chat/GroupChatDetailScreen';
-import GroupInfoScreen from '../screens/Chat/GroupInfoScreen';
 import TicketGuestScreen from '../screens/Ticket/TicketGuestScreen';
 import TicketAdminScreen from '../screens/Ticket/TicketAdminScreen';
 import TicketCreate from '../screens/Ticket/TicketCreate';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import ChatInitScreen from '../screens/Chat/ChatInitScreen';
 import TicketAdminDetail from '../screens/Ticket/TicketAdminDetail';
 import TicketGuestDetail from '../screens/Ticket/TicketGuestDetail';
 import DevicesScreen from '../screens/Devices/DevicesScreen';
 import DevicesDetailScreen from '../screens/Devices/DevicesDetailScreen';
 import DeviceAssignmentHistoryScreen from '../screens/Devices/DeviceAssignmentHistoryScreen';
 import { useAuth } from '../context/AuthContext';
-import ChatInfoScreen from '../screens/Chat/ChatInfoScreen';
 import AttendanceHome from '../screens/Attendance/AttendanceHome';
 import AttendanceDetail from '../screens/Attendance/AttendanceDetail';
+import LeaveRequestsScreen from '../screens/LeaveRequests/LeaveRequestsScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -48,12 +43,6 @@ export type RootStackParamList = {
       ticketId?: string;
     };
   };
-  [ROUTES.SCREENS.CHAT_DETAIL]: { user: User; chatId?: string };
-  [ROUTES.SCREENS.CHAT_INIT]: { chatId?: string; senderId?: string };
-  [ROUTES.SCREENS.CHAT_INFO]: { user: User; chatId?: string };
-  [ROUTES.SCREENS.CREATE_GROUP]: { preSelectedUsers?: User[] } | undefined;
-  [ROUTES.SCREENS.GROUP_CHAT_DETAIL]: { chat: any };
-  [ROUTES.SCREENS.GROUP_INFO]: { groupInfo: any };
   [ROUTES.SCREENS.TICKET_DETAIL]: { ticketId: string };
   [ROUTES.SCREENS.TICKET_CREATE]: undefined;
   [ROUTES.SCREENS.TICKET_ADMIN_DETAIL]: { ticketId: string };
@@ -71,6 +60,9 @@ export type RootStackParamList = {
     deviceType: 'laptop' | 'monitor' | 'printer' | 'projector' | 'tool';
     deviceName: string;
   };
+  [ROUTES.SCREENS.ATTENDANCE_HOME]: undefined;
+  [ROUTES.SCREENS.ATTENDANCE_DETAIL]: { classId: string; date: string };
+  [ROUTES.SCREENS.LEAVE_REQUESTS]: { classId?: string };
 };
 
 const MainTabWrapper = ({ route }: { route: any }) => <BottomTabNavigator route={route} />;
@@ -158,36 +150,6 @@ const AppNavigator = () => {
             options={{ headerShown: false }}
           />
           <Stack.Screen
-            name={ROUTES.SCREENS.CHAT_DETAIL}
-            component={ChatDetailScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name={ROUTES.SCREENS.CHAT_INFO}
-            component={ChatInfoScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name={ROUTES.SCREENS.CREATE_GROUP}
-            component={CreateGroupScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name={ROUTES.SCREENS.GROUP_CHAT_DETAIL}
-            component={GroupChatDetailScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name={ROUTES.SCREENS.GROUP_INFO}
-            component={GroupInfoScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name={ROUTES.SCREENS.CHAT_INIT}
-            component={ChatInitScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
             name={ROUTES.SCREENS.TICKET_CREATE}
             component={TicketCreate}
             options={{ headerShown: false }}
@@ -235,6 +197,11 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.ATTENDANCE_DETAIL}
             component={AttendanceDetail}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.LEAVE_REQUESTS}
+            component={LeaveRequestsScreen}
             options={{ headerShown: false }}
           />
         </>

@@ -8,6 +8,7 @@ import { ROUTES } from '../../constants/routes';
 import { useAuth } from '../../context/AuthContext';
 import attendanceService from '../../services/attendanceService';
 import { Ionicons } from '@expo/vector-icons';
+import { getApiBaseUrl } from '../../config/constants';
 
 const TabHeader = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
   <View className="flex-1 items-center">
@@ -105,24 +106,93 @@ const AttendanceHome = () => {
   const gvbmClasses = useMemo(() => Array.from(new Set(teaching || [])), [teaching]);
   const [classTitles, setClassTitles] = React.useState<Record<string, string>>({});
 
-  // Map class id -> title for display
+  // Map class id -> title for display  
   React.useEffect(() => {
     (async () => {
       try {
         const ids = Array.from(new Set([...(homeroom || []), ...(vice || []), ...(teaching || [])]));
-        if (ids.length === 0) return;
-        const rows = await attendanceService.getAllClassesForCurrentCampus();
+        if (ids.length === 0) {
+          console.log('[AttendanceHome] No class IDs to fetch');
+          return;
+        }
+        console.log('[AttendanceHome] Fetching titles for', ids.length, 'classes');
+        
+        const token = await AsyncStorage.getItem('authToken');
+        const headers = {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        };
+        const apiBase = getApiBaseUrl();
+        
+        // Fetch each class individually to get accurate titles
         const map: Record<string, string> = {};
-        rows.forEach((c: any) => {
-          const name = String(c?.name || '');
-          if (name) map[name] = c?.title || c?.short_title || name.replace('SIS-CLASS-', '');
-        });
+        let successCount = 0;
+        let failCount = 0;
+        
+        for (const classId of ids) {
+          try {
+            // Use GET with proper query params (not POST)
+            const url = `${apiBase}/api/method/erp.api.erp_sis.sis_class.get_class?name=${encodeURIComponent(classId)}`;
+            const res = await fetch(url, {
+              method: 'GET',
+              headers: {
+                'Authorization': headers.Authorization,
+                'Accept': 'application/json',
+              },
+            });
+            
+            if (!res.ok) {
+              const errorText = await res.text();
+              console.warn('[AttendanceHome] HTTP error for', classId, ':', res.status, errorText.substring(0, 100));
+              failCount++;
+              // Fallback to formatted ID
+              map[classId] = classId.replace(/^SIS-CLASS-/, '').replace(/^CLASS-/, '');
+              continue;
+            }
+            
+            const json = await res.json();
+            const cls = json?.message?.data || json?.data;
+            
+            if (cls) {
+              // Priority: short_title > title > class_name > formatted ID
+              const title = cls.short_title || cls.title || cls.class_name || classId.replace(/^SIS-CLASS-/, '').replace(/^CLASS-/, '');
+              map[classId] = title;
+              successCount++;
+              
+              if (successCount <= 3) {
+                console.log('[AttendanceHome] ✅ Fetched:', classId, '→', title, '(from', cls.short_title ? 'short_title' : cls.title ? 'title' : cls.class_name ? 'class_name' : 'ID', ')');
+              }
+            } else {
+              console.warn('[AttendanceHome] No class data in response for', classId);
+              failCount++;
+              map[classId] = classId.replace(/^SIS-CLASS-/, '').replace(/^CLASS-/, '');
+            }
+          } catch (err) {
+            console.error('[AttendanceHome] ❌ Exception fetching class:', classId, err);
+            failCount++;
+            // Fallback to formatted ID
+            map[classId] = classId.replace(/^SIS-CLASS-/, '').replace(/^CLASS-/, '');
+          }
+        }
+        
+        console.log('[AttendanceHome] Fetch complete: ✅', successCount, 'success, ❌', failCount, 'failed, total mapped:', Object.keys(map).length);
+        
+        console.log('[AttendanceHome] Successfully mapped', Object.keys(map).length, 'class titles');
         setClassTitles(map);
-      } catch {}
+      } catch (e) {
+        console.error('[AttendanceHome] Failed to fetch class titles:', e);
+      }
     })();
   }, [homeroom, vice, teaching]);
 
   const list = tab === 'GVCN' ? gvcnClasses : gvbmClasses;
+
+  // Get display title for a class with better fallback
+  const getClassTitle = (classId: string): string => {
+    if (classTitles[classId]) return classTitles[classId];
+    // Fallback: format the ID nicely
+    return String(classId).replace(/^SIS-CLASS-/, '').replace(/^CLASS-/, '');
+  };
 
   const handleOpen = (classId: string) => {
     nav.navigate(ROUTES.SCREENS.ATTENDANCE_DETAIL, {
@@ -156,7 +226,7 @@ const AttendanceHome = () => {
               {list.map((cls) => (
                 <View key={cls} style={{ width: '48%' }}>
                   <Card
-                    title={`Lớp ${classTitles[String(cls)] || String(cls).replace('SIS-CLASS-', '')}`}
+                    title={`Lớp ${getClassTitle(cls)}`}
                     subtitle={tab === 'GVCN' ? 'Chủ nhiệm' : 'Giảng dạy'}
                     onPress={() => handleOpen(cls)}
                   />

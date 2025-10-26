@@ -265,7 +265,11 @@ const HomeScreen = () => {
   };
 
   const navigateToAttendance = () => {
-    navigation.navigate(ROUTES.SCREENS.ATTENDANCE_HOME as any);
+    navigation.navigate(ROUTES.SCREENS.ATTENDANCE_HOME);
+  };
+
+  const navigateToLeaveRequests = () => {
+    navigation.navigate(ROUTES.SCREENS.LEAVE_REQUESTS);
   };
 
   // Role-based menu configuration
@@ -301,11 +305,11 @@ const HomeScreen = () => {
     },
     {
       id: 4,
-      title: 'Sổ liên lạc',
-      component: LibraryIcon, // Placeholder icon
-      description: 'Sổ liên lạc',
-      onPress: () => {},
-      key: 'contactbook',
+      title: 'Đơn từ',
+      component: DocumentIcon,
+      description: 'Đơn từ',
+      onPress: navigateToLeaveRequests,
+      key: 'documents',
     },
   ];
 
@@ -315,7 +319,7 @@ const HomeScreen = () => {
   } else if (hasMobileIT) {
     menuItems = allItems.filter((i) => ['tickets', 'devices'].includes(i.key));
   } else if (hasMobileTeacher) {
-    menuItems = allItems.filter((i) => ['tickets', 'attendance', 'contactbook'].includes(i.key));
+    menuItems = allItems.filter((i) => ['tickets', 'attendance', 'documents'].includes(i.key));
   } else {
     // Default minimal access
     menuItems = allItems.filter((i) => i.key === 'tickets');

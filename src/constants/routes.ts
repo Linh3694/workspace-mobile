@@ -23,6 +23,7 @@ export const ROUTES = {
     WISLIFE: 'Social',
     ATTENDANCE_HOME: 'AttendanceHome',
     ATTENDANCE_DETAIL: 'AttendanceDetail',
+    LEAVE_REQUESTS: 'LeaveRequests',
   },
   // Tab names trong bottom navigation
   TABS: {

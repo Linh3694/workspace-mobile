@@ -2,13 +2,13 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ROUTES } from '../constants/routes';
 import HomeScreen from '../screens/Home/HomeScreen';
-import ChatScreen from '../screens/Chat/ChatScreen';
+import AttendanceHome from '../screens/Attendance/AttendanceHome';
 import WislifeScreen from '../screens/Wislife/WislifeScreen';
 import NotificationsScreen from '../screens/Notifications/NotificationsScreen';
 import ProfileScreen from '../screens/Profile/ProfileScreen';
 import { Text, View } from 'react-native';
 import MenuIcon from '../assets/menu.svg';
-import ChatIcon from '../assets/chat.svg';
+import DocumentIcon from '../assets/document-icon.svg';
 import WislifeIcon from '../assets/wislife.svg';
 import NotificationIcon from '../assets/notification.svg';
 import ProfileIcon from '../assets/profile.svg';
@@ -23,8 +23,6 @@ const tabBarLabel = (label: string, focused: boolean) => (
     {label}
   </Text>
 );
-
-const HIDDEN_ROUTES = ['ChatDetail'];
 
 const BottomTabNavigator = ({ route }: { route: any }) => {
   const initialRouteName = route?.params?.screen || ROUTES.TABS.HOME;
@@ -53,16 +51,16 @@ const BottomTabNavigator = ({ route }: { route: any }) => {
         }}
       />
       <Tab.Screen
-        name={ROUTES.MAIN.CHAT}
-        component={ChatScreen}
-        options={({ route }) => ({
+        name="Attendance"
+        component={AttendanceHome}
+        options={{
           tabBarIcon: ({ focused }) => (
             <View className="items-center">
-              <ChatIcon width={28} height={28} />
+              <DocumentIcon width={28} height={28} />
             </View>
           ),
-          tabBarLabel: ({ focused }) => tabBarLabel('WisCom', focused),
-        })}
+          tabBarLabel: ({ focused }) => tabBarLabel('Điểm danh', focused),
+        }}
       />
       <Tab.Screen
         name={ROUTES.MAIN.WISLIFE}

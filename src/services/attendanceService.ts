@@ -517,14 +517,15 @@ class AttendanceService {
       return [];
     }
   }
-  async getAllClassesForCurrentCampus(): Promise<Array<{ name: string; title?: string; short_title?: string }>> {
+  async getAllClassesForCurrentCampus(): Promise<Array<{ name: string; title?: string; short_title?: string; class_name?: string }>> {
     try {
       const headers = await this.getAuthHeaders();
       const campusId = (await AsyncStorage.getItem('currentCampusId')) || '';
       const url = new URL(`${BASE_URL}/api/method/erp.api.erp_sis.sis_class.get_all_classes`);
-      url.searchParams.set('page', '1');
-      url.searchParams.set('limit', '500');
+      // Note: get_all_classes doesn't accept page/limit parameters
       if (campusId) url.searchParams.set('campus_id', campusId);
+      
+      console.log('[attendanceService] Fetching classes from:', url.toString());
       const res = await fetch(url.toString(), { headers });
       if (!res.ok) {
         const text = await res.text();
@@ -532,7 +533,26 @@ class AttendanceService {
         return [];
       }
       const json = await res.json();
-      const rows = (json && (json.data || json.message?.data)) || [];
+      console.log('[attendanceService] Full response:', JSON.stringify(json).substring(0, 800));
+      
+      // Parse response: check multiple possible locations
+      let rows = [];
+      if (json?.message?.data) {
+        rows = json.message.data;
+      } else if (json?.data) {
+        rows = json.data;
+      } else if (json?.message && Array.isArray(json.message)) {
+        rows = json.message;
+      }
+      
+      console.log('[attendanceService] Parsed rows count:', Array.isArray(rows) ? rows.length : 'not array, type: ' + typeof rows);
+      
+      if (Array.isArray(rows) && rows.length > 0) {
+        console.log('[attendanceService] First class:', JSON.stringify(rows[0]));
+      } else {
+        console.warn('[attendanceService] ⚠️ No classes returned! Campus:', campusId);
+      }
+      
       return Array.isArray(rows) ? rows : [];
     } catch (e) {
       console.warn('[attendanceService] getAllClassesForCurrentCampus error', e);

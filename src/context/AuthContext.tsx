@@ -28,22 +28,8 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 // Helper function to normalize user data from different API responses
 const normalizeUserData = (userData: any, defaultProvider = 'local') => {
-  // Rearrange name to "Họ đệm + Tên" (move first token to the end)
-  const reorderVietnameseName = (name?: string) => {
-    try {
-      if (!name) return '';
-      const tokens = String(name)
-        .split(' ')
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (tokens.length < 2) return name;
-      const first = tokens[0];
-      const rest = tokens.slice(1).join(' ');
-      return `${rest} ${first}`.trim();
-    } catch {
-      return name || '';
-    }
-  };
+  // Backend gửi full_name đã đúng format (Họ + Tên đệm + Tên), không cần đảo tên
+  // Ví dụ: "Nguyễn Hải Linh" là đúng cho người Việt, "John Smith" là đúng cho người nước ngoài
   const roles: string[] = Array.isArray(userData.roles)
     ? userData.roles
     : Array.isArray(userData.user_roles)
@@ -56,7 +42,7 @@ const normalizeUserData = (userData: any, defaultProvider = 'local') => {
   return {
     _id: userData._id || userData.id || userData.email || userData.name,
     email: userData.email,
-    fullname: reorderVietnameseName(rawFullname),
+    fullname: rawFullname, // Sử dụng tên gốc từ backend, không đảo
     username: userData.username || userData.email,
     role: userData.role || userData.user_role || 'user',
     roles,

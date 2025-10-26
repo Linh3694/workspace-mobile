@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
-import { View, Text, SafeAreaView, TouchableOpacity, Switch, Alert, Image, ScrollView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, SafeAreaView, TouchableOpacity, Switch, Alert, Image, ScrollView, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../context/AuthContext';
 // Biometric removed per requirement
@@ -14,15 +14,13 @@ import { BASE_URL } from '../../config/constants.js';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
 import StandardHeader from '../../components/Common/StandardHeader';
 import SelectModal from '../../components/SelectModal';
 import attendanceService from '../../services/attendanceService';
-import { userService } from '../../services/userService';
 
 const ProfileScreen = () => {
-  const { logout, user, refreshUserData, bumpAvatarCacheBust } = useAuth();
+  const { logout, user, refreshUserData } = useAuth();
   // Biometric hooks removed
   const { getCurrentLanguageName, showLanguageSelector, t } = useLanguage();
   // const [biometricEnabled, setBiometricEnabled] = useState(false);
@@ -33,8 +31,6 @@ const ProfileScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
   const [campusOptions, setCampusOptions] = useState<Array<{ name: string; title_vn?: string; title_en?: string }>>([]);
   const [campusSelectorVisible, setCampusSelectorVisible] = useState(false);
   const [selectedCampus, setSelectedCampus] = useState<string | null>(null); // stores campus_id like campus-1
@@ -128,136 +124,6 @@ const ProfileScreen = () => {
     if (!user)
       return 'https://ui-avatars.com/api/?name=Unknown&background=F97316&color=ffffff&size=200';
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullname)}&background=F97316&color=ffffff&size=200&font-size=0.5`;
-  };
-
-  // Avatar upload functions
-  const handleChangeAvatar = async () => {
-    Alert.alert('Thay đổi ảnh đại diện', 'Chọn nguồn ảnh', [
-      { text: 'Hủy', style: 'cancel' },
-      { text: 'Chọn từ thư viện', onPress: () => pickImageFromLibrary() },
-      { text: 'Chụp ảnh mới', onPress: () => takePhoto() },
-      { text: 'Xóa ảnh', onPress: () => handleRemoveAvatar(), style: 'destructive' },
-    ]);
-  };
-
-  const pickImageFromLibrary = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Lỗi', 'Cần quyền truy cập thư viện ảnh');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        uploadAvatar(result.assets[0].uri);
-      }
-    } catch (error) {
-      console.error('Error picking image:', error);
-      Alert.alert('Lỗi', 'Có lỗi xảy ra khi chọn ảnh');
-    }
-  };
-
-  const takePhoto = async () => {
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Lỗi', 'Cần quyền truy cập camera');
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        uploadAvatar(result.assets[0].uri);
-      }
-    } catch (error) {
-      console.error('Error taking photo:', error);
-      Alert.alert('Lỗi', 'Có lỗi xảy ra khi chụp ảnh');
-    }
-  };
-
-  const uploadAvatar = async (imageUri: string) => {
-    setUploadingAvatar(true);
-    try {
-      const result = await userService.uploadAvatar(imageUri);
-
-      if (result.success) {
-        // Refresh user data to get updated avatar
-        if (refreshUserData) {
-          await refreshUserData();
-        }
-        // Bump cache-bust so URL khác đi khi mở lại app
-        if (bumpAvatarCacheBust) {
-          await bumpAvatarCacheBust();
-        }
-        // Cập nhật hiển thị avatar ngay lập tức bằng URL nhận từ server
-        if (result.avatar_url) {
-          try {
-            const temp = getAvatar({
-              fullname: user?.fullname || 'Unknown',
-              avatar_url: result.avatar_url,
-            } as any);
-            const withTs = `${temp}${temp.includes('?') ? '&' : '?'}ts=${Date.now()}`;
-            setLocalAvatarUrl(withTs);
-          } catch {}
-        }
-        setAvatarError(false);
-        Alert.alert('Thành công', result.message || 'Đã cập nhật ảnh đại diện');
-      } else {
-        Alert.alert('Lỗi', result.message || 'Không thể tải lên ảnh');
-      }
-    } catch (_error) {
-      Alert.alert('Lỗi', 'Có lỗi xảy ra khi tải lên ảnh');
-    } finally {
-      setUploadingAvatar(false);
-    }
-  };
-
-  const handleRemoveAvatar = async () => {
-    Alert.alert('Xác nhận xóa ảnh', 'Bạn có chắc chắn muốn xóa ảnh đại diện?', [
-      { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Xóa',
-        style: 'destructive',
-        onPress: async () => {
-          setUploadingAvatar(true);
-          try {
-            const result = await userService.deleteAvatar();
-
-            if (result.success) {
-              // Refresh user data to get updated avatar
-              if (refreshUserData) {
-                await refreshUserData();
-              }
-              // Bump cache-bust để chắc chắn tránh cache ảnh cũ
-              if (bumpAvatarCacheBust) {
-                await bumpAvatarCacheBust();
-              }
-              setAvatarError(false);
-              setLocalAvatarUrl(null);
-              Alert.alert('Thành công', result.message || 'Đã xóa ảnh đại diện');
-            } else {
-              Alert.alert('Lỗi', result.message || 'Không thể xóa ảnh');
-            }
-          } catch (_error) {
-            Alert.alert('Lỗi', 'Có lỗi xảy ra khi xóa ảnh');
-          } finally {
-            setUploadingAvatar(false);
-          }
-        },
-      },
-    ]);
   };
 
   // Kiểm tra trạng thái thông báo đẩy
@@ -437,37 +303,19 @@ const ProfileScreen = () => {
       <ScrollView className="flex-1">
         {/* Profile Section */}
         <View className="mx-4 mt-6 items-center rounded-2xl p-6">
-          {/* Avatar với online status */}
+          {/* Avatar - chỉ hiển thị, không cho phép thay đổi */}
           <View className="relative mb-4">
-            <TouchableOpacity onPress={handleChangeAvatar} disabled={uploadingAvatar}>
-              <Image
-                source={{
-                  uri: (() => {
-                    const uri = avatarError
-                      ? getFallbackAvatar()
-                      : localAvatarUrl || getAvatar(user);
-                    console.log('[Profile][Image] rendering URI:', uri);
-                    return uri;
-                  })(),
-                  headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-                }}
-                key={`${localAvatarUrl || getAvatar(user)}`}
-                className="h-24 w-24 rounded-full"
-                onError={(e) => {
-                  console.warn('[Profile][Image] onError:', e?.nativeEvent?.error);
-                  handleImageError();
-                }}
-              />
-
-              {/* Edit overlay */}
-              <View className="absolute -bottom-1 -right-1 rounded-full border-2 border-white bg-primary p-1">
-                {uploadingAvatar ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Ionicons name="camera" size={14} color="white" />
-                )}
-              </View>
-            </TouchableOpacity>
+            <Image
+              source={{
+                uri: avatarError ? getFallbackAvatar() : getAvatar(user),
+                headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+              }}
+              className="h-24 w-24 rounded-full"
+              onError={(e) => {
+                console.warn('[Profile][Image] onError:', e?.nativeEvent?.error);
+                handleImageError();
+              }}
+            />
           </View>
 
           {/* User Info */}
