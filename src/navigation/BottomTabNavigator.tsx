@@ -4,13 +4,11 @@ import { ROUTES } from '../constants/routes';
 import HomeScreen from '../screens/Home/HomeScreen';
 import AttendanceHome from '../screens/Attendance/AttendanceHome';
 import WislifeScreen from '../screens/Wislife/WislifeScreen';
-import NotificationsScreen from '../screens/Notifications/NotificationsScreen';
 import ProfileScreen from '../screens/Profile/ProfileScreen';
 import { Text, View } from 'react-native';
 import MenuIcon from '../assets/menu.svg';
 import DocumentIcon from '../assets/document-icon.svg';
 import WislifeIcon from '../assets/wislife.svg';
-import NotificationIcon from '../assets/notification.svg';
 import ProfileIcon from '../assets/profile.svg';
 
 const Tab = createBottomTabNavigator();
@@ -28,6 +26,7 @@ const BottomTabNavigator = ({ route }: { route: any }) => {
   const initialRouteName = route?.params?.screen || ROUTES.TABS.HOME;
   return (
     <Tab.Navigator
+      id={undefined}
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
@@ -74,18 +73,6 @@ const BottomTabNavigator = ({ route }: { route: any }) => {
           tabBarLabel: ({ focused }) => tabBarLabel('Social', focused),
         }}
       />
-      {/* <Tab.Screen
-         name={ROUTES.MAIN.NOTIFICATIONS}
-         component={NotificationsScreen}
-         options={{
-           tabBarIcon: ({ focused }) => (
-             <View className="items-center">
-               <NotificationIcon width={28} height={28} />
-             </View>
-           ),
-           tabBarLabel: ({ focused }) => tabBarLabel('Thông báo', focused),
-         }}
-       /> */}
       <Tab.Screen
         name={ROUTES.MAIN.PROFILE}
         component={ProfileScreen}

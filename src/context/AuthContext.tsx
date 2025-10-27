@@ -7,6 +7,7 @@ import { getApiBaseUrl } from '../config/constants';
 import { microsoftAuthService, MicrosoftAuthResponse } from '../services/microsoftAuthService';
 import pushNotificationService from '../services/pushNotificationService';
 import { userService } from '../services/userService';
+import { normalizeUserData as normalizeUserName } from '../utils/nameFormatter';
 
 // Khóa cho thông tin đăng nhập sinh trắc học
 const CREDENTIALS_KEY = 'WELLSPRING_SECURE_CREDENTIALS';
@@ -28,21 +29,26 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 // Helper function to normalize user data from different API responses
 const normalizeUserData = (userData: any, defaultProvider = 'local') => {
-  // Backend gửi full_name đã đúng format (Họ + Tên đệm + Tên), không cần đảo tên
-  // Ví dụ: "Nguyễn Hải Linh" là đúng cho người Việt, "John Smith" là đúng cho người nước ngoài
   const roles: string[] = Array.isArray(userData.roles)
     ? userData.roles
     : Array.isArray(userData.user_roles)
       ? userData.user_roles
       : [];
 
+  // Normalize tên theo format Việt Nam (Họ + Tên đệm + Tên)
+  const normalizedName = normalizeUserName(userData);
   const rawFullname =
-    userData.fullname || userData.full_name || userData.username || userData.email;
+    normalizedName.fullname ||
+    normalizedName.full_name ||
+    userData.fullname ||
+    userData.full_name ||
+    userData.username ||
+    userData.email;
 
   return {
     _id: userData._id || userData.id || userData.email || userData.name,
     email: userData.email,
-    fullname: rawFullname, // Sử dụng tên gốc từ backend, không đảo
+    fullname: rawFullname, // Tên đã được normalize theo format Việt Nam
     username: userData.username || userData.email,
     role: userData.role || userData.user_role || 'user',
     roles,

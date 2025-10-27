@@ -1,6 +1,16 @@
 // @ts-nocheck
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, SafeAreaView, Image, ActivityIndicator, Alert, TextInput } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
+  Image,
+  ActivityIndicator,
+  Alert,
+  TextInput,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -28,19 +38,28 @@ const cardBgByStatus: Record<AttendanceStatus, string> = {
 
 // Sort Vietnamese names: first name, then last name, then middle name (aligned with web)
 const sortVietnameseName = (nameA: string, nameB: string): number => {
-  const partsA = nameA.trim().split(' ').filter(part => part.length > 0);
-  const partsB = nameB.trim().split(' ').filter(part => part.length > 0);
+  const partsA = nameA
+    .trim()
+    .split(' ')
+    .filter((part) => part.length > 0);
+  const partsB = nameB
+    .trim()
+    .split(' ')
+    .filter((part) => part.length > 0);
 
   if (partsA.length === 0 && partsB.length === 0) return 0;
   if (partsA.length === 0) return 1;
   if (partsB.length === 0) return -1;
 
-  const getFirstChars = (parts: string[]) => parts.map(part => part.charAt(0).toLowerCase());
+  const getFirstChars = (parts: string[]) => parts.map((part) => part.charAt(0).toLowerCase());
   const charsA = getFirstChars(partsA);
   const charsB = getFirstChars(partsB);
 
   // Compare first name (last part) first
-  const firstNameCompare = (charsA[charsA.length - 1] || '').localeCompare(charsB[charsB.length - 1] || '', 'vi');
+  const firstNameCompare = (charsA[charsA.length - 1] || '').localeCompare(
+    charsB[charsB.length - 1] || '',
+    'vi'
+  );
   if (firstNameCompare !== 0) return firstNameCompare;
 
   // Then last name (first part)
@@ -51,7 +70,7 @@ const sortVietnameseName = (nameA: string, nameB: string): number => {
   if (charsA.length >= 3 && charsB.length >= 3) {
     return (charsA[1] || '').localeCompare(charsB[1] || '', 'vi');
   }
-  
+
   if (charsA.length >= 3 && charsB.length < 3) return -1;
   if (charsA.length < 3 && charsB.length >= 3) return 1;
 
@@ -67,7 +86,9 @@ const AttendanceDetail = () => {
   const [statusMap, setStatusMap] = useState<Record<string, AttendanceStatus>>({});
   const [eventStatuses, setEventStatuses] = useState<Record<string, AttendanceStatus>>({});
   const [leaveStatuses, setLeaveStatuses] = useState<Record<string, AttendanceStatus>>({});
-  const [events, setEvents] = useState<Array<{eventId: string; eventTitle: string; studentIds: string[]}>>([]);
+  const [events, setEvents] = useState<
+    { eventId: string; eventTitle: string; studentIds: string[] }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [classTitle, setClassTitle] = useState<string>('');
@@ -100,10 +121,13 @@ const AttendanceDetail = () => {
       // 1) Load class info to get title and education_stage_id
       let schoolYearId: string | undefined;
       try {
-        const classRes = await fetch(`${apiBase}/api/method/erp.api.erp_sis.sis_class.get_class?name=${encodeURIComponent(String(classId))}`, { headers });
+        const classRes = await fetch(
+          `${apiBase}/api/method/erp.api.erp_sis.sis_class.get_class?name=${encodeURIComponent(String(classId))}`,
+          { headers }
+        );
         const classData = await classRes.json();
         console.log('📋 [Mobile] Class data:', JSON.stringify(classData).substring(0, 500));
-        
+
         if (classData?.message?.data || classData?.data) {
           const cls = classData.message?.data || classData.data;
           console.log('📋 [Mobile] Class fields:', {
@@ -111,15 +135,21 @@ const AttendanceDetail = () => {
             title: cls.title,
             short_title: cls.short_title,
             class_name: cls.class_name,
-            education_grade: cls.education_grade
+            education_grade: cls.education_grade,
           });
-          
+
           // Priority: short_title > title > class_name > formatted ID
-          const title = cls.short_title || cls.title || cls.class_name || String(classId).replace(/^SIS-CLASS-/, '').replace(/^CLASS-/, '');
+          const title =
+            cls.short_title ||
+            cls.title ||
+            cls.class_name ||
+            String(classId)
+              .replace(/^SIS-CLASS-/, '')
+              .replace(/^CLASS-/, '');
           console.log('✅ [Mobile] Using class title:', title);
           setClassTitle(title);
           schoolYearId = String(cls.school_year_id || '');
-          
+
           // Get education_stage_id from education_grade
           if (cls.education_grade) {
             try {
@@ -128,8 +158,13 @@ const AttendanceDetail = () => {
                 { headers }
               );
               const gradeData = await gradeRes.json();
-              if (gradeData?.message?.data?.education_stage_id || gradeData?.data?.education_stage_id) {
-                setEducationStageId(gradeData.message?.data?.education_stage_id || gradeData.data?.education_stage_id);
+              if (
+                gradeData?.message?.data?.education_stage_id ||
+                gradeData?.data?.education_stage_id
+              ) {
+                setEducationStageId(
+                  gradeData.message?.data?.education_stage_id || gradeData.data?.education_stage_id
+                );
               }
             } catch {
               // Silent fail
@@ -141,9 +176,17 @@ const AttendanceDetail = () => {
         // Fallback: try to get from cached class list
         try {
           const classes = await attendanceService.getAllClassesForCurrentCampus();
-          const hit = Array.isArray(classes) ? classes.find((c: any) => String(c?.name) === String(classId)) : null;
+          const hit = Array.isArray(classes)
+            ? classes.find((c: any) => String(c?.name) === String(classId))
+            : null;
           if (hit) {
-            const title = hit.short_title || hit.title || hit.class_name || String(classId).replace(/^SIS-CLASS-/, '').replace(/^CLASS-/, '');
+            const title =
+              hit.short_title ||
+              hit.title ||
+              hit.class_name ||
+              String(classId)
+                .replace(/^SIS-CLASS-/, '')
+                .replace(/^CLASS-/, '');
             setClassTitle(title);
             schoolYearId = String(hit.school_year_id || '');
           }
@@ -152,9 +195,14 @@ const AttendanceDetail = () => {
 
       // 2) Get student IDs from class
       const qs = new URLSearchParams({ page: '1', limit: '1000', class_id: String(classId) });
-      const csRes = await fetch(`${apiBase}/api/method/erp.api.erp_sis.class_student.get_all_class_students?${qs.toString()}`, { headers });
+      const csRes = await fetch(
+        `${apiBase}/api/method/erp.api.erp_sis.class_student.get_all_class_students?${qs.toString()}`,
+        { headers }
+      );
       const csData = await csRes.json();
-      const studentIds = (csData?.data?.data || csData?.message?.data || []).map((r: any) => r.student_id).filter(Boolean);
+      const studentIds = (csData?.data?.data || csData?.message?.data || [])
+        .map((r: any) => r.student_id)
+        .filter(Boolean);
 
       if (studentIds.length === 0) {
         console.log('⚠️ [Mobile] No students in class');
@@ -168,11 +216,14 @@ const AttendanceDetail = () => {
       console.log('🔍 [Mobile] Using batch_get_students for', studentIds.length, 'students');
 
       // 3) Batch fetch all students at once (aligned with web)
-      const stuRes = await fetch(`${apiBase}/api/method/erp.api.erp_sis.student.batch_get_students`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ student_ids: studentIds }),
-      });
+      const stuRes = await fetch(
+        `${apiBase}/api/method/erp.api.erp_sis.student.batch_get_students`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ student_ids: studentIds }),
+        }
+      );
       const stuData = await stuRes.json();
       const students = (stuData?.message?.data || stuData?.data || []) as any[];
 
@@ -181,22 +232,26 @@ const AttendanceDetail = () => {
 
       // 4) Load saved attendance statuses - using batch API
       const p = period || '1';
-      const attRes = await fetch(`${apiBase}/api/method/erp.api.erp_sis.attendance.batch_get_class_attendance`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          class_id: String(classId),
-          date: today,
-          periods: [p],
-        }),
-      });
+      const attRes = await fetch(
+        `${apiBase}/api/method/erp.api.erp_sis.attendance.batch_get_class_attendance`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            class_id: String(classId),
+            date: today,
+            periods: [p],
+          }),
+        }
+      );
       const attData = await attRes.json();
       const batchData = attData?.message?.data || attData?.data || {};
       const list = batchData[p] || [];
-      
+
       const map: Record<string, AttendanceStatus> = {};
       (list || []).forEach((i: any) => {
-        if (i.student_id && i.status) map[i.student_id] = (i.status as AttendanceStatus) || 'present';
+        if (i.student_id && i.status)
+          map[i.student_id] = (i.status as AttendanceStatus) || 'present';
       });
       setStatusMap(map);
 
@@ -205,35 +260,38 @@ const AttendanceDetail = () => {
         try {
           const eventRes = await fetch(
             `${apiBase}/api/method/erp.api.erp_sis.event_class_attendance.get_event_attendance_statuses?` +
-            new URLSearchParams({
-              class_id: String(classId),
-              date: today,
-              period: p,
-              education_stage_id: educationStageId,
-            }),
+              new URLSearchParams({
+                class_id: String(classId),
+                date: today,
+                period: p,
+                education_stage_id: educationStageId,
+              }),
             { headers }
           );
           const eventData = await eventRes.json();
-          const evStatuses = (eventData?.message?.data || eventData?.data || {}) as Record<string, AttendanceStatus>;
+          const evStatuses = (eventData?.message?.data || eventData?.data || {}) as Record<
+            string,
+            AttendanceStatus
+          >;
           setEventStatuses(evStatuses);
 
           // Also load event list for remarks
           const eventsListRes = await fetch(
             `${apiBase}/api/method/erp.api.erp_sis.event_class_attendance.get_events_by_class_period?` +
-            new URLSearchParams({
-              class_id: String(classId),
-              date: today,
-              period: p,
-              education_stage_id: educationStageId,
-            }),
+              new URLSearchParams({
+                class_id: String(classId),
+                date: today,
+                period: p,
+                education_stage_id: educationStageId,
+              }),
             { headers }
           );
           const eventsListData = await eventsListRes.json();
-          const eventsList = (eventsListData?.message?.data || eventsListData?.data || []) as Array<{
+          const eventsList = (eventsListData?.message?.data || eventsListData?.data || []) as {
             eventId: string;
             eventTitle: string;
             studentIds: string[];
-          }>;
+          }[];
           setEvents(eventsList);
         } catch (e) {
           console.warn('⚠️ [Mobile] Failed to load event statuses:', e);
@@ -257,10 +315,10 @@ const AttendanceDetail = () => {
         );
         const leaveData = await leaveRes.json();
         const leaves = (leaveData?.message?.data || leaveData?.data || {}) as Record<string, any>;
-        
+
         // Convert leaves to attendance statuses (excused)
         const leaveMap: Record<string, AttendanceStatus> = {};
-        Object.keys(leaves).forEach(studentId => {
+        Object.keys(leaves).forEach((studentId) => {
           leaveMap[studentId] = 'excused';
         });
         setLeaveStatuses(leaveMap);
@@ -297,7 +355,7 @@ const AttendanceDetail = () => {
   // Filter students by search query
   const filteredStudents = useMemo(() => {
     if (!searchQuery.trim()) return sortedStudents;
-    
+
     const query = searchQuery.toLowerCase().trim();
     return sortedStudents.filter((s) => {
       const name = (s.student_name || '').toLowerCase();
@@ -308,7 +366,9 @@ const AttendanceDetail = () => {
 
   // Compute final status: Priority = Event > Leave > Manual > Default
   const getFinalStatus = (studentId: string): AttendanceStatus => {
-    return eventStatuses[studentId] || leaveStatuses[studentId] || statusMap[studentId] || 'present';
+    return (
+      eventStatuses[studentId] || leaveStatuses[studentId] || statusMap[studentId] || 'present'
+    );
   };
 
   const hasOverrideStatus = (studentId: string): boolean => {
@@ -335,19 +395,19 @@ const AttendanceDetail = () => {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       };
-      
+
       // Always save ALL students, not just filtered ones
       const items = sortedStudents.map((s) => {
         const studentId = s.name;
         const finalStatus = getFinalStatus(studentId);
-        
+
         // Generate remarks based on status source (aligned with web)
         let remarks = undefined;
         const eventStatus = eventStatuses[studentId];
         const leaveStatus = leaveStatuses[studentId];
-        
+
         if (eventStatus && eventStatus !== 'present') {
-          const eventInfo = events.find(e => e.studentIds.includes(studentId));
+          const eventInfo = events.find((e) => e.studentIds.includes(studentId));
           if (eventInfo) {
             if (eventStatus === 'excused') {
               remarks = `Tham gia sự kiện: ${eventInfo.eventTitle}`;
@@ -360,7 +420,7 @@ const AttendanceDetail = () => {
         } else if (leaveStatus) {
           remarks = `Nghỉ phép`;
         }
-        
+
         return {
           student_id: studentId,
           student_code: s.student_code,
@@ -372,12 +432,15 @@ const AttendanceDetail = () => {
           remarks,
         };
       });
-      
-      const res = await fetch(`${apiBase}/api/method/erp.api.erp_sis.attendance.save_class_attendance`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ items, overwrite: true }),
-      });
+
+      const res = await fetch(
+        `${apiBase}/api/method/erp.api.erp_sis.attendance.save_class_attendance`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ items, overwrite: true }),
+        }
+      );
       const result = await res.json();
       if (res.ok && (result?.success || result?.message)) {
         Alert.alert('Thành công', 'Đã lưu điểm danh');
@@ -409,17 +472,21 @@ const AttendanceDetail = () => {
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16 }}>
           <View className="mb-4 flex-row items-center justify-between">
-            <Text className="text-xl font-bold text-[#0A2240]">Lớp {classTitle || String(classId)}</Text>
+            <Text className="font-bold text-xl text-[#0A2240]">
+              Lớp {classTitle || String(classId)}
+            </Text>
             <TouchableOpacity
               onPress={handleSave}
               disabled={saving}
               className={`rounded-md ${saving ? 'bg-[#D1D5DB]' : 'bg-[#3F4246]'} px-4 py-2`}>
-              <Text className="font-semibold text-white">{saving ? 'Đang lưu...' : 'Cập nhật'}</Text>
+              <Text className="font-semibold text-white">
+                {saving ? 'Đang lưu...' : 'Cập nhật'}
+              </Text>
             </TouchableOpacity>
           </View>
 
           {/* Search Bar */}
-          <View className="mb-4 flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
+          <View className="mb-4 flex-row items-center rounded-lg bg-gray-100 px-3 py-2">
             <Ionicons name="search" size={20} color="#9CA3AF" style={{ marginRight: 8 }} />
             <TextInput
               className="flex-1 text-base text-[#0A2240]"
@@ -451,28 +518,30 @@ const AttendanceDetail = () => {
               const hasOverride = hasOverrideStatus(studentId);
               const badge = getOverrideBadge(studentId);
               const dimmed = finalStatus === 'excused' ? 0.6 : 1;
-              
+
               return (
                 <View
                   key={studentId}
-                  className="mb-3 w-[95%] mx-auto rounded-2xl p-4"
+                  className="mx-auto mb-3 w-[95%] rounded-2xl p-4"
                   style={{ backgroundColor: cardBgByStatus[finalStatus], opacity: dimmed }}>
                   <View className="flex-row items-start gap-4">
                     <View className="shrink-0">
                       <StudentAvatar
                         name={s.student_name}
-                        avatarUrl={(s as any).user_image || (s as any).avatar_url || (s as any).photo}
-                        size={120}
+                        avatarUrl={
+                          (s as any).user_image || (s as any).avatar_url || (s as any).photo
+                        }
+                        size={100}
                       />
                     </View>
                     <View className="flex-1">
                       <View className="mb-1">
-                        <Text className="text-lg font-semibold text-[#000]">{s.student_name}</Text>
+                        <Text className="font-semibold text-lg text-[#000]">{s.student_name}</Text>
                       </View>
                       <View className="mb-4 flex-row items-center gap-2">
                         <Text className="text-sm text-[#7A7A7A]">{statusLabel[finalStatus]}</Text>
                         {badge && (
-                          <View className="rounded px-2 py-0.5 bg-white/60">
+                          <View className="rounded bg-white/60 px-2 py-0.5">
                             <Text className="text-xs text-[#3F4246]">{badge}</Text>
                           </View>
                         )}
@@ -482,57 +551,75 @@ const AttendanceDetail = () => {
                           onPress={() => setStatus(studentId, 'present')}
                           disabled={hasOverride && eventStatuses[studentId] !== 'present'}
                           style={{
-                            width: 48,
-                            height: 40,
+                            width: 44,
+                            height: 36,
                             alignItems: 'center',
                             justifyContent: 'center',
                             backgroundColor: finalStatus === 'present' ? '#3DB838' : '#EBEBEB',
                             borderRadius: 6,
-                            opacity: (hasOverride && eventStatuses[studentId] !== 'present') ? 0.5 : 1,
+                            opacity:
+                              hasOverride && eventStatuses[studentId] !== 'present' ? 0.5 : 1,
                           }}>
-                          <Ionicons name="checkmark" size={20} color={finalStatus === 'present' ? '#fff' : '#3F4246'} />
+                          <Ionicons
+                            name="checkmark"
+                            size={20}
+                            color={finalStatus === 'present' ? '#fff' : '#3F4246'}
+                          />
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => setStatus(studentId, 'absent')}
                           disabled={hasOverride && eventStatuses[studentId] !== 'absent'}
                           style={{
-                            width: 48,
-                            height: 40,
+                            width: 44,
+                            height: 36,
                             alignItems: 'center',
                             justifyContent: 'center',
                             backgroundColor: finalStatus === 'absent' ? '#DC0909' : '#EBEBEB',
                             borderRadius: 6,
-                            opacity: (hasOverride && eventStatuses[studentId] !== 'absent') ? 0.5 : 1,
+                            opacity: hasOverride && eventStatuses[studentId] !== 'absent' ? 0.5 : 1,
                           }}>
-                          <Ionicons name="close" size={22} color={finalStatus === 'absent' ? '#fff' : '#3F4246'} />
+                          <Ionicons
+                            name="close"
+                            size={20}
+                            color={finalStatus === 'absent' ? '#fff' : '#3F4246'}
+                          />
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => setStatus(studentId, 'late')}
                           disabled={hasOverride && eventStatuses[studentId] !== 'late'}
                           style={{
-                            width: 48,
-                            height: 40,
+                            width: 44,
+                            height: 36,
                             alignItems: 'center',
                             justifyContent: 'center',
                             backgroundColor: finalStatus === 'late' ? '#F5AA1E' : '#EBEBEB',
                             borderRadius: 6,
-                            opacity: (hasOverride && eventStatuses[studentId] !== 'late') ? 0.5 : 1,
+                            opacity: hasOverride && eventStatuses[studentId] !== 'late' ? 0.5 : 1,
                           }}>
-                          <Ionicons name="time" size={18} color={finalStatus === 'late' ? '#fff' : '#3F4246'} />
+                          <Ionicons
+                            name="time"
+                            size={16}
+                            color={finalStatus === 'late' ? '#fff' : '#3F4246'}
+                          />
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => setStatus(studentId, 'excused')}
                           disabled={hasOverride && eventStatuses[studentId] !== 'excused'}
                           style={{
-                            width: 48,
-                            height: 40,
+                            width: 44,
+                            height: 36,
                             alignItems: 'center',
                             justifyContent: 'center',
                             backgroundColor: finalStatus === 'excused' ? '#3F4246' : '#EBEBEB',
                             borderRadius: 6,
-                            opacity: (hasOverride && eventStatuses[studentId] !== 'excused') ? 0.5 : 1,
+                            opacity:
+                              hasOverride && eventStatuses[studentId] !== 'excused' ? 0.5 : 1,
                           }}>
-                          <Ionicons name="close-circle" size={18} color={finalStatus === 'excused' ? '#fff' : '#3F4246'} />
+                          <Ionicons
+                            name="close-circle"
+                            size={16}
+                            color={finalStatus === 'excused' ? '#fff' : '#3F4246'}
+                          />
                         </TouchableOpacity>
                       </View>
                     </View>

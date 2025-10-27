@@ -139,16 +139,37 @@ class PushNotificationService {
         return;
       }
 
+      // Import Device info
+      const Device = require('expo-device');
+      const Constants = require('expo-constants').default;
+      const { Platform } = require('react-native');
+
+      // Build device info
+      const platform =
+        Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'expo';
+      const deviceName =
+        Device.deviceName || `${Device.brand || 'Unknown'} ${Device.modelName || 'Device'}`;
+      const osVersion = Device.osVersion || 'Unknown';
+      const appVersion = Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
+
+      const deviceInfo = {
+        deviceToken: token,
+        platform: platform,
+        deviceName: deviceName,
+        os: Platform.OS,
+        osVersion: osVersion,
+        appVersion: appVersion,
+        language: 'vi',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      };
+
       const response = await fetch(`${BASE_URL}/api/notification/register-device`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${authToken}`,
         },
-        body: JSON.stringify({
-          deviceToken: token,
-          platform: 'expo',
-        }),
+        body: JSON.stringify(deviceInfo),
       });
 
       if (response.ok) {

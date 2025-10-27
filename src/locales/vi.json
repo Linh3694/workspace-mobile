@@ -77,6 +77,8 @@
     "title": "Thông báo",
     "no_notifications": "Không có thông báo",
     "mark_all_read": "Đánh dấu tất cả đã đọc",
+    "all_marked_read": "Đã đánh dấu tất cả là đã đọc",
+    "mark_read_error": "Không thể đánh dấu đã đọc. Vui lòng thử lại sau.",
     "notifications_enabled": "Đã bật thông báo đẩy!",
     "notifications_disabled": "Đã tắt thông báo đẩy!",
     "enable_notifications_error": "Không thể thay đổi cài đặt thông báo. Vui lòng thử lại sau.",
@@ -88,7 +90,18 @@
     "mark_as_read": "Đánh dấu đã đọc",
     "mark_as_unread": "Đánh dấu chưa đọc",
     "no_more_notifications": "Không còn thông báo nào",
-    "loading_notifications": "Đang tải thông báo..."
+    "loading_notifications": "Đang tải thông báo...",
+    "unread_count": "Bạn có {{count}} thông báo chưa đọc",
+    "delete_title": "Xóa thông báo",
+    "delete_confirm": "Bạn có chắc chắn muốn xóa thông báo này?",
+    "delete_error": "Không thể xóa thông báo. Vui lòng thử lại sau.",
+    "types": {
+      "all": "Tất cả",
+      "attendance": "Chấm công",
+      "ticket": "Ticket",
+      "chat": "Tin nhắn",
+      "system": "Hệ thống"
+    }
   },
   "home": {
     "title": "Trang chủ",

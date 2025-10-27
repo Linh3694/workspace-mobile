@@ -17,6 +17,7 @@ import { useAuth } from '../context/AuthContext';
 import AttendanceHome from '../screens/Attendance/AttendanceHome';
 import AttendanceDetail from '../screens/Attendance/AttendanceDetail';
 import LeaveRequestsScreen from '../screens/LeaveRequests/LeaveRequestsScreen';
+import NotificationsScreen from '../screens/Notifications/NotificationsScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -41,6 +42,8 @@ export type RootStackParamList = {
     params?: {
       forwardMode?: boolean;
       ticketId?: string;
+      notificationId?: string;
+      refreshAttendance?: boolean;
     };
   };
   [ROUTES.SCREENS.TICKET_DETAIL]: { ticketId: string };
@@ -63,6 +66,7 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.ATTENDANCE_HOME]: undefined;
   [ROUTES.SCREENS.ATTENDANCE_DETAIL]: { classId: string; date: string };
   [ROUTES.SCREENS.LEAVE_REQUESTS]: { classId?: string };
+  Notification: { notificationId?: string } | undefined;
 };
 
 const MainTabWrapper = ({ route }: { route: any }) => <BottomTabNavigator route={route} />;
@@ -202,6 +206,11 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.LEAVE_REQUESTS}
             component={LeaveRequestsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.MAIN.NOTIFICATIONS}
+            component={NotificationsScreen}
             options={{ headerShown: false }}
           />
         </>

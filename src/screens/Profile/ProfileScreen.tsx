@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
-import { View, Text, SafeAreaView, TouchableOpacity, Switch, Alert, Image, ScrollView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  SafeAreaView,
+  TouchableOpacity,
+  Switch,
+  Alert,
+  Image,
+  ScrollView,
+  Platform,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../context/AuthContext';
 // Biometric removed per requirement
@@ -31,7 +41,9 @@ const ProfileScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
-  const [campusOptions, setCampusOptions] = useState<Array<{ name: string; title_vn?: string; title_en?: string }>>([]);
+  const [campusOptions, setCampusOptions] = useState<
+    { name: string; title_vn?: string; title_en?: string }[]
+  >([]);
   const [campusSelectorVisible, setCampusSelectorVisible] = useState(false);
   const [selectedCampus, setSelectedCampus] = useState<string | null>(null); // stores campus_id like campus-1
   // Debug user avatar fields when user changes
@@ -57,7 +69,7 @@ const ProfileScreen = () => {
         return { name: `campus-${idx + 1}`, title_vn: title, title_en: title };
       });
     } catch {
-      return [] as Array<{ name: string; title_vn?: string; title_en?: string }>;
+      return [] as { name: string; title_vn?: string; title_en?: string }[];
     }
   }, [user?.roles]);
 
@@ -78,7 +90,9 @@ const ProfileScreen = () => {
         if (!selectedCampus && rows && rows.length > 0) {
           const savedTitle = await AsyncStorage.getItem('selectedCampus');
           if (savedTitle) {
-            const hit = rows.find((c) => c.title_vn === savedTitle || c.title_en === savedTitle || c.name === savedTitle);
+            const hit = rows.find(
+              (c) => c.title_vn === savedTitle || c.title_en === savedTitle || c.name === savedTitle
+            );
             if (hit) {
               await AsyncStorage.setItem('currentCampusId', hit.name);
               setSelectedCampus(hit.name);
@@ -86,7 +100,10 @@ const ProfileScreen = () => {
             }
           }
           await AsyncStorage.setItem('currentCampusId', rows[0].name);
-          await AsyncStorage.setItem('selectedCampus', rows[0].title_vn || rows[0].title_en || rows[0].name);
+          await AsyncStorage.setItem(
+            'selectedCampus',
+            rows[0].title_vn || rows[0].title_en || rows[0].name
+          );
           setSelectedCampus(rows[0].name);
         }
       } catch {}
@@ -211,16 +228,36 @@ const ProfileScreen = () => {
 
       console.log('🔔 Registering push token with notification service via nginx proxy');
 
-      await axios.post(
-        `${BASE_URL}/api/notification/register-device`,
-        { deviceToken: token },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authToken}`,
-          },
-        }
-      );
+      // Import Device info (inline to avoid adding imports at top)
+      const Device = require('expo-device');
+      const Constants = require('expo-constants').default;
+      const { Platform } = require('react-native');
+
+      // Build device info
+      const platform =
+        Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'expo';
+      const deviceName =
+        Device.deviceName || `${Device.brand || 'Unknown'} ${Device.modelName || 'Device'}`;
+      const osVersion = Device.osVersion || 'Unknown';
+      const appVersion = Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
+
+      const deviceInfo = {
+        deviceToken: token,
+        platform: platform,
+        deviceName: deviceName,
+        os: Platform.OS,
+        osVersion: osVersion,
+        appVersion: appVersion,
+        language: 'vi',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      };
+
+      await axios.post(`${BASE_URL}/api/notification/register-device`, deviceInfo, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
       console.log('✅ Push token registered successfully with notification service');
     } catch (error) {
       console.error('❌ Lỗi đăng ký token thiết bị:', error);
@@ -393,7 +430,9 @@ const ProfileScreen = () => {
               onPress={() => setCampusSelectorVisible(true)}>
               <View className="flex-1 flex-row items-center">
                 <Ionicons name="school-outline" size={20} color="#757575" />
-                <Text className="ml-5 font-medium text-black">{t('profile.campus') || 'Trường học'}</Text>
+                <Text className="ml-5 font-medium text-black">
+                  {t('profile.campus') || 'Trường học'}
+                </Text>
               </View>
               <View className="flex-row items-center">
                 <Text className="mr-2 font-medium text-black">

@@ -36,6 +36,7 @@ import LibraryIcon from '../../assets/library-icon.svg';
 import PolygonIcon from '../../assets/polygon.svg';
 import attendanceService from '../../services/attendanceService';
 import pushNotificationService from '../../services/pushNotificationService';
+import notificationCenterService from '../../services/notificationCenterService';
 // Define type cho navigation
 type HomeScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -51,6 +52,7 @@ const HomeScreen = () => {
   const [checkInTime, setCheckInTime] = useState('--:--');
   const [checkOutTime, setCheckOutTime] = useState('--:--');
   const [isRefreshingAttendance, setIsRefreshingAttendance] = useState(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
   // Function để fetch attendance data
   const fetchTodayAttendance = React.useCallback(
@@ -107,12 +109,22 @@ const HomeScreen = () => {
     [user?.employeeCode]
   );
 
-  // Fetch attendance data khi có user và employeeCode
+  // Function để fetch unread notification count
+  const fetchUnreadNotificationCount = React.useCallback(async () => {
+    try {
+      const result = await notificationCenterService.getUnreadCount();
+      if (result.success) {
+        setUnreadNotificationCount(result.data.unread_count);
+      }
+    } catch (error) {
+      console.error('Lỗi khi lấy số lượng thông báo chưa đọc:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchTodayAttendance();
   }, [fetchTodayAttendance]);
 
-  // Setup auto-refresh every 30 minutes as backup
   useEffect(() => {
     console.log('🕐 [HomeScreen] Setting up 30-minute auto-refresh');
 
@@ -181,6 +193,11 @@ const HomeScreen = () => {
     };
   }, [user?.employeeCode, fetchTodayAttendance]);
 
+  // Fetch unread notification count when component mounts
+  useEffect(() => {
+    fetchUnreadNotificationCount();
+  }, [fetchUnreadNotificationCount]);
+
   // Refresh attendance data khi screen focus (từ notification)
   useFocusEffect(
     React.useCallback(() => {
@@ -193,48 +210,6 @@ const HomeScreen = () => {
       }
     }, [route.params, fetchTodayAttendance, navigation])
   );
-
-  // Function để kiểm tra chi tiết tất cả các lần check-in
-  const checkDetailedAttendance = async () => {
-    const employeeCode = user?.employeeCode;
-    if (!employeeCode) {
-      console.log('No employeeCode available');
-      return;
-    }
-
-    try {
-      console.log('=== KIỂM TRA CHI TIẾT TẤT CẢ CÁC LẦN CHECK-IN ===');
-      const detailedData = await attendanceService.getTodayAttendanceWithDetails(employeeCode);
-
-      if (detailedData && detailedData.rawData && detailedData.rawData.length > 0) {
-        console.log(`Tổng cộng có ${detailedData.rawData.length} lần check-in hôm nay:`);
-
-        // Sắp xếp theo thời gian
-        const sortedCheckIns = detailedData.rawData.sort(
-          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-
-        sortedCheckIns.forEach((checkIn, index) => {
-          const time = attendanceService.formatTime(checkIn.timestamp);
-          console.log(`${index + 1}. ${time} - Thiết bị: ${checkIn.deviceId}`);
-        });
-
-        const firstCheckIn = attendanceService.formatTime(sortedCheckIns[0].timestamp);
-        const lastCheckIn = attendanceService.formatTime(
-          sortedCheckIns[sortedCheckIns.length - 1].timestamp
-        );
-
-        console.log(`Giờ vào sớm nhất: ${firstCheckIn}`);
-        console.log(`Giờ ra muộn nhất: ${lastCheckIn}`);
-
-        // Hiển thị alert với thông tin chi tiết
-      } else {
-        Alert.alert(t('notifications.title'), 'Không có dữ liệu chi tiết check-in hôm nay');
-      }
-    } catch (error) {
-      Alert.alert('Lỗi', 'Không thể lấy chi tiết chấm công');
-    }
-  };
 
   const navigateToTicket = () => {
     try {
@@ -287,14 +262,15 @@ const HomeScreen = () => {
       onPress: navigateToTicket,
       key: 'tickets',
     },
-    {
-      id: 2,
-      title: t('home.devices'),
-      component: DevicesIcon,
-      description: 'Quản lý thiết bị',
-      onPress: navigateToDevices,
-      key: 'devices',
-    },
+    // Devices module is temporarily hidden
+    // {
+    //   id: 2,
+    //   title: t('home.devices'),
+    //   component: DevicesIcon,
+    //   description: 'Quản lý thiết bị',
+    //   onPress: navigateToDevices,
+    //   key: 'devices',
+    // },
     {
       id: 3,
       title: 'Điểm danh',
@@ -317,7 +293,7 @@ const HomeScreen = () => {
   if (hasMobileBOD) {
     menuItems = allItems;
   } else if (hasMobileIT) {
-    menuItems = allItems.filter((i) => ['tickets', 'devices'].includes(i.key));
+    menuItems = allItems.filter((i) => ['tickets'].includes(i.key));
   } else if (hasMobileTeacher) {
     menuItems = allItems.filter((i) => ['tickets', 'attendance', 'documents'].includes(i.key));
   } else {
@@ -343,6 +319,7 @@ const HomeScreen = () => {
     );
     setSearchResults(results);
   };
+
   const handleSelectItem = (title: string) => {
     const item = menuItems.find((i) => i.title === title);
     if (item) {
@@ -355,22 +332,12 @@ const HomeScreen = () => {
 
   // iOS-style search handlers
   const openIOSSearch = () => {
+    // Set animation values immediately to show modal right away
+    slideUpAnimation.setValue(1);
+    fadeAnimation.setValue(1);
+
     setShowSearchModal(true);
     setIsSearchFocused(true);
-
-    // Animate slide up and fade in
-    Animated.parallel([
-      Animated.timing(slideUpAnimation, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(fadeAnimation, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
   };
 
   const closeIOSSearch = () => {
@@ -485,10 +452,22 @@ const HomeScreen = () => {
       end={{ x: 1, y: 1 }}
       style={{ flex: 1 }}>
       <ScrollView keyboardShouldPersistTaps="always">
-        <View className="mt-[20%] w-full items-center">
+        <View className="relative mt-[20%] w-full items-center">
           <Text className="mb-2 text-center font-medium text-2xl text-primary">
             {t('home.welcome')} WISer
           </Text>
+          <TouchableOpacity
+            className="absolute right-8 top-1"
+            onPress={() => navigation.navigate(ROUTES.MAIN.NOTIFICATIONS)}>
+            <Ionicons name="notifications-outline" size={20} color="#0A2240" />
+            {unreadNotificationCount > 0 && (
+              <View className="absolute -right-1 -top-1 flex h-[10px] min-w-[10px] items-center justify-center rounded-full bg-red-500">
+                <Text className="font-bold text-xs text-white">
+                  {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
           <MaskedView
             maskElement={
               <Text
@@ -571,7 +550,7 @@ const HomeScreen = () => {
                 ]}
                 start={{ x: 1, y: 0 }}
                 end={{ x: 0, y: 1 }}>
-                <View className="flex-row flex-wrap justify-between p-4">
+                <View className="flex-row flex-wrap justify-start p-4">
                   {menuItems.map((item) => (
                     <TouchableOpacity
                       key={item.id}
@@ -638,45 +617,40 @@ const HomeScreen = () => {
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={{ flex: 1 }}>
-            <TouchableWithoutFeedback onPress={handleModalPress}>
-              <View
+            <View
+              style={{
+                flex: 1,
+                // paddingTop: Platform.OS === 'android' ? insets.top : 0
+              }}>
+              <StatusBar barStyle="dark-content" />
+
+              {/* Animated Container */}
+              <Animated.View
+                {...panResponder.panHandlers}
                 style={{
                   flex: 1,
-                  // paddingTop: Platform.OS === 'android' ? insets.top : 0
+                  opacity: fadeAnimation,
+                  transform: [
+                    {
+                      translateY: slideUpAnimation.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [20, 0],
+                      }),
+                    },
+                  ],
                 }}>
-                <StatusBar barStyle="dark-content" />
+                {/* Header spacing */}
+                <View className="py-4" />
 
-                {/* Animated Container */}
-                <Animated.View
-                  {...panResponder.panHandlers}
-                  style={{
-                    flex: 1,
-                    opacity: fadeAnimation,
-                    transform: [
-                      {
-                        translateY: slideUpAnimation.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [20, 0],
-                        }),
-                      },
-                    ],
-                  }}>
-                  {/* Header with close button */}
-                  <View className="flex-row items-center justify-end px-4 py-8">
-                    {/* <TouchableOpacity 
-                                            onPress={closeIOSSearch}
-                                            className="px-2 py-1"
-                                        >
-                                            <Text className="text-blue-500 text-base font-medium">Hủy</Text>
-                                        </TouchableOpacity> */}
-                  </View>
-
-                  {/* Search Content */}
+                {/* Search Content */}
+                <View
+                  className="flex-1"
+                  style={{ marginBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 80 }}>
                   <ScrollView
                     className="flex-1"
-                    style={{ marginBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 80 }}
                     showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="always">
+                    keyboardShouldPersistTaps="always"
+                    scrollEnabled={true}>
                     {searchQuery !== '' ? (
                       /* Search Results in Suggestion Box + Recent Searches Below */
                       <View className="px-1">
@@ -760,7 +734,7 @@ const HomeScreen = () => {
                               ]}
                               start={{ x: 1, y: 0 }}
                               end={{ x: 0, y: 1 }}>
-                              <View className="flex-row flex-wrap justify-between p-4">
+                              <View className="flex-row flex-wrap justify-start p-4">
                                 {menuItems.map((item) => (
                                   <TouchableOpacity
                                     key={item.id}
@@ -798,37 +772,40 @@ const HomeScreen = () => {
                         )}
                       </View>
                     )}
-                  </ScrollView>
 
-                  {/* Search Bar at Bottom */}
-                  <View
-                    className="bg-transparent px-4 py-3"
-                    style={{
-                      position: 'absolute',
-                      bottom: keyboardHeight > 0 ? keyboardHeight : 0,
-                      left: 0,
-                      right: 0,
-                      paddingBottom:
-                        Platform.OS === 'ios' && keyboardHeight === 0 ? insets.bottom : 16,
-                      zIndex: 10,
-                    }}>
-                    <TouchableWithoutFeedback>
-                      <View className="flex-1 flex-row items-center rounded-full border border-gray-300 bg-white px-3 py-4">
-                        <FontAwesome name="search" size={16} color="#666" />
-                        <TextInput
-                          value={searchQuery}
-                          onChangeText={handleIOSSearch}
-                          placeholder="Tìm kiếm"
-                          className="ml-3 flex-1"
-                          autoFocus={true}
-                          returnKeyType="search"
-                        />
-                      </View>
+                    {/* Spacer for tap to close - fills remaining space */}
+                    <TouchableWithoutFeedback onPress={closeIOSSearch}>
+                      <View className="min-h-[100px] flex-1" />
                     </TouchableWithoutFeedback>
+                  </ScrollView>
+                </View>
+
+                {/* Search Bar at Bottom */}
+                <View
+                  className="bg-transparent px-4 py-3"
+                  style={{
+                    position: 'absolute',
+                    bottom: keyboardHeight > 0 ? keyboardHeight : 0,
+                    left: 0,
+                    right: 0,
+                    paddingBottom:
+                      Platform.OS === 'ios' && keyboardHeight === 0 ? insets.bottom : 16,
+                    zIndex: 10,
+                  }}>
+                  <View className="flex-1 flex-row items-center rounded-full border border-gray-300 bg-white px-3 py-4">
+                    <FontAwesome name="search" size={16} color="#666" />
+                    <TextInput
+                      value={searchQuery}
+                      onChangeText={handleIOSSearch}
+                      placeholder="Tìm kiếm"
+                      className="ml-3 flex-1"
+                      autoFocus={true}
+                      returnKeyType="search"
+                    />
                   </View>
-                </Animated.View>
-              </View>
-            </TouchableWithoutFeedback>
+                </View>
+              </Animated.View>
+            </View>
           </LinearGradient>
         </Modal>
       </ScrollView>

@@ -1,18 +1,18 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 // @ts-ignore
-import { Animated, Dimensions, View, StyleSheet } from 'react-native';
+import { Animated, Dimensions, View, StyleSheet, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
-import AppNavigator from './src/navigation/AppNavigator';
+import AppNavigator, { RootStackParamList } from './src/navigation/AppNavigator';
 import { OnlineStatusProvider } from './src/context/OnlineStatusContext';
 import * as Notifications from 'expo-notifications';
 import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
-import { RootStackParamList } from './src/navigation/AppNavigator';
-import 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from './src/config/constants';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import socketService from './src/services/socketService';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import CustomToastConfig from './src/components/CustomToastConfig';
@@ -20,11 +20,11 @@ import * as SplashScreen from 'expo-splash-screen';
 import SvgSplash from './src/assets/splash.svg';
 // @ts-ignore
 import { Image } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Linking from 'expo-linking';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import axios from 'axios';
+import * as Font from 'expo-font';
 
 import './global.css';
 import './src/config/i18n';
@@ -175,15 +175,25 @@ export default function App() {
   }, [fontsLoaded, sweep, width]);
 
   // Xử lý điều hướng khi nhận được thông báo
-  const handleNotificationResponse = (response: Notifications.NotificationResponse) => {
+  const handleNotificationResponse = async (response: Notifications.NotificationResponse) => {
     const data = response.notification.request.content.data as {
       ticketId?: string;
       chatId?: string;
       type?: string;
       senderId?: string;
       employeeCode?: string;
+      notificationId?: string;
     };
-    console.log('Phản hồi thông báo:', data);
+    console.log('🔔 Phản hồi thông báo:', data);
+
+    // Clear notification từ lock screen/notification center
+    try {
+      await Notifications.dismissNotificationAsync(response.notification.request.identifier);
+      await Notifications.setBadgeCountAsync(0);
+      console.log('✅ Notification cleared from lock screen');
+    } catch (error) {
+      console.warn('⚠️ Could not clear notification:', error);
+    }
 
     if (data?.type === 'new_ticket' || data?.type === 'ticket_update') {
       // Kiểm tra xem ứng dụng đã khởi tạo xong chưa
@@ -197,18 +207,24 @@ export default function App() {
           params: { ticketId: data.ticketId },
         });
       }
-    } else if (data?.type === 'attendance') {
-      // Xử lý khi nhận thông báo chấm công
+    } else if (data?.type === 'attendance' || data?.type === 'staff_attendance') {
+      // Xử lý khi nhận thông báo chấm công - Navigate đến NotificationsScreen
       console.log('📋 Nhận thông báo chấm công cho nhân viên:', data.employeeCode);
 
       if (navigationRef.current) {
-        // Điều hướng về Home để xem thông tin chấm công mới nhất
-        navigationRef.current.navigate('Main');
+        // Navigate đến NotificationsScreen để xem chi tiết
+        navigationRef.current.navigate('Main', {
+          screen: 'Notification',
+          params: data.notificationId ? { notificationId: data.notificationId } : undefined,
+        });
       } else {
         // Nếu chưa khởi tạo xong, đặt route ban đầu
         setInitialRoute({
           name: 'Main',
-          params: { refreshAttendance: true },
+          params: {
+            screen: 'Notification',
+            params: data.notificationId ? { notificationId: data.notificationId } : undefined,
+          },
         });
       }
     } else if (data?.type === 'new_chat_message') {
@@ -263,10 +279,10 @@ export default function App() {
 
     return () => {
       if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
+        notificationListener.current.remove();
       }
       if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
+        responseListener.current.remove();
       }
     };
   }, []);
@@ -358,9 +374,33 @@ export default function App() {
           console.warn('❌ Could not decode JWT:', jwtError);
         }
 
+        // Lấy thông tin device
+        const platform =
+          Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'expo';
+        const deviceName =
+          Device.deviceName || `${Device.brand || 'Unknown'} ${Device.modelName || 'Device'}`;
+        const osVersion = Device.osVersion || 'Unknown';
+        const appVersion = Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
+
+        const deviceInfo = {
+          deviceToken: token,
+          platform: platform,
+          deviceName: deviceName,
+          os: Platform.OS,
+          osVersion: osVersion,
+          appVersion: appVersion,
+          language: 'vi',
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        };
+
+        console.log(
+          '📤 App.tsx Registering device with info:',
+          JSON.stringify(deviceInfo, null, 2)
+        );
+
         const response = await axios.post(
           `${API_BASE_URL}/api/notification/register-device`,
-          { deviceToken: token },
+          deviceInfo,
           {
             headers: {
               'Content-Type': 'application/json',
@@ -376,6 +416,33 @@ export default function App() {
     };
 
     setupPushNotifications();
+
+    // Kết nối socket khi app khởi động (nếu đã có auth token)
+    const initSocket = async () => {
+      const authToken = await AsyncStorage.getItem('authToken');
+      if (authToken) {
+        try {
+          const base64Url = authToken.split('.')[1];
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          const jsonPayload = decodeURIComponent(
+            atob(base64)
+              .split('')
+              .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+              .join('')
+          );
+          const decoded = JSON.parse(jsonPayload);
+          const userId = decoded.userId || decoded.name || decoded.sub;
+
+          console.log('🔌 App.tsx: Connecting socket for user:', userId);
+          await socketService.connect(userId);
+          socketService.setUserOnline();
+        } catch (error) {
+          console.error('❌ App.tsx: Error connecting socket:', error);
+        }
+      }
+    };
+
+    initSocket();
   }, []);
 
   // Kiểm tra xem có thông báo nào mở ứng dụng không
