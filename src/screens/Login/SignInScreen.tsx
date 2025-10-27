@@ -388,7 +388,8 @@ const SignInScreen = () => {
           // Lưu token + user (đã chuẩn hoá) và xác thực lại để init push, cache-bust avatar
           try {
             await login(token, finalUser);
-            await checkAuth();
+            // Đã bỏ checkAuth() vì login() đã xử lý đầy đủ
+            // và tránh race condition với state update
           } catch (e) {
             if (e?.message === 'NO_MOBILE_ACCESS') {
               showNotification('Bạn không có quyền đăng nhập hệ thống.', 'error');
@@ -396,6 +397,9 @@ const SignInScreen = () => {
             }
             throw e;
           }
+
+          // Đợi một chút để đảm bảo state được update đầy đủ
+          await new Promise((resolve) => setTimeout(resolve, 100));
 
           navigation.reset({
             index: 0,
