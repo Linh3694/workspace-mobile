@@ -81,16 +81,24 @@ const AttendanceHome = () => {
     );
     console.log('🔍 [GVBM] API result:', result);
     if (result.success && result.data) {
-      console.log('🔍 [GVBM] Data structure:', {
-        dataType: typeof result.data,
-        dataKeys: Object.keys(result.data),
-        hasEntries: !!result.data.entries,
-        hasGrouped: !!result.data.grouped_by_stage,
-        entriesLength: result.data.entries?.length || 0
-      });
-      // Use the flat entries array for compatibility
       const entries = result.data.entries || [];
-      console.log('🔍 [GVBM] Setting timetable with', entries.length, 'entries');
+      console.log('🔍 [GVBM] Found', entries.length, 'timetable entries');
+
+      if (entries.length > 0) {
+        const sample = entries[0];
+        console.log('🔍 [GVBM] Sample entry:', {
+          timetable_column_id: sample.timetable_column_id,
+          subject_title: sample.subject_title,
+          class_title: sample.class_title,
+          room_name: sample.room_name,
+          education_stage_id: sample.education_stage_id,
+          education_stage_title: sample.education_stage_title,
+          date: sample.date,
+          day_of_week: sample.day_of_week,
+          allKeys: Object.keys(sample),
+        });
+      }
+
       setTimetableData(entries);
     } else {
       console.error('Failed to fetch GVBM timetable classes:', result.error);
@@ -118,7 +126,14 @@ const AttendanceHome = () => {
       const promises = classes.map(async (classData) => {
         // Handle both ClassData (homeroom) and TimetableEntry (teaching)
         const classId = classData.name || classData.class_id;
-        if (!classId) return;
+        if (!classId) {
+          console.log('📊 [Stats] No classId found for classData:', classData);
+          return;
+        }
+
+        console.log(
+          `📊 [Stats] Processing class ${classId} (${classData.class_title || classData.title})`
+        );
 
         try {
           // 1. Get students in class
@@ -126,6 +141,9 @@ const AttendanceHome = () => {
 
           const studentIds =
             studentsResult.success && studentsResult.data ? studentsResult.data : [];
+
+          console.log(`📊 [Stats] Class ${classId}: ${studentIds.length} student IDs`);
+          console.log(`📊 [Stats] Sample student IDs:`, studentIds.slice(0, 3));
 
           // 2. Get detailed student info to get student_codes
           let studentCodes: string[] = [];
@@ -135,6 +153,16 @@ const AttendanceHome = () => {
               studentCodes = batchStudentsResult.data
                 .map((student: any) => student.student_code)
                 .filter(Boolean);
+
+              console.log(
+                `📊 [Stats] Batch students result: ${batchStudentsResult.data.length} students`
+              );
+              console.log(
+                `📊 [Stats] Student codes: ${studentCodes.length}, sample:`,
+                studentCodes.slice(0, 3)
+              );
+            } else {
+              console.log(`📊 [Stats] Batch students failed:`, batchStudentsResult.error);
             }
           }
 
@@ -150,14 +178,33 @@ const AttendanceHome = () => {
           // 3. Get check-in/check-out data
           let checkInOutData: Record<string, any> = {};
           if (studentCodes.length > 0) {
+            console.log(
+              `📊 [DayMap] Calling getStudentsDayMap for ${classId} with ${studentCodes.length} codes`
+            );
             const dayMapResult = await attendanceApiService.getStudentsDayMap(
               studentCodes,
               currentDateStr
             );
+            console.log(`📊 [DayMap] Result for ${classId}:`, {
+              success: dayMapResult.success,
+              error: dayMapResult.error,
+              dataKeys: dayMapResult.data ? Object.keys(dayMapResult.data) : 'no data',
+              sampleEntry: dayMapResult.data ? Object.values(dayMapResult.data)[0] : 'no sample',
+            });
 
             if (dayMapResult.success && dayMapResult.data) {
               checkInOutData = dayMapResult.data;
+              console.log(
+                `📊 [DayMap] Got ${Object.keys(checkInOutData).length} check-in/out records for ${classId}`
+              );
+            } else {
+              console.log(
+                `📊 [DayMap] Failed to get check-in/out data for ${classId}:`,
+                dayMapResult.error
+              );
             }
+          } else {
+            console.log(`📊 [DayMap] Skipping getStudentsDayMap for ${classId} - no student codes`);
           }
 
           // 4. Calculate stats
@@ -169,10 +216,19 @@ const AttendanceHome = () => {
           let checkOutCount = 0;
 
           // Count check-ins and check-outs from physical attendance data
-          Object.values(checkInOutData).forEach((data: any) => {
+          console.log(
+            `📊 [Stats] Counting ${Object.keys(checkInOutData).length} check-in/out records for ${classId}`
+          );
+          Object.entries(checkInOutData).forEach(([studentCode, data]: [string, any]) => {
+            console.log(
+              `📊 [Stats] Student ${studentCode}: checkIn=${!!data.checkInTime}, checkOut=${!!data.checkOutTime}`
+            );
             if (data.checkInTime) checkInCount++;
             if (data.checkOutTime) checkOutCount++;
           });
+          console.log(
+            `📊 [Stats] Final counts for ${classId}: checkIn=${checkInCount}, checkOut=${checkOutCount}, attendance=${attendanceCount}, total=${totalStudents}`
+          );
 
           newStats[classId] = {
             checkInCount,
@@ -195,7 +251,10 @@ const AttendanceHome = () => {
       });
 
       await Promise.all(promises);
+      console.log('📊 [Home] Final classStats to set:', newStats);
+      console.log('📊 [Home] Setting classStats with keys:', Object.keys(newStats));
       setClassStats(newStats);
+      console.log('📊 [Home] classStats set successfully');
     },
     [currentDate]
   );
@@ -267,7 +326,12 @@ const AttendanceHome = () => {
       classData.short_title ||
       classData.name ||
       'Unknown Class';
-    const period = isTimetableEntry ? classData.timetable_column_id : null;
+    const periodId = isTimetableEntry ? classData.timetable_column_id : null;
+    const periodName = isTimetableEntry ? classData.period_name : null;
+    const periodTime =
+      isTimetableEntry && classData.start_time && classData.end_time
+        ? `${classData.start_time} - ${classData.end_time}`
+        : null;
     const subject = isTimetableEntry ? classData.subject_title : null;
     const room = isTimetableEntry ? classData.room_name : null;
     const hasAttendance = stats?.hasAttendance || false;
@@ -280,13 +344,23 @@ const AttendanceHome = () => {
           borderRadius: 16,
           marginBottom: 16,
         }}>
+        {isTimetableEntry && periodName && (
+          <View style={{ marginBottom: 6 }}>
+            <Text style={{ fontSize: 16, fontWeight: '600', color: '#002855' }}>{periodName}</Text>
+            {periodTime && (
+              <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>{periodTime}</Text>
+            )}
+          </View>
+        )}
+
         <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 4 }}>{title}</Text>
-        {isTimetableEntry && (
+
+        {isTimetableEntry && (subject || room) && (
           <View style={{ marginBottom: 8 }}>
-            <Text style={{ fontSize: 14, color: '#666', marginBottom: 2 }}>
-              Tiết {period} • {subject}
-            </Text>
-            {room && <Text style={{ fontSize: 12, color: '#999' }}>Phòng: {room}</Text>}
+            {subject && (
+              <Text style={{ fontSize: 14, color: '#666', marginBottom: 2 }}>📚 {subject}</Text>
+            )}
+            {room && <Text style={{ fontSize: 12, color: '#999' }}>🏫 Phòng: {room}</Text>}
           </View>
         )}
 
@@ -329,7 +403,7 @@ const AttendanceHome = () => {
             nav.navigate(ROUTES.SCREENS.ATTENDANCE_DETAIL, {
               classData,
               // Pass period info for timetable entries
-              period: isTimetableEntry ? period : undefined,
+              period: isTimetableEntry ? periodId : undefined,
             })
           }>
           <Text
@@ -426,8 +500,19 @@ const AttendanceHome = () => {
           </View>
         ) : displayedClasses.length > 0 ? (
           displayedClasses.map((classData, index) => {
-            const classId = classData.name;
+            // For timetable entries, use class_id as key; for homeroom, use name
+            const isTimetableEntry = classData.timetable_column_id !== undefined;
+            const classId = isTimetableEntry ? classData.class_id : classData.name;
             const stats = classStats[classId];
+            console.log(
+              `🎨 [UI] Rendering ClassCard for ${classId} (isTimetable=${isTimetableEntry}): displayText=`,
+              {
+                checkIn: stats ? `${stats.checkInCount}/${stats.totalStudents}` : '0/0',
+                attendance: stats ? `${stats.attendanceCount}/${stats.totalStudents}` : '0/0',
+                checkOut: stats ? `${stats.checkOutCount}/${stats.totalStudents}` : '0/0',
+                statsFound: !!stats,
+              }
+            );
             return <ClassCard key={classId || index} classData={classData} stats={stats} />;
           })
         ) : (

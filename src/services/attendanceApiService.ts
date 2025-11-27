@@ -181,12 +181,21 @@ class AttendanceApiService {
 
       const result = await response.json();
 
-      if (result.message?.data) {
+      // Try new format first (data directly in result)
+      if (result.data) {
+        return {
+          success: true,
+          data: result.data,
+        };
+      }
+      // Fallback to frappe format (data in result.message.data)
+      else if (result.message?.data) {
         return {
           success: true,
           data: result.message.data,
         };
       } else {
+        console.error('Invalid response format:', result);
         return {
           success: false,
           error: 'Invalid response format',
