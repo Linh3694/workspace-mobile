@@ -22,8 +22,6 @@ import { postService } from '../../services/postService';
 import { useAuth } from '../../context/AuthContext';
 import { getAvatar } from '../../utils/avatar';
 import { formatRelativeTime } from '../../utils/dateUtils';
-import { useEmojis, CustomEmoji } from '../../hooks/useEmojis';
-import EmojiReactionModal from './EmojiReactionModal';
 import LikeSkeletonSvg from '../../assets/like-skeleton.svg';
 
 interface CommentsModalProps {
@@ -32,15 +30,6 @@ interface CommentsModalProps {
   post: Post;
   onUpdate: (post: Post) => void;
 }
-
-// Type for emoji data that can be either custom or fallback
-type EmojiData =
-  | CustomEmoji
-  | {
-      code: string;
-      url: null;
-      fallbackText: string;
-    };
 
 // Gradient Text Component đơn giản
 const GradientText: React.FC<{ children: string; style?: any }> = ({ children, style }) => {
@@ -51,18 +40,10 @@ const GradientText: React.FC<{ children: string; style?: any }> = ({ children, s
 
 const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, onUpdate }) => {
   const { user } = useAuth();
-  const { customEmojis } = useEmojis();
   const [commentText, setCommentText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [emojiModalVisible, setEmojiModalVisible] = useState(false);
-  const [reactionButtonPosition, setReactionButtonPosition] = useState<
-    { x: number; y: number } | undefined
-  >(undefined);
-  const reactionsRef = React.useRef<View>(null);
-  const likeButtonRef = React.useRef<View>(null);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [likingComment, setLikingComment] = useState<string | null>(null);
-  const [commentReactionModalVisible, setCommentReactionModalVisible] = useState(false);
   const [selectedCommentId, setSelectedCommentId] = useState<string | null>(null);
 
   // Sắp xếp comments từ mới nhất đến cũ nhất và nhóm replies
@@ -124,84 +105,22 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
     return counts;
   };
 
-  const getEmojiByCode = (code: string): EmojiData => {
-    const emoji = customEmojis.find((emoji) => emoji.code === code);
-
-    // Fallback cho các emoji codes cũ hoặc không tồn tại
-    if (!emoji) {
-      // Map legacy reaction types to emoji text
-      const legacyEmojiMap: Record<string, string> = {
-        like: '👍',
-        love: '❤️',
-        haha: '😂',
-        sad: '😢',
-        wow: '😮',
-      };
-
-      return {
-        code,
-        url: null,
-        fallbackText: legacyEmojiMap[code] || '👍',
-      };
-    }
-
-    return emoji;
-  };
-
-  // Type guard function
-  const isFallbackEmoji = (
-    emoji: EmojiData
-  ): emoji is { code: string; url: null; fallbackText: string } => {
-    return emoji.url === null && 'fallbackText' in emoji;
-  };
-
-  const handleReaction = async (emojiCode: string) => {
-    // Đóng modal ngay lập tức khi chọn emoji
-    setEmojiModalVisible(false);
-
+  const handleLikeButtonPress = async () => {
     try {
       const userReaction = getUserReaction();
-
-      let updatedPost: Post;
       if (userReaction) {
-        if (userReaction.type === emojiCode) {
-          // Remove reaction if same type
-          updatedPost = await postService.removeReaction(post._id);
-        } else {
-          // Change reaction type
-          updatedPost = await postService.addReaction(post._id, emojiCode);
-        }
+        // Remove like
+        const updatedPost = await postService.removeReaction(post._id);
+        onUpdate(updatedPost);
       } else {
-        // Add new reaction
-        updatedPost = await postService.addReaction(post._id, emojiCode);
+        // Add like
+        const updatedPost = await postService.addReaction(post._id, 'like');
+        onUpdate(updatedPost);
       }
-
-      onUpdate(updatedPost);
     } catch (error) {
-      console.error('Error handling reaction:', error);
-      Alert.alert('Lỗi', 'Không thể thực hiện reaction. Vui lòng thử lại.');
+      console.error('Error toggling like:', error);
+      Alert.alert('Lỗi', 'Không thể thực hiện thao tác. Vui lòng thử lại.');
     }
-  };
-
-  const handleLikeButtonPress = () => {
-    // Nếu modal đang mở thì đóng lại
-    if (emojiModalVisible) {
-      setEmojiModalVisible(false);
-      return;
-    }
-    // Đo vị trí của like button và hiển thị modal ngay dưới đó, canh giữa
-    if (likeButtonRef.current) {
-      likeButtonRef.current.measureInWindow((x, y, width, height) => {
-        setReactionButtonPosition({ x: x + width / 2, y: y + height + 10 });
-        setEmojiModalVisible(true);
-      });
-    } else {
-      setEmojiModalVisible(true);
-    }
-  };
-
-  const handleCloseEmojiModal = () => {
-    setEmojiModalVisible(false);
   };
 
   const handleLikeComment = async (commentId: string) => {
@@ -348,26 +267,10 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
       <SafeAreaView className="flex-1 bg-white">
         {/* Reactions Section */}
         {totalReactions > 0 && (
-          <View className="px-4 py-3" ref={reactionsRef}>
+          <View className="px-4 py-3">
             <View className="flex-row items-center justify-between">
               <View className="flex-1 flex-row items-center">
-                <View className="flex-row">
-                  {Object.entries(reactionCounts).map(([emojiCode, count]) => {
-                    const emoji = getEmojiByCode(emojiCode);
-                    if (!emoji || count === 0) return null;
-                    return (
-                      <View key={emojiCode}>
-                        {emoji.url ? (
-                          <Image source={emoji.url} className="h-8 w-8" resizeMode="contain" />
-                        ) : isFallbackEmoji(emoji) ? (
-                          <Text className="font-medium text-sm">{emoji.fallbackText}</Text>
-                        ) : (
-                          <Text className="font-medium text-sm">👍</Text>
-                        )}
-                      </View>
-                    );
-                  })}
-                </View>
+                <Ionicons name="heart" size={16} color="#EF4444" />
                 <Text className="ml-2 font-semibold text-base text-[#757575]">
                   {totalReactions === 1
                     ? userReaction
@@ -381,32 +284,12 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
               {/* Reaction Button */}
               <TouchableOpacity
                 onPress={handleLikeButtonPress}
-                className="mr-5 flex-row items-center rounded-full px-3 py-2"
-                ref={likeButtonRef}>
-                {userReaction ? (
-                  <>
-                    {(() => {
-                      const emoji = getEmojiByCode(userReaction.type);
-                      if (emoji && emoji.url) {
-                        return (
-                          <Image source={emoji.url} className="mr-1 h-8 w-8" resizeMode="contain" />
-                        );
-                      } else if (emoji && isFallbackEmoji(emoji)) {
-                        return (
-                          <Text className="mr-1 font-semibold text-lg">{emoji.fallbackText}</Text>
-                        );
-                      } else {
-                        return <LikeSkeletonSvg width={24} height={24} />;
-                      }
-                    })()}
-
-                    <GradientText style={{ fontSize: 13 }}>Đã thích</GradientText>
-                  </>
-                ) : (
-                  <>
-                    <LikeSkeletonSvg width={32} height={32} />
-                  </>
-                )}
+                className="mr-5 flex-row items-center rounded-full px-3 py-2">
+                <LikeSkeletonSvg width={32} height={32} />
+                <Text
+                  className={`ml-2 font-medium ${userReaction ? 'text-red-600' : 'text-gray-600'}`}>
+                  {userReaction ? 'Đã thích' : 'Thích'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -822,23 +705,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
         </KeyboardAvoidingView>
       </SafeAreaView>
 
-      {/* Emoji Reaction Modal */}
-      <EmojiReactionModal
-        visible={emojiModalVisible}
-        onClose={handleCloseEmojiModal}
-        onEmojiSelect={handleReaction}
-        position={reactionButtonPosition}
-      />
-
-      {/* Comment Reaction Modal */}
-      <EmojiReactionModal
-        visible={commentReactionModalVisible}
-        onClose={() => setCommentReactionModalVisible(false)}
-        onEmojiSelect={(emojiCode) =>
-          selectedCommentId && handleCommentReactionSelect(selectedCommentId, emojiCode)
-        }
-        position={reactionButtonPosition}
-      />
+      {/* Emoji reactions removed - simplified to like only */}
     </Modal>
   );
 };

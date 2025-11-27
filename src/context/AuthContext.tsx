@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import * as SecureStore from 'expo-secure-store';
-import { disconnectAllSockets } from '../services/socketService';
 import { getApiBaseUrl } from '../config/constants';
 import { microsoftAuthService, MicrosoftAuthResponse } from '../services/microsoftAuthService';
 import pushNotificationService from '../services/pushNotificationService';
@@ -72,8 +71,10 @@ const normalizeUserData = (userData: any, defaultProvider = 'local') => {
 };
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+  console.log('🔄 [AuthProvider] AuthProvider component rendering');
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  console.log('🔄 [AuthProvider] Initial state - user:', user, 'loading:', loading);
 
   // --- Avatar cache-bust helpers ---
   const getAvatarBustKey = (identifier?: string) => `avatarCacheBust:${identifier || ''}`;
@@ -203,9 +204,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const logout = useCallback(async () => {
     try {
       setLoading(true);
-      // Disconnect tất cả socket connections
-      disconnectAllSockets();
-
       // Cleanup push notifications
       try {
         pushNotificationService.cleanup();
@@ -237,8 +235,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const checkAuth = useCallback(async (): Promise<boolean> => {
     try {
+      console.log('🔄 [checkAuth] Starting authentication check...');
       setLoading(true);
+      console.log('🔄 [checkAuth] About to get token from AsyncStorage...');
       const token = await AsyncStorage.getItem('authToken');
+      console.log('🔄 [checkAuth] Got token from AsyncStorage:', !!token);
 
       if (!token) {
         console.log('🔍 [checkAuth] No token found');
@@ -489,17 +490,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.error('❌ [checkAuth] General error:', error);
       await logout();
       setLoading(false);
+      console.log('🔄 [checkAuth] Authentication check completed with result: false (error)');
       return false;
     }
 
     setLoading(false);
+    console.log('🔄 [checkAuth] Authentication check completed with result: false (end)');
     return false;
   }, [logout, attachAvatarCacheBust, refreshUserData]);
 
   // Gọi checkAuth sau khi định nghĩa để tránh lỗi dùng trước khi khai báo
   useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
+    console.log('🔄 [AuthProvider] useEffect triggered, calling checkAuth');
+    try {
+      checkAuth();
+    } catch (error) {
+      console.error('❌ [AuthProvider] Error in checkAuth:', error);
+    }
+  }, []);
 
   const login = async (token: string, userData: any) => {
     try {

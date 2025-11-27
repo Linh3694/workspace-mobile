@@ -54,13 +54,15 @@ export const StudentAvatar: React.FC<StudentAvatarProps> = ({
 
   if (uri && !failed) {
     // Debug current uri (one-time)
-    try { console.log('[StudentAvatar] uri:', uri); } catch {}
+    try {
+      console.log('[StudentAvatar] uri:', uri);
+    } catch {}
     return (
       <Image
         source={{ uri }}
         style={{ width: size, height: size, borderRadius, ...(style || {}) }}
         onError={() => setFailed(true)}
-        resizeMode="cover"
+        resizeMode="cover-top"
       />
     );
   }
@@ -75,8 +77,7 @@ export const StudentAvatar: React.FC<StudentAvatarProps> = ({
         alignItems: 'center',
         justifyContent: 'center',
         ...(style || {}),
-      }}
-    >
+      }}>
       <Text style={{ color: textColor, fontWeight: '600', fontSize: Math.max(14, size * 0.28) }}>
         {initials}
       </Text>

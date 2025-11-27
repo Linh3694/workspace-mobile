@@ -250,9 +250,15 @@ const ProfileScreen = () => {
         appVersion: appVersion,
         language: 'vi',
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        jwt_token: authToken, // Include JWT token in payload for authentication
       };
 
-      await axios.post(`${BASE_URL}/api/notification/register-device`, deviceInfo, {
+      const apiUrl = `${BASE_URL}/api/method/erp.api.erp_sis.mobile_push_notification.register_device_token`;
+      console.log('📡 FULL API URL being called:', apiUrl);
+      console.log('📤 Request payload:', deviceInfo);
+      console.log('🔑 Auth token (first 50 chars):', authToken.substring(0, 50) + '...');
+
+      await axios.post(apiUrl, deviceInfo, {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${authToken}`,
@@ -285,7 +291,7 @@ const ProfileScreen = () => {
       console.log('🔔 Unregistering push token with notification service via nginx proxy');
 
       await axios.post(
-        `${BASE_URL}/api/notification/unregister-device`,
+        `${BASE_URL}/api/method/erp.api.erp_sis.mobile_push_notification.unregister_device_token`,
         { deviceToken: pushToken },
         {
           headers: {

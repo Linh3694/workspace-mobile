@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 // @ts-ignore
 import {
   View,
@@ -11,7 +11,6 @@ import {
   TextInput,
   Alert,
   Modal,
-  Animated,
   StatusBar,
   Keyboard,
   Platform,
@@ -21,7 +20,7 @@ import {
 
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
@@ -34,6 +33,8 @@ import DevicesIcon from '../../assets/devices-icon.svg';
 import DocumentIcon from '../../assets/document-icon.svg';
 import LibraryIcon from '../../assets/library-icon.svg';
 import PolygonIcon from '../../assets/polygon.svg';
+import LeaveIcon from '../../assets/leave.svg';
+import AttendanceIcon from '../../assets/attendance.svg';
 import attendanceService from '../../services/attendanceService';
 import pushNotificationService from '../../services/pushNotificationService';
 import notificationCenterService from '../../services/notificationCenterService';
@@ -47,34 +48,47 @@ const HomeScreen = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
   const route = useRoute();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const { user } = useAuth();
   const { t } = useLanguage();
   const [checkInTime, setCheckInTime] = useState('--:--');
   const [checkOutTime, setCheckOutTime] = useState('--:--');
   const [isRefreshingAttendance, setIsRefreshingAttendance] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const isMountedRef = useRef(true);
 
   // Function để fetch attendance data
   const fetchTodayAttendance = React.useCallback(
     async (showLoading = false, forceRefresh = false) => {
       const employeeCode = user?.employeeCode;
+
+      console.log('🏠 [HomeScreen.fetchTodayAttendance] Called with:', {
+        employeeCode,
+        showLoading,
+        forceRefresh,
+        user: user ? { fullname: user.fullname, employeeCode: user.employeeCode } : null,
+      });
+
       if (!employeeCode) {
+        console.log('⚠️ [HomeScreen.fetchTodayAttendance] No employeeCode, setting defaults');
         setCheckInTime(t('home.not_checked_in'));
         setCheckOutTime(t('home.not_checked_out'));
         return;
       }
 
       try {
-        if (showLoading) {
+        if (showLoading && isMountedRef.current) {
+          console.log('⏳ [HomeScreen.fetchTodayAttendance] Setting loading state');
           setIsRefreshingAttendance(true);
         }
 
         console.log(
-          `📊 [fetchTodayAttendance] Fetching for: ${employeeCode}, forceRefresh: ${forceRefresh}`
+          `📊 [HomeScreen.fetchTodayAttendance] Starting fetch for: ${employeeCode}, forceRefresh: ${forceRefresh}`
         );
 
         // TEMPORARY: Force clear ALL attendance cache to fix timezone display issue
         if (forceRefresh) {
+          console.log('🗑️ [HomeScreen.fetchTodayAttendance] Force clearing cache');
           attendanceService.forceCleanAllAttendanceCache();
         }
 
@@ -82,38 +96,68 @@ const HomeScreen = () => {
           employeeCode,
           forceRefresh
         );
+
+        console.log('📊 [HomeScreen.fetchTodayAttendance] Got attendance data:', attendanceData);
+
         if (attendanceData) {
+          console.log(
+            '✅ [HomeScreen.fetchTodayAttendance] Has attendance data, formatting times...'
+          );
           const formattedCheckIn = attendanceService.formatTime(attendanceData.checkInTime);
           const formattedCheckOut = attendanceService.formatTime(attendanceData.checkOutTime);
 
-          setCheckInTime(formattedCheckIn);
-          setCheckOutTime(formattedCheckOut);
+          console.log('🕐 [HomeScreen.fetchTodayAttendance] Formatted times:', {
+            raw: {
+              checkInTime: attendanceData.checkInTime,
+              checkOutTime: attendanceData.checkOutTime,
+            },
+            formatted: {
+              checkIn: formattedCheckIn,
+              checkOut: formattedCheckOut,
+            },
+          });
+
+          if (isMountedRef.current) {
+            setCheckInTime(formattedCheckIn);
+            setCheckOutTime(formattedCheckOut);
+          }
+
+          console.log('✅ [HomeScreen.fetchTodayAttendance] Set state:', {
+            checkIn: formattedCheckIn,
+            checkOut: formattedCheckOut,
+          });
 
           if (showLoading) {
-            console.log('📋 Attendance data refreshed after notification');
+            console.log('📋 [HomeScreen.fetchTodayAttendance] Data refreshed after notification');
           }
         } else {
+          console.log('⚠️ [HomeScreen.fetchTodayAttendance] No attendance data, setting defaults');
+          if (isMountedRef.current) {
+            setCheckInTime('--:--');
+            setCheckOutTime('--:--');
+          }
+        }
+      } catch (error) {
+        console.error('❌ [HomeScreen.fetchTodayAttendance] Error:', error);
+        if (isMountedRef.current) {
           setCheckInTime('--:--');
           setCheckOutTime('--:--');
         }
-      } catch (error) {
-        console.error('Lỗi khi lấy dữ liệu chấm công:', error);
-        setCheckInTime('--:--');
-        setCheckOutTime('--:--');
       } finally {
-        if (showLoading) {
+        if (showLoading && isMountedRef.current) {
+          console.log('✅ [HomeScreen.fetchTodayAttendance] Clearing loading state');
           setIsRefreshingAttendance(false);
         }
       }
     },
-    [user?.employeeCode]
+    [t, user]
   );
 
   // Function để fetch unread notification count
   const fetchUnreadNotificationCount = React.useCallback(async () => {
     try {
       const result = await notificationCenterService.getUnreadCount();
-      if (result.success) {
+      if (result.success && isMountedRef.current) {
         setUnreadNotificationCount(result.data.unread_count);
       }
     } catch (error) {
@@ -160,19 +204,19 @@ const HomeScreen = () => {
           // Auto-refresh attendance data with force refresh to bypass cache
           fetchTodayAttendance(true, true);
 
-          // Show local notification if app is in foreground
-          pushNotificationService.scheduleLocalNotification(
-            t('home.check_in'),
-            `${t('home.attendance')} ${
-              notificationData.timestamp
-                ? new Date(notificationData.timestamp).toLocaleTimeString('vi-VN', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                : 'vừa xong'
-            } tại ${notificationData.deviceName || 'Unknown Device'}`,
-            { type: 'attendance', source: 'auto_refresh' }
-          );
+          // Skip local notification since we already have push notification from server
+          // pushNotificationService.scheduleLocalNotification(
+          //   t('home.check_in'),
+          //   `${t('home.attendance')} ${
+          //     notificationData.timestamp
+          //       ? new Date(notificationData.timestamp).toLocaleTimeString('vi-VN', {
+          //           hour: '2-digit',
+          //           minute: '2-digit',
+          //         })
+          //       : 'vừa xong'
+          //   } tại ${notificationData.deviceName || 'Unknown Device'}`,
+          //   { type: 'attendance', source: 'auto_refresh' }
+          // );
         } else {
           console.log('ℹ️ Attendance notification for different user, ignoring');
         }
@@ -219,32 +263,33 @@ const HomeScreen = () => {
         // Phân quyền điều hướng
         if (['superadmin', 'admin', 'technical'].includes(role)) {
           console.log('Điều hướng đến TicketAdmin vì người dùng có vai trò:', role);
-          navigation.navigate(ROUTES.SCREENS.TICKET_ADMIN);
+          navigation.replace(ROUTES.SCREENS.TICKET_ADMIN);
         } else {
           console.log('Điều hướng đến TicketGuest vì người dùng có vai trò:', role);
-          navigation.navigate(ROUTES.SCREENS.TICKET_GUEST);
+          navigation.replace(ROUTES.SCREENS.TICKET_GUEST);
         }
       } else {
         console.log('Không tìm thấy thông tin người dùng, điều hướng đến TicketGuest');
-        navigation.navigate(ROUTES.SCREENS.TICKET_GUEST);
+        navigation.replace(ROUTES.SCREENS.TICKET_GUEST);
       }
     } catch (error) {
       console.error('Lỗi khi kiểm tra quyền người dùng:', error);
       // Mặc định điều hướng đến TicketGuest nếu có lỗi
-      navigation.navigate(ROUTES.SCREENS.TICKET_GUEST);
+      navigation.replace(ROUTES.SCREENS.TICKET_GUEST);
     }
   };
 
   const navigateToDevices = () => {
-    navigation.navigate(ROUTES.SCREENS.DEVICES);
+    navigation.replace(ROUTES.SCREENS.DEVICES);
   };
 
   const navigateToAttendance = () => {
-    navigation.navigate(ROUTES.SCREENS.ATTENDANCE_HOME);
+    // Use replace instead of navigate to completely replace the screen and avoid animation issues
+    navigation.replace(ROUTES.SCREENS.ATTENDANCE_HOME);
   };
 
   const navigateToLeaveRequests = () => {
-    navigation.navigate(ROUTES.SCREENS.LEAVE_REQUESTS);
+    navigation.replace(ROUTES.SCREENS.LEAVE_REQUESTS);
   };
 
   // Role-based menu configuration
@@ -274,7 +319,7 @@ const HomeScreen = () => {
     {
       id: 3,
       title: 'Điểm danh',
-      component: DocumentIcon, // Placeholder icon
+      component: AttendanceIcon,
       description: 'Điểm danh nhân viên/giáo viên',
       onPress: navigateToAttendance,
       key: 'attendance',
@@ -282,7 +327,7 @@ const HomeScreen = () => {
     {
       id: 4,
       title: 'Đơn từ',
-      component: DocumentIcon,
+      component: LeaveIcon,
       description: 'Đơn từ',
       onPress: navigateToLeaveRequests,
       key: 'documents',
@@ -309,8 +354,29 @@ const HomeScreen = () => {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const slideUpAnimation = useState(new Animated.Value(0))[0];
-  const fadeAnimation = useState(new Animated.Value(0))[0];
+
+  // Cleanup when component unmounts
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Reset modal state when screen loses focus
+  useFocusEffect(
+    React.useCallback(() => {
+      return () => {
+        // This runs when screen loses focus
+        if (!isFocused) {
+          setShowSearchModal(false);
+          setIsSearchFocused(false);
+          setSearchQuery('');
+          setSearchResults(menuItems);
+          setKeyboardHeight(0);
+        }
+      };
+    }, [isFocused, menuItems])
+  );
 
   const handleSearch = (text: string) => {
     setSearchQuery(text);
@@ -332,34 +398,16 @@ const HomeScreen = () => {
 
   // iOS-style search handlers
   const openIOSSearch = () => {
-    // Set animation values immediately to show modal right away
-    slideUpAnimation.setValue(1);
-    fadeAnimation.setValue(1);
-
     setShowSearchModal(true);
     setIsSearchFocused(true);
   };
 
   const closeIOSSearch = () => {
-    // Start animation immediately without waiting for keyboard
-    Animated.parallel([
-      Animated.timing(slideUpAnimation, {
-        toValue: 0,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-      Animated.timing(fadeAnimation, {
-        toValue: 0,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setShowSearchModal(false);
-      setIsSearchFocused(false);
-      setSearchQuery('');
-      setSearchResults(menuItems);
-      setKeyboardHeight(0);
-    });
+    setShowSearchModal(false);
+    setIsSearchFocused(false);
+    setSearchQuery('');
+    setSearchResults(menuItems);
+    setKeyboardHeight(0);
 
     // Dismiss keyboard asynchronously
     Keyboard.dismiss();
@@ -402,10 +450,11 @@ const HomeScreen = () => {
     if (item) {
       setSearchHistory((prev) => [title, ...prev.filter((t) => t !== title)]);
       closeIOSSearch();
-      // Delay navigation to allow modal to close
+
+      // Small delay to ensure modal is closed before navigation
       setTimeout(() => {
         item.onPress();
-      }, 100);
+      }, 50);
     }
   };
 
@@ -425,19 +474,21 @@ const HomeScreen = () => {
   }, []);
 
   // Gradient border container
-  const GradientBorderContainer = ({ children }: { children: React.ReactNode }) => {
-    return (
-      <View style={styles.gradientBorderContainer}>
-        <LinearGradient
-          colors={['#FFCE02', '#BED232']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.gradientBorder}
-        />
-        <View style={styles.innerContainer}>{children}</View>
-      </View>
-    );
-  };
+  const GradientBorderContainer = React.forwardRef<any, { children: React.ReactNode }>(
+    ({ children }, ref) => {
+      return (
+        <View ref={ref} style={styles.gradientBorderContainer}>
+          <LinearGradient
+            colors={['#FFCE02', '#BED232']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.gradientBorder}
+          />
+          <View style={styles.innerContainer}>{children}</View>
+        </View>
+      );
+    }
+  );
 
   return (
     <LinearGradient
@@ -599,216 +650,200 @@ const HomeScreen = () => {
             </View>
           )}
         </View>
-
-        {/* iOS-style Search Modal */}
-        <Modal
-          visible={showSearchModal}
-          animationType="none"
-          transparent={false}
-          statusBarTranslucent={true}>
-          <LinearGradient
-            colors={[
-              'rgba(240, 80, 35, 0.03)', // #F05023 at 5% opacity
-              'rgba(255, 206, 2, 0.06)', // #FFCE02 at 5% opacity
-              'rgba(190, 210, 50, 0.04)', // #BED232 at 4% opacity
-              'rgba(0, 148, 131, 0.07)', // #009483 at 7% opacity
-            ]}
-            locations={[0, 0.22, 0.85, 1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={{ flex: 1 }}>
-            <View
-              style={{
-                flex: 1,
-                // paddingTop: Platform.OS === 'android' ? insets.top : 0
-              }}>
-              <StatusBar barStyle="dark-content" />
-
-              {/* Animated Container */}
-              <Animated.View
-                {...panResponder.panHandlers}
-                style={{
-                  flex: 1,
-                  opacity: fadeAnimation,
-                  transform: [
-                    {
-                      translateY: slideUpAnimation.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [20, 0],
-                      }),
-                    },
-                  ],
-                }}>
-                {/* Header spacing */}
-                <View className="py-4" />
-
-                {/* Search Content */}
-                <View
-                  className="flex-1"
-                  style={{ marginBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 80 }}>
-                  <ScrollView
-                    className="flex-1"
-                    showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="always"
-                    scrollEnabled={true}>
-                    {searchQuery !== '' ? (
-                      /* Search Results in Suggestion Box + Recent Searches Below */
-                      <View className="px-1">
-                        {/* Results in Suggestion Box */}
-                        <View className="mx-2 rounded-xl px-4 py-4">
-                          <Text className="mb-3 font-semibold text-lg text-gray-900">
-                            Kết quả phù hợp
-                          </Text>
-                          <GradientBorderContainer>
-                            <LinearGradient
-                              colors={[
-                                'rgba(255, 206, 2, 0.05)', // #FFCE02 at 5% opacity
-                                'rgba(190, 210, 50, 0.05)', // #BED232 at 4% opacity
-                              ]}
-                              start={{ x: 1, y: 0 }}
-                              end={{ x: 0, y: 1 }}>
-                              <View className="p-4">
-                                {searchResults.length > 0 ? (
-                                  <View className="flex-row flex-wrap justify-between">
-                                    {searchResults.map((item) => (
-                                      <TouchableOpacity
-                                        key={item.id}
-                                        className="mt-2 w-[25%] items-center"
-                                        onPress={() => handleIOSSelectItem(item.title)}>
-                                        <item.component width={80} height={80} />
-                                        <Text className="mt-2 text-center text-sm">
-                                          {item.title}
-                                        </Text>
-                                      </TouchableOpacity>
-                                    ))}
-                                  </View>
-                                ) : (
-                                  <View className="items-center py-8">
-                                    <FontAwesome name="search" size={48} color="#ccc" />
-                                    <Text className="mt-4 text-base text-gray-500">
-                                      Không tìm thấy kết quả
-                                    </Text>
-                                    <Text className="mt-1 text-sm text-gray-400">
-                                      Thử {t('common.search')} với từ khóa khác
-                                    </Text>
-                                  </View>
-                                )}
-                              </View>
-                            </LinearGradient>
-                          </GradientBorderContainer>
-                        </View>
-
-                        {/* Recent Searches Below */}
-                        {searchHistory.length > 0 && (
-                          <View className="mx-2 mb-4 rounded-xl px-4 py-4">
-                            <Text className="mb-3 font-semibold text-lg text-gray-900">
-                              Tìm kiếm gần đây
-                            </Text>
-                            {searchHistory.map((title) => {
-                              const item = menuItems.find((i) => i.title === title);
-                              if (!item) return null;
-                              return (
-                                <TouchableOpacity
-                                  key={title}
-                                  className="flex-row items-center border-b border-gray-100 py-3 last:border-b-0"
-                                  onPress={() => handleIOSSelectItem(title)}>
-                                  <FontAwesome name="clock-o" size={16} color="#666" />
-                                  <Text className="ml-3 flex-1 text-gray-700">{title}</Text>
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                        )}
-                      </View>
-                    ) : (
-                      /* Suggestions + Recent Searches */
-                      <View className="px-1">
-                        {/* Suggestions */}
-                        <View className="mx-2 rounded-xl px-4 py-4">
-                          <Text className="mb-3 font-semibold text-lg text-gray-900">Gợi ý</Text>
-                          <GradientBorderContainer>
-                            <LinearGradient
-                              colors={[
-                                'rgba(255, 206, 2, 0.05)', // #FFCE02 at 5% opacity
-                                'rgba(190, 210, 50, 0.05)', // #BED232 at 4% opacity
-                              ]}
-                              start={{ x: 1, y: 0 }}
-                              end={{ x: 0, y: 1 }}>
-                              <View className="flex-row flex-wrap justify-start p-4">
-                                {menuItems.map((item) => (
-                                  <TouchableOpacity
-                                    key={item.id}
-                                    className="mt-2 w-[25%] items-center"
-                                    onPress={() => handleIOSSelectItem(item.title)}>
-                                    <item.component width={80} height={80} />
-                                    <Text className="mt-2 text-center text-sm">{item.title}</Text>
-                                  </TouchableOpacity>
-                                ))}
-                              </View>
-                            </LinearGradient>
-                          </GradientBorderContainer>
-                        </View>
-
-                        {/* Recent Searches Below */}
-                        {searchHistory.length > 0 && (
-                          <View className="mx-2 mb-4 rounded-xl px-4 py-4">
-                            <Text className="mb-3 font-semibold text-lg text-gray-900">
-                              Tìm kiếm gần đây
-                            </Text>
-                            {searchHistory.map((title) => {
-                              const item = menuItems.find((i) => i.title === title);
-                              if (!item) return null;
-                              return (
-                                <TouchableOpacity
-                                  key={title}
-                                  className="flex-row items-center border-b border-gray-100 py-3 last:border-b-0"
-                                  onPress={() => handleIOSSelectItem(title)}>
-                                  <FontAwesome name="clock-o" size={16} color="#666" />
-                                  <Text className="ml-3 flex-1 text-gray-700">{title}</Text>
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                        )}
-                      </View>
-                    )}
-
-                    {/* Spacer for tap to close - fills remaining space */}
-                    <TouchableWithoutFeedback onPress={closeIOSSearch}>
-                      <View className="min-h-[100px] flex-1" />
-                    </TouchableWithoutFeedback>
-                  </ScrollView>
-                </View>
-
-                {/* Search Bar at Bottom */}
-                <View
-                  className="bg-transparent px-4 py-3"
-                  style={{
-                    position: 'absolute',
-                    bottom: keyboardHeight > 0 ? keyboardHeight : 0,
-                    left: 0,
-                    right: 0,
-                    paddingBottom:
-                      Platform.OS === 'ios' && keyboardHeight === 0 ? insets.bottom : 16,
-                    zIndex: 10,
-                  }}>
-                  <View className="flex-1 flex-row items-center rounded-full border border-gray-300 bg-white px-3 py-4">
-                    <FontAwesome name="search" size={16} color="#666" />
-                    <TextInput
-                      value={searchQuery}
-                      onChangeText={handleIOSSearch}
-                      placeholder="Tìm kiếm"
-                      className="ml-3 flex-1"
-                      autoFocus={true}
-                      returnKeyType="search"
-                    />
-                  </View>
-                </View>
-              </Animated.View>
-            </View>
-          </LinearGradient>
-        </Modal>
       </ScrollView>
+
+      {/* iOS-style Search Modal */}
+      <Modal
+        visible={showSearchModal}
+        animationType="none"
+        transparent={false}
+        statusBarTranslucent={true}>
+        <LinearGradient
+          colors={[
+            'rgba(240, 80, 35, 0.03)', // #F05023 at 5% opacity
+            'rgba(255, 206, 2, 0.06)', // #FFCE02 at 5% opacity
+            'rgba(190, 210, 50, 0.04)', // #BED232 at 4% opacity
+            'rgba(0, 148, 131, 0.07)', // #009483 at 7% opacity
+          ]}
+          locations={[0, 0.22, 0.85, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ flex: 1 }}>
+          <View
+            style={{
+              flex: 1,
+              // paddingTop: Platform.OS === 'android' ? insets.top : 0
+            }}>
+            <StatusBar barStyle="dark-content" />
+
+            {/* Content Layer */}
+            <View style={{ flex: 1 }}>
+              {/* Header spacing */}
+              <View className="py-4" />
+
+              {/* Search Content */}
+              <View
+                className="flex-1"
+                style={{ marginBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 80 }}>
+                <ScrollView
+                  className="flex-1"
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="always"
+                  scrollEnabled={true}>
+                  {searchQuery !== '' ? (
+                    /* Search Results in Suggestion Box + Recent Searches Below */
+                    <View className="px-1">
+                      {/* Results in Suggestion Box */}
+                      <View className="mx-2 rounded-xl px-4 py-4">
+                        <Text className="mb-3 font-semibold text-lg text-gray-900">
+                          Kết quả phù hợp
+                        </Text>
+                        <GradientBorderContainer>
+                          <LinearGradient
+                            colors={[
+                              'rgba(255, 206, 2, 0.05)', // #FFCE02 at 5% opacity
+                              'rgba(190, 210, 50, 0.05)', // #BED232 at 4% opacity
+                            ]}
+                            start={{ x: 1, y: 0 }}
+                            end={{ x: 0, y: 1 }}>
+                            <View className="p-4">
+                              {searchResults.length > 0 ? (
+                                <View className="flex-row flex-wrap justify-between">
+                                  {searchResults.map((item) => (
+                                    <TouchableOpacity
+                                      key={item.id}
+                                      className="mt-2 w-[25%] items-center"
+                                      onPress={() => handleIOSSelectItem(item.title)}>
+                                      <item.component width={80} height={80} />
+                                      <Text className="mt-2 text-center text-sm">{item.title}</Text>
+                                    </TouchableOpacity>
+                                  ))}
+                                </View>
+                              ) : (
+                                <View className="items-center py-8">
+                                  <FontAwesome name="search" size={48} color="#ccc" />
+                                  <Text className="mt-4 text-base text-gray-500">
+                                    Không tìm thấy kết quả
+                                  </Text>
+                                  <Text className="mt-1 text-sm text-gray-400">
+                                    Thử {t('common.search')} với từ khóa khác
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                          </LinearGradient>
+                        </GradientBorderContainer>
+                      </View>
+
+                      {/* Recent Searches Below */}
+                      {searchHistory.length > 0 && (
+                        <View className="mx-2 mb-4 rounded-xl px-4 py-4">
+                          <Text className="mb-3 font-semibold text-lg text-gray-900">
+                            Tìm kiếm gần đây
+                          </Text>
+                          {searchHistory.map((title) => {
+                            const item = menuItems.find((i) => i.title === title);
+                            if (!item) return null;
+                            return (
+                              <TouchableOpacity
+                                key={title}
+                                className="flex-row items-center border-b border-gray-100 py-3 last:border-b-0"
+                                onPress={() => handleIOSSelectItem(title)}>
+                                <FontAwesome name="clock-o" size={16} color="#666" />
+                                <Text className="ml-3 flex-1 text-gray-700">{title}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  ) : (
+                    /* Suggestions + Recent Searches */
+                    <View className="px-1">
+                      {/* Suggestions */}
+                      <View className="mx-2 rounded-xl px-4 py-4">
+                        <Text className="mb-3 font-semibold text-lg text-gray-900">Gợi ý</Text>
+                        <GradientBorderContainer>
+                          <LinearGradient
+                            colors={[
+                              'rgba(255, 206, 2, 0.05)', // #FFCE02 at 5% opacity
+                              'rgba(190, 210, 50, 0.05)', // #BED232 at 4% opacity
+                            ]}
+                            start={{ x: 1, y: 0 }}
+                            end={{ x: 0, y: 1 }}>
+                            <View className="flex-row flex-wrap justify-start p-4">
+                              {menuItems.map((item) => (
+                                <TouchableOpacity
+                                  key={item.id}
+                                  className="mt-2 w-[25%] items-center"
+                                  onPress={() => handleIOSSelectItem(item.title)}>
+                                  <item.component width={80} height={80} />
+                                  <Text className="mt-2 text-center text-sm">{item.title}</Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                          </LinearGradient>
+                        </GradientBorderContainer>
+                      </View>
+
+                      {/* Recent Searches Below */}
+                      {searchHistory.length > 0 && (
+                        <View className="mx-2 mb-4 rounded-xl px-4 py-4">
+                          <Text className="mb-3 font-semibold text-lg text-gray-900">
+                            Tìm kiếm gần đây
+                          </Text>
+                          {searchHistory.map((title) => {
+                            const item = menuItems.find((i) => i.title === title);
+                            if (!item) return null;
+                            return (
+                              <TouchableOpacity
+                                key={title}
+                                className="flex-row items-center border-b border-gray-100 py-3 last:border-b-0"
+                                onPress={() => handleIOSSelectItem(title)}>
+                                <FontAwesome name="clock-o" size={16} color="#666" />
+                                <Text className="ml-3 flex-1 text-gray-700">{title}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {/* Spacer for tap to close - fills remaining space */}
+                  <TouchableWithoutFeedback onPress={closeIOSSearch}>
+                    <View className="min-h-[100px] flex-1" />
+                  </TouchableWithoutFeedback>
+                </ScrollView>
+              </View>
+
+              {/* Search Bar at Bottom */}
+              <View
+                className="bg-transparent px-4 py-3"
+                style={{
+                  position: 'absolute',
+                  bottom: keyboardHeight > 0 ? keyboardHeight : 0,
+                  left: 0,
+                  right: 0,
+                  paddingBottom: Platform.OS === 'ios' && keyboardHeight === 0 ? insets.bottom : 16,
+                  zIndex: 10,
+                }}>
+                <View className="flex-1 flex-row items-center rounded-full border border-gray-300 bg-white px-3 py-4">
+                  <FontAwesome name="search" size={16} color="#666" />
+                  <TextInput
+                    value={searchQuery}
+                    onChangeText={handleIOSSearch}
+                    placeholder="Tìm kiếm"
+                    className="ml-3 flex-1"
+                    autoFocus={true}
+                    returnKeyType="search"
+                  />
+                </View>
+              </View>
+            </View>
+          </View>
+        </LinearGradient>
+      </Modal>
     </LinearGradient>
   );
 };

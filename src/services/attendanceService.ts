@@ -55,6 +55,11 @@ class AttendanceService {
 
   private async getAuthHeaders() {
     const token = await AsyncStorage.getItem('authToken');
+    console.log(
+      '🔑 [getAuthHeaders] Token exists:',
+      !!token,
+      token ? '***' + token.slice(-10) : 'null'
+    );
     return {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
@@ -124,14 +129,12 @@ class AttendanceService {
     keysToDelete.forEach((key) => {
       this.cache.delete(key);
     });
-
   }
 
   // Method để force refresh data (clear cache và fetch lại)
   async forceRefreshTodayAttendance(employeeCode: string): Promise<AttendanceRecord | null> {
     const todayDateString = this.getCurrentVNDateString();
     const cacheKey = `today-attendance-${employeeCode}-${todayDateString}`;
-
 
     // Clear cache cho ngày hiện tại
     this.cache.delete(cacheKey);
@@ -180,8 +183,6 @@ class AttendanceService {
         }
         return false;
       });
-
-     
     }
 
     // Recalculate totalCheckIns based on clean rawData
@@ -234,15 +235,12 @@ class AttendanceService {
     try {
       const headers = await this.getAuthHeaders();
 
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const todayDateString = `${year}-${month}-${day}`;
+      const todayDateString = this.getCurrentVNDateString();
 
+      // Fix: Use correct BE API endpoint
       const response = await fetch(
-        `${BASE_URL}/api/attendance/employee/${employeeCode}` +
-          `?date=${encodeURIComponent(todayDateString)}&includeRawData=true`,
+        `${BASE_URL}/api/method/erp.api.attendance.query.get_employee_attendance_range` +
+          `?employee_code=${encodeURIComponent(employeeCode)}&start_date=${todayDateString}&end_date=${todayDateString}&limit=1&include_raw_data=true`,
         { headers }
       );
 
@@ -253,7 +251,9 @@ class AttendanceService {
       }
 
       const data = await response.json();
-      const record = data.data?.records?.[0] || null;
+
+      // Fix: Parse response correctly - data is in message.data.records[0] (BE wraps in message object)
+      const record = data?.message?.data?.records?.[0] || data?.data?.records?.[0] || null;
 
       return record;
     } catch (error) {
@@ -270,13 +270,20 @@ class AttendanceService {
     const todayDateString = this.getCurrentVNDateString();
     const cacheKey = `today-attendance-${employeeCode}-${todayDateString}`;
 
+    console.log(
+      `🔍 [getTodayAttendance] Starting for employeeCode: ${employeeCode}, date: ${todayDateString}, forceRefresh: ${forceRefresh}`
+    );
+
     // Check cache first (shorter cache for today data - 1 minute) - UNLESS force refresh
     if (!forceRefresh) {
       const cached = this.cache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < 60000) {
+        console.log('✅ [getTodayAttendance] Cache HIT, returning cached data:', cached.data);
         return cached.data;
       }
+      console.log('❌ [getTodayAttendance] Cache MISS, fetching from API');
     } else {
+      console.log('🔄 [getTodayAttendance] Force refresh, clearing cache');
       this.cache.delete(cacheKey);
     }
 
@@ -284,30 +291,46 @@ class AttendanceService {
       const rawRecord = await this.retryApiCall(async () => {
         const headers = await this.getAuthHeaders();
 
-        const apiUrl = `${BASE_URL}/api/attendance/employee/${employeeCode}?date=${encodeURIComponent(todayDateString)}`;
+        // Fix: Use correct BE API endpoint
+        const apiUrl =
+          `${BASE_URL}/api/method/erp.api.attendance.query.get_employee_attendance_range` +
+          `?employee_code=${encodeURIComponent(employeeCode)}&start_date=${todayDateString}&end_date=${todayDateString}&limit=1`;
+
+        console.log('🔗 [getTodayAttendance] API URL:', apiUrl);
 
         const response = await fetch(apiUrl, { headers });
 
+        console.log('📡 [getTodayAttendance] Response status:', response.status);
+
         if (!response.ok) {
           const errorText = await response.text();
+          console.error('❌ [getTodayAttendance] API Error:', response.status, errorText);
           throw new Error(`API Error ${response.status}: ${errorText}`);
         }
 
         const data = await response.json();
-        const record = data.data?.records?.[0] || null;
+        console.log('📦 [getTodayAttendance] Raw response data:', JSON.stringify(data, null, 2));
+
+        // Fix: Parse response correctly - data is in message.data.records[0] (BE wraps in message object)
+        const record = data?.message?.data?.records?.[0] || data?.data?.records?.[0] || null;
+        console.log('🔍 [getTodayAttendance] Parsed record:', JSON.stringify(record, null, 2));
 
         return record;
       });
 
+      console.log('🔄 [getTodayAttendance] Raw record from API:', rawRecord);
+
       // Sanitize and validate the record
       const record = rawRecord ? this.sanitizeAttendanceRecord(rawRecord) : null;
+      console.log('✅ [getTodayAttendance] Sanitized record:', record);
 
       // Cache the result
       this.setCachedData(cacheKey, record);
+      console.log('💾 [getTodayAttendance] Cached result');
 
       return record;
     } catch (error) {
-      console.error('❌ Error fetching today attendance:', error);
+      console.error('❌ [getTodayAttendance] Final error:', error);
       return null;
     }
   }
@@ -460,7 +483,6 @@ class AttendanceService {
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   }
 
-
   // Tính toán working hours (giờ làm việc)
   calculateWorkingHours(record: AttendanceRecord): string {
     if (!record.checkInTime || !record.checkOutTime) {
@@ -502,13 +524,12 @@ class AttendanceService {
   }
 
   // ===== Teacher class assignments (homeroom/vice/teaching) =====
-  async fetchCampuses(): Promise<Array<{ name: string; title_vn?: string; title_en?: string }>> {
+  async fetchCampuses(): Promise<{ name: string; title_vn?: string; title_en?: string }[]> {
     try {
       const headers = await this.getAuthHeaders();
-      const res = await fetch(
-        `${BASE_URL}/api/method/erp.api.erp_sis.campus.get_campuses`,
-        { headers }
-      );
+      const res = await fetch(`${BASE_URL}/api/method/erp.api.erp_sis.campus.get_campuses`, {
+        headers,
+      });
       if (!res.ok) return [];
       const data = await res.json();
       const rows = data?.data || data || [];
@@ -517,14 +538,16 @@ class AttendanceService {
       return [];
     }
   }
-  async getAllClassesForCurrentCampus(): Promise<Array<{ name: string; title?: string; short_title?: string; class_name?: string }>> {
+  async getAllClassesForCurrentCampus(): Promise<
+    { name: string; title?: string; short_title?: string; class_name?: string }[]
+  > {
     try {
       const headers = await this.getAuthHeaders();
       const campusId = (await AsyncStorage.getItem('currentCampusId')) || '';
       const url = new URL(`${BASE_URL}/api/method/erp.api.erp_sis.sis_class.get_all_classes`);
       // Note: get_all_classes doesn't accept page/limit parameters
       if (campusId) url.searchParams.set('campus_id', campusId);
-      
+
       console.log('[attendanceService] Fetching classes from:', url.toString());
       const res = await fetch(url.toString(), { headers });
       if (!res.ok) {
@@ -534,7 +557,7 @@ class AttendanceService {
       }
       const json = await res.json();
       console.log('[attendanceService] Full response:', JSON.stringify(json).substring(0, 800));
-      
+
       // Parse response: check multiple possible locations
       let rows = [];
       if (json?.message?.data) {
@@ -544,15 +567,18 @@ class AttendanceService {
       } else if (json?.message && Array.isArray(json.message)) {
         rows = json.message;
       }
-      
-      console.log('[attendanceService] Parsed rows count:', Array.isArray(rows) ? rows.length : 'not array, type: ' + typeof rows);
-      
+
+      console.log(
+        '[attendanceService] Parsed rows count:',
+        Array.isArray(rows) ? rows.length : 'not array, type: ' + typeof rows
+      );
+
       if (Array.isArray(rows) && rows.length > 0) {
         console.log('[attendanceService] First class:', JSON.stringify(rows[0]));
       } else {
         console.warn('[attendanceService] ⚠️ No classes returned! Campus:', campusId);
       }
-      
+
       return Array.isArray(rows) ? rows : [];
     } catch (e) {
       console.warn('[attendanceService] getAllClassesForCurrentCampus error', e);
@@ -566,7 +592,9 @@ class AttendanceService {
   } | null> {
     try {
       const headers = await this.getAuthHeaders();
-      const url = new URL(`${BASE_URL}/api/method/erp.api.erp_sis.teacher.get_teacher_class_assignments`);
+      const url = new URL(
+        `${BASE_URL}/api/method/erp.api.erp_sis.teacher.get_teacher_class_assignments`
+      );
       if (userId) url.searchParams.set('user_id', userId);
       try {
         const campusId = await AsyncStorage.getItem('currentCampusId');
@@ -586,7 +614,10 @@ class AttendanceService {
       }
       const data = await res.json();
       try {
-        console.log('[attendanceService] fetchTeacherClassAssignments raw:', JSON.stringify(data)?.slice(0, 1000));
+        console.log(
+          '[attendanceService] fetchTeacherClassAssignments raw:',
+          JSON.stringify(data)?.slice(0, 1000)
+        );
       } catch {}
       const payload = (data && (data.data || data.message?.data)) || data;
       const out = {
@@ -630,7 +661,8 @@ class AttendanceService {
     monday.setHours(0, 0, 0, 0);
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
-    const toIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const toIso = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     return { weekStart: toIso(monday), weekEnd: toIso(sunday) };
   }
 
@@ -646,25 +678,42 @@ class AttendanceService {
 
       // 1) Resolve teacher_id by user email via get_all_teachers
       console.log('[attendanceService] -> GET get_all_teachers');
-      const tRes = await fetch(`${BASE_URL}/api/method/erp.api.erp_sis.teacher.get_all_teachers`, { headers });
+      const tRes = await fetch(`${BASE_URL}/api/method/erp.api.erp_sis.teacher.get_all_teachers`, {
+        headers,
+      });
       if (!tRes.ok) {
         const txt = await tRes.text();
         console.warn('[attendanceService] get_all_teachers failed', tRes.status, txt);
         return null;
       }
       const tJson = await tRes.json();
-      try { console.log('[attendanceService] get_all_teachers raw:', JSON.stringify(tJson)?.slice(0, 800)); } catch {}
+      try {
+        console.log(
+          '[attendanceService] get_all_teachers raw:',
+          JSON.stringify(tJson)?.slice(0, 800)
+        );
+      } catch {}
       const teacherList = (tJson && (tJson.data || tJson.message?.data)) || [];
-      console.log('[attendanceService] get_all_teachers count:', Array.isArray(teacherList) ? teacherList.length : 'n/a');
-      const norm = (s: any) => String(s || '').trim().toLowerCase();
+      console.log(
+        '[attendanceService] get_all_teachers count:',
+        Array.isArray(teacherList) ? teacherList.length : 'n/a'
+      );
+      const norm = (s: any) =>
+        String(s || '')
+          .trim()
+          .toLowerCase();
       const teacher = Array.isArray(teacherList)
-        ? teacherList.find((t: any) => norm(t?.user_id) === norm(userEmail) || norm(t?.email) === norm(userEmail))
+        ? teacherList.find(
+            (t: any) => norm(t?.user_id) === norm(userEmail) || norm(t?.email) === norm(userEmail)
+          )
         : null;
       const teacherId: string = teacher?.name || teacher?.id || '';
       console.log('[attendanceService] resolved teacher:', { userEmail, teacherId });
 
       // 2) Fetch classes (all or large page)
-      const classesUrl = new URL(`${BASE_URL}/api/method/erp.api.erp_sis.sis_class.get_all_classes`);
+      const classesUrl = new URL(
+        `${BASE_URL}/api/method/erp.api.erp_sis.sis_class.get_all_classes`
+      );
       classesUrl.searchParams.set('page', '1');
       classesUrl.searchParams.set('limit', '500');
       if (campusId) classesUrl.searchParams.set('campus_id', campusId);
@@ -676,9 +725,17 @@ class AttendanceService {
         return null;
       }
       const cJson = await cRes.json();
-      try { console.log('[attendanceService] get_all_classes raw:', JSON.stringify(cJson)?.slice(0, 800)); } catch {}
+      try {
+        console.log(
+          '[attendanceService] get_all_classes raw:',
+          JSON.stringify(cJson)?.slice(0, 800)
+        );
+      } catch {}
       const classes = (cJson && (cJson.data || cJson.message?.data)) || [];
-      console.log('[attendanceService] get_all_classes count:', Array.isArray(classes) ? classes.length : 'n/a');
+      console.log(
+        '[attendanceService] get_all_classes count:',
+        Array.isArray(classes) ? classes.length : 'n/a'
+      );
 
       // 3) Filter homeroom/vice by teacherId
       const homeroom_class_ids = classes
@@ -703,16 +760,31 @@ class AttendanceService {
       let teaching_class_ids: string[] = [];
       if (wRes.ok) {
         const wJson = await wRes.json();
-        try { console.log('[attendanceService] get_teacher_week raw:', JSON.stringify(wJson)?.slice(0, 800)); } catch {}
+        try {
+          console.log(
+            '[attendanceService] get_teacher_week raw:',
+            JSON.stringify(wJson)?.slice(0, 800)
+          );
+        } catch {}
         const entries = (wJson && (wJson.data || wJson.message?.data)) || [];
-        console.log('[attendanceService] get_teacher_week entries:', Array.isArray(entries) ? entries.length : 'n/a');
-        teaching_class_ids = Array.from(new Set(entries.map((e: any) => String(e?.class_id || '')).filter(Boolean)));
+        console.log(
+          '[attendanceService] get_teacher_week entries:',
+          Array.isArray(entries) ? entries.length : 'n/a'
+        );
+        teaching_class_ids = Array.from(
+          new Set(entries.map((e: any) => String(e?.class_id || '')).filter(Boolean))
+        );
       } else {
         const txt = await wRes.text();
         console.warn('[attendanceService] get_teacher_week failed', wRes.status, txt);
       }
 
-      const out = { homeroom_class_ids, vice_homeroom_class_ids, teaching_class_ids, teacher_id: teacherId };
+      const out = {
+        homeroom_class_ids,
+        vice_homeroom_class_ids,
+        teaching_class_ids,
+        teacher_id: teacherId,
+      };
       console.log('[attendanceService] FE-like assignments:', {
         teacherId,
         homeroomCount: homeroom_class_ids.length,

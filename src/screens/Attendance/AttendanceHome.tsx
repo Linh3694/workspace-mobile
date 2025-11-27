@@ -1,240 +1,442 @@
-import React, { useMemo } from 'react';
-// @ts-ignore
-import { View, Text, TouchableOpacity, ScrollView, SafeAreaView, StyleSheet } from 'react-native';
-import { useIsFocused, useNavigation } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-// import { LinearGradient } from 'expo-linear-gradient';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { ROUTES } from '../../constants/routes';
 import { useAuth } from '../../context/AuthContext';
-import attendanceService from '../../services/attendanceService';
-import { Ionicons } from '@expo/vector-icons';
-import { getApiBaseUrl } from '../../config/constants';
-
-const TabHeader = ({ active, label, onPress }: { active: boolean; label: string; onPress: () => void }) => (
-  <View className="flex-1 items-center">
-    <TouchableOpacity onPress={onPress}>
-      <Text className={`text-center ${active ? 'font-bold text-[#002855]' : 'text-gray-500'}`}>{label}</Text>
-      {active && <View className="mt-2 h-0.5 bg-[#002855]" />}
-    </TouchableOpacity>
-  </View>
-);
-
-const Card = ({ title, onPress, subtitle }: { title: string; subtitle?: string; onPress: () => void }) => (
-  <TouchableOpacity onPress={onPress} className="mb-3 w-full">
-    <View className="rounded-2xl bg-[#F6F6F6] p-4">
-      <Text className="mb-1 font-semibold text-lg text-[#3F4246]">{title}</Text>
-      {!!subtitle && <Text className="text-sm text-[#757575]">{subtitle}</Text>}
-    </View>
-  </TouchableOpacity>
-);
-
-const useTeacherInfo = (reload?: any) => {
-  const [homeroom, setHomeroom] = React.useState<string[]>([]);
-  const [vice, setVice] = React.useState<string[]>([]);
-  const [teaching, setTeaching] = React.useState<string[]>([]);
-
-  React.useEffect(() => {
-    const load = async () => {
-      try {
-        const h = await AsyncStorage.getItem('teacherHomeroomClassIds');
-        const v = await AsyncStorage.getItem('teacherViceHomeroomClassIds');
-        const t = await AsyncStorage.getItem('teacherTeachingClassIds');
-        setHomeroom(h ? JSON.parse(h) : []);
-        setVice(v ? JSON.parse(v) : []);
-        setTeaching(t ? JSON.parse(t) : []);
-      } catch {}
-    };
-    load();
-  }, [reload]);
-
-  return { homeroom, vice, teaching };
-};
+import { attendanceApiService } from '../../services/attendanceApiService';
 
 const AttendanceHome = () => {
   const nav = useNavigation<any>();
-  const { refreshUserData, user } = useAuth();
-  const isFocused = useIsFocused();
-  const [reloadKey, setReloadKey] = React.useState(0);
-  const { homeroom, vice, teaching } = useTeacherInfo(`${isFocused}-${reloadKey}`);
-  const [tab, setTab] = React.useState<'GVCN' | 'GVBM'>('GVCN');
+  const { user } = useAuth();
 
-  React.useEffect(() => {
-    // Đồng bộ khi mở màn hoặc khi chưa có dữ liệu
-    (async () => {
-      try {
-        if (!isFocused) return;
-        if (!user?.email) {
-          console.log('[AttendanceHome] Missing user.email → refreshing user data');
-          await refreshUserData();
-          return;
-        }
-        const campusId = await AsyncStorage.getItem('currentCampusId');
-        const selectedCampus = await AsyncStorage.getItem('selectedCampus');
-        console.log('[AttendanceHome] Before refresh, storage sets:', { homeroom, vice, teaching, campusId, selectedCampus, userEmail: user?.email });
-        // Gọi API assignments trực tiếp để lấy realtime
-        let assigns = await attendanceService.fetchTeacherClassAssignments(user.email);
-        if (!assigns) {
-          assigns = await attendanceService.syncTeacherAssignmentsLikeWeb(user.email || user._id);
-        }
-        if (assigns) {
-          await AsyncStorage.setItem('teacherHomeroomClassIds', JSON.stringify(assigns.homeroom_class_ids || []));
-          await AsyncStorage.setItem('teacherViceHomeroomClassIds', JSON.stringify(assigns.vice_homeroom_class_ids || []));
-          await AsyncStorage.setItem('teacherTeachingClassIds', JSON.stringify(assigns.teaching_class_ids || []));
-          console.log('[AttendanceHome] Assignments saved:', assigns);
-        } else {
-          // Fallback: refreshUserData để BE trả teacher_info qua get_current_user
-          await refreshUserData();
-        }
-        // trigger reload AsyncStorage
-        setReloadKey((k) => k + 1);
-      } catch {}
-    })();
-  }, [isFocused, user?.email]);
+  // Date state
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const days = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ tư', 'Thứ 5', 'Thứ sáu', 'Thứ bảy'];
 
-  React.useEffect(() => {
-    console.log('[AttendanceHome] After refresh, storage sets:', {
-      homeroomCount: homeroom?.length || 0,
-      viceCount: vice?.length || 0,
-      teachingCount: teaching?.length || 0,
-      homeroomPreview: homeroom?.slice(0, 5),
-      vicePreview: vice?.slice(0, 5),
-      teachingPreview: teaching?.slice(0, 5),
-    });
-  }, [homeroom, vice, teaching]);
+  const dayName = days[currentDate.getDay()];
+  const dayNum = currentDate.getDate();
+  const monthNum = currentDate.getMonth() + 1;
 
-  const gvcnClasses = useMemo(() => Array.from(new Set([...(homeroom || []), ...(vice || [])])), [homeroom, vice]);
-  const gvbmClasses = useMemo(() => Array.from(new Set(teaching || [])), [teaching]);
-  const [classTitles, setClassTitles] = React.useState<Record<string, string>>({});
+  // API data state
+  const [classesData, setClassesData] = useState<{
+    homeroom_classes: any[];
+    teaching_classes: any[];
+  } | null>(null);
+  const [timetableData, setTimetableData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Map class id -> title for display  
-  React.useEffect(() => {
-    (async () => {
-      try {
-        const ids = Array.from(new Set([...(homeroom || []), ...(vice || []), ...(teaching || [])]));
-        if (ids.length === 0) {
-          console.log('[AttendanceHome] No class IDs to fetch');
-          return;
-        }
-        console.log('[AttendanceHome] Fetching titles for', ids.length, 'classes');
-        
-        const token = await AsyncStorage.getItem('authToken');
-        const headers = {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        };
-        const apiBase = getApiBaseUrl();
-        
-        // Fetch each class individually to get accurate titles
-        const map: Record<string, string> = {};
-        let successCount = 0;
-        let failCount = 0;
-        
-        for (const classId of ids) {
-          try {
-            // Use GET with proper query params (not POST)
-            const url = `${apiBase}/api/method/erp.api.erp_sis.sis_class.get_class?name=${encodeURIComponent(classId)}`;
-            const res = await fetch(url, {
-              method: 'GET',
-              headers: {
-                'Authorization': headers.Authorization,
-                'Accept': 'application/json',
-              },
-            });
-            
-            if (!res.ok) {
-              const errorText = await res.text();
-              console.warn('[AttendanceHome] HTTP error for', classId, ':', res.status, errorText.substring(0, 100));
-              failCount++;
-              // Fallback to formatted ID
-              map[classId] = classId.replace(/^SIS-CLASS-/, '').replace(/^CLASS-/, '');
-              continue;
-            }
-            
-            const json = await res.json();
-            const cls = json?.message?.data || json?.data;
-            
-            if (cls) {
-              // Priority: short_title > title > class_name > formatted ID
-              const title = cls.short_title || cls.title || cls.class_name || classId.replace(/^SIS-CLASS-/, '').replace(/^CLASS-/, '');
-              map[classId] = title;
-              successCount++;
-              
-              if (successCount <= 3) {
-                console.log('[AttendanceHome] ✅ Fetched:', classId, '→', title, '(from', cls.short_title ? 'short_title' : cls.title ? 'title' : cls.class_name ? 'class_name' : 'ID', ')');
-              }
-            } else {
-              console.warn('[AttendanceHome] No class data in response for', classId);
-              failCount++;
-              map[classId] = classId.replace(/^SIS-CLASS-/, '').replace(/^CLASS-/, '');
-            }
-          } catch (err) {
-            console.error('[AttendanceHome] ❌ Exception fetching class:', classId, err);
-            failCount++;
-            // Fallback to formatted ID
-            map[classId] = classId.replace(/^SIS-CLASS-/, '').replace(/^CLASS-/, '');
-          }
-        }
-        
-        console.log('[AttendanceHome] Fetch complete: ✅', successCount, 'success, ❌', failCount, 'failed, total mapped:', Object.keys(map).length);
-        
-        console.log('[AttendanceHome] Successfully mapped', Object.keys(map).length, 'class titles');
-        setClassTitles(map);
-      } catch (e) {
-        console.error('[AttendanceHome] Failed to fetch class titles:', e);
+  // Attendance stats for each class
+  const [classStats, setClassStats] = useState<
+    Record<
+      string,
+      {
+        checkInCount: number;
+        attendanceCount: number;
+        checkOutCount: number;
+        totalStudents: number;
+        hasAttendance: boolean;
       }
-    })();
-  }, [homeroom, vice, teaching]);
+    >
+  >({});
 
-  const list = tab === 'GVCN' ? gvcnClasses : gvbmClasses;
-
-  // Get display title for a class with better fallback
-  const getClassTitle = (classId: string): string => {
-    if (classTitles[classId]) return classTitles[classId];
-    // Fallback: format the ID nicely
-    return String(classId).replace(/^SIS-CLASS-/, '').replace(/^CLASS-/, '');
+  const goPrev = () => {
+    const d = new Date(currentDate);
+    d.setDate(d.getDate() - 1);
+    setCurrentDate(d);
   };
 
-  const handleOpen = (classId: string) => {
-    nav.navigate(ROUTES.SCREENS.ATTENDANCE_DETAIL, {
-      classId,
-      mode: tab, // 'GVCN' or 'GVBM'
-    });
+  const goNext = () => {
+    const d = new Date(currentDate);
+    d.setDate(d.getDate() + 1);
+    setCurrentDate(d);
+  };
+
+  // Tabs
+  const [tab, setTab] = useState<'GVCN' | 'GVBM'>('GVCN');
+
+  // API Functions using service
+  const fetchHomeroomClasses = useCallback(async () => {
+    if (!user?.email) return;
+
+    const result = await attendanceApiService.fetchTeacherClasses(user.email);
+    if (result.success && result.data) {
+      setClassesData(result.data);
+    } else {
+      console.error('Failed to fetch homeroom classes:', result.error);
+    }
+  }, [user?.email]);
+
+  const fetchTimetableClasses = useCallback(async () => {
+    if (!user?.email) return;
+
+    // Calculate week range using service helper
+    const { weekStart, weekEnd } = attendanceApiService.calculateWeekRange(currentDate);
+
+    // Use GVBM-specific endpoint for "Theo tiết" tab
+    const result = await attendanceApiService.fetchTeacherTimetableGvbm(
+      user.email,
+      weekStart,
+      weekEnd
+    );
+    console.log('🔍 [GVBM] API result:', result);
+    if (result.success && result.data) {
+      console.log('🔍 [GVBM] Data structure:', {
+        dataType: typeof result.data,
+        dataKeys: Object.keys(result.data),
+        hasEntries: !!result.data.entries,
+        hasGrouped: !!result.data.grouped_by_stage,
+        entriesLength: result.data.entries?.length || 0
+      });
+      // Use the flat entries array for compatibility
+      const entries = result.data.entries || [];
+      console.log('🔍 [GVBM] Setting timetable with', entries.length, 'entries');
+      setTimetableData(entries);
+    } else {
+      console.error('Failed to fetch GVBM timetable classes:', result.error);
+      setTimetableData([]);
+    }
+  }, [user?.email, currentDate]);
+
+  const fetchClassStats = useCallback(
+    async (classes: any[]) => {
+      if (!classes || classes.length === 0) return;
+
+      const currentDateStr = currentDate.toISOString().split('T')[0];
+      const newStats: Record<
+        string,
+        {
+          checkInCount: number;
+          attendanceCount: number;
+          checkOutCount: number;
+          totalStudents: number;
+          hasAttendance: boolean;
+        }
+      > = {};
+
+      // Process each class/timetable entry concurrently for better performance
+      const promises = classes.map(async (classData) => {
+        // Handle both ClassData (homeroom) and TimetableEntry (teaching)
+        const classId = classData.name || classData.class_id;
+        if (!classId) return;
+
+        try {
+          // 1. Get students in class
+          const studentsResult = await attendanceApiService.getClassStudents(classId, 1, 1000);
+
+          const studentIds =
+            studentsResult.success && studentsResult.data ? studentsResult.data : [];
+
+          // 2. Get detailed student info to get student_codes
+          let studentCodes: string[] = [];
+          if (studentIds.length > 0) {
+            const batchStudentsResult = await attendanceApiService.getBatchStudents(studentIds);
+            if (batchStudentsResult.success && batchStudentsResult.data) {
+              studentCodes = batchStudentsResult.data
+                .map((student: any) => student.student_code)
+                .filter(Boolean);
+            }
+          }
+
+          // 2. Get attendance data (homeroom attendance)
+          const attendanceResult = await attendanceApiService.getClassAttendance(
+            classId,
+            currentDateStr,
+            'homeroom'
+          );
+          const attendanceRecords =
+            attendanceResult.success && attendanceResult.data ? attendanceResult.data : [];
+
+          // 3. Get check-in/check-out data
+          let checkInOutData: Record<string, any> = {};
+          if (studentCodes.length > 0) {
+            const dayMapResult = await attendanceApiService.getStudentsDayMap(
+              studentCodes,
+              currentDateStr
+            );
+
+            if (dayMapResult.success && dayMapResult.data) {
+              checkInOutData = dayMapResult.data;
+            }
+          }
+
+          // 4. Calculate stats
+          const totalStudents = studentIds.length;
+          const attendanceCount = attendanceRecords.length; // Students who have attendance records
+          const hasAttendance = attendanceCount > 0;
+
+          let checkInCount = 0;
+          let checkOutCount = 0;
+
+          // Count check-ins and check-outs from physical attendance data
+          Object.values(checkInOutData).forEach((data: any) => {
+            if (data.checkInTime) checkInCount++;
+            if (data.checkOutTime) checkOutCount++;
+          });
+
+          newStats[classId] = {
+            checkInCount,
+            attendanceCount,
+            checkOutCount,
+            totalStudents,
+            hasAttendance,
+          };
+        } catch (error) {
+          console.error(`Failed to fetch stats for class ${classId}:`, error);
+          // Set default stats
+          newStats[classId] = {
+            checkInCount: 0,
+            attendanceCount: 0,
+            checkOutCount: 0,
+            totalStudents: 0,
+            hasAttendance: false,
+          };
+        }
+      });
+
+      await Promise.all(promises);
+      setClassStats(newStats);
+    },
+    [currentDate]
+  );
+
+  // Fetch data on component mount and when currentDate changes
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        await Promise.all([fetchHomeroomClasses(), fetchTimetableClasses()]);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (user?.email) {
+      fetchData();
+    }
+  }, [user?.email, currentDate, fetchHomeroomClasses, fetchTimetableClasses]);
+
+  // Fetch stats after classes data is loaded
+  useEffect(() => {
+    if (classesData && !loading) {
+      const allClasses = [
+        ...(classesData.homeroom_classes || []),
+        ...(classesData.teaching_classes || []),
+      ];
+      if (allClasses.length > 0) {
+        fetchClassStats(allClasses);
+      }
+    }
+  }, [classesData, loading, fetchClassStats]);
+
+  // Refresh stats when screen comes back into focus (after editing attendance)
+  useFocusEffect(
+    useCallback(() => {
+      if (classesData && !loading) {
+        const allClasses = [
+          ...(classesData.homeroom_classes || []),
+          ...(classesData.teaching_classes || []),
+        ];
+        if (allClasses.length > 0) {
+          fetchClassStats(allClasses);
+        }
+      }
+    }, [classesData, loading, fetchClassStats])
+  );
+
+  // Filter classes based on selected tab
+  const displayedClasses = useMemo(() => {
+    if (tab === 'GVCN') {
+      // Show homeroom classes
+      return classesData?.homeroom_classes || [];
+    } else {
+      // Show timetable entries for current day (each entry represents a period)
+      const currentDateStr = currentDate.toISOString().split('T')[0];
+      return attendanceApiService.getTimetableEntriesForDate(timetableData, currentDateStr);
+    }
+  }, [tab, classesData, timetableData, currentDate]);
+
+  const ClassCard = ({ classData, stats }: { classData: any; stats?: any }) => {
+    // Handle both ClassData (homeroom) and TimetableEntry (teaching)
+    const isTimetableEntry = classData.timetable_column_id !== undefined;
+    const title =
+      classData.title ||
+      classData.class_title ||
+      classData.short_title ||
+      classData.name ||
+      'Unknown Class';
+    const period = isTimetableEntry ? classData.timetable_column_id : null;
+    const subject = isTimetableEntry ? classData.subject_title : null;
+    const room = isTimetableEntry ? classData.room_name : null;
+    const hasAttendance = stats?.hasAttendance || false;
+
+    return (
+      <View
+        style={{
+          backgroundColor: '#F6F6F6',
+          padding: 16,
+          borderRadius: 16,
+          marginBottom: 16,
+        }}>
+        <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 4 }}>{title}</Text>
+        {isTimetableEntry && (
+          <View style={{ marginBottom: 8 }}>
+            <Text style={{ fontSize: 14, color: '#666', marginBottom: 2 }}>
+              Tiết {period} • {subject}
+            </Text>
+            {room && <Text style={{ fontSize: 12, color: '#999' }}>Phòng: {room}</Text>}
+          </View>
+        )}
+
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            marginBottom: 16,
+            marginTop: 10,
+          }}>
+          <View style={{ alignItems: 'left' }}>
+            <Ionicons name="log-in-outline" size={22} color="#444" />
+            <Text style={{ marginTop: 8, fontSize: 13 }}>
+              {stats?.checkInCount || 0}/{stats?.totalStudents || 0} học sinh
+            </Text>
+          </View>
+          <View style={{ alignItems: 'center' }}>
+            <Ionicons name="checkmark-circle-outline" size={22} color="#444" />
+            <Text style={{ marginTop: 8, fontSize: 13 }}>
+              {stats?.attendanceCount || 0}/{stats?.totalStudents || 0} học sinh
+            </Text>
+          </View>
+          <View style={{ alignItems: 'end' }}>
+            <Ionicons name="log-out-outline" size={22} color="#444" />
+            <Text style={{ marginTop: 8, fontSize: 13 }}>
+              {stats?.checkOutCount || 0}/{stats?.totalStudents || 0} học sinh
+            </Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={{
+            backgroundColor: hasAttendance ? '#FFFFFF' : '#333333',
+            borderWidth: hasAttendance ? 1 : 0,
+            borderColor: hasAttendance ? '#E5E7EB' : 'transparent',
+            paddingVertical: 12,
+            borderRadius: 30,
+          }}
+          onPress={() =>
+            nav.navigate(ROUTES.SCREENS.ATTENDANCE_DETAIL, {
+              classData,
+              // Pass period info for timetable entries
+              period: isTimetableEntry ? period : undefined,
+            })
+          }>
+          <Text
+            style={{
+              color: hasAttendance ? '#333333' : 'white',
+              textAlign: 'center',
+              fontSize: 15,
+              fontWeight: '600',
+            }}>
+            {hasAttendance ? 'Chỉnh sửa' : 'Điểm danh'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <ScrollView className="flex-1">
-        <View className="px-5 pt-6">
-          {/* Header with back button and centered title */}
-          <View className="mb-5 flex-row items-center justify-between">
-            <TouchableOpacity onPress={() => nav.goBack()} className="p-2 pr-4 -ml-2">
-              <Ionicons name="chevron-back" size={24} color="#0A2240" />
-            </TouchableOpacity>
-            <Text className="text-2xl font-bold text-[#0A2240] text-center flex-1 -ml-8">Điểm danh</Text>
-            <View style={{ width: 24 }} />
-          </View>
-          {/* Tabs styled like Ticket */}
-          <View className="flex-row pb-3 pt-1">
-            <TabHeader active={tab === 'GVCN'} label="Chủ nhiệm" onPress={() => setTab('GVCN')} />
-            <TabHeader active={tab === 'GVBM'} label="Giảng dạy" onPress={() => setTab('GVBM')} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
+      <ScrollView contentContainerStyle={{ padding: 20 }}>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+          <TouchableOpacity onPress={() => nav.goBack()} style={{ padding: 4 }}>
+            <Ionicons name="chevron-back" size={26} color="#222" />
+          </TouchableOpacity>
+          <Text style={{ flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '700' }}>
+            Điểm danh
+          </Text>
+          <View style={{ width: 30 }} />
+        </View>
+
+        {/* Date selector */}
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginBottom: 20,
+          }}>
+          <TouchableOpacity onPress={goPrev} style={{ padding: 10 }}>
+            <Ionicons name="chevron-back" size={22} color="#444" />
+          </TouchableOpacity>
+
+          <View style={{ alignItems: 'center', marginHorizontal: 20 }}>
+            <Text style={{ fontSize: 22, fontWeight: '700', color: '#e14a1e' }}>{dayName}</Text>
+            <Text style={{ marginTop: 2, fontSize: 14, color: '#666' }}>
+              {dayNum} tháng {monthNum}
+            </Text>
           </View>
 
-          {list.length === 0 ? (
-            <Text className="mt-10 text-center text-gray-500">Không có lớp phù hợp</Text>
-          ) : (
-            <View className="flex-row flex-wrap justify-between gap-y-3 mt-[5%]">
-              {list.map((cls) => (
-                <View key={cls} style={{ width: '48%' }}>
-                  <Card
-                    title={`Lớp ${getClassTitle(cls)}`}
-                    subtitle={tab === 'GVCN' ? 'Chủ nhiệm' : 'Giảng dạy'}
-                    onPress={() => handleOpen(cls)}
-                  />
-                </View>
-              ))}
-            </View>
-          )}
+          <TouchableOpacity onPress={goNext} style={{ padding: 10 }}>
+            <Ionicons name="chevron-forward" size={22} color="#444" />
+          </TouchableOpacity>
         </View>
+
+        {/* Tabs */}
+        <View style={{ flexDirection: 'row', marginBottom: 20 }}>
+          <TouchableOpacity
+            style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }}
+            onPress={() => setTab('GVCN')}>
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: tab === 'GVCN' ? '700' : '500',
+                color: tab === 'GVCN' ? '#002855' : '#7A7A7A',
+              }}>
+              Chủ nhiệm
+            </Text>
+            {tab === 'GVCN' && (
+              <View style={{ height: 2, width: 40, backgroundColor: '#002855', marginTop: 6 }} />
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }}
+            onPress={() => setTab('GVBM')}>
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: tab === 'GVBM' ? '700' : '500',
+                color: tab === 'GVBM' ? '#002855' : '#7A7A7A',
+              }}>
+              Theo tiết
+            </Text>
+            {tab === 'GVBM' && (
+              <View style={{ height: 2, width: 40, backgroundColor: '#002855', marginTop: 6 }} />
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Class list */}
+        {loading ? (
+          <View style={{ alignItems: 'center', padding: 20 }}>
+            <Text style={{ color: '#666' }}>Đang tải...</Text>
+          </View>
+        ) : displayedClasses.length > 0 ? (
+          displayedClasses.map((classData, index) => {
+            const classId = classData.name;
+            const stats = classStats[classId];
+            return <ClassCard key={classId || index} classData={classData} stats={stats} />;
+          })
+        ) : (
+          <View style={{ alignItems: 'center', padding: 20 }}>
+            <Text style={{ color: '#666' }}>
+              {tab === 'GVCN' ? 'Không có lớp chủ nhiệm' : 'Không có tiết học nào trong ngày này'}
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

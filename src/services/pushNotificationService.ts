@@ -31,12 +31,19 @@ class PushNotificationService {
 
   constructor() {
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        priority: Notifications.AndroidNotificationPriority.HIGH,
-      }),
+      handleNotification: async (notification) => {
+        // Custom sound handling for attendance notifications
+        const data = notification.request.content.data as any;
+        const isAttendance = data?.type === 'attendance';
+
+        return {
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+          // iOS will use default message sound automatically
+        };
+      },
     });
   }
 
@@ -163,14 +170,18 @@ class PushNotificationService {
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       };
 
-      const response = await fetch(`${BASE_URL}/api/notification/register-device`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify(deviceInfo),
-      });
+      // Use new mobile device registration API
+      const response = await fetch(
+        `${BASE_URL}/api/method/erp.api.erp_sis.mobile_push_notification.register_device_token`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify(deviceInfo),
+        }
+      );
 
       if (response.ok) {
         console.log('✅ Push token registered successfully');

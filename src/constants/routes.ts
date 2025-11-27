@@ -4,12 +4,6 @@ export const ROUTES = {
     WELCOME: 'Welcome',
     LOGIN: 'Login',
     MAIN: 'Main',
-    CHAT_DETAIL: 'ChatDetail',
-    CHAT_INIT: 'ChatInit',
-    CHAT_INFO: 'ChatInfo',
-    CREATE_GROUP: 'CreateGroup',
-    GROUP_CHAT_DETAIL: 'GroupChatDetail',
-    GROUP_INFO: 'GroupInfo',
     TICKET_DETAIL: 'TicketDetail',
     TICKET_CREATE: 'TicketCreate',
     TICKET_ADMIN_DETAIL: 'TicketAdminDetail',
@@ -28,7 +22,6 @@ export const ROUTES = {
   // Tab names trong bottom navigation
   TABS: {
     HOME: 'Home',
-    CHAT: 'Chat',
     WISLIFE: 'Social',
     TICKET: 'Ticket',
     NOTIFICATION: 'Notification',
@@ -42,7 +35,6 @@ export const ROUTES = {
   // Main routes
   MAIN: {
     HOME: 'Home',
-    CHAT: 'Chat',
     WISLIFE: 'Social',
     NOTIFICATIONS: 'Notification',
     PROFILE: 'Profile',

@@ -10,6 +10,7 @@ import MenuIcon from '../assets/menu.svg';
 import DocumentIcon from '../assets/document-icon.svg';
 import WislifeIcon from '../assets/wislife.svg';
 import ProfileIcon from '../assets/profile.svg';
+import AttendanceIcon from '../assets/attendance.svg';
 
 const Tab = createBottomTabNavigator();
 
@@ -55,7 +56,7 @@ const BottomTabNavigator = ({ route }: { route: any }) => {
         options={{
           tabBarIcon: ({ focused }) => (
             <View className="items-center">
-              <DocumentIcon width={28} height={28} />
+              <AttendanceIcon width={28} height={28} />
             </View>
           ),
           tabBarLabel: ({ focused }) => tabBarLabel('Điểm danh', focused),

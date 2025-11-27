@@ -18,8 +18,6 @@ import { postService } from '../../services/postService';
 import { useAuth } from '../../context/AuthContext';
 import { API_BASE_URL } from '../../config/constants';
 import { formatRelativeTime } from '../../utils/dateUtils';
-import { useEmojis, CustomEmoji } from '../../hooks/useEmojis';
-import EmojiReactionModal from './EmojiReactionModal';
 import LikeSkeletonSvg from '../../assets/like-skeleton.svg';
 import { getAvatar } from '../../utils/avatar';
 
@@ -32,15 +30,6 @@ interface PostCardProps {
 
 const { width } = Dimensions.get('window');
 
-// Type for emoji data that can be either custom or fallback
-type EmojiData =
-  | CustomEmoji
-  | {
-      code: string;
-      url: null;
-      fallbackText: string;
-    };
-
 // Gradient Text Component đơn giản
 const GradientText: React.FC<{ children: string; style?: any }> = ({ children, style }) => {
   return (
@@ -50,14 +39,8 @@ const GradientText: React.FC<{ children: string; style?: any }> = ({ children, s
 
 const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onCommentPress }) => {
   const { user } = useAuth();
-  const { customEmojis } = useEmojis();
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [emojiModalVisible, setEmojiModalVisible] = useState(false);
-  const [likeButtonPosition, setLikeButtonPosition] = useState<
-    { x: number; y: number } | undefined
-  >(undefined);
-  const likeButtonRef = React.useRef<View>(null);
 
   const getUserReaction = (): Reaction | null => {
     const myIds = [user?._id, (user as any)?.id, user?.email, (user as any)?.username]
@@ -94,37 +77,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
     });
 
     return counts;
-  };
-
-  const getEmojiByCode = (code: string): EmojiData => {
-    const emoji = customEmojis.find((emoji) => emoji.code === code);
-
-    // Fallback cho các emoji codes cũ hoặc không tồn tại
-    if (!emoji) {
-      // Map legacy reaction types to emoji text
-      const legacyEmojiMap: Record<string, string> = {
-        like: '👍',
-        love: '❤️',
-        haha: '😂',
-        sad: '😢',
-        wow: '😮',
-      };
-
-      return {
-        code,
-        url: null,
-        fallbackText: legacyEmojiMap[code] || '👍',
-      };
-    }
-
-    return emoji;
-  };
-
-  // Type guard function
-  const isFallbackEmoji = (
-    emoji: EmojiData
-  ): emoji is { code: string; url: null; fallbackText: string } => {
-    return emoji.url === null && 'fallbackText' in emoji;
   };
 
   const handleReaction = async (emojiCode: string) => {
@@ -179,28 +131,22 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   const totalReactions = post.reactions.length;
   const isAuthor = !!post.author && post.author._id === user?._id;
 
-  const handleLikeButtonPress = () => {
-    // Nếu modal đang mở thì đóng lại
-    if (emojiModalVisible) {
-      setEmojiModalVisible(false);
-      return;
+  const handleLikeButtonPress = async () => {
+    // Toggle like/unlike
+    const hasLiked = !!userReaction;
+    try {
+      if (hasLiked) {
+        await postService.removeReaction(post._id);
+      } else {
+        await postService.addReaction(post._id, 'like');
+      }
+      // Refresh post data
+      const updatedPost = await postService.getPostById(post._id);
+      onUpdate(updatedPost);
+    } catch (error) {
+      console.error('Error toggling like:', error);
+      Alert.alert('Lỗi', 'Không thể thực hiện thao tác. Vui lòng thử lại.');
     }
-
-    // Mở modal mới
-    if (likeButtonRef.current) {
-      // Dùng measureInWindow để lấy toạ độ tuyệt đối trên màn hình
-      likeButtonRef.current.measureInWindow((x, y, width, height) => {
-        // Đặt modal ngay dưới nút và canh giữa theo bề rộng của nút
-        setLikeButtonPosition({ x: x + width / 2, y: y + height + 10 });
-        setEmojiModalVisible(true);
-      });
-    } else {
-      setEmojiModalVisible(true);
-    }
-  };
-
-  const handleCloseEmojiModal = () => {
-    setEmojiModalVisible(false);
   };
 
   return (
@@ -333,39 +279,13 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
         <View className="flex-row items-center justify-around">
           <TouchableOpacity
             onPress={handleLikeButtonPress}
-            className="flex-row items-center rounded-full px-4 py-2"
-            ref={likeButtonRef}>
-            {userReaction ? (
-              <>
-                {(() => {
-                  const emoji = getEmojiByCode(userReaction.type);
-                  if (emoji && emoji.url) {
-                    return (
-                      <Image source={emoji.url} className="mr-2 h-9 w-9" resizeMode="contain" />
-                    );
-                  } else if (emoji && isFallbackEmoji(emoji)) {
-                    return <Text className="mr-2 text-xl">{emoji.fallbackText}</Text>;
-                  } else {
-                    return (
-                      <View style={{ marginRight: 8 }}>
-                        <LikeSkeletonSvg width={28} height={28} />
-                      </View>
-                    );
-                  }
-                })()}
-
-                <GradientText style={{ fontFamily: 'Mulish-Bold', fontSize: 15 }}>
-                  Đã thích
-                </GradientText>
-              </>
-            ) : (
-              <>
-                <View style={{ marginRight: 8 }}>
-                  <LikeSkeletonSvg width={28} height={28} />
-                </View>
-                <Text className="font-medium text-gray-600">Thích</Text>
-              </>
-            )}
+            className="flex-row items-center rounded-full px-4 py-2">
+            <View style={{ marginRight: 8 }}>
+              <LikeSkeletonSvg width={28} height={28} />
+            </View>
+            <Text className={`font-medium ${userReaction ? 'text-red-600' : 'text-gray-600'}`}>
+              {userReaction ? 'Đã thích' : 'Thích'}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -376,14 +296,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
           </TouchableOpacity>
         </View>
       </View>
-
-      {/* Emoji Reaction Modal */}
-      <EmojiReactionModal
-        visible={emojiModalVisible}
-        onClose={handleCloseEmojiModal}
-        onEmojiSelect={handleReaction}
-        position={likeButtonPosition}
-      />
 
       {/* Image Modal */}
       <Modal
