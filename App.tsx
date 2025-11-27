@@ -63,8 +63,16 @@ export default function App() {
     })();
   }, []);
 
-  // Temporarily disable fonts loading to test
-  const fontsLoaded = true; // replace with useFonts(...) when you re-enable
+  // Load custom fonts
+  const [fontsLoaded] = useFonts({
+    'Mulish-Regular': require('./src/assets/fonts/Mulish-Regular.ttf'),
+    'Mulish-Medium': require('./src/assets/fonts/Mulish-Medium.ttf'),
+    'Mulish-Bold': require('./src/assets/fonts/Mulish-Bold.ttf'),
+    'Mulish-SemiBold': require('./src/assets/fonts/Mulish-SemiBold.ttf'),
+    'Mulish-ExtraBold': require('./src/assets/fonts/Mulish-ExtraBold.ttf'),
+    'Mulish-Black': require('./src/assets/fonts/Mulish-Black.ttf'),
+    'SpaceMono-Regular': require('./src/assets/fonts/SpaceMono-Regular.ttf'),
+  });
 
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);

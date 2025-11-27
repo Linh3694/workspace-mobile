@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+// @ts-nocheck
 import { View, Text, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -12,7 +13,7 @@ const AttendanceHome = () => {
 
   // Date state
   const [currentDate, setCurrentDate] = useState(new Date());
-  const days = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ tư', 'Thứ 5', 'Thứ sáu', 'Thứ bảy'];
+  const days = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 
   const dayName = days[currentDate.getDay()];
   const dayNum = currentDate.getDate();
@@ -79,24 +80,11 @@ const AttendanceHome = () => {
       weekStart,
       weekEnd
     );
-    console.log('🔍 [GVBM] API result:', result);
     if (result.success && result.data) {
       const entries = result.data.entries || [];
-      console.log('🔍 [GVBM] Found', entries.length, 'timetable entries');
 
       if (entries.length > 0) {
         const sample = entries[0];
-        console.log('🔍 [GVBM] Sample entry:', {
-          timetable_column_id: sample.timetable_column_id,
-          subject_title: sample.subject_title,
-          class_title: sample.class_title,
-          room_name: sample.room_name,
-          education_stage_id: sample.education_stage_id,
-          education_stage_title: sample.education_stage_title,
-          date: sample.date,
-          day_of_week: sample.day_of_week,
-          allKeys: Object.keys(sample),
-        });
       }
 
       setTimetableData(entries);
@@ -127,13 +115,8 @@ const AttendanceHome = () => {
         // Handle both ClassData (homeroom) and TimetableEntry (teaching)
         const classId = classData.name || classData.class_id;
         if (!classId) {
-          console.log('📊 [Stats] No classId found for classData:', classData);
           return;
         }
-
-        console.log(
-          `📊 [Stats] Processing class ${classId} (${classData.class_title || classData.title})`
-        );
 
         try {
           // 1. Get students in class
@@ -141,9 +124,6 @@ const AttendanceHome = () => {
 
           const studentIds =
             studentsResult.success && studentsResult.data ? studentsResult.data : [];
-
-          console.log(`📊 [Stats] Class ${classId}: ${studentIds.length} student IDs`);
-          console.log(`📊 [Stats] Sample student IDs:`, studentIds.slice(0, 3));
 
           // 2. Get detailed student info to get student_codes
           let studentCodes: string[] = [];
@@ -153,16 +133,6 @@ const AttendanceHome = () => {
               studentCodes = batchStudentsResult.data
                 .map((student: any) => student.student_code)
                 .filter(Boolean);
-
-              console.log(
-                `📊 [Stats] Batch students result: ${batchStudentsResult.data.length} students`
-              );
-              console.log(
-                `📊 [Stats] Student codes: ${studentCodes.length}, sample:`,
-                studentCodes.slice(0, 3)
-              );
-            } else {
-              console.log(`📊 [Stats] Batch students failed:`, batchStudentsResult.error);
             }
           }
 
@@ -178,33 +148,14 @@ const AttendanceHome = () => {
           // 3. Get check-in/check-out data
           let checkInOutData: Record<string, any> = {};
           if (studentCodes.length > 0) {
-            console.log(
-              `📊 [DayMap] Calling getStudentsDayMap for ${classId} with ${studentCodes.length} codes`
-            );
             const dayMapResult = await attendanceApiService.getStudentsDayMap(
               studentCodes,
               currentDateStr
             );
-            console.log(`📊 [DayMap] Result for ${classId}:`, {
-              success: dayMapResult.success,
-              error: dayMapResult.error,
-              dataKeys: dayMapResult.data ? Object.keys(dayMapResult.data) : 'no data',
-              sampleEntry: dayMapResult.data ? Object.values(dayMapResult.data)[0] : 'no sample',
-            });
 
             if (dayMapResult.success && dayMapResult.data) {
               checkInOutData = dayMapResult.data;
-              console.log(
-                `📊 [DayMap] Got ${Object.keys(checkInOutData).length} check-in/out records for ${classId}`
-              );
-            } else {
-              console.log(
-                `📊 [DayMap] Failed to get check-in/out data for ${classId}:`,
-                dayMapResult.error
-              );
             }
-          } else {
-            console.log(`📊 [DayMap] Skipping getStudentsDayMap for ${classId} - no student codes`);
           }
 
           // 4. Calculate stats
@@ -216,19 +167,10 @@ const AttendanceHome = () => {
           let checkOutCount = 0;
 
           // Count check-ins and check-outs from physical attendance data
-          console.log(
-            `📊 [Stats] Counting ${Object.keys(checkInOutData).length} check-in/out records for ${classId}`
-          );
           Object.entries(checkInOutData).forEach(([studentCode, data]: [string, any]) => {
-            console.log(
-              `📊 [Stats] Student ${studentCode}: checkIn=${!!data.checkInTime}, checkOut=${!!data.checkOutTime}`
-            );
             if (data.checkInTime) checkInCount++;
             if (data.checkOutTime) checkOutCount++;
           });
-          console.log(
-            `📊 [Stats] Final counts for ${classId}: checkIn=${checkInCount}, checkOut=${checkOutCount}, attendance=${attendanceCount}, total=${totalStudents}`
-          );
 
           newStats[classId] = {
             checkInCount,
@@ -251,10 +193,7 @@ const AttendanceHome = () => {
       });
 
       await Promise.all(promises);
-      console.log('📊 [Home] Final classStats to set:', newStats);
-      console.log('📊 [Home] Setting classStats with keys:', Object.keys(newStats));
       setClassStats(newStats);
-      console.log('📊 [Home] classStats set successfully');
     },
     [currentDate]
   );
@@ -342,54 +281,57 @@ const AttendanceHome = () => {
           backgroundColor: '#F6F6F6',
           padding: 16,
           borderRadius: 16,
-          marginBottom: 16,
         }}>
-        {isTimetableEntry && periodName && (
-          <View style={{ marginBottom: 6 }}>
-            <Text style={{ fontSize: 16, fontWeight: '600', color: '#002855' }}>{periodName}</Text>
-            {periodTime && (
-              <Text style={{ fontSize: 12, color: '#666', marginTop: 2 }}>{periodTime}</Text>
-            )}
+        <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 10 }}>{title}</Text>
+
+        {isTimetableEntry && (subject || true) && (
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24, marginTop: 12 }}>
+            {/* Môn học - Bên trái */}
+            <View style={{ alignItems: 'left', flex: 1 }}>
+              <Ionicons name="book-outline" size={24} color="#666" />
+              <Text style={{ fontSize: 12, color: '#666', marginTop: 4, textAlign: 'left' }}>
+                {subject || 'Chưa có môn'}
+              </Text>
+            </View>
+
+            {/* Phòng học - Bên phải */}
+            <View style={{ alignItems: 'left', flex: 1 }}>
+              <Ionicons name="location-outline" size={24} color="#666" />
+              <Text style={{ fontSize: 12, color: '#666', marginTop: 4, textAlign: 'left' }}>
+                {room || 'Chưa có phòng'}
+              </Text>
+            </View>
           </View>
         )}
 
-        <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 4 }}>{title}</Text>
-
-        {isTimetableEntry && (subject || room) && (
-          <View style={{ marginBottom: 8 }}>
-            {subject && (
-              <Text style={{ fontSize: 14, color: '#666', marginBottom: 2 }}>📚 {subject}</Text>
-            )}
-            {room && <Text style={{ fontSize: 12, color: '#999' }}>🏫 Phòng: {room}</Text>}
+        {tab === 'GVCN' && (
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              marginBottom: 24,
+              marginTop: 12,
+            }}>
+            <View style={{ alignItems: 'left' }}>
+              <Ionicons name="log-in-outline" size={22} color="#444" />
+              <Text style={{ marginTop: 8, fontSize: 13 }}>
+                {stats?.checkInCount || 0}/{stats?.totalStudents || 0} học sinh
+              </Text>
+            </View>
+            <View style={{ alignItems: 'center' }}>
+              <Ionicons name="checkmark-circle-outline" size={22} color="#444" />
+              <Text style={{ marginTop: 8, fontSize: 13 }}>
+                {stats?.attendanceCount || 0}/{stats?.totalStudents || 0} học sinh
+              </Text>
+            </View>
+            <View style={{ alignItems: 'end' }}>
+              <Ionicons name="log-out-outline" size={22} color="#444" />
+              <Text style={{ marginTop: 8, fontSize: 13 }}>
+                {stats?.checkOutCount || 0}/{stats?.totalStudents || 0} học sinh
+              </Text>
+            </View>
           </View>
         )}
-
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            marginBottom: 16,
-            marginTop: 10,
-          }}>
-          <View style={{ alignItems: 'left' }}>
-            <Ionicons name="log-in-outline" size={22} color="#444" />
-            <Text style={{ marginTop: 8, fontSize: 13 }}>
-              {stats?.checkInCount || 0}/{stats?.totalStudents || 0} học sinh
-            </Text>
-          </View>
-          <View style={{ alignItems: 'center' }}>
-            <Ionicons name="checkmark-circle-outline" size={22} color="#444" />
-            <Text style={{ marginTop: 8, fontSize: 13 }}>
-              {stats?.attendanceCount || 0}/{stats?.totalStudents || 0} học sinh
-            </Text>
-          </View>
-          <View style={{ alignItems: 'end' }}>
-            <Ionicons name="log-out-outline" size={22} color="#444" />
-            <Text style={{ marginTop: 8, fontSize: 13 }}>
-              {stats?.checkOutCount || 0}/{stats?.totalStudents || 0} học sinh
-            </Text>
-          </View>
-        </View>
 
         <TouchableOpacity
           style={{
@@ -504,16 +446,35 @@ const AttendanceHome = () => {
             const isTimetableEntry = classData.timetable_column_id !== undefined;
             const classId = isTimetableEntry ? classData.class_id : classData.name;
             const stats = classStats[classId];
-            console.log(
-              `🎨 [UI] Rendering ClassCard for ${classId} (isTimetable=${isTimetableEntry}): displayText=`,
-              {
-                checkIn: stats ? `${stats.checkInCount}/${stats.totalStudents}` : '0/0',
-                attendance: stats ? `${stats.attendanceCount}/${stats.totalStudents}` : '0/0',
-                checkOut: stats ? `${stats.checkOutCount}/${stats.totalStudents}` : '0/0',
-                statsFound: !!stats,
-              }
+
+            // Calculate period info for display
+            const periodName = isTimetableEntry ? classData.period_name : null;
+            const periodTime = isTimetableEntry && classData.start_time && classData.end_time
+              ? `${classData.start_time} - ${classData.end_time}`
+              : null;
+
+            
+            return (
+              <View key={`container-${classData.timetable_column_id !== undefined ? `GVBM-${classData.timetable_column_id}-${classId}` : `GVCN-${classId}`}`} style={{ marginBottom: 16 }}>
+                {isTimetableEntry && periodName && (
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#002855' }}>{periodName}</Text>
+                    {periodTime && (
+                      <Text style={{ fontSize: 14, color: '#666' }}>{periodTime}</Text>
+                    )}
+                  </View>
+                )}
+                <ClassCard
+                  key={
+                    classData.timetable_column_id !== undefined
+                      ? `GVBM-${classData.timetable_column_id}-${classId}`
+                      : `GVCN-${classId}`
+                  }
+                  classData={classData}
+                  stats={stats}
+                />
+              </View>
             );
-            return <ClassCard key={classId || index} classData={classData} stats={stats} />;
           })
         ) : (
           <View style={{ alignItems: 'center', padding: 20 }}>

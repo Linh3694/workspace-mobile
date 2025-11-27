@@ -532,7 +532,7 @@ const AttendanceDetail = () => {
           )}
 
           <View className="flex justify-between">
-            {filteredStudents.map((s) => {
+            {filteredStudents.map((s, index) => {
               const studentId = s.name;
               const finalStatus = getFinalStatus(studentId);
               const hasOverride = hasOverrideStatus(studentId);
@@ -541,7 +541,7 @@ const AttendanceDetail = () => {
 
               return (
                 <View
-                  key={studentId}
+                  key={`${studentId}-${s.student_code || 'no-code'}-${index}`}
                   className="mx-auto mb-3 w-full rounded-2xl"
                   style={{ backgroundColor: cardBgByStatus[finalStatus], opacity: dimmed }}>
                   <View className="mb-2 flex-row items-start gap-4 p-4">

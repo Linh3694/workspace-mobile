@@ -1,6 +1,6 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 // @ts-ignore
-import { View, Text, TouchableOpacity, Animated, Easing, Dimensions, SafeAreaView} from 'react-native';
+import { View, Text, TouchableOpacity, Animated, Easing, Dimensions, SafeAreaView, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
@@ -25,7 +25,7 @@ const WelcomeScreen = () => {
   const navigation = useNavigation<NavigationProp>();
   const { loginWithMicrosoft } = useAuth();
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-  const BANNER_WIDTH = 1100;
+  const BANNER_WIDTH = screenWidth; // Sử dụng screenWidth thay vì fixed 1100
   const BANNER_HEIGHT = Math.min(480, screenHeight * 0.5);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
@@ -33,25 +33,33 @@ const WelcomeScreen = () => {
 
   const translateX = useRef(new Animated.Value(0)).current;
 
-  useLayoutEffect(() => {
-    let isMounted = true;
-    const animate = () => {
-      if (!isMounted) return;
-      translateX.setValue(0);
+  useEffect(() => {
+    console.log('🎬 Starting carousel animation with BANNER_WIDTH:', BANNER_WIDTH);
+    translateX.setValue(0);
+
+    const startCarousel = () => {
       Animated.timing(translateX, {
         toValue: -BANNER_WIDTH,
-        duration: 18000,
+        duration: 8000,
         easing: Easing.linear,
         useNativeDriver: true,
-      }).start(() => {
-        if (isMounted) animate();
+      }).start(({ finished }) => {
+        if (finished) {
+          // Reset to start position instantly for seamless loop
+          translateX.setValue(0);
+          // Start again
+          startCarousel();
+        }
       });
     };
-    animate();
+
+    startCarousel();
+
     return () => {
-      isMounted = false;
+      console.log('🛑 Stopping carousel animation');
+      translateX.stopAnimation();
     };
-  }, [translateX]);
+  }, [BANNER_WIDTH]);
 
   const showNotification = (message: string, type: 'success' | 'error' = 'error') => {
     setNotificationMessage(message);
@@ -91,11 +99,10 @@ const WelcomeScreen = () => {
         <View className="flex-1 items-center justify-center px-6">
           <View className="items-center">
             <ApplogoFull width={390} height={80} />
-            <Text
-              className="mt-2 text-center text-lg text-[#00687F]"
-              style={{ fontFamily: 'Mulish-Bold' }}>
-Wellspring Innovation Spaces
-            </Text>
+            <View className="flex-row items-center justify-center mt-2">
+              <Text className="text-lg uppercase font-extrabold text-[#F5AA1E]">Wellspring</Text>
+              <Text className="text-lg uppercase font-extrabold text-[#BED232]"> Information System</Text>
+            </View>
           </View>
         </View>
 
@@ -106,7 +113,7 @@ Wellspring Innovation Spaces
               width: screenWidth,
               height: BANNER_HEIGHT,
               overflow: 'hidden',
-              alignItems: 'center',
+              alignItems: 'flex-start',
               justifyContent: 'center',
             }}>
             <Animated.View
@@ -116,20 +123,26 @@ Wellspring Innovation Spaces
                 height: BANNER_HEIGHT,
                 transform: [{ translateX }],
               }}>
-              <Animated.Image
-                source={require('../../assets/welcome.png')}
-                resizeMode="cover"
+              <Image
+                source={require('../../assets/welcome.webp')}
+                resizeMode="contain"
                 style={{ width: BANNER_WIDTH, height: BANNER_HEIGHT }}
+                onError={(error) => console.log('❌ Image load error:', error.nativeEvent.error)}
+                onLoad={() => console.log('✅ Image loaded successfully')}
               />
-              <Animated.Image
-                source={require('../../assets/welcome.png')}
-                resizeMode="cover"
+              <Image
+                source={require('../../assets/welcome.webp')}
+                resizeMode="contain"
                 style={{ width: BANNER_WIDTH, height: BANNER_HEIGHT }}
+                onError={(error) => console.log('❌ Image load error:', error.nativeEvent.error)}
+                onLoad={() => console.log('✅ Image loaded successfully')}
               />
-              <Animated.Image
-                source={require('../../assets/welcome.png')}
-                resizeMode="cover"
+              <Image
+                source={require('../../assets/welcome.webp')}
+                resizeMode="contain"
                 style={{ width: BANNER_WIDTH, height: BANNER_HEIGHT }}
+                onError={(error) => console.log('❌ Image load error:', error.nativeEvent.error)}
+                onLoad={() => console.log('✅ Image loaded successfully')}
               />
             </Animated.View>
           </View>
@@ -140,8 +153,11 @@ Wellspring Innovation Spaces
           <TouchableOpacity
             onPress={() => promptAsync()}
             disabled={!isReady}
-            className="mb-4 w-full max-w-sm flex-row items-center justify-center rounded-full bg-secondary/10 py-4"
-            style={{ opacity: isReady ? 1 : 0.6 }}>
+            activeOpacity={0.7}
+            className={`mb-4 w-full max-w-sm flex-row items-center justify-center rounded-full py-4 ${
+              isReady ? 'bg-secondary/10' : 'bg-gray-200'
+            }`}
+          >
             <View style={{ marginRight: 8 }}>
               <MicrosoftIcon width={24} height={24} />
             </View>

@@ -512,10 +512,13 @@ const SignInScreen = () => {
         </View>
         {/* Nút đăng nhập Microsoft */}
         <TouchableOpacity
-          className="mb-2 w-full flex-row items-center justify-center rounded-full bg-secondary/10 py-3"
           onPress={() => promptAsync()}
           disabled={!isReady}
-          style={{ opacity: isReady ? 1 : 0.6 }}>
+          activeOpacity={0.7}
+          className={`mb-2 w-full flex-row items-center justify-center rounded-full py-3 ${
+            isReady ? 'bg-secondary/10' : 'bg-gray-200'
+          }`}
+        >
           <View style={{ marginRight: 8 }}>
             <MicrosoftIcon width={20} height={20} />
           </View>

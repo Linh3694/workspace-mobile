@@ -16,6 +16,7 @@ import {
   Platform,
   TouchableWithoutFeedback,
   PanResponder,
+  Animated,
 } from 'react-native';
 
 import MaskedView from '@react-native-masked-view/masked-view';
@@ -55,7 +56,25 @@ const HomeScreen = () => {
   const [checkOutTime, setCheckOutTime] = useState('--:--');
   const [isRefreshingAttendance, setIsRefreshingAttendance] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
   const isMountedRef = useRef(true);
+  useEffect(() => {
+    if (unreadNotificationCount > 0) {
+      pulseAnim.setValue(1);
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.4,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [unreadNotificationCount]);
 
   // Function để fetch attendance data
   const fetchTodayAttendance = React.useCallback(
@@ -263,33 +282,32 @@ const HomeScreen = () => {
         // Phân quyền điều hướng
         if (['superadmin', 'admin', 'technical'].includes(role)) {
           console.log('Điều hướng đến TicketAdmin vì người dùng có vai trò:', role);
-          navigation.replace(ROUTES.SCREENS.TICKET_ADMIN);
+          navigation.navigate(ROUTES.SCREENS.TICKET_ADMIN);
         } else {
           console.log('Điều hướng đến TicketGuest vì người dùng có vai trò:', role);
-          navigation.replace(ROUTES.SCREENS.TICKET_GUEST);
+          navigation.navigate(ROUTES.SCREENS.TICKET_GUEST);
         }
       } else {
         console.log('Không tìm thấy thông tin người dùng, điều hướng đến TicketGuest');
-        navigation.replace(ROUTES.SCREENS.TICKET_GUEST);
+        navigation.navigate(ROUTES.SCREENS.TICKET_GUEST);
       }
     } catch (error) {
       console.error('Lỗi khi kiểm tra quyền người dùng:', error);
       // Mặc định điều hướng đến TicketGuest nếu có lỗi
-      navigation.replace(ROUTES.SCREENS.TICKET_GUEST);
+      navigation.navigate(ROUTES.SCREENS.TICKET_GUEST);
     }
   };
 
   const navigateToDevices = () => {
-    navigation.replace(ROUTES.SCREENS.DEVICES);
+    navigation.navigate(ROUTES.SCREENS.DEVICES);
   };
 
   const navigateToAttendance = () => {
-    // Use replace instead of navigate to completely replace the screen and avoid animation issues
-    navigation.replace(ROUTES.SCREENS.ATTENDANCE_HOME);
+    navigation.navigate(ROUTES.SCREENS.ATTENDANCE_HOME);
   };
 
   const navigateToLeaveRequests = () => {
-    navigation.replace(ROUTES.SCREENS.LEAVE_REQUESTS);
+    navigation.navigate(ROUTES.SCREENS.LEAVE_REQUESTS);
   };
 
   // Role-based menu configuration
@@ -512,11 +530,18 @@ const HomeScreen = () => {
             onPress={() => navigation.navigate(ROUTES.MAIN.NOTIFICATIONS)}>
             <Ionicons name="notifications-outline" size={20} color="#0A2240" />
             {unreadNotificationCount > 0 && (
-              <View className="absolute -right-1 -top-1 flex h-[10px] min-w-[10px] items-center justify-center rounded-full bg-red-500">
-                <Text className="font-bold text-xs text-white">
+              <Animated.View
+                style={{
+                  position: 'absolute',
+                  right: -4,
+                  top: -4,
+                  transform: [{ scale: pulseAnim }],
+                }}
+                className="h-[14px] min-w-[12px] px-1 rounded-full bg-red-500 items-center justify-center">
+                <Text className="font-bold text-[7px] text-white">
                   {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
                 </Text>
-              </View>
+              </Animated.View>
             )}
           </TouchableOpacity>
           <MaskedView
