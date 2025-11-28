@@ -13,30 +13,42 @@
  * @example
  * normalizeVietnameseName("Linh Nguyễn Hải", "Linh", "Nguyễn Hải")
  * // Returns: "Nguyễn Hải Linh"
+ *
+ * @example
+ * normalizeVietnameseName("Linh Nguyễn Hải")
+ * // Returns: "Nguyễn Hải Linh" (tự động parse và format)
  */
 export const normalizeVietnameseName = (
   fullName?: string | null,
   firstName?: string | null,
   lastName?: string | null
 ): string => {
-  // Nếu không có đủ thông tin, trả về fullName gốc
-  if (!fullName || !firstName || !lastName) {
-    return fullName || '';
+  // Nếu không có fullName, trả về empty string
+  if (!fullName || fullName.trim() === '') {
+    return '';
   }
 
   const trimmedFullName = fullName.trim();
-  const trimmedFirstName = firstName.trim();
-  const trimmedLastName = lastName.trim();
 
-  // Kiểm tra xem fullName có đang ở format sai (First + Last) không
-  // Nếu fullName bắt đầu bằng firstName, có nghĩa là sai format
-  if (trimmedFullName.startsWith(trimmedFirstName)) {
-    // Đảo lại thành: Last + First
-    return `${trimmedLastName} ${trimmedFirstName}`.trim();
+  // Nếu có đủ thông tin firstName và lastName, sử dụng logic cũ
+  if (firstName && lastName) {
+    const trimmedFirstName = firstName.trim();
+    const trimmedLastName = lastName.trim();
+
+    // Kiểm tra xem fullName có đang ở format sai (First + Last) không
+    // Nếu fullName bắt đầu bằng firstName, có nghĩa là sai format
+    if (trimmedFullName.startsWith(trimmedFirstName)) {
+      // Đảo lại thành: Last + First
+      return `${trimmedLastName} ${trimmedFirstName}`.trim();
+    }
+
+    // Nếu đã đúng format (Last + First), giữ nguyên
+    return trimmedFullName;
   }
 
-  // Nếu đã đúng format (Last + First), giữ nguyên
-  return trimmedFullName;
+  // Nếu chỉ có fullName, tự động parse và format theo logic Việt Nam
+  const parsed = parseVietnameseName(trimmedFullName);
+  return buildVietnameseName(parsed.lastName, parsed.middleName, parsed.firstName);
 };
 
 /**
@@ -83,7 +95,7 @@ export const buildVietnameseName = (
 
 /**
  * Parse tên thành các phần (best effort)
- * Vietnamese names: Họ + Tên đệm + Tên
+ * Giả định backend trả về format "Tên Họ Tên đệm", chuyển thành "Họ Tên đệm Tên"
  * @param fullName - Tên đầy đủ
  * @returns Object chứa lastName, middleName, firstName
  */
@@ -99,12 +111,16 @@ export const parseVietnameseName = (
   if (parts.length === 1) {
     return { lastName: '', middleName: '', firstName: parts[0] };
   } else if (parts.length === 2) {
-    return { lastName: parts[0], middleName: '', firstName: parts[1] };
+    // "Tên Họ" -> "Họ Tên"
+    return { lastName: parts[1], middleName: '', firstName: parts[0] };
+  } else if (parts.length === 3) {
+    // "Tên Họ Tên đệm" -> "Họ Tên đệm Tên"
+    return { lastName: parts[1], middleName: parts[2], firstName: parts[0] };
   } else {
-    // 3 parts hoặc hơn: Họ + Tên đệm + Tên
-    const lastName = parts[0];
-    const firstName = parts[parts.length - 1];
-    const middleName = parts.slice(1, -1).join(' ');
+    // 4 parts hoặc hơn: giả định "Tên Họ Tên đệm ..." -> "Họ Tên đệm ... Tên"
+    const firstName = parts[0];
+    const lastName = parts[1];
+    const middleName = parts.slice(2).join(' ');
     return { lastName, middleName, firstName };
   }
 };

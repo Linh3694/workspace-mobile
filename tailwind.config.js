@@ -12,7 +12,7 @@ module.exports = {
         'text-secondary': '#757575',
       },
       fontFamily: {
-        sans: ['Mulish-Regular'],
+        sans: ['Mulish-Regular', 'Mulish-Medium'],
         medium: ['Mulish-Medium'],
         semibold: ['Mulish-SemiBold'],
         bold: ['Mulish-Bold'],

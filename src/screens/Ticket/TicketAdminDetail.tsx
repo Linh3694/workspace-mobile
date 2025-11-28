@@ -14,9 +14,14 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { Ionicons, MaterialIcons, AntDesign, FontAwesome5, FontAwesome } from '@expo/vector-icons';
-import axios from 'axios';
-import { API_BASE_URL } from '../../config/constants';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  getTicketDetail,
+  updateTicket,
+  assignTicketToMe,
+  cancelTicket,
+  reopenTicket,
+  type Ticket,
+} from '../../services/ticketService';
 import TicketInformation from './components/TicketInformation';
 import TicketProcessing from './components/TicketProcessing';
 import TicketHistory from './components/TicketHistory';
@@ -31,18 +36,6 @@ type TicketDetailScreenNavigationProp = NativeStackNavigationProp<
 
 interface RouteParams {
   ticketId: string;
-}
-
-interface Ticket {
-  _id: string;
-  ticketCode: string;
-  title: string;
-  status: string;
-  feedback?: {
-    rating: number;
-    comment?: string;
-    badges?: string[];
-  };
 }
 
 interface UserType {
@@ -72,12 +65,9 @@ const TicketAdminDetail = () => {
 
   const fetchTicketData = async () => {
     try {
-      const token = await AsyncStorage.getItem('authToken');
-      const response = await axios.get(`${API_BASE_URL}/api/tickets/${ticketId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.data.success) {
-        setTicket(response.data.ticket);
+      const ticketData = await getTicketDetail(ticketId);
+      if (ticketData) {
+        setTicket(ticketData);
       }
     } catch (error) {
       console.error('Lỗi khi lấy thông tin ticket:', error);
@@ -168,12 +158,7 @@ const TicketAdminDetail = () => {
     if (!userId) return;
     try {
       setLoading(true);
-      const token = await AsyncStorage.getItem('authToken');
-      await axios.put(
-        `${API_BASE_URL}/api/tickets/${ticketId}`,
-        { assignedTo: userId },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await updateTicket(ticketId, { assignedTo: userId });
       await fetchTicketData();
       setModalVisible(false);
       setSelectedUserId(null);
@@ -187,14 +172,7 @@ const TicketAdminDetail = () => {
   const handleAssignToCurrentUser = async () => {
     try {
       setLoading(true);
-      const userId = await AsyncStorage.getItem('userId');
-      console.log('userId', userId);
-      const token = await AsyncStorage.getItem('authToken');
-      await axios.put(
-        `${API_BASE_URL}/api/tickets/${ticketId}`,
-        { assignedTo: userId },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await assignTicketToMe(ticketId);
       await fetchTicketData();
     } catch (error) {
       console.error('Error assigning ticket:', error);
@@ -206,15 +184,7 @@ const TicketAdminDetail = () => {
   const handleCancelTicket = async () => {
     try {
       setLoading(true);
-      const token = await AsyncStorage.getItem('authToken');
-      await axios.put(
-        `${API_BASE_URL}/api/tickets/${ticketId}`,
-        {
-          status: 'Cancelled',
-          cancelReason: cancelReason,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await cancelTicket(ticketId, cancelReason);
       await fetchTicketData();
       setCancelModalVisible(false);
       setCancelReason('');
@@ -296,27 +266,33 @@ const TicketAdminDetail = () => {
       {/* Tab Navigation */}
       <View className="flex-row pl-5 ">
         <TouchableOpacity
+          key="information-tab"
           onPress={() => setActiveTab('information')}
           className={`mr-6 py-3 ${activeTab === 'information' ? 'border-b-2 border-black' : ''}`}>
           <Text
-            className={`${activeTab === 'information' ? 'font-bold text-[#002855]' : 'font-medium text-gray-400'}`}>
+            className={activeTab === 'information' ? 'font-bold' : 'font-medium text-gray-400'}
+            style={{ color: activeTab === 'information' ? '#002855' : '#98A2B3' }}>
             Thông tin
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
+          key="processing-tab"
           onPress={() => setActiveTab('processing')}
           className={`mr-6 py-3 ${activeTab === 'processing' ? 'border-b-2 border-black' : ''}`}>
           <Text
-            className={`${activeTab === 'processing' ? 'font-bold text-[#002855]' : 'font-medium text-gray-400'}`}>
+            className={activeTab === 'processing' ? 'font-bold' : 'font-medium text-gray-400'}
+            style={{ color: activeTab === 'processing' ? '#002855' : '#98A2B3' }}>
             Tiến trình
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
+          key="history-tab"
           onPress={() => setActiveTab('history')}
           className={`py-3 ${activeTab === 'history' ? 'border-b-2 border-black' : ''}`}>
           <Text
-            className={`${activeTab === 'history' ? 'font-bold text-[#002855]' : 'font-medium text-gray-400'}`}>
+            className={activeTab === 'history' ? 'font-bold' : 'font-medium text-gray-400'}
+            style={{ color: activeTab === 'history' ? '#002855' : '#98A2B3' }}>
             Lịch sử
           </Text>
         </TouchableOpacity>

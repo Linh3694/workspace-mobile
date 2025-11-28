@@ -15,34 +15,15 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
-import { API_BASE_URL } from '../../config/constants';
+import { getAllTickets, type Ticket } from '../../services/ticketService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { normalizeVietnameseName } from '../../utils/nameFormatter';
+import { getStatusLabel, getStatusColor, TICKET_STATUSES } from '../../config/ticketConstants';
 
 type TicketScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
   'TicketAdminScreen'
 >;
-
-interface Ticket {
-  id: string;
-  _id?: string;
-  ticketCode?: string;
-  title: string;
-  description: string;
-  status: string;
-  date: string;
-  priority: string;
-  requester: string;
-  creator?: {
-    _id: string;
-    fullname: string;
-  };
-  assignedTo?: {
-    _id?: string;
-    fullname: string;
-  };
-}
 
 const TicketAdminScreen = () => {
   const navigation = useNavigation<TicketScreenNavigationProp>();
@@ -70,155 +51,100 @@ const TicketAdminScreen = () => {
   }, []);
 
   useEffect(() => {
-    fetchTickets();
-  }, [filterStatus, filterRole, activeTab]);
+    if (userId) {
+      fetchTickets();
+    }
+  }, [filterStatus, filterRole, activeTab, userId]);
 
   useFocusEffect(
     React.useCallback(() => {
-      fetchTickets();
-    }, [filterStatus, filterRole, activeTab])
+      if (userId) {
+        fetchTickets();
+      }
+    }, [filterStatus, filterRole, activeTab, userId])
   );
 
   const fetchTickets = async (showLoading: boolean = true) => {
     try {
       if (showLoading) setLoading(true);
-      const token = await AsyncStorage.getItem('authToken');
-      const currentUserId = await AsyncStorage.getItem('userId');
 
-      if (!token) {
-        console.log('Không tìm thấy token');
-        setTickets([]);
-        return;
-      }
-
-      // Xây dựng URL với các tham số lọc
-      let url = `${API_BASE_URL}/api/tickets`;
-
-      // Thêm các tham số lọc (chỉ những tham số API hỗ trợ)
-      const params = new URLSearchParams();
-      if (filterStatus) {
-        params.append('status', filterStatus);
-      }
-      if (searchTerm) {
-        params.append('search', searchTerm);
-      }
-
-      // Bỏ phần lọc theo tab ở đây vì sẽ lọc ở frontend
-      // if (activeTab === 'assigned' && userId) {
-      //     params.append('assignedTo', userId);
-      //     params.append('creator', userId);
-      // }
-
-      if (params.toString()) {
-        url += `?${params.toString()}`;
-      }
-
-      console.log('API URL:', url);
+      console.log('Fetching all tickets...');
       console.log('Active Tab:', activeTab);
-      console.log('User ID:', currentUserId);
 
-      const res = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const allTickets = await getAllTickets();
 
-      if (res.data.success) {
-        const formattedTickets = res.data.tickets.map((ticket: any) => ({
-          id: ticket._id,
-          _id: ticket._id,
-          ticketCode: ticket.ticketCode || `Ticket-${ticket._id.substring(0, 3)}`,
-          title: ticket.title,
-          description: ticket.description || '',
-          status: ticket.status.toLowerCase(),
-          date: new Date(ticket.createdAt).toLocaleDateString('vi-VN'),
-          priority: ticket.priority.toLowerCase(),
-          requester:
-            ticket.creator?.fullname ||
-            ticket.creator?.full_name ||
-            ticket.creator?.name ||
-            'Không xác định',
-          creator: ticket.creator,
-          assignedTo: ticket.assignedTo,
-        }));
+      // Apply client-side filtering
+      let filteredTickets = allTickets;
 
-        // Lọc ticket dựa trên activeTab ở frontend
-        let filteredTickets = formattedTickets;
-        if (activeTab === 'assigned' && currentUserId) {
-          filteredTickets = formattedTickets.filter(
-            (ticket: any) =>
-              ticket.creator?._id === currentUserId || ticket.assignedTo?._id === currentUserId
-          );
-        }
-
-        setTickets(filteredTickets);
-      } else {
-        console.error('Lỗi khi lấy danh sách ticket:', res.data.message);
-        setTickets([]);
+      // Filter by status if specified
+      if (filterStatus) {
+        filteredTickets = filteredTickets.filter((ticket) => ticket.status === filterStatus);
       }
+
+      // Filter by search term
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase();
+        filteredTickets = filteredTickets.filter(
+          (ticket) =>
+            ticket.title?.toLowerCase().includes(searchLower) ||
+            ticket.ticketCode?.toLowerCase().includes(searchLower) ||
+            ticket.description?.toLowerCase().includes(searchLower)
+        );
+      }
+
+      const formattedTickets = filteredTickets.map((ticket) => ({
+        id: ticket._id,
+        _id: ticket._id,
+        ticketCode: ticket.ticketCode || `Ticket-${ticket._id.substring(0, 3)}`,
+        title: ticket.title,
+        description: ticket.description || '',
+        status: ticket.status.toLowerCase(),
+        date: new Date(ticket.createdAt).toLocaleDateString('vi-VN'),
+        priority: ticket.priority.toLowerCase(),
+        requester: ticket.creator
+          ? normalizeVietnameseName(
+              ticket.creator.fullname || ticket.creator.full_name || ticket.creator.name
+            )
+          : 'Không xác định',
+        creator: ticket.creator,
+        assignedTo: ticket.assignedTo,
+      }));
+
+      // Apply additional tab filtering
+      let tabFilteredTickets = formattedTickets;
+      if (activeTab === 'assigned') {
+        // Show tickets created by current user
+
+        if (!userId) {
+          tabFilteredTickets = [];
+        } else {
+          tabFilteredTickets = formattedTickets.filter((ticket) => {
+            const matchById = ticket.creator && ticket.creator._id === userId;
+            const matchByEmail = ticket.creator && ticket.creator.email === userId;
+            const match = matchById || matchByEmail;
+            console.log(
+              '🔍 [TicketAdminScreen] Ticket:',
+              ticket._id,
+              'Creator ID:',
+              ticket.creator?._id,
+              'Creator Email:',
+              ticket.creator?.email,
+              'User ID:',
+              userId,
+              'Match:',
+              match
+            );
+            return match;
+          });
+        }
+      }
+
+      setTickets(tabFilteredTickets);
     } catch (error) {
       console.error('Lỗi khi gọi API:', error);
       setTickets([]);
     } finally {
       if (showLoading) setLoading(false);
-    }
-  };
-
-  const statusColor = (status: string) => {
-    switch (status) {
-      case 'assigned':
-        return 'bg-[#002855]';
-      case 'processing':
-        return 'bg-[#F59E0B]';
-      case 'done':
-        return 'bg-[#BED232]';
-      case 'closed':
-        return 'bg-[#009483]';
-      case 'cancelled':
-        return 'bg-[#F05023]';
-      default:
-        return 'bg-gray-500';
-    }
-  };
-
-  const statusLabel = (status: string) => {
-    switch (status) {
-      case 'assigned':
-        return 'Đã tiếp nhận';
-      case 'processing':
-        return 'Đang xử lý';
-      case 'done':
-        return 'Đã xử lý';
-      case 'closed':
-        return 'Đã đóng';
-      case 'cancelled':
-        return 'Đã hủy';
-      default:
-        return status;
-    }
-  };
-
-  const priorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return 'bg-red-100 text-red-800';
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'low':
-        return 'bg-green-100 text-green-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const priorityLabel = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return 'Cao';
-      case 'medium':
-        return 'Trung bình';
-      case 'low':
-        return 'Thấp';
-      default:
-        return priority;
     }
   };
 
@@ -267,8 +193,10 @@ const TicketAdminScreen = () => {
       setShowFilters(false);
       setShowRoleFilters(false);
       setSearchTerm('');
-      // Gọi lại API để lấy dữ liệu mới
-      fetchTickets();
+      // Gọi lại API để lấy dữ liệu mới (chỉ khi userId đã có)
+      if (userId) {
+        fetchTickets();
+      }
     }
   };
 
@@ -282,30 +210,37 @@ const TicketAdminScreen = () => {
     <SafeAreaView
       className="flex-1 bg-white"
       style={{ paddingTop: Platform.OS === 'android' ? insets.top : 0 }}>
-      <View className="w-full flex-row items-center px-4 py-4">
-        <TouchableOpacity onPress={handleGoBack} className="mr-3">
-          <Ionicons name="arrow-back" size={24} color="#000" />
+      <View className="mb-5 mt-6 flex-row items-center justify-between px-5">
+        <TouchableOpacity onPress={handleGoBack} className="p-2">
+          <Ionicons name="chevron-back" size={24} color="#0A2240" />
         </TouchableOpacity>
-        <View className="mr-[10%] flex-1 items-center justify-center">
-          <Text className="font-medium text-xl">Ticket</Text>
-        </View>
+        <Text className="flex-1 text-center font-bold text-2xl text-[#0A2240]">Ticket</Text>
+        <View style={{ width: 40 }} />
       </View>
 
       {/* Tab Navigation */}
       <View className="flex-row px-4 pb-5 pt-2">
         <View className="flex-1 items-center">
-          <TouchableOpacity onPress={() => toggleTab('all')}>
+          <TouchableOpacity key="all-tab" onPress={() => toggleTab('all')}>
             <Text
-              className={`text-center ${activeTab === 'all' ? 'font-bold text-[#002855]' : 'text-gray-500'}`}>
+              className={
+                activeTab === 'all'
+                  ? 'text-center font-bold text-[#002855]'
+                  : 'text-center font-medium text-gray-500'
+              }>
               Tất cả Ticket
             </Text>
             {activeTab === 'all' && <View className="mt-2 h-0.5 bg-[#002855]" />}
           </TouchableOpacity>
         </View>
         <View className="flex-1 items-center">
-          <TouchableOpacity onPress={() => toggleTab('assigned')}>
+          <TouchableOpacity key="assigned-tab" onPress={() => toggleTab('assigned')}>
             <Text
-              className={`text-center ${activeTab === 'assigned' ? 'font-bold text-[#002855]' : 'text-gray-500'}`}>
+              className={
+                activeTab === 'assigned'
+                  ? 'text-center font-bold text-[#002855]'
+                  : 'text-center font-medium text-gray-500'
+              }>
               Ticket của tôi
             </Text>
             {activeTab === 'assigned' && <View className="mt-2 h-0.5 bg-[#002855]" />}
@@ -356,23 +291,32 @@ const TicketAdminScreen = () => {
                 <Text className={filterStatus === '' ? 'text-white' : 'text-gray-700'}>Tất cả</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                className={`mr-2 rounded-full px-3 py-1 ${filterStatus === 'open' ? 'bg-blue-500' : 'bg-gray-200'}`}
-                onPress={() => applyFilter('open')}>
-                <Text className={filterStatus === 'open' ? 'text-white' : 'text-gray-700'}>
-                  Chưa nhận
+                className={`mr-2 rounded-full px-3 py-1 ${filterStatus === TICKET_STATUSES.ASSIGNED ? 'bg-blue-500' : 'bg-gray-200'}`}
+                onPress={() => applyFilter(TICKET_STATUSES.ASSIGNED)}>
+                <Text
+                  className={
+                    filterStatus === TICKET_STATUSES.ASSIGNED ? 'text-white' : 'text-gray-700'
+                  }>
+                  Đã tiếp nhận
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                className={`mr-2 rounded-full px-3 py-1 ${filterStatus === 'inProgress' ? 'bg-yellow-500' : 'bg-gray-200'}`}
-                onPress={() => applyFilter('inProgress')}>
-                <Text className={filterStatus === 'inProgress' ? 'text-white' : 'text-gray-700'}>
+                className={`mr-2 rounded-full px-3 py-1 ${filterStatus === TICKET_STATUSES.PROCESSING ? 'bg-yellow-500' : 'bg-gray-200'}`}
+                onPress={() => applyFilter(TICKET_STATUSES.PROCESSING)}>
+                <Text
+                  className={
+                    filterStatus === TICKET_STATUSES.PROCESSING ? 'text-white' : 'text-gray-700'
+                  }>
                   Đang xử lý
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                className={`rounded-full px-3 py-1 ${filterStatus === 'resolved' ? 'bg-green-500' : 'bg-gray-200'}`}
-                onPress={() => applyFilter('resolved')}>
-                <Text className={filterStatus === 'resolved' ? 'text-white' : 'text-gray-700'}>
+                className={`rounded-full px-3 py-1 ${filterStatus === TICKET_STATUSES.DONE ? 'bg-green-500' : 'bg-gray-200'}`}
+                onPress={() => applyFilter(TICKET_STATUSES.DONE)}>
+                <Text
+                  className={
+                    filterStatus === TICKET_STATUSES.DONE ? 'text-white' : 'text-gray-700'
+                  }>
                   Đã xử lý
                 </Text>
               </TouchableOpacity>
@@ -388,35 +332,39 @@ const TicketAdminScreen = () => {
         ) : tickets.length > 0 ? (
           <FlatList
             data={tickets}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item._id}
             contentContainerStyle={{ padding: 16 }}
             refreshing={refreshing}
             onRefresh={onRefresh}
             renderItem={({ item }) => (
               <TouchableOpacity
                 className="mb-3 rounded-xl bg-[#F8F8F8] p-4"
-                onPress={() => handleViewTicketDetail(item.id)}>
+                onPress={() => handleViewTicketDetail(item._id)}>
                 <View>
                   <Text className="font-medium text-lg text-[#E84A37]">{item.title}</Text>
                   <View className="mt-2 flex-row items-center justify-between">
                     <Text className="mt-1 font-medium text-sm text-gray-500">
-                      {item.ticketCode || `Ticket-${item.id.padStart(3, '0')}`}
+                      {item.ticketCode || `Ticket-${item._id.slice(-3).padStart(3, '0')}`}
                     </Text>
                     <View>
                       <Text className="text-right font-medium text-base text-[#757575]">
-                        {item.assignedTo?.fullname || 'Chưa phân công'}
+                        {item.assignedTo
+                          ? normalizeVietnameseName(item.assignedTo.fullname)
+                          : 'Chưa phân công'}
                       </Text>
                     </View>
                   </View>
                   <View className="mt-2 flex-row items-center justify-between">
                     <View>
                       <Text className="font-medium text-lg text-primary">
-                        {item.creator?.fullname || 'Không xác định'}
+                        {item.creator
+                          ? normalizeVietnameseName(item.creator.fullname)
+                          : 'Không xác định'}
                       </Text>
                     </View>
-                    <View className={`${statusColor(item.status)} rounded-lg px-3 py-1`}>
+                    <View className={`${getStatusColor(item.status)} rounded-lg px-3 py-1`}>
                       <Text className="font-medium text-base text-white">
-                        {statusLabel(item.status)}
+                        {getStatusLabel(item.status) || item.status}
                       </Text>
                     </View>
                   </View>

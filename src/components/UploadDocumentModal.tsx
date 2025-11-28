@@ -1,6 +1,15 @@
 import React, { useEffect, useRef } from 'react';
 // @ts-ignore
-import { View, Text, Modal, TouchableOpacity, Animated, Dimensions, TouchableWithoutFeedback, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  Modal,
+  TouchableOpacity,
+  Animated,
+  Dimensions,
+  TouchableWithoutFeedback,
+  ActivityIndicator,
+} from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 interface UploadDocumentModalProps {
@@ -20,7 +29,7 @@ const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
   onCamera,
   onGallery,
   onDocument,
-  isUploading = false
+  isUploading = false,
 }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(height)).current;
@@ -66,8 +75,7 @@ const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
             opacity: fadeAnim,
             justifyContent: 'center',
             alignItems: 'center',
-          }}
-        >
+          }}>
           <TouchableWithoutFeedback>
             <Animated.View
               style={{
@@ -76,8 +84,7 @@ const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
                 borderRadius: 14,
                 overflow: 'hidden',
                 transform: [{ translateY: slideAnim }],
-              }}
-            >
+              }}>
               <View style={{ padding: 20 }}>
                 <Text
                   style={{
@@ -85,16 +92,14 @@ const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
                     fontWeight: '600',
                     textAlign: 'center',
                     marginBottom: 15,
-                  }}
-                >
+                  }}>
                   Tải lên biên bản
                 </Text>
 
                 <TouchableOpacity
                   onPress={onCamera}
                   disabled={isUploading}
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}
-                >
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}>
                   <MaterialCommunityIcons
                     name="camera"
                     size={24}
@@ -105,20 +110,16 @@ const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
                       fontSize: 16,
                       marginLeft: 10,
                       color: isUploading ? '#999999' : '#333333',
-                    }}
-                  >
+                    }}>
                     Chụp ảnh
                   </Text>
-                  {isUploading && (
-                    <ActivityIndicator size="small" style={{ marginLeft: 'auto' }} />
-                  )}
+                  {isUploading && <ActivityIndicator size="small" style={{ marginLeft: 'auto' }} />}
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={onGallery}
                   disabled={isUploading}
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}
-                >
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}>
                   <MaterialCommunityIcons
                     name="image"
                     size={24}
@@ -129,20 +130,16 @@ const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
                       fontSize: 16,
                       marginLeft: 10,
                       color: isUploading ? '#999999' : '#333333',
-                    }}
-                  >
+                    }}>
                     Chọn từ thư viện
                   </Text>
-                  {isUploading && (
-                    <ActivityIndicator size="small" style={{ marginLeft: 'auto' }} />
-                  )}
+                  {isUploading && <ActivityIndicator size="small" style={{ marginLeft: 'auto' }} />}
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={onDocument}
                   disabled={isUploading}
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}
-                >
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}>
                   <MaterialCommunityIcons
                     name="file-document"
                     size={24}
@@ -153,13 +150,10 @@ const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
                       fontSize: 16,
                       marginLeft: 10,
                       color: isUploading ? '#999999' : '#333333',
-                    }}
-                  >
+                    }}>
                     Chọn từ tài liệu
                   </Text>
-                  {isUploading && (
-                    <ActivityIndicator size="small" style={{ marginLeft: 'auto' }} />
-                  )}
+                  {isUploading && <ActivityIndicator size="small" style={{ marginLeft: 'auto' }} />}
                 </TouchableOpacity>
 
                 <View
@@ -172,11 +166,8 @@ const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
 
                 <TouchableOpacity
                   onPress={onClose}
-                  style={{ paddingVertical: 12, alignItems: 'center' }}
-                >
-                  <Text style={{ fontSize: 16, fontWeight: '500', color: '#666666' }}>
-                    Hủy
-                  </Text>
+                  style={{ paddingVertical: 12, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 16, fontWeight: '500', color: '#666666' }}>Hủy</Text>
                 </TouchableOpacity>
               </View>
             </Animated.View>
@@ -188,4 +179,3 @@ const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
 };
 
 export default UploadDocumentModal;
-

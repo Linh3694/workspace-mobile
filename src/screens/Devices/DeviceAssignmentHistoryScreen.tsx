@@ -7,6 +7,7 @@ import {
     ScrollView,
     ActivityIndicator,
     RefreshControl,
+    Alert,
     Platform
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -19,6 +20,7 @@ import { Image } from 'react-native';
 import { getAvatar } from '../../utils/avatar';
 import { AssignmentHistory, Device } from '../../types/devices';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { normalizeVietnameseName } from '../../utils/nameFormatter';
 
 type DeviceAssignmentHistoryScreenRouteProp = RouteProp<RootStackParamList, typeof ROUTES.SCREENS.DEVICE_ASSIGNMENT_HISTORY>;
 type DeviceAssignmentHistoryScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, typeof ROUTES.SCREENS.DEVICE_ASSIGNMENT_HISTORY>;
@@ -87,7 +89,7 @@ const DeviceAssignmentHistoryScreen = () => {
                 />
                 <View className="flex-1">
                     <Text className={`${!assignment.endDate ? 'text-white' : 'text-gray-800'} font-semibold text-base`}>
-                        {assignment.user?.fullname || 'Không xác định'}
+                        {normalizeVietnameseName(assignment.user?.fullname) || 'Không xác định'}
                     </Text>
                     <Text className={`${!assignment.endDate ? 'text-gray-300' : 'text-gray-600'} text-sm`}>
                         {assignment.user?.jobTitle || 'Không xác định'}
@@ -105,14 +107,14 @@ const DeviceAssignmentHistoryScreen = () => {
 
             <View className={`border-t ${!assignment.endDate ? 'border-gray-600' : 'border-gray-300'} pt-3 space-y-2`}>
                 <Text className={`${!assignment.endDate ? 'text-gray-300' : 'text-gray-600'} text-sm`}>
-                    Người bàn giao: {assignment.assignedBy?.fullname || 'Không xác định'}
+                    Người bàn giao: {normalizeVietnameseName(assignment.assignedBy?.fullname) || 'Không xác định'}
                 </Text>
 
                 {/* Revoked Information */}
                 {assignment.revokedBy && assignment.revokedReason && (
                     <View className="mt-2">
                         <Text className={`${!assignment.endDate ? 'text-red-300' : 'text-red-600'} text-sm`}>
-                            Thu hồi bởi: {assignment.revokedBy?.fullname || 'Không xác định'}
+                            Thu hồi bởi: {normalizeVietnameseName(assignment.revokedBy?.fullname) || 'Không xác định'}
                         </Text>
                         <View className="flex-row flex-wrap mt-1">
                             {assignment.revokedReason.map((reason, index) => (
@@ -129,6 +131,29 @@ const DeviceAssignmentHistoryScreen = () => {
                         <Text className={`${!assignment.endDate ? 'text-gray-300' : 'text-gray-600'} text-sm`}>
                             Ghi chú: {assignment.notes}
                         </Text>
+                    </View>
+                )}
+
+                {assignment.document && (
+                    <View className="mt-2">
+                        <TouchableOpacity
+                            onPress={() => {
+                                // Open document - you might need to implement document viewing
+                                console.log('Open document:', assignment.document);
+                                // For now, just show alert
+                                Alert.alert('Document', `Document: ${assignment.document}`);
+                            }}
+                            className="flex-row items-center"
+                        >
+                            <MaterialCommunityIcons
+                                name="file-document-outline"
+                                size={16}
+                                color={!assignment.endDate ? '#ffffff' : '#002855'}
+                            />
+                            <Text className={`ml-1 text-sm underline ${!assignment.endDate ? 'text-gray-300' : 'text-blue-600'}`}>
+                                Xem biên bản bàn giao
+                            </Text>
+                        </TouchableOpacity>
                     </View>
                 )}
             </View>

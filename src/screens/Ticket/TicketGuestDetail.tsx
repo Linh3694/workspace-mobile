@@ -18,6 +18,8 @@ import TicketInformation from './components/TicketInformation';
 import TicketHistory from './components/TicketHistory';
 import TicketProcessingGuest from './components/TicketProcessingGuest';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTicketDetail } from '../../hooks/useTicketHooks';
+import type { Ticket } from '../../services/ticketService';
 
 type TicketDetailScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -28,46 +30,16 @@ interface RouteParams {
   ticketId: string;
 }
 
-interface Ticket {
-  _id: string;
-  ticketCode: string;
-  title: string;
-  status: string;
-  feedback?: {
-    rating: number;
-    comment?: string;
-    badges?: string[];
-  };
-}
 
 const TicketGuestDetail = () => {
   const navigation = useNavigation<TicketDetailScreenNavigationProp>();
   const route = useRoute();
   const { ticketId } = route.params as RouteParams;
   const [activeTab, setActiveTab] = useState('information');
-  const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [loading, setLoading] = useState(true);
   const insets = useSafeAreaInsets();
 
-  useEffect(() => {
-    fetchTicketData();
-  }, [ticketId]);
-
-  const fetchTicketData = async () => {
-    try {
-      const token = await AsyncStorage.getItem('authToken');
-      const response = await axios.get(`${API_BASE_URL}/api/tickets/${ticketId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.data.success) {
-        setTicket(response.data.ticket);
-      }
-    } catch (error) {
-      console.error('Lỗi khi lấy thông tin ticket:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Use new hooks for data fetching
+  const { ticket, loading, error, refetch } = useTicketDetail(ticketId);
 
   const handleGoBack = () => {
     navigation.goBack();
@@ -76,9 +48,11 @@ const TicketGuestDetail = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'information':
-        return <TicketInformation ticketId={ticketId} />;
+        return <TicketInformation ticketId={ticketId} activeTab="information" />;
       case 'processing':
         return <TicketProcessingGuest ticketId={ticketId} />;
+      case 'messaging':
+        return <TicketInformation ticketId={ticketId} activeTab="messaging" />;
       case 'history':
         return <TicketHistory ticketId={ticketId} />;
       default:
@@ -147,26 +121,39 @@ const TicketGuestDetail = () => {
       {/* Tab Navigation */}
       <View className="flex-row pl-5 ">
         <TouchableOpacity
+          key="information-tab"
           onPress={() => setActiveTab('information')}
           className={`mr-6 py-3 ${activeTab === 'information' ? 'border-b-2 border-black' : ''}`}>
           <Text
-            className={`${activeTab === 'information' ? 'font-bold text-[#002855]' : 'font-medium text-gray-400'}`}>
+            className={activeTab === 'information' ? 'font-bold text-[#002855]' : 'font-medium text-gray-400'}>
             Thông tin
           </Text>
         </TouchableOpacity>
+
         <TouchableOpacity
+          key="messaging-tab"
+          onPress={() => setActiveTab('messaging')}
+          className={`mr-6 py-3 ${activeTab === 'messaging' ? 'border-b-2 border-black' : ''}`}>
+          <Text
+            className={activeTab === 'messaging' ? 'font-bold text-[#002855]' : 'font-medium text-gray-400'}>
+            Trao đổi
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          key="processing-tab"
           onPress={() => setActiveTab('processing')}
           className={`mr-6 py-3 ${activeTab === 'processing' ? 'border-b-2 border-black' : ''}`}>
           <Text
-            className={`${activeTab === 'processing' ? 'font-bold text-[#002855]' : 'font-medium text-gray-400'}`}>
+            className={activeTab === 'processing' ? 'font-bold text-[#002855]' : 'font-medium text-gray-400'}>
             Tiến trình
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
+          key="history-tab"
           onPress={() => setActiveTab('history')}
           className={`py-3 ${activeTab === 'history' ? 'border-b-2 border-black' : ''}`}>
           <Text
-            className={`${activeTab === 'history' ? 'font-bold text-[#002855]' : 'font-medium text-gray-400'}`}>
+            className={activeTab === 'history' ? 'font-bold text-[#002855]' : 'font-medium text-gray-400'}>
             Lịch sử
           </Text>
         </TouchableOpacity>

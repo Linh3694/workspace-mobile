@@ -9,7 +9,6 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
@@ -25,6 +24,7 @@ interface NotificationData {
   data: any;
   read: boolean;
   createdAt: string;
+  eventTimestamp?: string;
 }
 
 interface PaginationState {
@@ -60,7 +60,11 @@ const NotificationsScreen = () => {
           setLoadingMore(true);
         }
 
-        const response = await notificationCenterService.getNotifications(page, pagination.limit);
+        const response = await notificationCenterService.getNotifications({
+          limit: pagination.limit,
+          offset: (page - 1) * pagination.limit,
+          include_read: true,
+        });
 
         if (response.success) {
           const notificationsData = response.data.notifications || [];
@@ -181,25 +185,58 @@ const NotificationsScreen = () => {
     return (
       <TouchableOpacity
         onPress={() => handleNotificationPress(item)}
-        className={`border-b border-gray-100 p-4 ${!item.read ? 'bg-blue-50' : 'bg-white'}`}>
+        className={`mx-3 my-1 rounded-lg border border-gray-100 p-4 ${!item.read ? 'bg-red-50' : 'bg-white'}`}>
         <View className="flex-row items-start">
-          {!item.read && <View className="mr-3 mt-2 h-2 w-2 rounded-full bg-blue-500" />}
+          {!item.read && <View className="mr-3 mt-2 h-2 w-2 rounded-full bg-red-500" />}
           <View className="flex-1">
             <Text
-              className={`font-semibold text-base ${!item.read ? 'text-blue-900' : 'text-gray-900'}`}>
+              className={`font-semibold text-base ${!item.read ? 'text-red-900' : 'text-gray-900'}`}>
               {title}
             </Text>
-            <Text className={`mt-1 text-sm ${!item.read ? 'text-blue-700' : 'text-gray-600'}`}>
+            <Text className={`mt-1 text-sm ${!item.read ? 'text-red-700' : 'text-gray-600'}`}>
               {message}
             </Text>
             <Text className="mt-2 text-xs text-gray-400">
-              {formatDistanceToNow(new Date(item.createdAt), {
-                addSuffix: true,
-                locale: vi,
-              })}
+              {(() => {
+                try {
+                  const dateString = item.createdAt || item.eventTimestamp;
+                  if (!dateString) {
+                    console.warn(
+                      'Missing createdAt and eventTimestamp for notification:',
+                      item._id || item.id
+                    );
+                    return 'Không xác định';
+                  }
+                  const date = new Date(dateString);
+                  if (isNaN(date.getTime())) {
+                    console.warn(
+                      'Invalid date format:',
+                      dateString,
+                      'for notification:',
+                      item._id || item.id
+                    );
+                    return 'Ngày không hợp lệ';
+                  }
+                  return formatDistanceToNow(date, {
+                    addSuffix: true,
+                    locale: vi,
+                  });
+                } catch (error) {
+                  console.error(
+                    'Date formatting error for notification:',
+                    item._id || item.id,
+                    'createdAt:',
+                    item.createdAt,
+                    'eventTimestamp:',
+                    item.eventTimestamp,
+                    'error:',
+                    error
+                  );
+                  return 'Ngày không hợp lệ';
+                }
+              })()}
             </Text>
           </View>
-          {!item.read && <Ionicons name="chevron-forward" size={20} color="#3B82F6" />}
         </View>
       </TouchableOpacity>
     );
@@ -228,19 +265,26 @@ const NotificationsScreen = () => {
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <View className="flex-row items-center justify-between border-b border-gray-200 p-4">
-        <Text className="font-bold text-xl text-gray-900">Thông báo</Text>
-        {pagination.unreadCount > 0 && (
-          <View className="rounded-full bg-red-500 px-2 py-1">
-            <Text className="font-medium text-xs text-white">{pagination.unreadCount}</Text>
-          </View>
-        )}
+      <View className="mb-5 mt-6 flex-row items-center justify-between px-5">
+        <TouchableOpacity
+          onPress={() => {
+            console.log('Back button pressed');
+            navigation.navigate('Main');
+          }}
+          className="p-2">
+          <Ionicons name="chevron-back" size={24} color="#0A2240" />
+        </TouchableOpacity>
+        <Text className="flex-1 text-center font-bold text-2xl text-[#0A2240]">Thông báo</Text>
+        <View style={{ width: 40 }} />
       </View>
 
       <FlatList
         data={notifications}
         renderItem={renderNotification}
-        keyExtractor={(item) => item._id || item.id || Math.random().toString()}
+        keyExtractor={(item, index) => {
+          const key = item._id || item.id;
+          return key ? `${key}-${index}` : `notification-${index}`;
+        }}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}

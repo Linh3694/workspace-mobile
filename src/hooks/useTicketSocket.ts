@@ -1,21 +1,8 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CHAT_SOCKET_URL, CHAT_SOCKET_PATH } from '../config/constants';
+import { API_BASE_URL } from '../config/constants';
 
-interface Message {
-  _id: string;
-  sender: {
-    _id: string;
-    fullname: string;
-    avatarUrl?: string;
-    email: string;
-  };
-  text: string;
-  timestamp: string;
-  type: 'text' | 'image';
-  tempId?: string;
-}
+import type { Message } from '../services/ticketService';
 
 interface UseTicketSocketProps {
   ticketId: string;
@@ -38,7 +25,7 @@ export const useTicketSocket = ({
   onTyping,
   onUserStatus,
 }: UseTicketSocketProps) => {
-  const socketRef = useRef<Socket | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>();
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>();
   const [socketState, setSocketState] = useState<SocketState>({
@@ -55,17 +42,17 @@ export const useTicketSocket = ({
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
     }
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-      socketRef.current = null;
+    if (wsRef.current) {
+      wsRef.current.close(1000, 'Normal closure');
+      wsRef.current = null;
     }
   }, []);
 
-  // Connect socket with retry logic
+  // Connect WebSocket with retry logic
   const connect = useCallback(
     async (retryCount = 0) => {
-      if (socketRef.current?.connected) {
-        console.log('🔗 Socket already connected');
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        console.log('🔗 WebSocket already connected');
         return;
       }
 
@@ -87,49 +74,32 @@ export const useTicketSocket = ({
           throw new Error('Không có token xác thực');
         }
 
-        console.log(`🔄 Connecting to socket (attempt ${retryCount + 1})`);
+        console.log(`🔄 Connecting to WebSocket (attempt ${retryCount + 1})`);
 
-        const socket = io(CHAT_SOCKET_URL, {
-          path: CHAT_SOCKET_PATH,
-          query: { token },
-          transports: ['websocket'],
-          timeout: 10000,
-          forceNew: retryCount > 0, // Force new connection on retry
+        // Build WebSocket URL with ticket ID
+        const wsUrl = `wss://${API_BASE_URL.replace('https://', '')}/ws?ticket=${ticketId}`;
+
+        const ws = new WebSocket(wsUrl, [], {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         });
 
         // Connection events
-        socket.on('connect', () => {
-          console.log('🔗 Socket connected successfully');
+        ws.onopen = () => {
+          console.log('🔗 WebSocket connected successfully');
           setSocketState({ connected: true, connecting: false, error: null });
 
-          // Join ticket room
-          socket.emit('joinTicketRoom', ticketId);
-
-          // Setup ping interval
+          // Setup ping interval (keep-alive)
           pingIntervalRef.current = setInterval(() => {
-            if (socket.connected) {
-              socket.emit('ping');
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'ping' }));
             }
           }, 30000);
-        });
+        };
 
-        socket.on('connect_error', (error) => {
-          console.error('🔥 Socket connection error:', error.message);
-          setSocketState((prev) => ({
-            ...prev,
-            connecting: false,
-            error: error.message,
-          }));
-
-          // Retry with exponential backoff
-          const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connect(retryCount + 1);
-          }, delay);
-        });
-
-        socket.on('disconnect', (reason) => {
-          console.log('🔌 Socket disconnected:', reason);
+        ws.onclose = (event) => {
+          console.log('🔌 WebSocket disconnected:', event.code, event.reason);
           setSocketState((prev) => ({ ...prev, connected: false }));
 
           if (pingIntervalRef.current) {
@@ -137,63 +107,67 @@ export const useTicketSocket = ({
           }
 
           // Auto-reconnect for unexpected disconnections
-          if (reason === 'io server disconnect' || reason === 'transport close') {
+          if (event.code !== 1000) {
+            const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
             reconnectTimeoutRef.current = setTimeout(() => {
-              connect(0);
-            }, 2000);
+              connect(retryCount + 1);
+            }, delay);
           }
-        });
+        };
 
-        // Message events
-        socket.on('newMessage', (message: Message) => {
-          console.log('📨 New message received:', message._id);
-          onNewMessage(message);
-        });
-
-        // Typing events
-        socket.on('userTyping', ({ userId, ticketId: eventTicketId }) => {
-          if (eventTicketId === ticketId && userId !== currentUserId && onTyping) {
-            onTyping(userId, true);
-          }
-        });
-
-        socket.on('userStopTyping', ({ userId, ticketId: eventTicketId }) => {
-          if (eventTicketId === ticketId && userId !== currentUserId && onTyping) {
-            onTyping(userId, false);
-          }
-        });
-
-        // User status events
-        socket.on('userStatus', ({ userId, status }) => {
-          if (userId !== currentUserId && onUserStatus) {
-            onUserStatus(userId, status);
-          }
-        });
-
-        // Auth error
-        socket.on('authError', ({ message }) => {
-          console.error('🔐 Auth error:', message);
+        ws.onerror = (error) => {
+          console.error('🔥 WebSocket error:', error);
           setSocketState((prev) => ({
             ...prev,
             connecting: false,
-            error: message,
+            error: 'Lỗi kết nối WebSocket',
           }));
-        });
+        };
 
-        // General error
-        socket.on('error', ({ message }) => {
-          console.error('⚠️ Socket error:', message);
-          setSocketState((prev) => ({ ...prev, error: message }));
-        });
+        // Clear any existing message handler
+        ws.onmessage = null;
 
-        // Pong response
-        socket.on('pong', () => {
-          // Connection is alive
-        });
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
 
-        socketRef.current = socket;
+            switch (data.type) {
+              case 'connection':
+                console.log('✅ WebSocket connection confirmed');
+                break;
+
+              case 'new_message':
+                console.log('📨 New message received:', data.message._id);
+                if (onNewMessage) {
+                  onNewMessage(data.message);
+                }
+                break;
+
+              case 'ticket_updated':
+                console.log('🎫 Ticket updated:', data.ticket._id);
+                // Handle ticket updates if needed
+                break;
+
+              case 'error':
+                console.error('⚠️ WebSocket error:', data.message);
+                setSocketState((prev) => ({ ...prev, error: data.message }));
+                break;
+
+              case 'pong':
+                // Keep-alive pong received
+                break;
+
+              default:
+                console.warn('⚠️ Unknown WebSocket message type:', data.type);
+            }
+          } catch (error) {
+            console.error('❌ Failed to parse WebSocket message:', error);
+          }
+        };
+
+        wsRef.current = ws;
       } catch (error) {
-        console.error('❌ Socket setup error:', error);
+        console.error('❌ WebSocket setup error:', error);
         setSocketState((prev) => ({
           ...prev,
           connecting: false,
@@ -201,14 +175,14 @@ export const useTicketSocket = ({
         }));
       }
     },
-    [ticketId, currentUserId, onNewMessage, onTyping, onUserStatus]
+    [ticketId, currentUserId, onNewMessage]
   );
 
-  // Send message through socket
+  // Send message through WebSocket
   const sendMessage = useCallback(
-    async (text: string, type: 'text' | 'image' = 'text', tempId?: string) => {
-      if (!socketRef.current?.connected) {
-        throw new Error('Socket chưa kết nối');
+    async (messageData: { text?: string; images?: any[]; tempId?: string }) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        throw new Error('WebSocket chưa kết nối');
       }
 
       return new Promise((resolve, reject) => {
@@ -216,48 +190,25 @@ export const useTicketSocket = ({
           reject(new Error('Timeout'));
         }, 10000);
 
-        socketRef.current!.emit('sendMessage', {
-          ticketId,
-          text,
-          type,
-          tempId,
-          sender: { _id: currentUserId },
-        });
-
-        // Listen for confirmation
-        const handleNewMessage = (message: Message) => {
-          if (message.tempId === tempId) {
-            clearTimeout(timeout);
-            socketRef.current!.off('newMessage', handleNewMessage);
-            resolve(message);
-          }
+        const messagePayload = {
+          type: 'new_message',
+          data: {
+            ...messageData,
+            tempId: messageData.tempId || `temp_${Date.now()}`,
+          },
         };
 
-        socketRef.current!.on('newMessage', handleNewMessage);
+        wsRef.current!.send(JSON.stringify(messagePayload));
+
+        // For React Native, we don't wait for confirmation via WebSocket
+        // The message will be sent via HTTP API and broadcasted via WebSocket
+        // So we resolve immediately
+        resolve(messagePayload.data);
+        clearTimeout(timeout);
       });
     },
-    [ticketId, currentUserId]
+    [ticketId, currentUserId, onNewMessage]
   );
-
-  // Send typing indicator
-  const sendTyping = useCallback(
-    (isTyping: boolean) => {
-      if (socketRef.current?.connected) {
-        socketRef.current.emit('typing', {
-          ticketId,
-          isTyping,
-        });
-      }
-    },
-    [ticketId]
-  );
-
-  // Mark user as online
-  const markOnline = useCallback(() => {
-    if (socketRef.current?.connected) {
-      socketRef.current.emit('userOnline', { ticketId });
-    }
-  }, [ticketId]);
 
   // Initialize connection
   useEffect(() => {
@@ -271,7 +222,10 @@ export const useTicketSocket = ({
   // Reconnect when coming back from background
   useEffect(() => {
     const handleAppStateChange = (nextAppState: string) => {
-      if (nextAppState === 'active' && !socketRef.current?.connected) {
+      if (
+        nextAppState === 'active' &&
+        (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)
+      ) {
         connect();
       }
     };
@@ -287,8 +241,6 @@ export const useTicketSocket = ({
   return {
     socketState,
     sendMessage,
-    sendTyping,
-    markOnline,
     reconnect: () => connect(0),
     disconnect: cleanup,
   };

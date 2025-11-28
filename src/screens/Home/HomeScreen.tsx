@@ -81,15 +81,7 @@ const HomeScreen = () => {
     async (showLoading = false, forceRefresh = false) => {
       const employeeCode = user?.employeeCode;
 
-      console.log('🏠 [HomeScreen.fetchTodayAttendance] Called with:', {
-        employeeCode,
-        showLoading,
-        forceRefresh,
-        user: user ? { fullname: user.fullname, employeeCode: user.employeeCode } : null,
-      });
-
       if (!employeeCode) {
-        console.log('⚠️ [HomeScreen.fetchTodayAttendance] No employeeCode, setting defaults');
         setCheckInTime(t('home.not_checked_in'));
         setCheckOutTime(t('home.not_checked_out'));
         return;
@@ -97,17 +89,11 @@ const HomeScreen = () => {
 
       try {
         if (showLoading && isMountedRef.current) {
-          console.log('⏳ [HomeScreen.fetchTodayAttendance] Setting loading state');
           setIsRefreshingAttendance(true);
         }
 
-        console.log(
-          `📊 [HomeScreen.fetchTodayAttendance] Starting fetch for: ${employeeCode}, forceRefresh: ${forceRefresh}`
-        );
-
         // TEMPORARY: Force clear ALL attendance cache to fix timezone display issue
         if (forceRefresh) {
-          console.log('🗑️ [HomeScreen.fetchTodayAttendance] Force clearing cache');
           attendanceService.forceCleanAllAttendanceCache();
         }
 
@@ -116,55 +102,27 @@ const HomeScreen = () => {
           forceRefresh
         );
 
-        console.log('📊 [HomeScreen.fetchTodayAttendance] Got attendance data:', attendanceData);
-
         if (attendanceData) {
-          console.log(
-            '✅ [HomeScreen.fetchTodayAttendance] Has attendance data, formatting times...'
-          );
           const formattedCheckIn = attendanceService.formatTime(attendanceData.checkInTime);
           const formattedCheckOut = attendanceService.formatTime(attendanceData.checkOutTime);
-
-          console.log('🕐 [HomeScreen.fetchTodayAttendance] Formatted times:', {
-            raw: {
-              checkInTime: attendanceData.checkInTime,
-              checkOutTime: attendanceData.checkOutTime,
-            },
-            formatted: {
-              checkIn: formattedCheckIn,
-              checkOut: formattedCheckOut,
-            },
-          });
 
           if (isMountedRef.current) {
             setCheckInTime(formattedCheckIn);
             setCheckOutTime(formattedCheckOut);
           }
-
-          console.log('✅ [HomeScreen.fetchTodayAttendance] Set state:', {
-            checkIn: formattedCheckIn,
-            checkOut: formattedCheckOut,
-          });
-
-          if (showLoading) {
-            console.log('📋 [HomeScreen.fetchTodayAttendance] Data refreshed after notification');
-          }
         } else {
-          console.log('⚠️ [HomeScreen.fetchTodayAttendance] No attendance data, setting defaults');
           if (isMountedRef.current) {
             setCheckInTime('--:--');
             setCheckOutTime('--:--');
           }
         }
       } catch (error) {
-        console.error('❌ [HomeScreen.fetchTodayAttendance] Error:', error);
         if (isMountedRef.current) {
           setCheckInTime('--:--');
           setCheckOutTime('--:--');
         }
       } finally {
         if (showLoading && isMountedRef.current) {
-          console.log('✅ [HomeScreen.fetchTodayAttendance] Clearing loading state');
           setIsRefreshingAttendance(false);
         }
       }
@@ -179,9 +137,7 @@ const HomeScreen = () => {
       if (result.success && isMountedRef.current) {
         setUnreadNotificationCount(result.data.unread_count);
       }
-    } catch (error) {
-      console.error('Lỗi khi lấy số lượng thông báo chưa đọc:', error);
-    }
+    } catch (error) {}
   }, []);
 
   useEffect(() => {
@@ -189,12 +145,9 @@ const HomeScreen = () => {
   }, [fetchTodayAttendance]);
 
   useEffect(() => {
-    console.log('🕐 [HomeScreen] Setting up 30-minute auto-refresh');
-
     // Initial fetch
     const intervalId = setInterval(
       () => {
-        console.log('⏰ [Auto-refresh] 30 minutes passed, refreshing attendance data');
         if (user?.employeeCode) {
           fetchTodayAttendance(false, true); // Silent refresh with force
         }
@@ -204,7 +157,6 @@ const HomeScreen = () => {
 
     // Cleanup interval on unmount
     return () => {
-      console.log('🗑️ [HomeScreen] Cleaning up auto-refresh interval');
       clearInterval(intervalId);
     };
   }, [user?.employeeCode, fetchTodayAttendance]);
@@ -213,13 +165,9 @@ const HomeScreen = () => {
   useEffect(() => {
     const setupPushNotificationListener = () => {
       pushNotificationService.setOnAttendanceNotification((notificationData) => {
-        console.log('📱 Received attendance notification:', notificationData);
-
         // Check if this notification is for current user
         const currentEmployeeCode = user?.employeeCode;
         if (notificationData.employeeCode === currentEmployeeCode) {
-          console.log('✅ Attendance notification for current user, refreshing data');
-
           // Auto-refresh attendance data with force refresh to bypass cache
           fetchTodayAttendance(true, true);
 
@@ -237,11 +185,8 @@ const HomeScreen = () => {
           //   { type: 'attendance', source: 'auto_refresh' }
           // );
         } else {
-          console.log('ℹ️ Attendance notification for different user, ignoring');
         }
       });
-
-      console.log('👂 Attendance notification listener setup complete');
     };
 
     // Only setup if user is authenticated
@@ -266,7 +211,6 @@ const HomeScreen = () => {
     React.useCallback(() => {
       const params = route.params as any;
       if (params?.refreshAttendance) {
-        console.log('📋 Refreshing attendance from notification');
         fetchTodayAttendance(true);
         // Clear the param để không refresh liên tục
         navigation.setParams({ refreshAttendance: undefined } as any);
@@ -277,22 +221,18 @@ const HomeScreen = () => {
   const navigateToTicket = () => {
     try {
       if (user) {
-        const role = (user.role || '').toLowerCase().trim();
+        const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
 
-        // Phân quyền điều hướng
-        if (['superadmin', 'admin', 'technical'].includes(role)) {
-          console.log('Điều hướng đến TicketAdmin vì người dùng có vai trò:', role);
+        // Mobile IT -> Ticket Admin, còn lại -> Ticket Guest
+        if (roles.includes('Mobile IT')) {
           navigation.navigate(ROUTES.SCREENS.TICKET_ADMIN);
         } else {
-          console.log('Điều hướng đến TicketGuest vì người dùng có vai trò:', role);
           navigation.navigate(ROUTES.SCREENS.TICKET_GUEST);
         }
       } else {
-        console.log('Không tìm thấy thông tin người dùng, điều hướng đến TicketGuest');
         navigation.navigate(ROUTES.SCREENS.TICKET_GUEST);
       }
     } catch (error) {
-      console.error('Lỗi khi kiểm tra quyền người dùng:', error);
       // Mặc định điều hướng đến TicketGuest nếu có lỗi
       navigation.navigate(ROUTES.SCREENS.TICKET_GUEST);
     }
@@ -315,6 +255,7 @@ const HomeScreen = () => {
   const hasMobileTeacher = roles.includes('Mobile Teacher');
   const hasMobileIT = roles.includes('Mobile IT');
   const hasMobileBOD = roles.includes('Mobile BOD');
+  const hasMobileUser = roles.includes('Mobile User');
 
   const allItems = [
     {
@@ -325,15 +266,14 @@ const HomeScreen = () => {
       onPress: navigateToTicket,
       key: 'tickets',
     },
-    // Devices module is temporarily hidden
-    // {
-    //   id: 2,
-    //   title: t('home.devices'),
-    //   component: DevicesIcon,
-    //   description: 'Quản lý thiết bị',
-    //   onPress: navigateToDevices,
-    //   key: 'devices',
-    // },
+    {
+      id: 2,
+      title: t('home.devices'),
+      component: DevicesIcon,
+      description: 'Quản lý thiết bị',
+      onPress: navigateToDevices,
+      key: 'devices',
+    },
     {
       id: 3,
       title: 'Điểm danh',
@@ -354,13 +294,19 @@ const HomeScreen = () => {
 
   let menuItems = allItems.filter(() => false);
   if (hasMobileBOD) {
+    // Mobile BOD: tất cả
     menuItems = allItems;
   } else if (hasMobileIT) {
-    menuItems = allItems.filter((i) => ['tickets'].includes(i.key));
+    // Mobile IT: Ticket Admin + Devices
+    menuItems = allItems.filter((i) => ['tickets', 'devices'].includes(i.key));
   } else if (hasMobileTeacher) {
+    // Mobile Teacher: Ticket Guest + Attendance + Leaves
     menuItems = allItems.filter((i) => ['tickets', 'attendance', 'documents'].includes(i.key));
+  } else if (hasMobileUser) {
+    // Mobile User: chỉ Ticket Guest
+    menuItems = allItems.filter((i) => ['tickets'].includes(i.key));
   } else {
-    // Default minimal access
+    // Default minimal access (Mobile User)
     menuItems = allItems.filter((i) => i.key === 'tickets');
   }
 
@@ -537,7 +483,7 @@ const HomeScreen = () => {
                   top: -4,
                   transform: [{ scale: pulseAnim }],
                 }}
-                className="h-[14px] min-w-[12px] px-1 rounded-full bg-red-500 items-center justify-center">
+                className="h-[14px] min-w-[12px] items-center justify-center rounded-full bg-red-500 px-1">
                 <Text className="font-bold text-[7px] text-white">
                   {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
                 </Text>
@@ -567,7 +513,7 @@ const HomeScreen = () => {
             {/* Time labels with detail button */}
             <View className="flex-row items-center justify-between">
               <View className="left-[5%] flex-row items-center">
-                <Text className="font-semibold text-base text-teal-700">{checkInTime}</Text>
+                <Text className="font-medium text-base text-teal-700">{checkInTime}</Text>
                 {isRefreshingAttendance && (
                   <View className="ml-2">
                     <Ionicons name="sync" size={14} color="#0d9488" />
@@ -576,7 +522,7 @@ const HomeScreen = () => {
               </View>
 
               <View className="right-[3%] flex-row items-center">
-                <Text className="font-semibold text-base text-teal-700">{checkOutTime}</Text>
+                <Text className="font-medium text-base text-teal-700">{checkOutTime}</Text>
                 {isRefreshingAttendance && (
                   <View className="ml-2">
                     <Ionicons name="sync" size={14} color="#0d9488" />
@@ -633,7 +579,7 @@ const HomeScreen = () => {
                       className="mt-2 w-[25%] items-center"
                       onPress={item.onPress}>
                       <item.component width={80} height={80} />
-                      <Text className="mt-2 text-center text-sm">{item.title}</Text>
+                      <Text className="mt-2 text-center font-medium text-sm">{item.title}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -650,7 +596,7 @@ const HomeScreen = () => {
             className="mb-3 flex-row items-center rounded-2xl border border-gray-300 bg-white px-4 py-3"
             onPress={openIOSSearch}>
             <FontAwesome name="search" size={18} color="#A1A1AA" />
-            <Text className="ml-3 flex-1 text-gray-400">{t('common.search')} Wis</Text>
+            <Text className="ml-3 flex-1 font-medium text-gray-400">{t('common.search')} Wis</Text>
           </TouchableOpacity>
 
           {/* Search History */}
@@ -668,7 +614,7 @@ const HomeScreen = () => {
                     className="ml-2 flex-row items-center border-b border-gray-200 py-2 pb-4"
                     onPress={() => handleSelectItem(title)}>
                     <item.component width={40} height={40} />
-                    <Text className="ml-2 text-gray-700">{title}</Text>
+                    <Text className="ml-2 font-medium text-gray-700">{title}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -740,17 +686,19 @@ const HomeScreen = () => {
                                       className="mt-2 w-[25%] items-center"
                                       onPress={() => handleIOSSelectItem(item.title)}>
                                       <item.component width={80} height={80} />
-                                      <Text className="mt-2 text-center text-sm">{item.title}</Text>
+                                      <Text className="mt-2 text-center font-medium text-sm">
+                                        {item.title}
+                                      </Text>
                                     </TouchableOpacity>
                                   ))}
                                 </View>
                               ) : (
                                 <View className="items-center py-8">
                                   <FontAwesome name="search" size={48} color="#ccc" />
-                                  <Text className="mt-4 text-base text-gray-500">
+                                  <Text className="mt-4 font-medium text-base text-gray-500">
                                     Không tìm thấy kết quả
                                   </Text>
-                                  <Text className="mt-1 text-sm text-gray-400">
+                                  <Text className="mt-1 text-sm font-normal text-gray-400">
                                     Thử {t('common.search')} với từ khóa khác
                                   </Text>
                                 </View>
@@ -803,7 +751,9 @@ const HomeScreen = () => {
                                   className="mt-2 w-[25%] items-center"
                                   onPress={() => handleIOSSelectItem(item.title)}>
                                   <item.component width={80} height={80} />
-                                  <Text className="mt-2 text-center text-sm">{item.title}</Text>
+                                  <Text className="mt-2 text-center font-medium text-sm">
+                                    {item.title}
+                                  </Text>
                                 </TouchableOpacity>
                               ))}
                             </View>

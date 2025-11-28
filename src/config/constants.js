@@ -42,5 +42,4 @@ export const TICKET_STATUSES = {
 };
 
 // Other constants
-export const MAX_IMAGES_UPLOAD = 5;
 export const MAX_IMAGE_SIZE_MB = 10;

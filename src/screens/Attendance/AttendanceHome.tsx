@@ -285,7 +285,13 @@ const AttendanceHome = () => {
         <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 10 }}>{title}</Text>
 
         {isTimetableEntry && (subject || true) && (
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24, marginTop: 12 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              marginBottom: 24,
+              marginTop: 12,
+            }}>
             {/* Môn học - Bên trái */}
             <View style={{ alignItems: 'left', flex: 1 }}>
               <Ionicons name="book-outline" size={24} color="#666" />
@@ -449,16 +455,26 @@ const AttendanceHome = () => {
 
             // Calculate period info for display
             const periodName = isTimetableEntry ? classData.period_name : null;
-            const periodTime = isTimetableEntry && classData.start_time && classData.end_time
-              ? `${classData.start_time} - ${classData.end_time}`
-              : null;
+            const periodTime =
+              isTimetableEntry && classData.start_time && classData.end_time
+                ? `${classData.start_time} - ${classData.end_time}`
+                : null;
 
-            
             return (
-              <View key={`container-${classData.timetable_column_id !== undefined ? `GVBM-${classData.timetable_column_id}-${classId}` : `GVCN-${classId}`}`} style={{ marginBottom: 16 }}>
+              <View
+                key={`container-${classData.timetable_column_id !== undefined ? `GVBM-${classData.timetable_column_id}-${classId}` : `GVCN-${classId}`}`}
+                style={{ marginBottom: 16 }}>
                 {isTimetableEntry && periodName && (
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#002855' }}>{periodName}</Text>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: 8,
+                    }}>
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#002855' }}>
+                      {periodName}
+                    </Text>
                     {periodTime && (
                       <Text style={{ fontSize: 14, color: '#666' }}>{periodTime}</Text>
                     )}

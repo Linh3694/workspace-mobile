@@ -89,20 +89,11 @@ const AppNavigator = () => {
           const role = (user.role || storedRole || '').toLowerCase().trim();
           const roles = Array.isArray(user.roles) ? user.roles : storedRoles;
 
-          // Nếu user có bất kỳ role admin nào trong frappe -> admin ticket
-          const adminRoles = [
-            'System Manager',
-            'Administrator',
-            'IT Support',
-            'Helpdesk',
-            'Admin',
-            'Technical',
-          ];
-          const hasAdminRole =
-            roles.some((r: string) => adminRoles.includes(r)) ||
-            ['superadmin', 'admin', 'technical'].includes(role);
+          // Logic phân quyền theo Mobile roles:
+          // Mobile IT -> Ticket Admin, còn lại -> Ticket Guest
+          const hasMobileIT = roles.includes('Mobile IT');
 
-          if (hasAdminRole) {
+          if (hasMobileIT) {
             setTicketComponent(() => TicketAdminScreen);
           } else {
             setTicketComponent(() => TicketGuestScreen);

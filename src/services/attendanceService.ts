@@ -270,20 +270,13 @@ class AttendanceService {
     const todayDateString = this.getCurrentVNDateString();
     const cacheKey = `today-attendance-${employeeCode}-${todayDateString}`;
 
-    console.log(
-      `🔍 [getTodayAttendance] Starting for employeeCode: ${employeeCode}, date: ${todayDateString}, forceRefresh: ${forceRefresh}`
-    );
-
     // Check cache first (shorter cache for today data - 1 minute) - UNLESS force refresh
     if (!forceRefresh) {
       const cached = this.cache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < 60000) {
-        console.log('✅ [getTodayAttendance] Cache HIT, returning cached data:', cached.data);
         return cached.data;
       }
-      console.log('❌ [getTodayAttendance] Cache MISS, fetching from API');
     } else {
-      console.log('🔄 [getTodayAttendance] Force refresh, clearing cache');
       this.cache.delete(cacheKey);
     }
 
@@ -296,41 +289,29 @@ class AttendanceService {
           `${BASE_URL}/api/method/erp.api.attendance.query.get_employee_attendance_range` +
           `?employee_code=${encodeURIComponent(employeeCode)}&start_date=${todayDateString}&end_date=${todayDateString}&limit=1`;
 
-        console.log('🔗 [getTodayAttendance] API URL:', apiUrl);
-
         const response = await fetch(apiUrl, { headers });
-
-        console.log('📡 [getTodayAttendance] Response status:', response.status);
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error('❌ [getTodayAttendance] API Error:', response.status, errorText);
           throw new Error(`API Error ${response.status}: ${errorText}`);
         }
 
         const data = await response.json();
-        console.log('📦 [getTodayAttendance] Raw response data:', JSON.stringify(data, null, 2));
 
         // Fix: Parse response correctly - data is in message.data.records[0] (BE wraps in message object)
         const record = data?.message?.data?.records?.[0] || data?.data?.records?.[0] || null;
-        console.log('🔍 [getTodayAttendance] Parsed record:', JSON.stringify(record, null, 2));
 
         return record;
       });
 
-      console.log('🔄 [getTodayAttendance] Raw record from API:', rawRecord);
-
       // Sanitize and validate the record
       const record = rawRecord ? this.sanitizeAttendanceRecord(rawRecord) : null;
-      console.log('✅ [getTodayAttendance] Sanitized record:', record);
 
       // Cache the result
       this.setCachedData(cacheKey, record);
-      console.log('💾 [getTodayAttendance] Cached result');
 
       return record;
     } catch (error) {
-      console.error('❌ [getTodayAttendance] Final error:', error);
       return null;
     }
   }
@@ -548,15 +529,12 @@ class AttendanceService {
       // Note: get_all_classes doesn't accept page/limit parameters
       if (campusId) url.searchParams.set('campus_id', campusId);
 
-      console.log('[attendanceService] Fetching classes from:', url.toString());
       const res = await fetch(url.toString(), { headers });
       if (!res.ok) {
         const text = await res.text();
-        console.warn('[attendanceService] getAllClassesForCurrentCampus failed:', res.status, text);
         return [];
       }
       const json = await res.json();
-      console.log('[attendanceService] Full response:', JSON.stringify(json).substring(0, 800));
 
       // Parse response: check multiple possible locations
       let rows = [];
@@ -568,20 +546,8 @@ class AttendanceService {
         rows = json.message;
       }
 
-      console.log(
-        '[attendanceService] Parsed rows count:',
-        Array.isArray(rows) ? rows.length : 'not array, type: ' + typeof rows
-      );
-
-      if (Array.isArray(rows) && rows.length > 0) {
-        console.log('[attendanceService] First class:', JSON.stringify(rows[0]));
-      } else {
-        console.warn('[attendanceService] ⚠️ No classes returned! Campus:', campusId);
-      }
-
       return Array.isArray(rows) ? rows : [];
     } catch (e) {
-      console.warn('[attendanceService] getAllClassesForCurrentCampus error', e);
       return [];
     }
   }
@@ -599,54 +565,33 @@ class AttendanceService {
       try {
         const campusId = await AsyncStorage.getItem('currentCampusId');
         const selectedCampus = await AsyncStorage.getItem('selectedCampus');
-        console.log('[attendanceService] fetchTeacherClassAssignments request:', {
-          url: url.toString(),
-          userId,
-          campusId,
-          selectedCampus,
-        });
       } catch {}
       const res = await fetch(url.toString(), { method: 'GET', headers });
       if (!res.ok) {
         const text = await res.text();
-        console.warn('[attendanceService] fetchTeacherClassAssignments failed:', res.status, text);
         return null;
       }
       const data = await res.json();
       try {
-        console.log(
-          '[attendanceService] fetchTeacherClassAssignments raw:',
-          JSON.stringify(data)?.slice(0, 1000)
-        );
-      } catch {}
-      const payload = (data && (data.data || data.message?.data)) || data;
-      const out = {
-        homeroom_class_ids: payload?.homeroom_class_ids || [],
-        vice_homeroom_class_ids: payload?.vice_homeroom_class_ids || [],
-        teaching_class_ids: payload?.teaching_class_ids || [],
-      };
-      console.log('[attendanceService] teacher assignments:', {
-        homeroomCount: out.homeroom_class_ids.length,
-        viceCount: out.vice_homeroom_class_ids.length,
-        teachingCount: out.teaching_class_ids.length,
-        preview: {
-          homeroom: out.homeroom_class_ids.slice(0, 5),
-          vice: out.vice_homeroom_class_ids.slice(0, 5),
-          teaching: out.teaching_class_ids.slice(0, 5),
-        },
-        debug: payload?.debug,
-      });
-      if (
-        out.homeroom_class_ids.length === 0 &&
-        out.vice_homeroom_class_ids.length === 0 &&
-        out.teaching_class_ids.length === 0
-      ) {
-        // Force fallback to FE-like logic when BE returns empty
+        const payload = (data && (data.data || data.message?.data)) || data;
+        const out = {
+          homeroom_class_ids: payload?.homeroom_class_ids || [],
+          vice_homeroom_class_ids: payload?.vice_homeroom_class_ids || [],
+          teaching_class_ids: payload?.teaching_class_ids || [],
+        };
+        if (
+          out.homeroom_class_ids.length === 0 &&
+          out.vice_homeroom_class_ids.length === 0 &&
+          out.teaching_class_ids.length === 0
+        ) {
+          // Force fallback to FE-like logic when BE returns empty
+          return null;
+        }
+        return out;
+      } catch (e) {
         return null;
       }
-      return out;
-    } catch (e) {
-      console.error('[attendanceService] fetchTeacherClassAssignments error', e);
+    } catch (error) {
       return null;
     }
   }
@@ -677,27 +622,15 @@ class AttendanceService {
       const campusId = (await AsyncStorage.getItem('currentCampusId')) || '';
 
       // 1) Resolve teacher_id by user email via get_all_teachers
-      console.log('[attendanceService] -> GET get_all_teachers');
       const tRes = await fetch(`${BASE_URL}/api/method/erp.api.erp_sis.teacher.get_all_teachers`, {
         headers,
       });
       if (!tRes.ok) {
         const txt = await tRes.text();
-        console.warn('[attendanceService] get_all_teachers failed', tRes.status, txt);
         return null;
       }
       const tJson = await tRes.json();
-      try {
-        console.log(
-          '[attendanceService] get_all_teachers raw:',
-          JSON.stringify(tJson)?.slice(0, 800)
-        );
-      } catch {}
       const teacherList = (tJson && (tJson.data || tJson.message?.data)) || [];
-      console.log(
-        '[attendanceService] get_all_teachers count:',
-        Array.isArray(teacherList) ? teacherList.length : 'n/a'
-      );
       const norm = (s: any) =>
         String(s || '')
           .trim()
@@ -708,7 +641,6 @@ class AttendanceService {
           )
         : null;
       const teacherId: string = teacher?.name || teacher?.id || '';
-      console.log('[attendanceService] resolved teacher:', { userEmail, teacherId });
 
       // 2) Fetch classes (all or large page)
       const classesUrl = new URL(
@@ -717,25 +649,13 @@ class AttendanceService {
       classesUrl.searchParams.set('page', '1');
       classesUrl.searchParams.set('limit', '500');
       if (campusId) classesUrl.searchParams.set('campus_id', campusId);
-      console.log('[attendanceService] -> GET get_all_classes', classesUrl.toString());
       const cRes = await fetch(classesUrl.toString(), { headers });
       if (!cRes.ok) {
         const txt = await cRes.text();
-        console.warn('[attendanceService] get_all_classes failed', cRes.status, txt);
         return null;
       }
       const cJson = await cRes.json();
-      try {
-        console.log(
-          '[attendanceService] get_all_classes raw:',
-          JSON.stringify(cJson)?.slice(0, 800)
-        );
-      } catch {}
       const classes = (cJson && (cJson.data || cJson.message?.data)) || [];
-      console.log(
-        '[attendanceService] get_all_classes count:',
-        Array.isArray(classes) ? classes.length : 'n/a'
-      );
 
       // 3) Filter homeroom/vice by teacherId
       const homeroom_class_ids = classes
@@ -755,28 +675,18 @@ class AttendanceService {
       weekUrl.searchParams.set('week_start', weekStart);
       weekUrl.searchParams.set('week_end', weekEnd);
       if (campusId) weekUrl.searchParams.set('campus_id', campusId);
-      console.log('[attendanceService] -> GET get_teacher_week', weekUrl.toString());
       const wRes = await fetch(weekUrl.toString(), { headers });
       let teaching_class_ids: string[] = [];
       if (wRes.ok) {
         const wJson = await wRes.json();
         try {
-          console.log(
-            '[attendanceService] get_teacher_week raw:',
-            JSON.stringify(wJson)?.slice(0, 800)
-          );
         } catch {}
         const entries = (wJson && (wJson.data || wJson.message?.data)) || [];
-        console.log(
-          '[attendanceService] get_teacher_week entries:',
-          Array.isArray(entries) ? entries.length : 'n/a'
-        );
         teaching_class_ids = Array.from(
           new Set(entries.map((e: any) => String(e?.class_id || '')).filter(Boolean))
         );
       } else {
         const txt = await wRes.text();
-        console.warn('[attendanceService] get_teacher_week failed', wRes.status, txt);
       }
 
       const out = {
@@ -785,15 +695,8 @@ class AttendanceService {
         teaching_class_ids,
         teacher_id: teacherId,
       };
-      console.log('[attendanceService] FE-like assignments:', {
-        teacherId,
-        homeroomCount: homeroom_class_ids.length,
-        viceCount: vice_homeroom_class_ids.length,
-        teachingCount: teaching_class_ids.length,
-      });
       return out;
     } catch (e) {
-      console.error('[attendanceService] syncTeacherAssignmentsLikeWeb error', e);
       return null;
     }
   }

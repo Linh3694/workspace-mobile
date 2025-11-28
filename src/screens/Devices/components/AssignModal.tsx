@@ -11,11 +11,11 @@ import {
   Animated,
   Dimensions,
   TouchableWithoutFeedback,
+  Image,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Image } from 'react-native';
-import { getAvatar } from '../utils/avatar';
-import { API_BASE_URL } from '../config/constants';
+import { getAvatar } from '../../../utils/avatar';
+import { API_BASE_URL } from '../../../config/constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface User {

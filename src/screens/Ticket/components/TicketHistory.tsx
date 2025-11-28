@@ -1,68 +1,61 @@
 import React, { useState, useEffect } from 'react';
 //@ts-ignore
 import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
-import axios from 'axios';
-import { API_BASE_URL } from '../../../config/constants';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getTicketHistory } from '../../../services/ticketService';
 import { WebView } from 'react-native-webview';
 
 interface TicketHistoryProps {
-    ticketId: string;
+  ticketId: string;
 }
 
 interface HistoryItem {
+  _id: string;
+  timestamp: string;
+  action: string;
+  user: {
     _id: string;
-    timestamp: string;
-    action: string;
-    user: {
-        _id: string;
-        fullname: string;
-    };
+    fullname: string;
+  };
 }
 
 const TicketHistory: React.FC<TicketHistoryProps> = ({ ticketId }) => {
-    const [history, setHistory] = useState<HistoryItem[]>([]);
-    const [loading, setLoading] = useState(true);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        fetchHistory();
-    }, [ticketId]);
+  useEffect(() => {
+    fetchHistory();
+  }, [ticketId]);
 
-    const fetchHistory = async () => {
-        try {
-            const token = await AsyncStorage.getItem('authToken');
-            const response = await axios.get(`${API_BASE_URL}/api/tickets/${ticketId}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (response.data.success) {
-                setHistory(response.data.ticket.history || []);
-            }
-        } catch (error) {
-            console.error('Lỗi khi lấy lịch sử:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+  const fetchHistory = async () => {
+    try {
+      const historyData = await getTicketHistory(ticketId);
+      setHistory(historyData);
+    } catch (error) {
+      console.error('Lỗi khi lấy lịch sử:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('vi-VN', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    };
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
-    // Hàm để loại bỏ các thẻ HTML và chỉ giữ lại text
-    const stripHtml = (html: string) => {
-        return html.replace(/<\/?[^>]+(>|$)/g, "");
-    };
+  // Hàm để loại bỏ các thẻ HTML và chỉ giữ lại text
+  const stripHtml = (html: string) => {
+    return html.replace(/<\/?[^>]+(>|$)/g, '');
+  };
 
-    // Hàm để bao bọc nội dung HTML trong cấu trúc HTML hoàn chỉnh
-    const wrapInHtml = (content: string) => {
-        return `
+  // Hàm để bao bọc nội dung HTML trong cấu trúc HTML hoàn chỉnh
+  const wrapInHtml = (content: string) => {
+    return `
         <html>
             <head>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -84,46 +77,46 @@ const TicketHistory: React.FC<TicketHistoryProps> = ({ ticketId }) => {
             </body>
         </html>
         `;
-    };
+  };
 
-    if (loading) {
-        return (
-            <View className="flex-1 justify-center items-center">
-                <ActivityIndicator size="large" color="#002855" />
-            </View>
-        );
-    }
-
+  if (loading) {
     return (
-        <View className="flex-1">
-            {history.length === 0 ? (
-                <View className="flex-1 justify-center items-center py-8">
-                    <Text className="text-gray-500 font-medium">Chưa có lịch sử hoạt động</Text>
-                </View>
-            ) : (
-                <ScrollView className="flex-1">
-                    {[...history].reverse().map((item, index) => (
-                        <View key={index} className="mb-4">
-                            <View className="ml-6 bg-[#F8F8F8] rounded-xl p-3 font-medium">
-                                <Text className=" text-gray-500 text-sm font-medium mb-1">
-                                    {formatDate(item.timestamp)}
-                                </Text>
-                                {/* Sử dụng WebView để hiển thị HTML */}
-                                <WebView
-                                    originWhitelist={['*']}
-                                    source={{ html: wrapInHtml(item.action) }}
-                                    style={{ height: 40, backgroundColor: 'transparent' }}
-                                    scrollEnabled={false}
-                                />
-                                {/* Phòng trường hợp WebView không hiển thị đúng */}
-                                <Text className="hidden">{stripHtml(item.action)}</Text>
-                            </View>
-                        </View>
-                    ))}
-                </ScrollView>
-            )}
-        </View>
+      <View className="flex-1 items-center justify-center">
+        <ActivityIndicator size="large" color="#002855" />
+      </View>
     );
+  }
+
+  return (
+    <View className="flex-1">
+      {history.length === 0 ? (
+        <View className="flex-1 items-center justify-center py-8">
+          <Text className="font-medium text-gray-500">Chưa có lịch sử hoạt động</Text>
+        </View>
+      ) : (
+        <ScrollView className="flex-1">
+          {[...history].reverse().map((item, index) => (
+            <View key={index} className="mb-4">
+              <View className="ml-6 rounded-xl bg-[#F8F8F8] p-3 font-medium">
+                <Text className=" mb-1 font-medium text-sm text-gray-500">
+                  {formatDate(item.timestamp)}
+                </Text>
+                {/* Sử dụng WebView để hiển thị HTML */}
+                <WebView
+                  originWhitelist={['*']}
+                  source={{ html: wrapInHtml(item.action) }}
+                  style={{ height: 40, backgroundColor: 'transparent' }}
+                  scrollEnabled={false}
+                />
+                {/* Phòng trường hợp WebView không hiển thị đúng */}
+                <Text className="hidden">{stripHtml(item.action)}</Text>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+    </View>
+  );
 };
 
-export default TicketHistory; 
+export default TicketHistory;

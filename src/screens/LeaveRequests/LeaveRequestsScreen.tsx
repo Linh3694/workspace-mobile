@@ -40,8 +40,9 @@ const TabHeader = ({
   onPress: () => void;
 }) => (
   <View className="flex-1 items-center">
-    <TouchableOpacity onPress={onPress}>
-      <Text className={`text-center ${active ? 'font-bold text-[#002855]' : 'text-gray-500'}`}>
+    <TouchableOpacity key={`tab-${label.toLowerCase()}`} onPress={onPress}>
+      <Text
+        className={`text-center font-medium ${active ? 'font-bold text-[#002855]' : 'text-gray-500'}`}>
         {label}
       </Text>
       {active && <View className="mt-2 h-0.5 bg-[#002855]" />}
