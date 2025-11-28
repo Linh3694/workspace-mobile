@@ -13,6 +13,13 @@ interface PushNotificationData {
   ticketId?: string;
   chatId?: string;
   messageId?: string;
+  action?: string;
+  oldStatus?: string;
+  newStatus?: string;
+  changedBy?: string;
+  assignedBy?: string;
+  priority?: string;
+  ticketCode?: string;
 }
 
 interface NotificationResponse {
@@ -249,14 +256,47 @@ class PushNotificationService {
         break;
       case 'ticket_created':
       case 'ticket_updated':
-      case 'ticket_assigned':
         this.handleTicketNotification(data, wasOpened);
         break;
       case 'chat_message':
         this.handleChatNotification(data, wasOpened);
         break;
       default:
-        console.log('📝 General notification received');
+        // Handle action-based notifications (from ticket-service)
+        switch (data?.action) {
+          case 'ticket_status_changed':
+            this.handleTicketStatusChangeNotification(data, wasOpened);
+            break;
+          case 'ticket_assigned':
+            this.handleTicketAssignmentNotification(data, wasOpened);
+            break;
+          case 'ticket_processing':
+          case 'ticket_waiting':
+          case 'ticket_done':
+          case 'ticket_closed':
+          case 'ticket_cancelled':
+            this.handleTicketStatusChangeNotification(data, wasOpened);
+            break;
+          // Admin notifications
+          case 'new_ticket_admin':
+            this.handleNewTicketAdminNotification(data, wasOpened);
+            break;
+          case 'user_reply':
+            this.handleUserReplyNotification(data, wasOpened);
+            break;
+          case 'ticket_cancelled_admin':
+            this.handleTicketCancelledAdminNotification(data, wasOpened);
+            break;
+          case 'completion_confirmed':
+            this.handleCompletionConfirmedNotification(data, wasOpened);
+            break;
+          case 'ticket_feedback_received':
+            this.handleFeedbackReceivedNotification(data, wasOpened);
+            break;
+          default:
+            console.log('📝 General notification received:', data);
+        }
+        break;
     }
   }
 
@@ -283,6 +323,63 @@ class PushNotificationService {
     }
   }
 
+  private handleTicketStatusChangeNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('🎫 Ticket status change notification:', data);
+
+    if (wasOpened && data.ticketId) {
+      this.navigateToTicketDetail(data.ticketId);
+    }
+  }
+
+  private handleTicketAssignmentNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('👤 Ticket assignment notification:', data);
+
+    if (wasOpened && data.ticketId) {
+      this.navigateToTicketDetail(data.ticketId);
+    }
+  }
+
+  // Admin notification handlers
+  private handleNewTicketAdminNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('🆕 New ticket admin notification:', data);
+
+    if (wasOpened && data.ticketId) {
+      this.navigateToTicketDetail(data.ticketId);
+    }
+  }
+
+  private handleUserReplyNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('💬 User reply notification:', data);
+
+    if (wasOpened && data.ticketId) {
+      this.navigateToTicketDetail(data.ticketId);
+    }
+  }
+
+  private handleTicketCancelledAdminNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('❌ Ticket cancelled admin notification:', data);
+
+    if (wasOpened && data.ticketId) {
+      this.navigateToTicketDetail(data.ticketId);
+    }
+  }
+
+  private handleCompletionConfirmedNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('✅ Completion confirmed notification:', data);
+
+    if (wasOpened && data.ticketId) {
+      this.navigateToTicketDetail(data.ticketId);
+    }
+  }
+
+  private handleFeedbackReceivedNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('⭐ Feedback received notification:', data);
+
+    if (wasOpened && data.ticketId) {
+      this.navigateToTicketDetail(data.ticketId);
+    }
+  }
+
   private handleChatNotification(data: PushNotificationData, wasOpened: boolean): void {
     console.log('💬 Chat notification:', data);
 
@@ -295,6 +392,13 @@ class PushNotificationService {
     // This will be implemented by navigation service
     console.log(`🧭 Navigate to ${screenName} with params:`, params);
     // TODO: Integrate with navigation service
+  }
+
+  private navigateToTicketDetail(ticketId: string): void {
+    // Navigate to ticket detail screen
+    console.log(`🧭 Navigate to Ticket Detail: ${ticketId}`);
+    // Use the same navigation pattern as existing ticket notifications
+    this.navigateToScreen('TicketDetail', { ticketId });
   }
 
   // Public methods

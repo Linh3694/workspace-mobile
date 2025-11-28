@@ -64,3 +64,5 @@ export function getOptimizedImageUrl(
   // In the future, you could implement image optimization service
   return fullUrl;
 }
+
+

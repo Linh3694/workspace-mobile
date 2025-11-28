@@ -135,6 +135,26 @@ const NotificationsScreen = () => {
           screen: 'Ticket',
           params: { ticketId: data.ticketId },
         });
+      } else if (data?.action === 'ticket_status_changed' ||
+                 data?.action === 'ticket_assigned' ||
+                 data?.action === 'ticket_processing' ||
+                 data?.action === 'ticket_waiting' ||
+                 data?.action === 'ticket_done' ||
+                 data?.action === 'ticket_closed' ||
+                 data?.action === 'ticket_cancelled' ||
+                 // Admin notifications
+                 data?.action === 'new_ticket_admin' ||
+                 data?.action === 'user_reply' ||
+                 data?.action === 'ticket_cancelled_admin' ||
+                 data?.action === 'completion_confirmed' ||
+                 data?.action === 'ticket_feedback_received') {
+        // Handle all ticket-related notifications
+        if (data.ticketId) {
+          (navigation as any).navigate('Main', {
+            screen: 'Ticket',
+            params: { ticketId: data.ticketId },
+          });
+        }
       } else if (data?.type === 'attendance' || data?.type === 'staff_attendance') {
         (navigation as any).navigate('Main', {
           screen: 'Notification',
