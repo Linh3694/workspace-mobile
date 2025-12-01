@@ -1,386 +1,363 @@
 import React, { useState, useEffect } from 'react';
-// @ts-ignore
+import { View, Text, ActivityIndicator, TextInput, ScrollView, RefreshControl } from 'react-native';
+import { TouchableOpacity } from '../../../components/Common';
+import LottieView from 'lottie-react-native';
+
+// Lottie animations for feedback stars
+const ratingAnimations = [
+  require('../../../assets/emoji/1star.json'),
+  require('../../../assets/emoji/2star.json'),
+  require('../../../assets/emoji/3star.json'),
+  require('../../../assets/emoji/4star.json'),
+  require('../../../assets/emoji/5star.json'),
+];
+
+// Store & Hooks
 import {
-  View,
-  Text,
-  ActivityIndicator,
-  TextInput,
-  TouchableOpacity,
-  Animated,
-  Dimensions,
-} from 'react-native';
-import {
-  getTicketDetail,
-  updateTicket,
-  createSubTask,
-  updateSubTaskStatus,
-  type Ticket,
-  type SubTask,
-} from '../../../services/ticketService';
-import Toast from 'react-native-toast-message';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import CustomLiquidActionSheet from '../../../../components/CustomLiquidActionSheet';
+  useTicketStore,
+  useTicketData,
+  useTicketActions,
+  useTicketUIActions,
+  useTicketSubTasks,
+} from '../../../hooks/useTicketStore';
+
+// Utils & Constants
+import { toast } from '../../../utils/toast';
+import { getStatusLabel } from '../../../config/ticketConstants';
+
+// Components
+import { TicketStatusSheet, SubTaskStatusSheet } from './TicketModals';
+
+import type { SubTask } from '../../../services/ticketService';
+import type { SubTaskStatus, TicketStatus } from '../../../hooks/useTicketStore';
 
 interface TicketProcessingProps {
   ticketId: string;
   ticketCode?: string;
-  onRefresh: () => void;
 }
 
-interface StatusOption {
-  label: string;
-  value: string;
-}
+// Admin can only choose these statuses
+const ADMIN_STATUS_OPTIONS = ['Processing', 'Done', 'Cancelled'];
 
-const { height } = Dimensions.get('window');
+// Helper function - defined outside component to avoid recreation
+const normalizeStatus = (status = '') => {
+  const lower = status.toLowerCase().replace(/_/g, ' ');
+  // "waiting for customer" được xử lý như "Processing" để UI đồng nhất cho guest
+  if (lower === 'processing' || lower === 'waiting for customer') return 'Processing';
+  if (lower === 'done' || lower === 'completed') return 'Done';
+  if (lower === 'cancelled') return 'Cancelled';
+  if (lower === 'closed') return 'Closed';
+  if (lower === 'assigned') return 'Assigned';
+  return status;
+};
 
-const getStatusLabel = (status: string) => {
-  switch (status) {
-    case 'Assigned':
-      return 'Đã nhận';
-    case 'Processing':
-      return 'Đang xử lý';
-    case 'Waiting for Customer':
-      return 'Chờ phản hồi';
-    case 'Done':
-      return 'Hoàn thành';
-    case 'Closed':
-      return 'Đã đóng';
-    case 'Cancelled':
-      return 'Đã huỷ';
+// Helper function for rating text
+const getRatingText = (rating: number): string => {
+  switch (rating) {
+    case 1:
+      return 'Rất không hài lòng';
+    case 2:
+      return 'Không hài lòng';
+    case 3:
+      return 'Bình thường';
+    case 4:
+      return 'Hài lòng';
+    case 5:
+      return 'Rất hài lòng';
     default:
-      return status;
+      return '';
   }
 };
 
-// Admin can only choose these statuses
-const statusOptions = ['Processing', 'Done', 'Cancelled'];
-
-const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId, ticketCode, onRefresh }) => {
-  const [loading, setLoading] = useState(true);
-  const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [ticketStatus, setTicketStatus] = useState<string>('Processing');
-  const [subTasks, setSubTasks] = useState<SubTask[]>([]);
-  const [showCancelReasonInput, setShowCancelReasonInput] = useState(false);
-  const [cancelReason, setCancelReason] = useState('');
-  const [open, setOpen] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState(ticketStatus);
+const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
   const [showAddSubTask, setShowAddSubTask] = useState(false);
   const [newSubTaskTitle, setNewSubTaskTitle] = useState('');
-  const [showStatusModal, setShowStatusModal] = useState(false);
-  const [showTicketStatusSheet, setShowTicketStatusSheet] = useState(false);
-  const [selectedSubTask, setSelectedSubTask] = useState<SubTask | null>(null);
-  const [statusModalAnim] = useState(new Animated.Value(0));
-  const [statusSlideAnim] = useState(new Animated.Value(height));
+  const [showCancelReasonInput, setShowCancelReasonInput] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('Processing');
 
-  /* -------------------------------------------------------------------------- */
-  /*                               FETCH DETAILS                                */
-  /* -------------------------------------------------------------------------- */
+  // Global store - ticket đã được fetch từ parent (TicketAdminDetail)
+  const { ticket, loading, refreshing } = useTicketData();
+  const { subTasks, hasIncompleteSubTasks } = useTicketSubTasks();
+  const { updateStatus, addSubTask, updateSubTaskStatus, refreshTicket } = useTicketActions();
+  const { openTicketStatusSheet, openSubTaskStatusModal } = useTicketUIActions();
+  const actionLoading = useTicketStore((state) => state.actionLoading);
+  const ui = useTicketStore((state) => state.ui);
+
+  // Sync selected status with ticket status
   useEffect(() => {
-    fetchTicketDetails();
-  }, [ticketId]);
-
-  const fetchTicketDetails = async () => {
-    try {
-      setLoading(true);
-      const data = await getTicketDetail(ticketId);
-      if (data) {
-        setTicket(data);
-        setTicketStatus(normalizeStatus(data.status));
-        setSubTasks(data.subTasks || []);
-      }
-    } catch (err) {
-      console.error('Lỗi khi lấy ticket:', err);
-    } finally {
-      setLoading(false);
+    if (ticket?.status) {
+      setSelectedStatus(normalizeStatus(ticket.status));
     }
-  };
+  }, [ticket?.status]);
 
-  /* -------------------------------------------------------------------------- */
-  /*                            STATUS UPDATE HANDLER                           */
-  /* -------------------------------------------------------------------------- */
+  const ticketStatus = normalizeStatus(ticket?.status || '');
+  const isTerminalStatus = ticketStatus === 'Cancelled' || ticketStatus === 'Closed';
+
+  // ============================================================================
+  // Handlers
+  // ============================================================================
+
   const handleUpdateStatus = async (newStatus: string) => {
+    // Validate: không thể Done nếu còn subtask In Progress
     if (newStatus === 'Done' && subTasks.some((t) => t.status === 'In Progress')) {
-      Toast.show({ type: 'error', text1: 'Bạn cần xử lý hết các subtask trước khi hoàn thành.' });
+      toast.error('Cần xử lý hết subtask trước');
       return;
     }
+
+    // Cần nhập lý do nếu Cancel
     if (newStatus === 'Cancelled' && !cancelReason.trim()) {
       setShowCancelReasonInput(true);
       return;
     }
+
     await updateStatusAPI(newStatus, newStatus === 'Cancelled' ? cancelReason : '');
   };
 
   const updateStatusAPI = async (newStatus: string, reason = '') => {
     try {
-      const payload: any = { status: newStatus };
-      if (newStatus === 'Cancelled' && reason) payload.cancellationReason = reason;
-
-      await updateTicket(ticketId, payload);
-
-      Toast.show({ type: 'success', text1: 'Cập nhật trạng thái thành công!' });
-      setTicketStatus(newStatus);
-      fetchTicketDetails();
-    } catch (err: any) {
-      // Luôn fetch lại ticket để kiểm tra trạng thái thực tế
-      await fetchTicketDetails();
-      // Sau khi fetch xong, kiểm tra ticketStatus mới nhất
-      // (ticketStatus sẽ được cập nhật trong fetchTicketDetails)
-      setTimeout(() => {
-        if (ticketStatus === newStatus) {
-          Toast.show({ type: 'success', text1: 'Cập nhật trạng thái thành công!' });
+      // Nếu có lý do cancel, cần gọi cancelTicket API thay vì updateStatus
+      if (newStatus === 'Cancelled' && reason) {
+        const cancelTicketFn = useTicketStore.getState().cancelTicket;
+        const success = await cancelTicketFn(reason);
+        if (success) {
+          toast.success('Cập nhật thành công!');
+          setCancelReason('');
+          setShowCancelReasonInput(false);
         } else {
-          console.error('Lỗi cập nhật trạng thái:', err, err?.response?.data);
-          Toast.show({ type: 'error', text1: 'Không thể cập nhật trạng thái.' });
+          toast.error('Không thể cập nhật');
         }
-      }, 500); // Đợi state cập nhật, có thể điều chỉnh thời gian nếu cần
+      } else {
+        const success = await updateStatus(newStatus as TicketStatus);
+        if (success) {
+          toast.success('Cập nhật thành công!');
+        } else {
+          if (newStatus === 'Done' && hasIncompleteSubTasks) {
+            toast.error('Cần xử lý hết subtask trước');
+          } else {
+            toast.error('Không thể cập nhật');
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Lỗi cập nhật trạng thái:', err);
+      toast.error('Không thể cập nhật');
     }
   };
 
-  /* -------------------------------------------------------------------------- */
-  /*                          CANCEL TICKET CONFIRMATION                        */
-  /* -------------------------------------------------------------------------- */
   const confirmCancel = async () => {
     if (!cancelReason.trim()) {
-      Toast.show({ type: 'info', text1: 'Vui lòng nhập lý do huỷ.' });
+      toast.error('Vui lòng nhập lý do huỷ');
       return;
     }
     await updateStatusAPI('Cancelled', cancelReason.trim());
-    setCancelReason('');
-    setShowCancelReasonInput(false);
   };
 
-  /* -------------------------------------------------------------------------- */
-  /*                           HELPER – LABEL & COLOR                           */
-  /* -------------------------------------------------------------------------- */
-  const normalizeStatus = (status = '') => {
-    const lower = status.toLowerCase();
-    if (lower === 'processing' || lower === 'processing') return 'Processing';
-    if (lower === 'done' || lower === 'completed') return 'Done';
-    if (lower === 'cancelled') return 'Cancelled';
-    if (lower === 'closed') return 'Closed';
-    return status;
-  };
-
-  /* -------------------------------------------------------------------------- */
-  /*                                   RENDER                                   */
-  /* -------------------------------------------------------------------------- */
-  useEffect(() => {
-    setSelectedStatus(ticketStatus);
-  }, [ticketStatus]);
-
-  // Mapping ticket status to pill background colors
-  const statusColors: Record<string, string> = {
-    Processing: '#FFAA00', // vàng/hoạt động
-    Done: '#4CAF50', // xanh lá cây
-    Cancelled: '#F44336', // đỏ
-    Closed: '#9E9E9E', // ghi
-  };
-  const currentStatusColor = statusColors[ticketStatus] || '#FFFFFF';
-
-  // Create dropdown items based on current status
-  const getStatusItems = () => {
-    // If ticket is closed, show all status options
-    if (ticketStatus === 'Closed') {
-      // Make sure to include current status in the dropdown
-      return [
-        { label: getStatusLabel('Closed'), value: 'Closed' },
-        ...statusOptions.map((s) => ({
-          label: getStatusLabel(s),
-          value: s,
-        })),
-      ];
-    }
-    // Otherwise, only show normal options
-    return statusOptions.map((s) => ({
-      label: getStatusLabel(s),
-      value: s,
-    }));
-  };
-
-  // Hàm thêm subtask
   const handleAddSubTask = async () => {
     if (!newSubTaskTitle.trim()) {
-      Toast.show({ type: 'info', text1: 'Tiêu đề subtask không được để trống.' });
+      toast.error('Tiêu đề không được để trống');
       return;
     }
-    try {
-      // Lấy user hiện tại từ AsyncStorage
-      const userStr = await AsyncStorage.getItem('user');
-      let assignedTo = '';
-      if (userStr) {
-        const userObj = JSON.parse(userStr);
-        assignedTo = userObj._id || userObj.email; // Sử dụng _id hoặc email làm assignedTo
-      }
-      if (!assignedTo) {
-        Toast.show({ type: 'error', text1: 'Không tìm thấy thông tin người dùng hiện tại.' });
-        return;
-      }
 
-      await createSubTask(ticketId, {
-        title: newSubTaskTitle,
-        assignedTo: assignedTo,
-      });
-
-      Toast.show({ type: 'success', text1: 'Thêm subtask thành công!' });
+    const success = await addSubTask(newSubTaskTitle);
+    if (success) {
       setNewSubTaskTitle('');
       setShowAddSubTask(false);
-      fetchTicketDetails(); // Refresh ticket data
-    } catch (error) {
-      Toast.show({ type: 'error', text1: 'Lỗi thêm subtask.' });
+      toast.success('Thêm thành công!');
+    } else {
+      toast.error('Lỗi thêm subtask');
     }
   };
 
   const handleUpdateSubTaskStatus = async (subTaskId: string, newStatus: string) => {
-    try {
-      await updateSubTaskStatus(ticketId, subTaskId, newStatus);
-
-      Toast.show({ type: 'success', text1: 'Cập nhật subtask thành công!' });
-      fetchTicketDetails(); // Refresh data from server
-    } catch (error) {
-      Toast.show({ type: 'error', text1: 'Lỗi cập nhật subtask.' });
-    }
-  };
-
-  // Modal animation effects
-  useEffect(() => {
-    if (showStatusModal) {
-      Animated.parallel([
-        Animated.timing(statusModalAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.spring(statusSlideAnim, {
-          toValue: 0,
-          tension: 50,
-          friction: 8,
-          useNativeDriver: true,
-        }),
-      ]).start();
+    const success = await updateSubTaskStatus(subTaskId, newStatus as SubTaskStatus);
+    if (success) {
+      toast.success('Cập nhật thành công!');
     } else {
-      Animated.parallel([
-        Animated.timing(statusModalAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(statusSlideAnim, {
-          toValue: height,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [showStatusModal]);
-
-  // Open status selection modal
-  const openStatusModal = (subTask: SubTask) => {
-    if (ticketStatus === 'Cancelled' || ticketStatus === 'Closed') return;
-    setSelectedSubTask(subTask);
-    setShowStatusModal(true);
-  };
-
-  // Close status modal
-  const closeStatusModal = () => {
-    setShowStatusModal(false);
-    setSelectedSubTask(null);
-  };
-
-  // Handle status selection
-  const handleStatusSelect = (status: StatusOption) => {
-    if (selectedSubTask) {
-      handleUpdateSubTaskStatus(selectedSubTask._id, status.value);
-      closeStatusModal();
+      toast.error('Lỗi cập nhật subtask');
     }
   };
 
-  // Get status options for subtask
-  const getSubTaskStatusOptions = (): StatusOption[] => {
-    if (!selectedSubTask) return [];
-
-    const inProgressTasks = ticket?.subTasks.filter((t) => t.status === 'In Progress') || [];
-    const isFirstInProgress =
-      inProgressTasks.length > 0 && inProgressTasks[0]._id === selectedSubTask._id;
-
-    return [
-      {
-        label: isFirstInProgress ? 'Đang xử lý' : 'Chờ xử lý',
-        value: 'In Progress',
-      },
-      {
-        label: 'Hoàn thành',
-        value: 'Completed',
-      },
-      {
-        label: 'Huỷ ',
-        value: 'Cancelled',
-      },
-    ];
+  const handleSubTaskPress = (task: SubTask) => {
+    if (isTerminalStatus) return;
+    openSubTaskStatusModal(task);
   };
 
-  // Function to render feedback if ticket is closed
+  // ============================================================================
+  // Render Helpers
+  // ============================================================================
+
   const renderFeedback = () => {
     if (ticketStatus !== 'Closed' || !ticket?.feedback) return null;
 
     return (
-      <View className="mt-4 rounded-2xl bg-[#f8f8f8] p-4">
-        {/* Title */}
-        <View className="flex-row items-center gap-4">
-          <Text className="mb-3 font-semibold text-lg text-primary">Phản hồi</Text>
+      <View className="mt-4 rounded-2xl bg-[#FFFBE8] p-4">
+        <Text className="mb-3 text-center font-semibold text-lg text-[#F5AA1E]">Phản hồi</Text>
 
-          {/* Star Rating */}
-          <View className="mb-3 flex-row">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Text
-                key={i}
-                style={{
-                  fontSize: 30,
-                  color: i <= ticket.feedback.rating ? '#FFD700' : '#E0E0E0',
-                  marginRight: 4,
-                }}>
-                ★
+        {/* Lottie Star with Glow Effect */}
+        <View className="mb-3 items-center">
+          <View
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: 36,
+              padding: 3,
+              borderWidth: 2,
+              borderColor: '#F5AA1E',
+              shadowColor: '#F5AA1E',
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0.6,
+              shadowRadius: 10,
+              elevation: 8,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+            <View
+              style={{
+                width: 62,
+                height: 62,
+                borderRadius: 31,
+                backgroundColor: '#FFFBE8',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+              <LottieView
+                source={ratingAnimations[(ticket.feedback?.rating || 1) - 1]}
+                autoPlay
+                loop
+                style={{ width: 48, height: 48 }}
+              />
+            </View>
+          </View>
+          {/* Badge below */}
+          <View className="mt-2 items-center">
+            <View
+              style={{
+                width: 0,
+                height: 0,
+                borderLeftWidth: 6,
+                borderRightWidth: 6,
+                borderBottomWidth: 6,
+                borderLeftColor: 'transparent',
+                borderRightColor: 'transparent',
+                borderBottomColor: '#F5AA1E',
+              }}
+            />
+            <View
+              style={{
+                backgroundColor: '#F5AA1E',
+                borderRadius: 12,
+                paddingHorizontal: 12,
+                paddingVertical: 4,
+              }}>
+              <Text className="text-center text-sm font-semibold text-white">
+                {getRatingText(ticket.feedback?.rating || 0)}
               </Text>
-            ))}
+            </View>
           </View>
         </View>
 
-        {/* Badges (if any) */}
+        {/* Comment */}
+        {ticket.feedback.comment && (
+          <View className="mb-3 rounded-xl bg-white p-3">
+            <Text className="text-center italic text-gray-700">&ldquo;{ticket.feedback.comment}&rdquo;</Text>
+          </View>
+        )}
+
+        {/* Badges */}
         {ticket.feedback.badges && ticket.feedback.badges.length > 0 && (
-          <View className="mb-3 flex-row flex-wrap">
-            {ticket.feedback.badges.map((badge) => (
+          <View className="flex-row flex-wrap justify-center">
+            {ticket.feedback.badges.map((badge, index) => (
               <View
-                key={badge}
+                key={index}
                 style={{
-                  backgroundColor: '#FFEBCC',
-                  borderRadius: 20,
+                  margin: 4,
                   paddingHorizontal: 12,
-                  paddingVertical: 4,
-                  marginRight: 8,
-                  marginBottom: 8,
+                  paddingVertical: 6,
+                  borderRadius: 16,
+                  backgroundColor: '#FFF3D6',
+                  borderWidth: 1,
+                  borderColor: '#F5AA1E',
                 }}>
-                <Text style={{ color: '#FFAA00', fontFamily: 'Mulish-Bold' }}>{badge}</Text>
+                <Text style={{ color: '#F5AA1E', fontWeight: '600', fontSize: 12 }}>
+                  {badge}
+                </Text>
               </View>
             ))}
           </View>
         )}
-
-        {/* Comment Box */}
-        <View
-          style={{
-            borderWidth: 1,
-            borderColor: '#D1D5DB',
-            borderRadius: 12,
-            padding: 12,
-            minHeight: 150,
-          }}>
-          <Text style={{ color: '#374151', fontSize: 16, lineHeight: 24 }}>
-            {ticket.feedback.comment}
-          </Text>
-        </View>
       </View>
     );
   };
+
+  const renderSubTask = (task: SubTask) => {
+    const inProgressTasks = subTasks.filter((t) => t.status === 'In Progress');
+    const isFirstInProgress = inProgressTasks.length > 0 && inProgressTasks[0]._id === task._id;
+
+    // Style based on status
+    let bgColor = '#fff';
+    let textColor = '#222';
+    let textDecorationLine: 'none' | 'line-through' = 'none';
+
+    if (task.status === 'Completed') {
+      bgColor = '#E4EFE6';
+      textColor = '#009483';
+    } else if (task.status === 'Cancelled') {
+      bgColor = '#EBEBEB';
+      textColor = '#757575';
+      textDecorationLine = 'line-through';
+    } else if (task.status === 'In Progress') {
+      if (isFirstInProgress) {
+        bgColor = '#E6EEF6';
+        textColor = '#002855';
+      } else {
+        bgColor = '#EBEBEB';
+        textColor = '#757575';
+      }
+    }
+
+    const statusLabel =
+      task.status === 'In Progress'
+        ? isFirstInProgress
+          ? 'Đang xử lý'
+          : 'Chờ xử lý'
+        : task.status === 'Completed'
+          ? 'Hoàn thành'
+          : 'Đã huỷ';
+
+    return (
+      <TouchableOpacity
+        key={task._id}
+        onPress={() => handleSubTaskPress(task)}
+        disabled={isTerminalStatus}
+        style={{
+          marginBottom: 10,
+          borderRadius: 20,
+          paddingHorizontal: 16,
+          paddingVertical: 12,
+          backgroundColor: bgColor,
+          opacity: isTerminalStatus ? 0.5 : 1,
+        }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+          <Text className="font-semibold text-lg" style={{ color: textColor, textDecorationLine }}>
+            {task.title}
+          </Text>
+          <Text className="font-semibold text-lg" style={{ color: textColor }}>
+            {statusLabel}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  // ============================================================================
+  // Main Render
+  // ============================================================================
 
   if (loading) {
     return (
@@ -391,7 +368,11 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId, ticketCod
   }
 
   return (
-    <View className="flex-1 bg-white p-4">
+    <ScrollView
+      className="flex-1 bg-white p-4"
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={refreshTicket} colors={['#F05023']} tintColor="#F05023" />
+      }>
       {/* STATUS BAR */}
       <View
         className="mb-2 mt-4 h-auto flex-col items-start justify-center gap-4 rounded-2xl bg-[#f8f8f8] p-4"
@@ -399,13 +380,15 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId, ticketCod
         <Text className="mr-2 font-semibold text-lg">Trạng thái:</Text>
         <View style={{ width: '100%' }}>
           <TouchableOpacity
-            onPress={() => setShowTicketStatusSheet(true)}
+            onPress={openTicketStatusSheet}
+            disabled={isTerminalStatus}
             style={{
               backgroundColor: '#fff',
               borderRadius: 25,
               height: 50,
               justifyContent: 'center',
               paddingHorizontal: 16,
+              opacity: isTerminalStatus ? 0.6 : 1,
             }}>
             <Text style={{ fontSize: 16 }}>{getStatusLabel(selectedStatus)}</Text>
           </TouchableOpacity>
@@ -414,7 +397,7 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId, ticketCod
 
       {/* CANCEL REASON INPUT */}
       {showCancelReasonInput && (
-        <View className=" rounded-lg p-4">
+        <View className="rounded-lg p-4">
           <Text className="mb-2 font-medium">Lý do huỷ ticket:</Text>
           <TextInput
             value={cancelReason}
@@ -432,14 +415,21 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId, ticketCod
               className="mr-2 rounded-lg bg-gray-200 px-4 py-2">
               <Text className="font-medium">Huỷ bỏ</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={confirmCancel} className="rounded-lg bg-red-500 px-4 py-2">
-              <Text className="font-medium text-white">Xác nhận</Text>
+            <TouchableOpacity
+              onPress={confirmCancel}
+              disabled={actionLoading}
+              className="rounded-lg bg-red-500 px-4 py-2">
+              {actionLoading ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Text className="font-medium text-white">Xác nhận</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* HIỂN THỊ LÝ DO HUỶ (NẾU CÓ) */}
+      {/* CANCELLATION REASON DISPLAY */}
       {ticketStatus === 'Cancelled' && ticket?.cancellationReason && (
         <View className="mt-4 rounded-lg bg-red-100 p-4">
           <Text className="font-bold text-red-600">Lý do huỷ ticket:</Text>
@@ -447,11 +437,11 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId, ticketCod
         </View>
       )}
 
-      {/* HIỂN THỊ FEEDBACK NẾU TRẠNG THÁI LÀ CLOSED */}
+      {/* FEEDBACK DISPLAY */}
       {renderFeedback()}
 
       {/* SUBTASKS OR COMPLETION BANNER */}
-      {ticketStatus !== 'Closed' &&
+      {!isTerminalStatus &&
         (ticketStatus === 'Done' ? (
           <View className="mb-2 mt-2 rounded-2xl bg-[#f3f4f6] p-4">
             <Text className="text-center text-gray-600" style={{ fontSize: 16, lineHeight: 24 }}>
@@ -462,12 +452,12 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId, ticketCod
           <View className="mb-2 mt-6 rounded-2xl bg-[#f8f8f8] p-4">
             <View className="mb-2 flex-row items-center justify-between">
               <Text className="font-semibold text-lg">Danh sách công việc</Text>
-              <TouchableOpacity
-                onPress={() => setShowAddSubTask(true)}
-                className=" rounded-lg  px-4">
+              <TouchableOpacity onPress={() => setShowAddSubTask(true)} className="rounded-lg px-4">
                 <Text className="font-medium text-3xl text-primary">+</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Add subtask input */}
             {showAddSubTask && (
               <View className="mb-3 flex-row items-center">
                 <TextInput
@@ -478,8 +468,13 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId, ticketCod
                 />
                 <TouchableOpacity
                   onPress={handleAddSubTask}
+                  disabled={actionLoading}
                   className="mr-2 rounded-lg bg-[#009483] px-3 py-2">
-                  <Text className="font-medium text-white">Thêm</Text>
+                  {actionLoading ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Text className="font-medium text-white">Thêm</Text>
+                  )}
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => {
@@ -492,103 +487,34 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId, ticketCod
               </View>
             )}
 
-            {/* HIỂN THỊ SUBTASK */}
-            {ticket && ticket.subTasks && ticket.subTasks.length > 0 ? (
-              ticket.subTasks.map((task) => {
-                // Xác định subtask đầu tiên "In Progress"
-                const inProgressTasks = ticket.subTasks.filter((t) => t.status === 'In Progress');
-                const isFirstInProgress =
-                  inProgressTasks.length > 0 && inProgressTasks[0]._id === task._id;
-
-                // Xác định style dựa trên trạng thái
-                let containerStyle = {
-                  marginBottom: 10,
-                  borderRadius: 20,
-                  paddingHorizontal: 16,
-                  paddingVertical: 12,
-                };
-                let textColor = '#222';
-                let bgColor = '#fff';
-                let textDecorationLine: 'none' | 'line-through' = 'none';
-                if (task.status === 'Completed') {
-                  bgColor = '#E4EFE6';
-                  textColor = '#009483';
-                } else if (task.status === 'Cancelled') {
-                  bgColor = '#EBEBEB';
-                  textColor = '#757575';
-                  textDecorationLine = 'line-through';
-                } else if (task.status === 'In Progress') {
-                  if (isFirstInProgress) {
-                    bgColor = '#E6EEF6';
-                    textColor = '#002855';
-                  } else {
-                    bgColor = '#EBEBEB';
-                    textColor = '#757575';
-                  }
-                }
-
-                // Hàm mở modal chọn trạng thái
-                const showStatusActionSheet = () => {
-                  openStatusModal(task);
-                };
-
-                return (
-                  <TouchableOpacity
-                    key={task._id}
-                    onPress={showStatusActionSheet}
-                    disabled={ticketStatus === 'Cancelled' || ticketStatus === 'Closed'}
-                    style={[
-                      containerStyle,
-                      {
-                        backgroundColor: bgColor,
-                        opacity:
-                          ticketStatus === 'Cancelled' || ticketStatus === 'Closed' ? 0.5 : 1,
-                      },
-                    ]}>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}>
-                      <Text
-                        className="font-semibold text-lg"
-                        style={{ color: textColor, textDecorationLine }}>
-                        {task.title}
-                      </Text>
-                      <Text className="font-semibold text-lg" style={{ color: textColor }}>
-                        {task.status === 'In Progress'
-                          ? isFirstInProgress
-                            ? 'Đang xử lý'
-                            : 'Chờ xử lý'
-                          : task.status === 'Completed'
-                            ? 'Hoàn thành'
-                            : 'Đã huỷ'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })
+            {/* Subtask list */}
+            {subTasks.length > 0 ? (
+              subTasks.map(renderSubTask)
             ) : (
-              <Text className="text-center font-medium text-sm text-gray-500">
-                Không có subtask
-              </Text>
+              <Text className="text-center font-medium text-sm text-gray-500">Không có subtask</Text>
             )}
           </View>
         ))}
 
-      {/* Status Selection Modal */}
-      <CustomLiquidActionSheet
-        visible={showTicketStatusSheet}
-        options={getStatusItems()}
+      {/* Action Sheets */}
+      <TicketStatusSheet
+        currentStatus={ticketStatus}
         onSelect={(value) => {
           handleUpdateStatus(value);
           setSelectedStatus(value);
-          setShowTicketStatusSheet(false);
         }}
-        onCancel={() => setShowTicketStatusSheet(false)}
       />
-    </View>
+
+      <SubTaskStatusSheet
+        subTask={ui.selectedSubTask}
+        allSubTasks={subTasks}
+        onSelect={(value) => {
+          if (ui.selectedSubTask) {
+            handleUpdateSubTaskStatus(ui.selectedSubTask._id, value);
+          }
+        }}
+      />
+    </ScrollView>
   );
 };
 

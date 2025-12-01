@@ -1,7 +1,6 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 // @ts-ignore
-import { Animated, Dimensions, View, StyleSheet, Platform, Text } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { View, StyleSheet, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import AppNavigator, { RootStackParamList } from './src/navigation/AppNavigator';
@@ -11,8 +10,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from './src/config/constants';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import Toast from 'react-native-toast-message';
-import CustomToastConfig from './src/components/CustomToastConfig';
+import { ToastProvider, ToastInitializer, toast } from './src/components/Toast';
 import * as SplashScreen from 'expo-splash-screen';
 import SvgSplash from './src/assets/splash.svg';
 // @ts-ignore
@@ -56,10 +54,11 @@ Notifications.setNotificationHandler({
 });
 
 export default function App() {
-  // Prevent splash auto-hide immediately
+  // Ẩn native splash ngay lập tức để hiển thị custom splash
   useEffect(() => {
     (async () => {
-      await SplashScreen.preventAutoHideAsync();
+      // Ẩn native splash ngay khi app mount
+      await SplashScreen.hideAsync();
     })();
   }, []);
 
@@ -79,10 +78,6 @@ export default function App() {
   const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
   const [initialRoute, setInitialRoute] = useState({ name: 'Home', params: {} });
 
-  // Sweep animation setup
-  const { width } = Dimensions.get('window');
-  const sweep = useRef(new Animated.Value(-width)).current;
-
   // Deep link handler (kept as before)
   useEffect(() => {
     const handleDeepLink = async (url: string) => {
@@ -98,18 +93,14 @@ export default function App() {
 
           if (error) {
             console.log('❌ [App] Deep link error:', error);
-            Toast.show({
-              type: 'error',
-              text1: 'Lỗi đăng nhập Microsoft',
-              text2: error,
-            });
+            toast.error('Lỗi đăng nhập Microsoft: ' + error);
             return;
           }
 
           if (token) {
             console.log('✅ [App] Deep link token received, saving...');
             await AsyncStorage.setItem('authToken', token);
-            Toast.show({ type: 'success', text1: 'Đăng nhập Microsoft thành công!' });
+            toast.success('Đăng nhập Microsoft thành công!');
           }
         } catch (err) {
           console.error('❌ [App] Error parsing deep link:', err);
@@ -143,6 +134,8 @@ export default function App() {
       ticketId?: string;
       chatId?: string;
       type?: string;
+      screen?: string;
+      tab?: string;
       senderId?: string;
       employeeCode?: string;
       notificationId?: string;
@@ -162,6 +155,18 @@ export default function App() {
         navigationRef.current.navigate('TicketDetail', { ticketId: data.ticketId });
       } else if (data.ticketId) {
         setInitialRoute({ name: 'TicketDetail', params: { ticketId: data.ticketId } });
+      }
+    } else if (data?.type === 'attendance_reminder') {
+      // Navigate to AttendanceHome with GVCN tab
+      if (navigationRef.current) {
+        (navigationRef.current as any).navigate('AttendanceHome', {
+          initialTab: data.tab || 'GVCN',
+        });
+      } else {
+        setInitialRoute({
+          name: 'AttendanceHome',
+          params: { initialTab: data.tab || 'GVCN' },
+        } as any);
       }
     } else if (data?.type === 'attendance' || data?.type === 'staff_attendance') {
       if (navigationRef.current) {
@@ -220,9 +225,16 @@ export default function App() {
           return;
         }
 
+        // Xác định app type (expo-go vs standalone) - QUAN TRỌNG cho iOS TestFlight
+        const isStandalone = Constants.appOwnership !== 'expo';
+        const appType = isStandalone ? 'standalone' : 'expo-go';
+        
+        console.log(`📱 App.tsx - App type: ${appType}, ProjectId: ${projectId}`);
+
         const token = await Notifications.getExpoPushTokenAsync({ projectId });
-        console.log('📱 App.tsx Push token:', token.data);
+        console.log(`📱 App.tsx Push token (${appType}):`, token.data);
         await AsyncStorage.setItem('pushToken', token.data);
+        await AsyncStorage.setItem('pushTokenAppType', appType);
 
         const registerDeviceToken = async (tokenStr: string) => {
           try {
@@ -239,7 +251,10 @@ export default function App() {
               Device.deviceName || `${Device.brand || 'Unknown'} ${Device.modelName || 'Device'}`;
             const osVersion = Device.osVersion || 'Unknown';
             const appVersion =
-              Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
+              Constants.expoConfig?.version || (Constants.manifest as any)?.version || '1.0.0';
+            
+            // Tạo unique device identifier để phân biệt Expo Go và standalone app
+            const deviceId = `${Device.modelId || Device.modelName || 'unknown'}-${Platform.OS}-${appType}`;
 
             const deviceInfo = {
               deviceToken: tokenStr,
@@ -250,6 +265,10 @@ export default function App() {
               appVersion: appVersion,
               language: 'vi',
               timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+              // Thêm thông tin để phân biệt app type
+              appType: appType, // 'standalone' cho TestFlight/App Store, 'expo-go' cho Expo Go
+              deviceId: deviceId, // Unique ID để backend phân biệt các devices
+              bundleId: Constants.expoConfig?.ios?.bundleIdentifier || 'com.wellspring.workspace',
             };
 
             console.log(
@@ -268,7 +287,7 @@ export default function App() {
               }
             );
 
-            console.log('✅ App.tsx Push token registered successfully:', response.data);
+            console.log(`✅ App.tsx Push token registered successfully for ${appType}:`, response.data);
           } catch (error) {
             console.error('❌ App.tsx Lỗi đăng ký token thiết bị:', error);
           }
@@ -301,39 +320,30 @@ export default function App() {
     };
   }, []);
 
-  // Splash sweep and hide handled on layout
-  const onLayoutRootView = useCallback(async () => {
-    if (fontsLoaded) {
-      Animated.timing(sweep, {
-        toValue: width,
-        duration: 800,
-        useNativeDriver: true,
-      }).start(async () => {
-        await SplashScreen.hideAsync();
-      });
-    }
-  }, [fontsLoaded, sweep, width]);
-
   console.log('🔍 [App] fontsLoaded (forced):', fontsLoaded);
 
+  // Hiển thị màn hình trống trong khi fonts đang load (native splash đã ẩn)
   if (!fontsLoaded) {
     return (
-      <View style={styles.splashContainer} onLayout={onLayoutRootView}>
+      <View style={styles.splashContainer}>
         <SvgSplash width={200} height={200} />
       </View>
     );
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }} onLayout={onLayoutRootView}>
+    // @ts-ignore - GestureHandlerRootView types issue
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <AuthProvider>
-          <NavigationContainer linking={linking} ref={navigationRef}>
-            <AppNavigator />
-          </NavigationContainer>
-          <Toast config={CustomToastConfig} />
-        </AuthProvider>
-        <StatusBar style="auto" />
+        <ToastProvider>
+          <ToastInitializer />
+          <AuthProvider>
+            <NavigationContainer linking={linking} ref={navigationRef}>
+              <AppNavigator />
+            </NavigationContainer>
+          </AuthProvider>
+          <StatusBar style="auto" />
+        </ToastProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

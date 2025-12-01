@@ -732,6 +732,51 @@ class AttendanceApiService {
   }
 
   /**
+   * Batch check if attendance exists for multiple class/date/period combinations
+   * No cache - always returns fresh data from DB
+   */
+  async batchCheckHasAttendance(
+    items: { class_id: string; date: string; period: string }[]
+  ): Promise<{ success: boolean; data?: Record<string, { has_attendance: boolean; count: number }>; error?: string }> {
+    try {
+      const headers = await this.getAuthHeaders();
+      const response = await fetch(
+        `${BASE_URL}/api/method/erp.api.erp_sis.attendance.batch_check_has_attendance`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ items }),
+        }
+      );
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `Failed to batch check attendance: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      if (data.message?.data || data.data) {
+        return {
+          success: true,
+          data: data.message?.data || data.data,
+        };
+      } else {
+        return {
+          success: false,
+          error: 'Invalid response format',
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: `Error batch checking attendance: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
+  }
+
+  /**
    * Calculate week range from a given date
    */
   calculateWeekRange(date: Date): { weekStart: string; weekEnd: string } {

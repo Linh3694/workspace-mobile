@@ -1,6 +1,6 @@
 import React from 'react';
 // @ts-ignore
-import { View, TouchableOpacity, Platform } from 'react-native';
+import { View, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface StandardHeaderProps {

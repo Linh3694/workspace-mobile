@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   FlatList,
   ActivityIndicator,
   Alert,
@@ -11,9 +10,10 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { TouchableOpacity } from '../../../components/Common';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useTicketMessages, useTicketStore } from '../../../hooks/useTicketStore';
+import { useTicketMessages, useCanSendMessage } from '../../../hooks/useTicketStore';
 import { useSendMessage, useTicketDetail } from '../../../hooks/useTicketHooks';
 import { useTicketSocket } from '../../../hooks/useTicketSocket';
 import type { Message } from '../../../services/ticketService';
@@ -96,7 +96,7 @@ const TicketMessaging: React.FC<TicketMessagingProps> = ({ ticketId }) => {
   const { ticket } = useTicketDetail(ticketId);
   const { messages, addMessage } = useTicketMessages();
   const sendMessageMutation = useSendMessage();
-  const { canSendMessage } = useTicketStore();
+  const canSendMessage = useCanSendMessage();
 
   // Memoize the callback to prevent recreation on every render
   const handleNewMessage = useCallback(

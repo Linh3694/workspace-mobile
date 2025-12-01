@@ -5,11 +5,11 @@ import {
   Text,
   ScrollView,
   RefreshControl,
-  TouchableOpacity,
   Alert,
   ActivityIndicator,
   Image,
 } from 'react-native';
+import { TouchableOpacity } from '../../components/Common';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PostCard from '../../components/Wislife/PostCard';

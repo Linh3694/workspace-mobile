@@ -1,33 +1,38 @@
-import React, { useState, useEffect } from 'react';
-// @ts-ignore
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
   SafeAreaView,
-  TouchableOpacity,
   ActivityIndicator,
   Platform,
-  Modal,
-  FlatList,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { TouchableOpacity } from '../../components/Common';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
-import { Ionicons, MaterialIcons, AntDesign, FontAwesome5, FontAwesome } from '@expo/vector-icons';
+import { Ionicons, AntDesign, FontAwesome5, FontAwesome } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// Store & Hooks
 import {
-  getTicketDetail,
-  updateTicket,
-  assignTicketToMe,
-  cancelTicket,
-  reopenTicket,
-  type Ticket,
-} from '../../services/ticketService';
+  useTicketStore,
+  useTicketData,
+  useTicketActions,
+  useTicketUIActions,
+} from '../../hooks/useTicketStore';
+
+// Utils
+import { toast } from '../../utils/toast';
+import { normalizeVietnameseName } from '../../utils/nameFormatter';
+import { getStatusColor, getStatusLabel } from '../../config/ticketConstants';
+
+// Components
 import TicketInformation from './components/TicketInformation';
 import TicketProcessing from './components/TicketProcessing';
 import TicketHistory from './components/TicketHistory';
-import SelectModal from '../../components/SelectModal';
-import InputModal from '../../components/InputModal';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TicketAdminModals } from './components/TicketModals';
+
+import type { SupportTeamMember } from '../../services/ticketService';
 
 type TicketDetailScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -38,68 +43,108 @@ interface RouteParams {
   ticketId: string;
 }
 
-interface UserType {
-  _id: string;
-  fullname: string;
-}
-
 const TicketAdminDetail = () => {
   const navigation = useNavigation<TicketDetailScreenNavigationProp>();
   const route = useRoute();
   const { ticketId } = route.params as RouteParams;
-  const [activeTab, setActiveTab] = useState('information');
-  const [ticket, setTicket] = useState<Ticket | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [users, setUsers] = useState<UserType[]>([]);
-  const [chosenUser, setChosenUser] = useState<UserType | null>(null);
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [departmentUsers, setDepartmentUsers] = useState<any[]>([]);
-  const [cancelModalVisible, setCancelModalVisible] = useState(false);
-  const [cancelReason, setCancelReason] = useState('');
   const insets = useSafeAreaInsets();
 
+  // Local UI state for tabs
+  const [activeTab, setActiveTab] = React.useState('information');
+
+  // Global store
+  const { ticket, loading, error } = useTicketData();
+  const { fetchTicket, assignToMe, assignToUser, cancelTicket } = useTicketActions();
+  const {
+    openConfirmAssignModal,
+    closeConfirmAssignModal,
+    openAssignModal,
+    closeAssignModal,
+    openCancelModal,
+  } = useTicketUIActions();
+  const actionLoading = useTicketStore((state) => state.actionLoading);
+  const ui = useTicketStore((state) => state.ui);
+  const reset = useTicketStore((state) => state.reset);
+
+  // Fetch ticket on mount
   useEffect(() => {
-    fetchTicketData();
+    fetchTicket(ticketId);
+
+    // Reset store when unmount
+    return () => {
+      reset();
+    };
   }, [ticketId]);
 
-  const fetchTicketData = async () => {
-    try {
-      const ticketData = await getTicketDetail(ticketId);
-      if (ticketData) {
-        setTicket(ticketData);
-      }
-    } catch (error) {
-      console.error('Lỗi khi lấy thông tin ticket:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Refetch when screen comes back into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchTicket(ticketId);
+    }, [ticketId])
+  );
 
   const handleGoBack = () => {
     navigation.goBack();
   };
 
-  const renderStars = (rating: number) => {
-    return Array(5)
-      .fill(0)
-      .map((_, index) => (
-        <MaterialIcons key={index} name="star-border" size={24} color="#9CA3AF" />
-      ));
+  // ============================================================================
+  // Handlers
+  // ============================================================================
+
+  const handleAssignToMe = async () => {
+    closeConfirmAssignModal();
+    const success = await assignToMe();
+    if (success) {
+      toast.success('Đã nhận ticket thành công!');
+    } else {
+      toast.error('Không thể nhận ticket');
+    }
   };
+
+  const handleAssignToUser = async (member: SupportTeamMember) => {
+    const userId = member?.userObjectId || member?._id;
+    if (!userId) {
+      toast.error('Không tìm thấy thông tin người dùng');
+      return;
+    }
+
+    closeAssignModal();
+    const success = await assignToUser(userId, member.fullname);
+    if (success) {
+      const formattedName = normalizeVietnameseName(member.fullname);
+      toast.success(`Đã chuyển cho ${formattedName}`);
+    } else {
+      toast.error('Không thể chuyển ticket');
+    }
+  };
+
+  const handleCancelTicket = async () => {
+    const reason = ui.cancelReason;
+    if (!reason.trim()) {
+      toast.error('Vui lòng nhập lý do hủy');
+      return;
+    }
+
+    const success = await cancelTicket(reason);
+    if (success) {
+      toast.success('Đã hủy ticket');
+    } else {
+      toast.error('Không thể hủy ticket');
+    }
+  };
+
+  // ============================================================================
+  // Render
+  // ============================================================================
 
   const renderContent = () => {
     switch (activeTab) {
       case 'information':
-        return <TicketInformation ticketId={ticketId} onRefresh={fetchTicketData} />;
+        return <TicketInformation ticketId={ticketId} activeTab="information" />;
       case 'processing':
-        return (
-          <TicketProcessing
-            ticketId={ticketId}
-            ticketCode={ticket?.ticketCode}
-            onRefresh={fetchTicketData}
-          />
-        );
+        return <TicketProcessing ticketId={ticketId} ticketCode={ticket?.ticketCode} />;
+      case 'messaging':
+        return <TicketInformation ticketId={ticketId} activeTab="messaging" />;
       case 'history':
         return <TicketHistory ticketId={ticketId} />;
       default:
@@ -107,97 +152,9 @@ const TicketAdminDetail = () => {
     }
   };
 
-  const statusColor = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'assigned':
-        return 'bg-[#002855]';
-      case 'processing':
-        return 'bg-[#F59E0B]';
-      case 'done':
-        return 'bg-[#BED232]';
-      case 'closed':
-        return 'bg-[#009483]';
-      case 'cancelled':
-        return 'bg-[#F05023]';
-      default:
-        return 'bg-gray-500';
-    }
-  };
-
-  const statusLabel = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'assigned':
-        return 'Đã tiếp nhận';
-      case 'processing':
-        return 'Đang xử lý';
-      case 'done':
-        return 'Đã xử lý';
-      case 'closed':
-        return 'Đã đóng';
-      case 'cancelled':
-        return 'Đã hủy';
-      default:
-        return status;
-    }
-  };
-
-  const fetchDepartmentUsers = async () => {
-    try {
-      const token = await AsyncStorage.getItem('authToken');
-      const res = await axios.get(
-        `${API_BASE_URL}/api/users/department/Phòng Công nghệ thông tin`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setDepartmentUsers(res.data.users || []);
-    } catch (err) {
-      console.error('Error fetching department users:', err);
-    }
-  };
-
-  const handleAssignSelectedUser = async (userId: string) => {
-    if (!userId) return;
-    try {
-      setLoading(true);
-      await updateTicket(ticketId, { assignedTo: userId });
-      await fetchTicketData();
-      setModalVisible(false);
-      setSelectedUserId(null);
-    } catch (err) {
-      console.error('Error assigning selected user:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAssignToCurrentUser = async () => {
-    try {
-      setLoading(true);
-      await assignTicketToMe(ticketId);
-      await fetchTicketData();
-    } catch (error) {
-      console.error('Error assigning ticket:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCancelTicket = async () => {
-    try {
-      setLoading(true);
-      await cancelTicket(ticketId, cancelReason);
-      await fetchTicketData();
-      setCancelModalVisible(false);
-      setCancelReason('');
-    } catch (error) {
-      console.error('Error cancelling ticket:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (ticket && ticket.feedback) {
-    console.log('Ticket rating:', ticket.feedback.rating);
-  }
+  const isTerminalStatus =
+    ticket?.status?.toLowerCase() === 'cancelled' || ticket?.status?.toLowerCase() === 'closed';
+  const isAssignedStatus = ticket?.status?.toLowerCase() === 'assigned';
 
   return (
     <SafeAreaView
@@ -213,17 +170,13 @@ const TicketAdminDetail = () => {
           <View className="w-full flex-row items-start justify-between px-4 py-4">
             <View className="flex-row items-center">
               <Text className="mr-2 font-medium text-lg text-black">{ticket.ticketCode}</Text>
-              {ticket.feedback && (
-                <View className="flex-row">
+              {ticket.feedback && ticket.feedback.rating && (
+                <View className="flex-row items-center">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <FontAwesome
                       key={star}
-                      name={
-                        star <= ((ticket.feedback && ticket.feedback.rating) ?? 0)
-                          ? 'star'
-                          : 'star-o'
-                      }
-                      size={16}
+                      name={star <= (ticket.feedback?.rating ?? 0) ? 'star' : 'star-o'}
+                      size={14}
                       color="#FFD700"
                       style={{ marginHorizontal: 1 }}
                     />
@@ -240,92 +193,84 @@ const TicketAdminDetail = () => {
           <View className="mb-4 px-4">
             <Text className="font-medium text-xl text-[#E84A37]">{ticket.title}</Text>
           </View>
-          <View className="mb-6 flex-row items-center justify-between pl-5 pr-[60%]">
-            <TouchableOpacity
-              onPress={handleAssignToCurrentUser}
-              className="h-11 w-11 items-center justify-center rounded-full bg-green-600">
-              <Ionicons name="checkmark" size={24} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                setModalVisible(true);
-                fetchDepartmentUsers();
-              }}
-              className="h-11 w-11 items-center justify-center rounded-full bg-yellow-500">
-              <FontAwesome5 name="sync-alt" size={16} color="white" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setCancelModalVisible(true)}
-              className="h-11 w-11 items-center justify-center rounded-full bg-red-600">
-              <Ionicons name="square" size={16} color="white" />
-            </TouchableOpacity>
+
+          {/* Action buttons */}
+          <View className="mb-6 flex-row items-center gap-4 pl-5">
+            {/* Nút nhận ticket - chỉ hiện khi status = Assigned */}
+            {isAssignedStatus && (
+              <TouchableOpacity
+                onPress={openConfirmAssignModal}
+                disabled={actionLoading}
+                className="h-11 w-11 items-center justify-center rounded-full bg-green-600">
+                <Ionicons name="checkmark" size={24} color="white" />
+              </TouchableOpacity>
+            )}
+
+            {/* Nút chuyển người xử lý */}
+            {!isTerminalStatus && (
+              <TouchableOpacity
+                onPress={openAssignModal}
+                disabled={actionLoading}
+                className="h-11 w-11 items-center justify-center rounded-full bg-yellow-500">
+                {actionLoading ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <FontAwesome5 name="sync-alt" size={16} color="white" />
+                )}
+              </TouchableOpacity>
+            )}
+
+            {/* Nút hủy ticket */}
+            {!isTerminalStatus && (
+              <TouchableOpacity
+                onPress={openCancelModal}
+                disabled={actionLoading}
+                className="h-11 w-11 items-center justify-center rounded-full bg-red-600">
+                <Ionicons name="square" size={16} color="white" />
+              </TouchableOpacity>
+            )}
           </View>
+        </View>
+      ) : error ? (
+        <View className="flex-1 items-center justify-center p-4">
+          <Text className="text-red-500">{error}</Text>
+          <TouchableOpacity
+            onPress={() => fetchTicket(ticketId)}
+            className="mt-4 rounded-lg bg-blue-500 px-4 py-2">
+            <Text className="font-medium text-white">Thử lại</Text>
+          </TouchableOpacity>
         </View>
       ) : null}
 
       {/* Tab Navigation */}
-      <View className="flex-row pl-5 ">
-        <TouchableOpacity
-          key="information-tab"
-          onPress={() => setActiveTab('information')}
-          className={`mr-6 py-3 ${activeTab === 'information' ? 'border-b-2 border-black' : ''}`}>
-          <Text
-            className={activeTab === 'information' ? 'font-bold' : 'font-medium text-gray-400'}
-            style={{ color: activeTab === 'information' ? '#002855' : '#98A2B3' }}>
-            Thông tin
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          key="processing-tab"
-          onPress={() => setActiveTab('processing')}
-          className={`mr-6 py-3 ${activeTab === 'processing' ? 'border-b-2 border-black' : ''}`}>
-          <Text
-            className={activeTab === 'processing' ? 'font-bold' : 'font-medium text-gray-400'}
-            style={{ color: activeTab === 'processing' ? '#002855' : '#98A2B3' }}>
-            Tiến trình
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          key="history-tab"
-          onPress={() => setActiveTab('history')}
-          className={`py-3 ${activeTab === 'history' ? 'border-b-2 border-black' : ''}`}>
-          <Text
-            className={activeTab === 'history' ? 'font-bold' : 'font-medium text-gray-400'}
-            style={{ color: activeTab === 'history' ? '#002855' : '#98A2B3' }}>
-            Lịch sử
-          </Text>
-        </TouchableOpacity>
+      <View className="flex-row pl-5">
+        {[
+          { key: 'information', label: 'Thông tin' },
+          { key: 'processing', label: 'Tiến trình' },
+          { key: 'messaging', label: 'Trao đổi' },
+          { key: 'history', label: 'Lịch sử' },
+        ].map((tab) => (
+          <TouchableOpacity
+            key={tab.key}
+            onPress={() => setActiveTab(tab.key)}
+            className={`mr-6 py-3 ${activeTab === tab.key ? 'border-b-2 border-black' : ''}`}>
+            <Text
+              className={activeTab === tab.key ? 'font-bold' : 'font-medium text-gray-400'}
+              style={{ color: activeTab === tab.key ? '#002855' : '#98A2B3' }}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {/* Content */}
       <View className="flex-1">{renderContent()}</View>
 
-      <SelectModal
-        visible={modalVisible}
-        title="Chọn nhân viên"
-        options={departmentUsers}
-        keyExtractor={(u) => u._id}
-        renderLabel={(u) => u.fullname}
-        onCancel={() => setModalVisible(false)}
-        onSelect={(u) => {
-          setChosenUser(u);
-          setModalVisible(false);
-          handleAssignSelectedUser(u._id);
-        }}
-      />
-
-      <InputModal
-        visible={cancelModalVisible}
-        title="Lý do hủy"
-        placeholder="Nhập lý do hủy ticket"
-        value={cancelReason}
-        onChangeText={setCancelReason}
-        onCancel={() => {
-          setCancelModalVisible(false);
-          setCancelReason('');
-        }}
-        onConfirm={handleCancelTicket}
+      {/* Modals */}
+      <TicketAdminModals
+        onAssignToMe={handleAssignToMe}
+        onAssignToUser={handleAssignToUser}
+        onCancelTicket={handleCancelTicket}
       />
     </SafeAreaView>
   );

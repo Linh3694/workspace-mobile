@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Modal, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, Modal, ActivityIndicator, Alert } from 'react-native';
+import { TouchableOpacity } from '../../../components/Common';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 

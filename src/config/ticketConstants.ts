@@ -1,5 +1,6 @@
 /**
  * Ticket Constants and Mappings
+ * File tập trung tất cả constants liên quan đến Ticket
  */
 
 /**
@@ -38,13 +39,15 @@ export const TICKET_STATUS_MAP: Record<string, string> = {
 };
 
 /**
- * Ticket Priority Mappings (EN -> VI)
+ * Ticket status values
  */
-export const TICKET_PRIORITY_MAP: Record<string, string> = {
-  Low: 'Thấp',
-  Medium: 'Trung bình',
-  High: 'Cao',
-  Urgent: 'Khẩn cấp',
+export const TICKET_STATUSES = {
+  ASSIGNED: 'Assigned',
+  PROCESSING: 'Processing',
+  WAITING_FOR_CUSTOMER: 'Waiting for Customer',
+  DONE: 'Done',
+  CLOSED: 'Closed',
+  CANCELLED: 'Cancelled',
 };
 
 /**
@@ -116,30 +119,6 @@ export const getAllStatusMappings = (): { value: string; label: string }[] => {
 };
 
 /**
- * Get Vietnamese label for priority
- */
-export const getPriorityLabel = (priorityValue: string): string => {
-  return TICKET_PRIORITY_MAP[priorityValue] || priorityValue;
-};
-
-/**
- * Get priority value from Vietnamese label
- */
-export const getPriorityValueByLabel = (label: string): string | undefined => {
-  return Object.entries(TICKET_PRIORITY_MAP).find(([, v]) => v === label)?.[0];
-};
-
-/**
- * Get all priorities with Vietnamese labels
- */
-export const getAllPriorityMappings = (): { value: string; label: string }[] => {
-  return Object.entries(TICKET_PRIORITY_MAP).map(([value, label]) => ({
-    value,
-    label,
-  }));
-};
-
-/**
  * Get status color for UI display
  */
 export const getStatusColor = (status: string): string => {
@@ -165,50 +144,6 @@ export const getStatusColor = (status: string): string => {
       return 'bg-gray-500';
   }
 };
-
-/**
- * Get priority color for UI display
- */
-export const getPriorityColor = (priority: string): string => {
-  switch (priority.toLowerCase()) {
-    case 'high':
-    case 'urgent':
-      return 'bg-red-100 text-red-800';
-    case 'medium':
-      return 'bg-yellow-100 text-yellow-800';
-    case 'low':
-      return 'bg-green-100 text-green-800';
-    default:
-      return 'bg-gray-100 text-gray-800';
-  }
-};
-
-/**
- * Ticket priority levels
- */
-export const TICKET_PRIORITIES = {
-  LOW: 'Low',
-  MEDIUM: 'Medium',
-  HIGH: 'High',
-  URGENT: 'Urgent',
-};
-
-/**
- * Ticket status values
- */
-export const TICKET_STATUSES = {
-  ASSIGNED: 'Assigned',
-  PROCESSING: 'Processing',
-  WAITING_FOR_CUSTOMER: 'Waiting for Customer',
-  DONE: 'Done',
-  CLOSED: 'Closed',
-  CANCELLED: 'Cancelled',
-};
-
-/**
- * Default ticket priority
- */
-export const DEFAULT_TICKET_PRIORITY = TICKET_PRIORITIES.MEDIUM;
 
 /**
  * Maximum images allowed for upload

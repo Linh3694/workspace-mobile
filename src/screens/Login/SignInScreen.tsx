@@ -5,12 +5,12 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   Image,
   Pressable,
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import { TouchableOpacity } from '../../components/Common';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';

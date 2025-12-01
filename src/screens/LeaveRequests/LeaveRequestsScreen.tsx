@@ -5,13 +5,13 @@ import {
   Text,
   SafeAreaView,
   ScrollView,
-  TouchableOpacity,
   TextInput,
   Alert,
   ActivityIndicator,
   RefreshControl,
   Image,
 } from 'react-native';
+import { TouchableOpacity } from '../../components/Common';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';

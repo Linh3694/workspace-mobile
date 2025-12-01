@@ -1,14 +1,12 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import {
     View,
     Text,
     Modal,
-    TouchableOpacity,
-    Animated,
-    Dimensions,
-    TouchableWithoutFeedback
+    Pressable,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { TouchableOpacity } from './Common';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 interface NotificationModalProps {
     visible: boolean;
@@ -17,91 +15,64 @@ interface NotificationModalProps {
     onClose: () => void;
 }
 
-const { height } = Dimensions.get('window');
-
 const NotificationModal: React.FC<NotificationModalProps> = ({
     visible,
     type,
     message,
     onClose
 }) => {
-    const fadeAnim = useRef(new Animated.Value(0)).current;
-    const slideAnim = useRef(new Animated.Value(height)).current;
-
-    useEffect(() => {
-        if (visible) {
-            Animated.parallel([
-                Animated.timing(fadeAnim, {
-                    toValue: 1,
-                    duration: 200,
-                    useNativeDriver: true,
-                }),
-                Animated.spring(slideAnim, {
-                    toValue: 0,
-                    tension: 50,
-                    friction: 8,
-                    useNativeDriver: true,
-                })
-            ]).start();
-        } else {
-            Animated.parallel([
-                Animated.timing(fadeAnim, {
-                    toValue: 0,
-                    duration: 200,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(slideAnim, {
-                    toValue: height,
-                    duration: 200,
-                    useNativeDriver: true,
-                })
-            ]).start();
-        }
-    }, [visible]);
-
     return (
         <Modal
             visible={visible}
             transparent
-            animationType="none"
+            animationType="fade"
             statusBarTranslucent
+            onRequestClose={onClose}
         >
-            <TouchableWithoutFeedback onPress={onClose}>
-                <Animated.View
-                    className="flex-1 bg-black/40 justify-center items-center"
-                    style={{ opacity: fadeAnim }}
-                >
-                    <TouchableWithoutFeedback>
-                        <Animated.View
-                            className="w-[80%] bg-white rounded-[14px] overflow-hidden"
-                            style={{
-                                transform: [{
-                                    translateY: slideAnim
-                                }]
-                            }}
+            <View className="flex-1 items-center justify-center bg-black/50">
+                {/* Backdrop */}
+                <Pressable
+                    className="absolute bottom-0 left-0 right-0 top-0"
+                    onPress={onClose}
+                />
+
+                {/* Modal Content */}
+                <View className="w-[80%] overflow-hidden rounded-2xl bg-white">
+                    <View className="items-center p-5">
+                        {/* Icon */}
+                        <View
+                            className={`mb-4 h-16 w-16 items-center justify-center rounded-full ${type === 'success' ? 'bg-green-100' : 'bg-red-100'}`}
                         >
-                            <View className="p-5">
-                                <Text className="text-lg font-semibold text-black text-center mb-2.5">
-                                    {type === 'success' ? 'Thành công' : 'Thông báo'}
-                                </Text>
-                                <Text className="text-base text-[#666666] text-center mb-5 leading-[22px]">
-                                    {message}
-                                </Text>
-                                <View className="flex-row mt-2.5 -mx-5 border-t border-[#E5E5E5]">
-                                    <TouchableOpacity
-                                        className="flex-1 py-3 items-center justify-center bg-transparent"
-                                        onPress={onClose}
-                                    >
-                                        <Text className={`text-[17px] font-medium ${type === 'success' ? 'text-secondary' : 'text-[#FF3B30]'}`}>
-                                            OK
-                                        </Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        </Animated.View>
-                    </TouchableWithoutFeedback>
-                </Animated.View>
-            </TouchableWithoutFeedback>
+                            <MaterialCommunityIcons
+                                name={type === 'success' ? 'check-circle' : 'alert-circle'}
+                                size={40}
+                                color={type === 'success' ? '#10B981' : '#EF4444'}
+                            />
+                        </View>
+
+                        <Text className="mb-2.5 text-center font-semibold text-lg text-black">
+                            {type === 'success' ? 'Thành công' : 'Thông báo'}
+                        </Text>
+                        <Text className="mb-2 text-center text-base leading-[22px] text-gray-600">
+                            {message}
+                        </Text>
+                    </View>
+
+                    {/* Action Button */}
+                    <View className="border-t border-gray-200">
+                        <TouchableOpacity
+                            className="items-center justify-center bg-transparent py-4"
+                            onPress={onClose}
+                        >
+                            <Text
+                                className={`font-semibold text-[17px] ${type === 'success' ? 'text-green-600' : 'text-[#FF3B30]'}`}
+                            >
+                                OK
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
         </Modal>
     );
 };

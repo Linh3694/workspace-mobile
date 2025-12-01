@@ -27,15 +27,16 @@ export interface PaginationState {
   itemsPerPage: number;
 }
 
-// Search and filter params interface
+// Search and filter params interface - normalized to strings for API
 interface SearchFilterParams {
   search?: string;
-  status?: string;
-  manufacturer?: string;
-  type?: string;
+  status?: string;  // Comma-separated if multiple values
+  manufacturer?: string;  // Comma-separated if multiple values
+  type?: string;  // Comma-separated if multiple values
   assignedUser?: string;
   room?: string;
   releaseYear?: string | number;
+  departments?: string;  // Comma-separated if multiple values
 }
 
 // API params interface
@@ -61,26 +62,34 @@ class DeviceService {
     };
   }
 
+  // Helper to convert array filters to comma-separated strings for API
+  private normalizeFilterValue(value: string | string[] | undefined): string | undefined {
+    if (!value) return undefined;
+    if (Array.isArray(value)) {
+      return value.length > 0 ? value.join(',') : undefined;
+    }
+    return value;
+  }
+
   // Generic getDevicesByType method (similar to frappe-sis-frontend pattern)
   async getDevicesByType(
     deviceType: DeviceType,
     filters: DeviceFilter,
     pagination: PaginationState
   ): Promise<{ populatedLaptops: Device[]; pagination: PaginationState }> {
-    console.log('🔧 getDevicesByType called with filters:', filters);
-
+    // Normalize array filters to comma-separated strings for backend
     const searchFilters: SearchFilterParams = {
       search: filters.search,
-      status: filters.status,
-      manufacturer: filters.manufacturer,
-      type: filters.type,
+      status: this.normalizeFilterValue(filters.status),
+      manufacturer: this.normalizeFilterValue(filters.manufacturer),
+      type: this.normalizeFilterValue(filters.type),
       releaseYear: filters.releaseYear,
+      departments: this.normalizeFilterValue(filters.departments),
     };
 
     let response;
     switch (deviceType) {
       case 'laptop':
-        console.log('💻 Calling getLaptops with searchFilters:', searchFilters);
         response = await this.getLaptops(pagination.page, pagination.limit, searchFilters);
         break;
       case 'monitor':
@@ -343,6 +352,39 @@ class DeviceService {
     }
   }
 
+  // Create new device
+  async createDevice(
+    deviceType: DeviceType,
+    deviceData: {
+      name: string;
+      serial: string;
+      manufacturer?: string;
+      releaseYear?: number;
+      type?: string;
+      specs?: {
+        processor?: string;
+        ram?: string;
+        storage?: string;
+        display?: string;
+        resolution?: string;
+        ip?: string;
+        imei1?: string;
+        imei2?: string;
+        phoneNumber?: string;
+      };
+    }
+  ): Promise<Device> {
+    const response = await this.makeApiCall(
+      `${INVENTORY_API_BASE_URL}/api/inventory/${deviceType}s`,
+      {
+        method: 'POST',
+        body: JSON.stringify(deviceData),
+      }
+    );
+    const data = await response.json();
+    return data;
+  }
+
   // Get device statistics
   async getDeviceStatistics(deviceType: DeviceType): Promise<{
     total: number;
@@ -380,14 +422,30 @@ class DeviceService {
       activityType: string;
       description: string;
       notes?: string;
+      updatedBy?: string;
     }
   ): Promise<any> {
+    // Lấy thông tin user hiện tại nếu không được truyền vào
+    let updatedBy = activityData.updatedBy;
+    if (!updatedBy) {
+      try {
+        const userDataString = await AsyncStorage.getItem('userData');
+        if (userDataString) {
+          const userData = JSON.parse(userDataString);
+          updatedBy = userData.fullname || userData.full_name || userData.email || 'Không xác định';
+        }
+      } catch (e) {
+        console.warn('Could not get user data for updatedBy');
+      }
+    }
+
     const payload = {
       entityType: deviceType,
       entityId: deviceId,
       type: activityData.activityType,
       description: activityData.description,
       details: activityData.notes || '',
+      updatedBy: updatedBy || 'Không xác định',
     };
 
     const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/activity`, {
@@ -467,10 +525,15 @@ class DeviceService {
   async assignDevice(
     deviceType: DeviceType,
     deviceId: string,
-    assignedTo: string,
+    userId: string,
+    userName?: string,
     reason?: string
   ): Promise<any> {
-    const payload = { assignedTo, reason };
+    // Backend expects userId field for new user assignment
+    // Also send userName for display purposes
+    const payload: any = { userId };
+    if (userName) payload.userName = userName;
+    if (reason) payload.reason = reason;
 
     const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/${deviceType}s/${deviceId}/assign`, {
       method: 'POST',
@@ -543,6 +606,63 @@ class DeviceService {
     return data;
   }
 
+  // Delete/Dispose device
+  async deleteDevice(deviceType: DeviceType, deviceId: string): Promise<any> {
+    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/${deviceType}s/${deviceId}`, {
+      method: 'DELETE',
+    });
+
+    const data = await response.json();
+    return data;
+  }
+
+  // Get users for assignment with pagination and search
+  async getUsers(
+    page: number = 1,
+    limit: number = 20,
+    search?: string
+  ): Promise<{ users: any[]; pagination: { page: number; limit: number; total: number; hasNext: boolean } }> {
+    try {
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('limit', limit.toString());
+      if (search && search.trim()) {
+        params.append('search', search.trim());
+      }
+
+      const url = `${INVENTORY_API_BASE_URL}/api/inventory/user?${params.toString()}`;
+      const response = await this.makeApiCall(url);
+      const data = await response.json();
+
+      // Handle different response formats
+      const users = data.users || data.data || data || [];
+      const total = data.pagination?.total || data.total || users.length;
+      const hasNext = page * limit < total;
+
+      return {
+        users,
+        pagination: {
+          page,
+          limit,
+          total,
+          hasNext,
+        },
+      };
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      return {
+        users: [],
+        pagination: { page: 1, limit: 20, total: 0, hasNext: false },
+      };
+    }
+  }
+
+  // Legacy method - Get all users for assignment (backward compatibility)
+  async getAllUsers(search?: string): Promise<any[]> {
+    const result = await this.getUsers(1, 100, search);
+    return result.users;
+  }
+
   // Legacy methods for backward compatibility
   async getDevicesByTypeOld(
     deviceType: DeviceType,
@@ -556,7 +676,7 @@ class DeviceService {
     };
   }
 
-  async filterDevices(devices: Device[], filter: DeviceFilter): Device[] {
+  filterDevices(devices: Device[], filter: DeviceFilter): Device[] {
     return devices.filter((device) => {
       // Search filter
       if (filter.search) {
@@ -565,8 +685,8 @@ class DeviceService {
           device.name.toLowerCase().includes(searchLower) ||
           device.serial.toLowerCase().includes(searchLower) ||
           (device.manufacturer && device.manufacturer.toLowerCase().includes(searchLower)) ||
-          device.assigned.some((user) => {
-            const userName = user.fullname || user.full_name || user.name || '';
+          device.assigned?.some((user) => {
+            const userName = user.fullname || user.name || '';
             return userName.toLowerCase().includes(searchLower);
           }) ||
           (device.room && device.room.name.toLowerCase().includes(searchLower));
@@ -574,14 +694,22 @@ class DeviceService {
         if (!matchesSearch) return false;
       }
 
-      // Status filter
-      if (filter.status && device.status !== filter.status) {
-        return false;
+      // Status filter - supports array of statuses
+      if (filter.status && filter.status.length > 0) {
+        const statusArray = Array.isArray(filter.status) ? filter.status : [filter.status];
+        if (!statusArray.includes(device.status)) {
+          return false;
+        }
       }
 
-      // Manufacturer filter
-      if (filter.manufacturer && device.manufacturer !== filter.manufacturer) {
-        return false;
+      // Manufacturer filter - supports array of manufacturers
+      if (filter.manufacturer && filter.manufacturer.length > 0) {
+        const manuArray = Array.isArray(filter.manufacturer) ? filter.manufacturer : [filter.manufacturer];
+        if (!device.manufacturer || !manuArray.some(m => 
+          device.manufacturer?.toLowerCase().includes(m.toLowerCase())
+        )) {
+          return false;
+        }
       }
 
       // Room filter
@@ -591,7 +719,7 @@ class DeviceService {
 
       // Assigned filter
       if (filter.assigned !== undefined) {
-        const isAssigned = device.assigned.length > 0;
+        const isAssigned = device.assigned && device.assigned.length > 0;
         if (filter.assigned !== isAssigned) {
           return false;
         }

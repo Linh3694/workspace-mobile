@@ -1,6 +1,6 @@
 {
-  "name": "my-expo-app",
-  "version": "1.2.7",
+  "name": "wis-mobile",
+  "version": "1.2.15",
   "scripts": {
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -17,15 +17,14 @@
     "build:ios": "eas build --platform ios --profile production",
     "submit:ios": "eas submit --platform ios --latest",
     "submit:android": "eas submit --platform android --latest",
-    "fix-msal": "cd android && ./gradlew clean && cd .. && npx expo install --fix",
-    "fix-msal-full": "rm -rf node_modules && npm install && cd android && ./gradlew clean && cd ..",
+    "release:android": "./scripts/build-android.sh",
+    "release:android:build-only": "./scripts/build-android.sh --no-submit",
+    "release:ios": "./scripts/build-ios.sh",
+    "release:ios:build-only": "./scripts/build-ios.sh --no-submit",
     "clean-all": "rm -rf node_modules && npm install && expo start --clear",
-    "postinstall": "patch-package",
     "check-apple-signin": "node scripts/check-apple-signin.js"
   },
   "dependencies": {
-    "@azure/msal-browser": "^4.13.0",
-    "@azure/msal-react": "^3.0.12",
     "@callstack/liquid-glass": "^0.6.0",
     "@expo/vector-icons": "^15.0.3",
     "@hookform/resolvers": "^5.0.1",
@@ -45,6 +44,7 @@
     "expo-auth-session": "~7.0.8",
     "expo-av": "~16.0.7",
     "expo-blur": "~15.0.7",
+    "expo-build-properties": "~0.14.5",
     "expo-constants": "~18.0.10",
     "expo-crypto": "~15.0.7",
     "expo-dev-client": "~6.0.16",
@@ -61,10 +61,12 @@
     "expo-server-sdk": "^3.15.0",
     "expo-splash-screen": "~31.0.10",
     "expo-status-bar": "~3.0.8",
+    "expo-system-ui": "~6.0.8",
     "expo-updates": "~29.0.12",
     "i18next": "^25.3.2",
     "jsonwebtoken": "^9.0.2",
     "jwt-decode": "^4.0.0",
+    "lottie-react-native": "^7.3.4",
     "nativewind": "latest",
     "react": "19.1.0",
     "react-hook-form": "^7.56.3",
@@ -73,14 +75,11 @@
     "react-native-actions-sheet": "^0.9.7",
     "react-native-dotenv": "^3.4.11",
     "react-native-dropdown-picker": "^5.4.6",
-    "react-native-fs": "^2.20.0",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-image-viewing": "^0.2.2",
     "react-native-image-zoom-viewer": "^3.0.1",
     "react-native-linear-gradient": "^2.8.3",
     "react-native-modal": "^14.0.0-rc.1",
-    "react-native-msal": "3.0.4",
-    "react-native-pdf": "^6.7.7",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
@@ -104,28 +103,12 @@
     "eslint-config-expo": "~10.0.0",
     "eslint-config-prettier": "^10.1.2",
     "metro-react-native-babel-transformer": "^0.77.0",
-    "patch-package": "^8.0.0",
     "prettier": "^3.2.5",
     "prettier-plugin-tailwindcss": "^0.5.11",
     "react-native-svg-transformer": "^1.5.1",
     "tailwindcss": "^3.4.0",
     "typescript": "~5.9.2"
   },
-  "resolutions": {
-    "com.microsoft.identity.client:msal": "2.0.4",
-    "react-native-msal/com.microsoft.identity.client:msal": "2.0.4"
-  },
   "main": "node_modules/expo/AppEntry.js",
-  "private": true,
-  "expo": {
-    "doctor": {
-      "reactNativeDirectoryCheck": {
-        "exclude": [
-          "react-native-fs",
-          "react-native-msal"
-        ],
-        "listUnknownPackages": false
-      }
-    }
-  }
+  "private": true
 }

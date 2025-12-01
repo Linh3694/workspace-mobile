@@ -110,33 +110,56 @@ class PushNotificationService {
         return null;
       }
 
-      // Get cached token first
+      // Import Constants để lấy projectId động
+      const Constants = require('expo-constants').default;
+      const projectId = Constants?.expoConfig?.extra?.eas?.projectId;
+      
+      if (!projectId) {
+        console.error('❌ Không tìm thấy projectId trong app.json');
+        return null;
+      }
+
+      // Xác định app type (expo-go vs standalone)
+      const isStandalone = Constants.appOwnership !== 'expo';
+      const appType = isStandalone ? 'standalone' : 'expo-go';
+      
+      console.log(`📱 App type: ${appType}, ProjectId: ${projectId}`);
+
+      // Get cached token first - nhưng kiểm tra app type
+      const cachedAppType = await AsyncStorage.getItem('pushTokenAppType');
       const cachedToken = await AsyncStorage.getItem('pushToken');
-      if (cachedToken) {
+      
+      // Nếu app type thay đổi (từ expo-go sang standalone hoặc ngược lại), cần lấy token mới
+      if (cachedToken && cachedAppType === appType) {
         // Verify token is still valid
         try {
-          const projectId = await Notifications.getExpoPushTokenAsync({
-            projectId: 'f6365a6d-3c57-4b54-aaa8-119f05e3698e',
+          const tokenResult = await Notifications.getExpoPushTokenAsync({
+            projectId,
           });
-          if (projectId.data === cachedToken) {
-            console.log('📱 Using cached push token');
+          if (tokenResult.data === cachedToken) {
+            console.log('📱 Using cached push token for', appType);
             return cachedToken;
           }
         } catch (error) {
           console.log('🔄 Cached token invalid, getting new one');
         }
+      } else if (cachedAppType && cachedAppType !== appType) {
+        console.log(`🔄 App type changed from ${cachedAppType} to ${appType}, getting new token`);
+        // Clear old registration status to force re-register
+        await AsyncStorage.removeItem('pushTokenRegistered');
       }
 
       // Get new token
       const expoPushToken = await Notifications.getExpoPushTokenAsync({
-        projectId: 'f6365a6d-3c57-4b54-aaa8-119f05e3698e',
+        projectId,
       });
 
       const token = expoPushToken.data;
 
-      // Cache the token
+      // Cache the token and app type
       await AsyncStorage.setItem('pushToken', token);
-      console.log('📱 New push token generated and cached');
+      await AsyncStorage.setItem('pushTokenAppType', appType);
+      console.log(`📱 New push token generated for ${appType}:`, token);
 
       return token;
     } catch (error) {
@@ -158,6 +181,10 @@ class PushNotificationService {
       const Constants = require('expo-constants').default;
       const { Platform } = require('react-native');
 
+      // Xác định app type (expo-go vs standalone) - QUAN TRỌNG cho iOS TestFlight
+      const isStandalone = Constants.appOwnership !== 'expo';
+      const appType = isStandalone ? 'standalone' : 'expo-go';
+      
       // Build device info
       const platform =
         Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'expo';
@@ -165,6 +192,9 @@ class PushNotificationService {
         Device.deviceName || `${Device.brand || 'Unknown'} ${Device.modelName || 'Device'}`;
       const osVersion = Device.osVersion || 'Unknown';
       const appVersion = Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
+      
+      // Tạo unique device identifier để phân biệt Expo Go và standalone app
+      const deviceId = `${Device.modelId || Device.modelName || 'unknown'}-${Platform.OS}-${appType}`;
 
       const deviceInfo = {
         deviceToken: token,
@@ -175,7 +205,13 @@ class PushNotificationService {
         appVersion: appVersion,
         language: 'vi',
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        // Thêm thông tin để phân biệt app type
+        appType: appType, // 'standalone' cho TestFlight/App Store, 'expo-go' cho Expo Go
+        deviceId: deviceId, // Unique ID để backend phân biệt các devices
+        bundleId: Constants.expoConfig?.ios?.bundleIdentifier || 'com.wellspring.workspace',
       };
+
+      console.log('📤 Registering push token with device info:', JSON.stringify(deviceInfo, null, 2));
 
       // Use new mobile device registration API
       const response = await fetch(
@@ -191,8 +227,11 @@ class PushNotificationService {
       );
 
       if (response.ok) {
-        console.log('✅ Push token registered successfully');
+        const responseData = await response.json();
+        console.log('✅ Push token registered successfully for', appType);
+        console.log('📥 Server response:', JSON.stringify(responseData, null, 2));
         await AsyncStorage.setItem('pushTokenRegistered', 'true');
+        await AsyncStorage.setItem('pushTokenAppType', appType);
       } else {
         const errorText = await response.text();
         console.error('❌ Failed to register push token:', errorText);
@@ -228,6 +267,15 @@ class PushNotificationService {
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#FFCE02',
+        sound: 'default',
+      });
+
+      await Notifications.setNotificationChannelAsync('ticket', {
+        name: 'Ticket hỗ trợ',
+        description: 'Thông báo về ticket và yêu cầu hỗ trợ',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#4A90D9',
         sound: 'default',
       });
 

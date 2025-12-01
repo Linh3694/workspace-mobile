@@ -4,12 +4,12 @@ import {
   Text,
   SafeAreaView,
   TextInput,
-  TouchableOpacity,
   FlatList,
   ActivityIndicator,
   ScrollView,
   Platform,
 } from 'react-native';
+import { TouchableOpacity } from '../../components/Common';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
@@ -21,8 +21,11 @@ import { normalizeVietnameseName } from '../../utils/nameFormatter';
 
 type TicketScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Ticket'>;
 
+interface TicketGuestScreenProps {
+  isFromTab?: boolean;
+}
 
-const TicketGuestScreen = () => {
+const TicketGuestScreen = ({ isFromTab = false }: TicketGuestScreenProps) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
@@ -182,12 +185,15 @@ const TicketGuestScreen = () => {
       <View className="w-full flex-1 pb-16">
         {/* Header với tiêu đề và nút back */}
         <View className="w-full flex-row items-center px-4 py-4">
-          <TouchableOpacity onPress={handleGoBack} className="mr-3">
-            <Ionicons name="arrow-back" size={24} color="#000" />
-          </TouchableOpacity>
+          {!isFromTab && (
+            <TouchableOpacity onPress={handleGoBack} className="mr-3">
+              <Ionicons name="arrow-back" size={24} color="#000" />
+            </TouchableOpacity>
+          )}
           <View className="flex-1 items-center justify-center">
             <Text className="font-medium text-xl">Ticket</Text>
           </View>
+          {!isFromTab && <View style={{ width: 24 }} />}
         </View>
 
         {/* Ô tìm kiếm cải tiến với nút lọc */}
@@ -289,7 +295,7 @@ const TicketGuestScreen = () => {
 
         {/* Nút thêm mới ở dưới cùng */}
         <TouchableOpacity
-          className="absolute bottom-5 right-5 h-14 w-14 items-center justify-center rounded-full bg-orange-500 shadow-lg"
+          className="absolute bottom-5 right-5 h-14 w-14 items-center justify-center rounded-full bg-[#F05023] shadow-lg"
           onPress={handleCreateTicket}>
           <Ionicons name="add" size={30} color="white" />
         </TouchableOpacity>

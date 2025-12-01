@@ -4,12 +4,12 @@ import {
   Text,
   SafeAreaView,
   TextInput,
-  TouchableOpacity,
   FlatList,
   ScrollView,
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import { TouchableOpacity } from '../../components/Common';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
@@ -25,7 +25,11 @@ type TicketScreenNavigationProp = NativeStackNavigationProp<
   'TicketAdminScreen'
 >;
 
-const TicketAdminScreen = () => {
+interface TicketAdminScreenProps {
+  isFromTab?: boolean;
+}
+
+const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
   const navigation = useNavigation<TicketScreenNavigationProp>();
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
@@ -173,7 +177,13 @@ const TicketAdminScreen = () => {
   };
 
   const handleViewTicketDetail = (ticketId: string) => {
-    navigation.navigate('TicketAdminDetail', { ticketId });
+    // Nếu đang ở tab "Ticket của tôi", user đóng vai trò guest (người tạo ticket cần hỗ trợ)
+    // nên navigate đến TicketGuestDetail thay vì TicketAdminDetail
+    if (activeTab === 'assigned') {
+      navigation.navigate('TicketGuestDetail', { ticketId });
+    } else {
+      navigation.navigate('TicketAdminDetail', { ticketId });
+    }
   };
 
   const handleGoBack = () => {
@@ -211,9 +221,13 @@ const TicketAdminScreen = () => {
       className="flex-1 bg-white"
       style={{ paddingTop: Platform.OS === 'android' ? insets.top : 0 }}>
       <View className="mb-5 mt-6 flex-row items-center justify-between px-5">
-        <TouchableOpacity onPress={handleGoBack} className="p-2">
-          <Ionicons name="chevron-back" size={24} color="#0A2240" />
-        </TouchableOpacity>
+        {!isFromTab ? (
+          <TouchableOpacity onPress={handleGoBack} className="p-2">
+            <Ionicons name="chevron-back" size={24} color="#0A2240" />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 40 }} />
+        )}
         <Text className="flex-1 text-center font-bold text-2xl text-[#0A2240]">Ticket</Text>
         <View style={{ width: 40 }} />
       </View>

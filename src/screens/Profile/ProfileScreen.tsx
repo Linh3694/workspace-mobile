@@ -4,13 +4,13 @@ import {
   View,
   Text,
   SafeAreaView,
-  TouchableOpacity,
   Switch,
   Alert,
   Image,
   ScrollView,
   Platform,
 } from 'react-native';
+import { TouchableOpacity } from '../../components/Common';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../context/AuthContext';
 // Biometric removed per requirement
@@ -193,37 +193,49 @@ const ProfileScreen = () => {
       const projectId = Constants?.expoConfig?.extra?.eas?.projectId;
 
       if (!projectId) {
-        console.error('Không tìm thấy projectId trong app.json');
+        console.error('❌ Không tìm thấy projectId trong app.json');
+        Alert.alert(t('common.error'), 'Không tìm thấy cấu hình push notification');
         return false;
       }
+
+      console.log('📱 Getting Expo Push Token with projectId:', projectId);
 
       // Lấy token thiết bị
       const token = await Notifications.getExpoPushTokenAsync({
         projectId,
       });
 
-      console.log('Push token:', token.data);
+      console.log('📱 Push token obtained:', token.data);
 
       // Lưu token vào AsyncStorage để sử dụng sau này
       await AsyncStorage.setItem('pushToken', token.data);
 
-      // Gửi token lên server
-      await registerDeviceToken(token.data);
+      // Gửi token lên server và check kết quả
+      const registerSuccess = await registerDeviceToken(token.data);
+      
+      if (!registerSuccess) {
+        console.error('❌ Đăng ký token với server thất bại');
+        return false;
+      }
+      
+      console.log('✅ Push notification setup completed successfully');
       return true;
-    } catch (error) {
-      console.error('Lỗi khi thiết lập thông báo đẩy:', error);
+    } catch (error: any) {
+      console.error('❌ Lỗi khi thiết lập thông báo đẩy:', error);
+      console.error('Error details:', error.message || error);
+      Alert.alert(t('common.error'), 'Lỗi khi thiết lập thông báo đẩy: ' + (error.message || 'Unknown error'));
       return false;
     }
   };
 
   // Đăng ký token thiết bị với server
-  const registerDeviceToken = async (token: string) => {
+  const registerDeviceToken = async (token: string): Promise<boolean> => {
     try {
       const authToken = await AsyncStorage.getItem('authToken');
 
       if (!authToken) {
-        console.log('Người dùng chưa đăng nhập');
-        return;
+        console.log('❌ Người dùng chưa đăng nhập - không thể đăng ký token');
+        return false;
       }
 
       console.log('🔔 Registering push token with notification service via nginx proxy');
@@ -233,13 +245,20 @@ const ProfileScreen = () => {
       const Constants = require('expo-constants').default;
       const { Platform } = require('react-native');
 
+      // Xác định app type (expo-go vs standalone) - QUAN TRỌNG cho iOS TestFlight
+      const isStandalone = Constants.appOwnership !== 'expo';
+      const appType = isStandalone ? 'standalone' : 'expo-go';
+
       // Build device info
       const platform =
         Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'expo';
       const deviceName =
         Device.deviceName || `${Device.brand || 'Unknown'} ${Device.modelName || 'Device'}`;
       const osVersion = Device.osVersion || 'Unknown';
-      const appVersion = Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
+      const appVersion = Constants.expoConfig?.version || (Constants.manifest as any)?.version || '1.0.0';
+      
+      // Tạo unique device identifier để phân biệt Expo Go và standalone app
+      const deviceId = `${Device.modelId || Device.modelName || 'unknown'}-${Platform.OS}-${appType}`;
 
       const deviceInfo = {
         deviceToken: token,
@@ -251,30 +270,52 @@ const ProfileScreen = () => {
         language: 'vi',
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
         jwt_token: authToken, // Include JWT token in payload for authentication
+        // Thêm thông tin để phân biệt app type
+        appType: appType, // 'standalone' cho TestFlight/App Store, 'expo-go' cho Expo Go
+        deviceId: deviceId, // Unique ID để backend phân biệt các devices
+        bundleId: Constants.expoConfig?.ios?.bundleIdentifier || 'com.wellspring.workspace',
       };
 
       const apiUrl = `${BASE_URL}/api/method/erp.api.erp_sis.mobile_push_notification.register_device_token`;
       console.log('📡 FULL API URL being called:', apiUrl);
-      console.log('📤 Request payload:', deviceInfo);
+      console.log(`📤 Request payload (${appType}):`, JSON.stringify(deviceInfo, null, 2));
       console.log('🔑 Auth token (first 50 chars):', authToken.substring(0, 50) + '...');
 
-      await axios.post(apiUrl, deviceInfo, {
+      const response = await axios.post(apiUrl, deviceInfo, {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${authToken}`,
         },
       });
-      console.log('✅ Push token registered successfully with notification service');
-    } catch (error) {
+      
+      console.log(`✅ Push token registered successfully for ${appType}`);
+      console.log('📥 Server response:', JSON.stringify(response.data, null, 2));
+      
+      // Kiểm tra response có success không
+      if (response.data?.success === false) {
+        console.error('❌ Server returned error:', response.data?.message);
+        Alert.alert(t('common.error'), response.data?.message || 'Đăng ký token thất bại');
+        return false;
+      }
+      
+      await AsyncStorage.setItem('pushTokenAppType', appType);
+      await AsyncStorage.setItem('pushTokenRegistered', 'true');
+      return true;
+    } catch (error: any) {
       console.error('❌ Lỗi đăng ký token thiết bị:', error);
       // Log chi tiết để debug
       if (error.response) {
         console.error('Error response status:', error.response.status);
-        console.error('Error response data:', error.response.data);
+        console.error('Error response data:', JSON.stringify(error.response.data, null, 2));
+      } else if (error.request) {
+        console.error('No response received:', error.request);
+      } else {
+        console.error('Error message:', error.message);
       }
 
       // Show user-friendly error
       Alert.alert(t('common.error'), t('notifications.connection_error'));
+      return false;
     }
   };
 

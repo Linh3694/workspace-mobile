@@ -3,19 +3,21 @@ import {
     View,
     Text,
     SafeAreaView,
-    TouchableOpacity,
     ScrollView,
     ActivityIndicator,
     RefreshControl,
     Alert,
-    Platform
+    Platform,
+    Linking
 } from 'react-native';
+import { TouchableOpacity } from '../../components/Common';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import deviceService from '../../services/deviceService';
+import { API_BASE_URL } from '../../config/constants.js';
 import { Image } from 'react-native';
 import { getAvatar } from '../../utils/avatar';
 import { AssignmentHistory, Device } from '../../types/devices';
@@ -137,11 +139,36 @@ const DeviceAssignmentHistoryScreen = () => {
                 {assignment.document && (
                     <View className="mt-2">
                         <TouchableOpacity
-                            onPress={() => {
-                                // Open document - you might need to implement document viewing
-                                console.log('Open document:', assignment.document);
-                                // For now, just show alert
-                                Alert.alert('Document', `Document: ${assignment.document}`);
+                            onPress={async () => {
+                                try {
+                                    // Lấy tên file từ document path
+                                    let fileName = assignment.document;
+                                    if (assignment.document.includes('/')) {
+                                        fileName = assignment.document.split('/').pop() || assignment.document;
+                                    }
+                                    
+                                    // Build full document URL giống như DevicesDetailScreen
+                                    const documentUrl = `${API_BASE_URL}/uploads/Handovers/${fileName}`;
+                                    
+                                    // Check if URL can be opened
+                                    const canOpen = await Linking.canOpenURL(documentUrl);
+                                    if (canOpen) {
+                                        await Linking.openURL(documentUrl);
+                                    } else {
+                                        Alert.alert(
+                                            'Không thể mở file',
+                                            'Thiết bị không hỗ trợ mở loại file này. Vui lòng thử trên máy tính.',
+                                            [{ text: 'OK' }]
+                                        );
+                                    }
+                                } catch (error) {
+                                    console.error('Error opening document:', error);
+                                    Alert.alert(
+                                        'Lỗi',
+                                        'Không thể mở biên bản bàn giao. Vui lòng thử lại sau.',
+                                        [{ text: 'OK' }]
+                                    );
+                                }
                             }}
                             className="flex-row items-center"
                         >

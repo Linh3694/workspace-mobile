@@ -1,12 +1,12 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from '../config/constants';
-import { getAllCategoryMappings } from '../config/ticketCategories';
+import { getAllCategoryMappings } from '../config/ticketConstants';
 
 // Helper function to get axios config with auth token
-const getAxiosConfig = async (additionalConfig = {}) => {
+const getAxiosConfig = async (additionalConfig: { headers?: Record<string, string> } = {}) => {
   const token = await AsyncStorage.getItem('authToken');
-  const defaultHeaders = {
+  const defaultHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
@@ -178,7 +178,12 @@ export const getTicketDetail = async (ticketId: string): Promise<Ticket | null> 
     const response = await axios.get<any>(`/api/ticket/${ticketId}`, config);
 
     if (response.data?.success && response.data?.data) {
-      return response.data.data;
+      const ticket = response.data.data;
+      // Debug log for feedback
+      if (ticket.feedback) {
+        console.log('[getTicketDetail] Ticket feedback:', JSON.stringify(ticket.feedback, null, 2));
+      }
+      return ticket;
     }
 
     return null;
@@ -312,16 +317,37 @@ export const sendMessage = async (
         'Content-Type': 'multipart/form-data',
       },
     });
+
+    console.log('[sendMessage] Sending to:', `/api/ticket/${ticketId}/messages`);
+    console.log('[sendMessage] Text:', messageData.text);
+    console.log('[sendMessage] Images count:', messageData.images?.length || 0);
+
     const response = await axios.post(`/api/ticket/${ticketId}/messages`, formData, config);
 
+    console.log('[sendMessage] Response:', JSON.stringify(response.data, null, 2));
+
+    // Handle different response formats
+    // API returns { success: true, messageData: {...} }
+    if (response.data?.success && response.data?.messageData) {
+      return response.data.messageData;
+    }
+
+    // Fallback: { success: true, data: {...} }
     if (response.data?.success && response.data?.data) {
       return response.data.data;
     }
 
-    throw new Error('Failed to send message');
-  } catch (error) {
-    console.error('Error sending message:', error);
-    throw error;
+    // If response has _id, it might be the message itself
+    if (response.data?._id) {
+      return response.data;
+    }
+
+    console.error('[sendMessage] Unexpected response format:', response.data);
+    throw new Error('Không thể gửi tin nhắn');
+  } catch (error: any) {
+    console.error('[sendMessage] Error:', error?.response?.data || error?.message || error);
+    const errorMsg = error?.response?.data?.message || error?.message || 'Không thể gửi tin nhắn';
+    throw new Error(errorMsg);
   }
 };
 
@@ -331,16 +357,32 @@ export const sendMessage = async (
 export const getTicketMessages = async (ticketId: string): Promise<Message[]> => {
   try {
     const config = await getAxiosConfig();
+    console.log('[getTicketMessages] Fetching messages for ticket:', ticketId);
     const response = await axios.get(`/api/ticket/${ticketId}/messages`, config);
 
+    console.log('[getTicketMessages] Response:', JSON.stringify(response.data, null, 2));
+
+    // Handle different response formats
     if (response.data?.success && response.data?.data) {
       return response.data.data;
     }
 
+    // Some APIs return messages directly in array
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+
+    // Check if messages is in response.data.messages
+    if (response.data?.messages && Array.isArray(response.data.messages)) {
+      return response.data.messages;
+    }
+
+    console.log('[getTicketMessages] No messages found in response');
     return [];
-  } catch (error) {
-    console.error('Error fetching ticket messages:', error);
-    throw error;
+  } catch (error: any) {
+    console.error('[getTicketMessages] Error:', error?.response?.data || error?.message || error);
+    // Don't throw, return empty array to prevent crash
+    return [];
   }
 };
 
@@ -365,11 +407,12 @@ export const getTicketHistory = async (ticketId: string): Promise<TicketHistoryE
 
 /**
  * Assign ticket to me (for support team)
+ * Backend: PUT /api/ticket/:ticketId/assign
  */
 export const assignTicketToMe = async (ticketId: string): Promise<Ticket> => {
   try {
     const config = await getAxiosConfig();
-    const response = await axios.post(`/api/ticket/${ticketId}/assign-to-me`, {}, config);
+    const response = await axios.put(`/api/ticket/${ticketId}/assign`, {}, config);
 
     if (response.data?.success && response.data?.data) {
       return response.data.data;
@@ -384,11 +427,12 @@ export const assignTicketToMe = async (ticketId: string): Promise<Ticket> => {
 
 /**
  * Cancel ticket with reason
+ * Backend: PUT /api/ticket/:ticketId/cancel
  */
 export const cancelTicket = async (ticketId: string, reason: string): Promise<Ticket> => {
   try {
     const config = await getAxiosConfig();
-    const response = await axios.post(`/api/ticket/${ticketId}/cancel`, { reason }, config);
+    const response = await axios.put(`/api/ticket/${ticketId}/cancel`, { cancelReason: reason }, config);
 
     if (response.data?.success && response.data?.data) {
       return response.data.data;
@@ -475,8 +519,10 @@ export const createSubTask = async (
     const config = await getAxiosConfig();
     const response = await axios.post(`/api/ticket/${ticketId}/subtasks`, subTaskData, config);
 
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
+    // Backend trả về ticket object, lấy subtask mới nhất
+    if (response.data?.success && response.data?.ticket) {
+      const subTasks = response.data.ticket.subTasks || [];
+      return subTasks[subTasks.length - 1];
     }
 
     throw new Error('Failed to create subtask');
@@ -493,7 +539,7 @@ export const updateSubTaskStatus = async (
   ticketId: string,
   subTaskId: string,
   status: string
-): Promise<SubTask> => {
+): Promise<void> => {
   try {
     const config = await getAxiosConfig();
     const response = await axios.put(
@@ -502,11 +548,9 @@ export const updateSubTaskStatus = async (
       config
     );
 
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
+    if (!response.data?.success) {
+      throw new Error(response.data?.message || 'Failed to update subtask');
     }
-
-    throw new Error('Failed to update subtask');
   } catch (error) {
     console.error('Error updating subtask:', error);
     throw error;
@@ -519,16 +563,33 @@ export const updateSubTaskStatus = async (
 export const acceptFeedback = async (ticketId: string, feedbackData: Feedback): Promise<Ticket> => {
   try {
     const config = await getAxiosConfig();
+    console.log('[acceptFeedback] Submitting feedback for ticket:', ticketId, feedbackData);
+    
     const response = await axios.post(`/api/ticket/${ticketId}/feedback`, feedbackData, config);
+    console.log('[acceptFeedback] Response:', JSON.stringify(response.data, null, 2));
 
+    // Handle different response formats
     if (response.data?.success && response.data?.data) {
       return response.data.data;
     }
+    
+    // Some backends return data directly
+    if (response.data?.ticket || response.data?._id) {
+      return response.data.ticket || response.data;
+    }
 
-    throw new Error('Failed to submit feedback');
-  } catch (error) {
-    console.error('Error submitting feedback:', error);
-    throw error;
+    // If response status is OK but no expected data structure
+    if (response.status === 200 || response.status === 201) {
+      console.log('[acceptFeedback] Response OK but unexpected format, returning response.data');
+      return response.data;
+    }
+
+    const errorMsg = response.data?.message || response.data?.error || 'Failed to submit feedback';
+    throw new Error(errorMsg);
+  } catch (error: any) {
+    console.error('[acceptFeedback] Error:', error?.response?.data || error?.message || error);
+    const errorMessage = error?.response?.data?.message || error?.message || 'Không thể gửi đánh giá';
+    throw new Error(errorMessage);
   }
 };
 
@@ -538,7 +599,7 @@ export const acceptFeedback = async (ticketId: string, feedbackData: Feedback): 
 export const getTeamMemberFeedbackStats = async (email: string): Promise<any> => {
   try {
     const config = await getAxiosConfig();
-    const response = await axios.get(`/api/ticket/feedback/stats/${email}`, config);
+    const response = await axios.get(`/api/ticket/feedback-stats/${email}`, config);
 
     if (response.data?.success && response.data?.data) {
       return response.data.data;
@@ -547,26 +608,7 @@ export const getTeamMemberFeedbackStats = async (email: string): Promise<any> =>
     return null;
   } catch (error) {
     console.error('Error fetching feedback stats:', error);
-    throw error;
-  }
-};
-
-/**
- * Lấy technical stats
- */
-export const getTechnicalStats = async (): Promise<any> => {
-  try {
-    const config = await getAxiosConfig();
-    const response = await axios.get('/api/ticket/stats/technical', config);
-
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Error fetching technical stats:', error);
-    throw error;
+    return null; // Return null instead of throwing to avoid breaking UI
   }
 };
 
@@ -576,7 +618,7 @@ export const getTechnicalStats = async (): Promise<any> => {
 export const getTechnicalStatsByUserId = async (userId: string): Promise<any> => {
   try {
     const config = await getAxiosConfig();
-    const response = await axios.get(`/api/ticket/stats/technical/${userId}`, config);
+    const response = await axios.get(`/api/ticket/technical-stats/${userId}`, config);
 
     if (response.data?.success && response.data?.data) {
       return response.data.data;
@@ -585,6 +627,54 @@ export const getTechnicalStatsByUserId = async (userId: string): Promise<any> =>
     return null;
   } catch (error) {
     console.error('Error fetching technical stats by user ID:', error);
+    return null; // Return null instead of throwing to avoid breaking UI
+  }
+};
+
+export interface SupportTeamMember {
+  _id: string;
+  email: string;
+  fullname: string;
+  avatarUrl?: string;
+  department?: string;
+  roles?: string[];
+  userObjectId?: string; // User's ObjectId (dùng khi assign ticket)
+}
+
+/**
+ * Lấy danh sách support team members
+ */
+export const getSupportTeamMembers = async (): Promise<SupportTeamMember[]> => {
+  try {
+    const config = await getAxiosConfig();
+    const response = await axios.get('/api/ticket/support-team', config);
+
+    if (response.data?.success && response.data?.data?.members) {
+      return response.data.data.members;
+    }
+
+    return [];
+  } catch (error) {
+    console.error('Error fetching support team members:', error);
+    throw error;
+  }
+};
+
+/**
+ * Assign ticket cho user khác
+ */
+export const assignTicketToUser = async (ticketId: string, userId: string): Promise<Ticket> => {
+  try {
+    const config = await getAxiosConfig();
+    const response = await axios.put(`/api/ticket/${ticketId}`, { assignedTo: userId }, config);
+
+    if (response.data?.success && response.data?.data) {
+      return response.data.data;
+    }
+
+    throw new Error('Failed to assign ticket');
+  } catch (error) {
+    console.error('Error assigning ticket:', error);
     throw error;
   }
 };

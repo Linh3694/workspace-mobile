@@ -5,7 +5,6 @@ import {
   View,
   Text,
   SafeAreaView,
-  TouchableOpacity,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -14,10 +13,10 @@ import {
   StatusBar,
   Keyboard,
   Platform,
-  TouchableWithoutFeedback,
   PanResponder,
   Animated,
 } from 'react-native';
+import { TouchableOpacity } from '../../components/Common';
 
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -201,10 +200,17 @@ const HomeScreen = () => {
     };
   }, [user?.employeeCode, fetchTodayAttendance]);
 
-  // Fetch unread notification count when component mounts
+  // Fetch unread notification count when component mounts and when screen is focused
   useEffect(() => {
     fetchUnreadNotificationCount();
   }, [fetchUnreadNotificationCount]);
+
+  // Refresh unread count khi quay lại từ màn hình khác (ví dụ: sau khi đọc thông báo)
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchUnreadNotificationCount();
+    }, [fetchUnreadNotificationCount])
+  );
 
   // Refresh attendance data khi screen focus (từ notification)
   useFocusEffect(
@@ -649,8 +655,17 @@ const HomeScreen = () => {
 
             {/* Content Layer */}
             <View style={{ flex: 1 }}>
-              {/* Header spacing */}
-              <View className="py-4" />
+              {/* Header with Cancel button */}
+              <View className="flex-row items-center justify-between px-4 py-4">
+                <View style={{ width: 36 }} />
+                {/* <Text className="font-semibold text-lg text-gray-900">{t('common.search')}</Text> */}
+                <TouchableOpacity
+                  onPress={closeIOSSearch}
+                  className="rounded-full bg-gray-100 p-2"
+                  style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="close" size={20} color="#666" />
+                </TouchableOpacity>
+              </View>
 
               {/* Search Content */}
               <View
@@ -786,9 +801,16 @@ const HomeScreen = () => {
                   )}
 
                   {/* Spacer for tap to close - fills remaining space */}
-                  <TouchableWithoutFeedback onPress={closeIOSSearch}>
-                    <View className="min-h-[100px] flex-1" />
-                  </TouchableWithoutFeedback>
+                  <TouchableOpacity
+                    activeOpacity={1}
+                    onPress={closeIOSSearch}
+                    style={{ minHeight: 300, flex: 1 }}>
+                    <View className="flex-1 items-center justify-center pt-8">
+                      <Text className="text-center text-sm text-gray-400">
+                        Nhấn vào đây để quay lại
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
                 </ScrollView>
               </View>
 

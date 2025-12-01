@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-//@ts-ignore
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
-import { getTicketHistory } from '../../../services/ticketService';
+import { View, Text, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { getTicketHistory } from '../../../services/ticketService';
 
 interface TicketHistoryProps {
   ticketId: string;
@@ -21,21 +20,30 @@ interface HistoryItem {
 const TicketHistory: React.FC<TicketHistoryProps> = ({ ticketId }) => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     fetchHistory();
   }, [ticketId]);
 
-  const fetchHistory = async () => {
+  const fetchHistory = async (isRefresh = false) => {
     try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       const historyData = await getTicketHistory(ticketId);
       setHistory(historyData);
     } catch (error) {
       console.error('Lỗi khi lấy lịch sử:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
+
+  const onRefresh = () => fetchHistory(true);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -48,35 +56,30 @@ const TicketHistory: React.FC<TicketHistoryProps> = ({ ticketId }) => {
     });
   };
 
-  // Hàm để loại bỏ các thẻ HTML và chỉ giữ lại text
-  const stripHtml = (html: string) => {
-    return html.replace(/<\/?[^>]+(>|$)/g, '');
-  };
-
-  // Hàm để bao bọc nội dung HTML trong cấu trúc HTML hoàn chỉnh
+  // Wrap HTML content in proper structure
   const wrapInHtml = (content: string) => {
     return `
-        <html>
-            <head>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <style>
-                    body {
-                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                        font-size: 14px;
-                        color: #333;
-                        margin: 0;
-                        padding: 0;
-                    }
-                    strong {
-                        font-weight: 600;
-                    }
-                </style>
-            </head>
-            <body>
-                ${content}
-            </body>
-        </html>
-        `;
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+              font-size: 14px;
+              color: #333;
+              margin: 0;
+              padding: 0;
+            }
+            strong {
+              font-weight: 600;
+            }
+          </style>
+        </head>
+        <body>
+          ${content}
+        </body>
+      </html>
+    `;
   };
 
   if (loading) {
@@ -94,22 +97,23 @@ const TicketHistory: React.FC<TicketHistoryProps> = ({ ticketId }) => {
           <Text className="font-medium text-gray-500">Chưa có lịch sử hoạt động</Text>
         </View>
       ) : (
-        <ScrollView className="flex-1">
+        <ScrollView
+          className="flex-1"
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#F05023']} tintColor="#F05023" />
+          }>
           {[...history].reverse().map((item, index) => (
-            <View key={index} className="mb-4">
+            <View key={item._id || index} className="mb-4">
               <View className="ml-6 rounded-xl bg-[#F8F8F8] p-3 font-medium">
-                <Text className=" mb-1 font-medium text-sm text-gray-500">
+                <Text className="mb-1 font-medium text-sm text-gray-500">
                   {formatDate(item.timestamp)}
                 </Text>
-                {/* Sử dụng WebView để hiển thị HTML */}
                 <WebView
                   originWhitelist={['*']}
                   source={{ html: wrapInHtml(item.action) }}
                   style={{ height: 40, backgroundColor: 'transparent' }}
                   scrollEnabled={false}
                 />
-                {/* Phòng trường hợp WebView không hiển thị đúng */}
-                <Text className="hidden">{stripHtml(item.action)}</Text>
               </View>
             </View>
           ))}

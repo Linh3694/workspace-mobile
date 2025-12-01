@@ -1,9 +1,8 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
   SafeAreaView,
-  TouchableOpacity,
   FlatList,
   TextInput,
   ActivityIndicator,
@@ -13,6 +12,7 @@ import {
   ScrollView,
   Platform,
 } from 'react-native';
+import { TouchableOpacity } from '../../components/Common';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +22,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import deviceService, { PaginationState } from '../../services/deviceService';
 import { Device, DeviceType, DeviceFilter, DeviceFilterOptions } from '../../types/devices';
 import { normalizeVietnameseName } from '../../utils/nameFormatter';
+import CreateDeviceModal, { CreateDeviceData } from './components/CreateDeviceModal';
 
 type DevicesScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -33,6 +34,14 @@ const DevicesScreen = () => {
   const navigation = useNavigation<DevicesScreenNavigationProp>();
   const route = useRoute<DevicesScreenRouteProp>();
   const insets = useSafeAreaInsets();
+
+  // Refs for cleanup and preventing race conditions
+  const isMountedRef = useRef(true);
+  const fetchRequestIdRef = useRef(0);
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const fetchDevicesRef = useRef<((resetPagination?: boolean, targetPage?: number) => Promise<void>) | null>(null);
+  const loadingRef = useRef(false);
+  const refreshingRef = useRef(false);
 
   // Main state
   const [devices, setDevices] = useState<Device[]>([]);
@@ -64,6 +73,7 @@ const DevicesScreen = () => {
     yearRange: [2015, 2024],
   });
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Filter options from API
   const [filterOptions, setFilterOptions] = useState<DeviceFilterOptions>({
@@ -125,51 +135,13 @@ const DevicesScreen = () => {
     [searchQuery, appliedFilters]
   );
 
-  // Initial load effect
-  useEffect(() => {
-    if (!initialLoadDone) {
-      fetchDevices(true);
-      fetchFilterOptions();
-      setInitialLoadDone(true);
-    }
-  }, []); // Only run on mount
-
-  // Effect for device type changes
-  useEffect(() => {
-    if (initialLoadDone) {
-      fetchDevices(true);
-      fetchFilterOptions();
-    }
-  }, [selectedType]);
-
-  useEffect(() => {
-    // Debounce search/filter updates
-    // Skip if we're just switching device types (no active filters and no search)
-    if (!hasActiveFilters()) {
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      fetchDevices(true);
-    }, 300);
-
-    return () => clearTimeout(timeoutId);
-  }, [apiFilters]);
-
-  // Navigation focus listener
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      // Only refresh if initial load is done and not currently loading to prevent race conditions
-      if (initialLoadDone && !loading && !refreshing) {
-        fetchDevices(true);
-      }
-    });
-
-    return unsubscribe;
-  }, [navigation, initialLoadDone, loading, refreshing]);
-
-  const fetchDevices = async (resetPagination: boolean = false) => {
-    const currentPage = resetPagination ? 1 : pagination.page;
+  // fetchDevices function - defined BEFORE useEffects that use it
+  const fetchDevices = useCallback(async (resetPagination: boolean = false, targetPage?: number) => {
+    // Increment request ID to track this specific request
+    const requestId = ++fetchRequestIdRef.current;
+    
+    // Use targetPage if provided, otherwise use pagination.page or 1 if reset
+    const currentPage = targetPage ?? (resetPagination ? 1 : pagination.page);
     const isRefresh = resetPagination;
 
     if (currentPage === 1) {
@@ -186,6 +158,11 @@ const DevicesScreen = () => {
         page: currentPage,
       });
 
+      // Check if this is still the latest request and component is mounted
+      if (requestId !== fetchRequestIdRef.current || !isMountedRef.current) {
+        return; // Discard stale response
+      }
+
       const newDevices = response.populatedLaptops;
 
       if (currentPage === 1) {
@@ -201,6 +178,11 @@ const DevicesScreen = () => {
 
       setPagination(response.pagination);
     } catch (error) {
+      // Check if component is still mounted
+      if (!isMountedRef.current || requestId !== fetchRequestIdRef.current) {
+        return;
+      }
+      
       console.error('Error fetching devices:', error);
 
       const errorMessage =
@@ -218,11 +200,97 @@ const DevicesScreen = () => {
         setPagination({ ...pagination, total: 0, hasNext: false });
       }
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
-      setRefreshing(false);
+      // Always reset loading states if component is mounted
+      // Don't check requestId here - loading states should always be reset
+      if (isMountedRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+        setRefreshing(false);
+      }
     }
-  };
+  }, [selectedType, apiFilters, pagination]);
+
+  // Update ref whenever fetchDevices changes
+  useEffect(() => {
+    fetchDevicesRef.current = fetchDevices;
+  }, [fetchDevices]);
+
+  // Sync loading/refreshing refs with state to avoid stale closures
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    refreshingRef.current = refreshing;
+  }, [refreshing]);
+
+  // Navigation focus listener - disabled to prevent race conditions
+  // User can pull-to-refresh to update data when returning from detail screen
+  // useEffect(() => {
+  //   const unsubscribe = navigation.addListener('focus', () => {
+  //     if (initialLoadDone && !loadingRef.current && !refreshingRef.current && isMountedRef.current) {
+  //       fetchDevicesRef.current?.(true);
+  //     }
+  //   });
+  //   return unsubscribe;
+  // }, [navigation, initialLoadDone]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    
+    return () => {
+      isMountedRef.current = false;
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, []);
+
+  // Initial load effect - only runs once on mount
+  useEffect(() => {
+    if (!initialLoadDone) {
+      fetchDevices(true);
+      fetchFilterOptions();
+      setInitialLoadDone(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Effect for device type changes
+  useEffect(() => {
+    if (initialLoadDone) {
+      fetchDevices(true);
+      fetchFilterOptions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedType]);
+
+  // Debounced effect for search/filter updates
+  useEffect(() => {
+    // Skip if initial load not done or no active filters
+    if (!initialLoadDone || !hasActiveFilters()) {
+      return;
+    }
+
+    // Clear previous debounce
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    searchDebounceRef.current = setTimeout(() => {
+      if (isMountedRef.current) {
+        fetchDevices(true);
+      }
+    }, 300);
+
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiFilters, initialLoadDone]);
 
   const fetchFilterOptions = async () => {
     try {
@@ -275,15 +343,26 @@ const DevicesScreen = () => {
   };
 
   const handleLoadMore = useCallback(() => {
-    if (!loadingMore && pagination.hasNext) {
-      setPagination((prev) => ({ ...prev, page: prev.page + 1 }));
-      fetchDevices(false);
+    if (!loadingMore && !loading && pagination.hasNext) {
+      const nextPage = pagination.page + 1;
+      setPagination((prev) => ({ ...prev, page: nextPage }));
+      fetchDevices(false, nextPage);
     }
-  }, [loadingMore, pagination.hasNext]);
+  }, [loadingMore, loading, pagination.hasNext, pagination.page, fetchDevices]);
 
   const handleRefresh = useCallback(() => {
     fetchDevices(true);
   }, [selectedType, apiFilters]);
+
+  // Handle create device
+  const handleCreateDevice = useCallback(async (deviceData: CreateDeviceData) => {
+    await deviceService.createDevice(selectedType, deviceData);
+  }, [selectedType]);
+
+  const handleCreateSuccess = useCallback(() => {
+    Alert.alert('Thành công', 'Tạo thiết bị mới thành công!');
+    fetchDevices(true); // Refresh list
+  }, []);
 
   // Helper functions for filter options - now using API data
   const getUniqueStatuses = () => {
@@ -894,6 +973,23 @@ const DevicesScreen = () => {
             </View>
           </View>
         </Modal>
+
+        {/* Floating Action Button - Tạo mới thiết bị */}
+        <TouchableOpacity
+          onPress={() => setShowCreateModal(true)}
+          className="absolute bottom-[10%] right-5 h-14 w-14 items-center justify-center rounded-full bg-[#F05023] shadow-lg"
+          style={{ elevation: 5 }}>
+          <Ionicons name="add" size={28} color="#fff" />
+        </TouchableOpacity>
+
+        {/* Create Device Modal */}
+        <CreateDeviceModal
+          visible={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onSuccess={handleCreateSuccess}
+          deviceType={selectedType}
+          onCreateDevice={handleCreateDevice}
+        />
       </SafeAreaView>
     </View>
   );

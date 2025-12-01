@@ -1,15 +1,12 @@
-import React, { useEffect, useRef } from 'react';
-// @ts-ignore
+import React from 'react';
 import {
   View,
   Text,
   Modal,
-  TouchableOpacity,
-  Animated,
-  Dimensions,
-  TouchableWithoutFeedback,
   ActivityIndicator,
+  Pressable,
 } from 'react-native';
+import { TouchableOpacity } from './Common';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 interface UploadDocumentModalProps {
@@ -21,7 +18,11 @@ interface UploadDocumentModalProps {
   isUploading?: boolean;
 }
 
-const { height } = Dimensions.get('window');
+const UPLOAD_OPTIONS = [
+  { key: 'camera', label: 'Chụp ảnh', icon: 'camera' },
+  { key: 'gallery', label: 'Chọn từ thư viện', icon: 'image' },
+  { key: 'document', label: 'Chọn từ tài liệu', icon: 'file-document' },
+];
 
 const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
   visible,
@@ -31,149 +32,82 @@ const UploadDocumentModal: React.FC<UploadDocumentModalProps> = ({
   onDocument,
   isUploading = false,
 }) => {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(height)).current;
-
-  useEffect(() => {
-    if (visible) {
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          tension: 50,
-          friction: 8,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: height,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
+  const handleOptionPress = (key: string) => {
+    if (isUploading) return;
+    switch (key) {
+      case 'camera':
+        onCamera();
+        break;
+      case 'gallery':
+        onGallery();
+        break;
+      case 'document':
+        onDocument();
+        break;
     }
-  }, [visible]);
+  };
+
+  const handleCancel = () => {
+    if (isUploading) return;
+    onClose();
+  };
 
   return (
-    <Modal visible={visible} transparent animationType="none" statusBarTranslucent>
-      <TouchableWithoutFeedback onPress={onClose}>
-        <Animated.View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0, 0, 0, 0.4)',
-            opacity: fadeAnim,
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}>
-          <TouchableWithoutFeedback>
-            <Animated.View
-              style={{
-                width: '80%',
-                backgroundColor: '#FFFFFF',
-                borderRadius: 14,
-                overflow: 'hidden',
-                transform: [{ translateY: slideAnim }],
-              }}>
-              <View style={{ padding: 20 }}>
-                <Text
-                  style={{
-                    fontSize: 18,
-                    fontWeight: '600',
-                    textAlign: 'center',
-                    marginBottom: 15,
-                  }}>
-                  Tải lên biên bản
-                </Text>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={handleCancel}
+    >
+      <View className="flex-1 items-center justify-center bg-black/50">
+        {/* Backdrop */}
+        <Pressable
+          className="absolute bottom-0 left-0 right-0 top-0"
+          onPress={handleCancel}
+        />
 
-                <TouchableOpacity
-                  onPress={onCamera}
-                  disabled={isUploading}
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}>
-                  <MaterialCommunityIcons
-                    name="camera"
-                    size={24}
-                    color={isUploading ? '#999999' : '#F05023'}
-                  />
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      marginLeft: 10,
-                      color: isUploading ? '#999999' : '#333333',
-                    }}>
-                    Chụp ảnh
-                  </Text>
-                  {isUploading && <ActivityIndicator size="small" style={{ marginLeft: 'auto' }} />}
-                </TouchableOpacity>
+        {/* Modal Content */}
+        <View className="w-[80%] overflow-hidden rounded-2xl bg-white">
+          <View className="p-5">
+            <Text className="mb-4 text-center font-semibold text-lg text-black">
+              Tải lên biên bản
+            </Text>
 
-                <TouchableOpacity
-                  onPress={onGallery}
-                  disabled={isUploading}
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}>
-                  <MaterialCommunityIcons
-                    name="image"
-                    size={24}
-                    color={isUploading ? '#999999' : '#F05023'}
-                  />
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      marginLeft: 10,
-                      color: isUploading ? '#999999' : '#333333',
-                    }}>
-                    Chọn từ thư viện
-                  </Text>
-                  {isUploading && <ActivityIndicator size="small" style={{ marginLeft: 'auto' }} />}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={onDocument}
-                  disabled={isUploading}
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}>
-                  <MaterialCommunityIcons
-                    name="file-document"
-                    size={24}
-                    color={isUploading ? '#999999' : '#F05023'}
-                  />
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      marginLeft: 10,
-                      color: isUploading ? '#999999' : '#333333',
-                    }}>
-                    Chọn từ tài liệu
-                  </Text>
-                  {isUploading && <ActivityIndicator size="small" style={{ marginLeft: 'auto' }} />}
-                </TouchableOpacity>
-
-                <View
-                  style={{
-                    borderTopWidth: 1,
-                    borderTopColor: '#E5E5E5',
-                    marginTop: 15,
-                  }}
+            {UPLOAD_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.key}
+                onPress={() => handleOptionPress(option.key)}
+                disabled={isUploading}
+                className="flex-row items-center py-3"
+              >
+                <MaterialCommunityIcons
+                  name={option.icon as any}
+                  size={24}
+                  color={isUploading ? '#999999' : '#F05023'}
                 />
+                <Text
+                  className={`ml-3 flex-1 text-base ${isUploading ? 'text-gray-400' : 'text-gray-800'}`}
+                >
+                  {option.label}
+                </Text>
+                {isUploading && <ActivityIndicator size="small" color="#F05023" />}
+              </TouchableOpacity>
+            ))}
+          </View>
 
-                <TouchableOpacity
-                  onPress={onClose}
-                  style={{ paddingVertical: 12, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 16, fontWeight: '500', color: '#666666' }}>Hủy</Text>
-                </TouchableOpacity>
-              </View>
-            </Animated.View>
-          </TouchableWithoutFeedback>
-        </Animated.View>
-      </TouchableWithoutFeedback>
+          {/* Cancel Button */}
+          <View className="border-t border-gray-200">
+            <TouchableOpacity
+              onPress={handleCancel}
+              disabled={isUploading}
+              className="items-center py-4"
+            >
+              <Text className="font-medium text-base text-gray-600">Hủy</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
     </Modal>
   );
 };

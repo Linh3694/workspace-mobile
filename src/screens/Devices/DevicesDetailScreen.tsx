@@ -1,22 +1,23 @@
 import UploadDocumentModal from '../../components/UploadDocumentModal';
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   SafeAreaView,
-  TouchableOpacity,
   ScrollView,
   ActivityIndicator,
   Alert,
   RefreshControl,
   Image,
   Platform,
+  Pressable,
 } from 'react-native';
+import { TouchableOpacity } from '../../components/Common';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
-import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Device, DeviceType, DeviceActivity, DeviceInspection } from '../../types/devices';
 import deviceService from '../../services/deviceService';
 import InputModal from '../../components/InputModal';
@@ -64,6 +65,10 @@ const DevicesDetailScreen = () => {
   const { deviceId, deviceType } = route.params;
   const insets = useSafeAreaInsets();
 
+  // Abort controller ref for cleanup
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
+
   // Main device data
   const [device, setDevice] = useState<Device | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,13 +109,44 @@ const DevicesDetailScreen = () => {
   const [previewFileUrl, setPreviewFileUrl] = useState<string>('');
   const [authToken, setAuthToken] = useState<string>('');
 
+  // Cleanup on unmount
   useEffect(() => {
-    loadDeviceData();
+    isMountedRef.current = true;
+    
+    return () => {
+      isMountedRef.current = false;
+      // Cancel any pending API calls
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Load data when deviceId changes
+  useEffect(() => {
+    if (deviceId) {
+      loadDeviceData();
+    }
+    
+    return () => {
+      // Cancel pending requests when deviceId changes
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId]);
 
   const loadDeviceData = useCallback(
     async (showLoading = true) => {
+      // Cancel previous request if any
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
+      // Create new abort controller for this request
+      abortControllerRef.current = new AbortController();
+      
       if (showLoading) {
         setLoading(true);
       }
@@ -123,6 +159,9 @@ const DevicesDetailScreen = () => {
           deviceService.getDeviceActivities(deviceType, deviceId),
           deviceService.getDeviceInspections(deviceType, deviceId),
         ]);
+
+        // Check if component is still mounted before updating state
+        if (!isMountedRef.current) return;
 
         // Handle device data
         if (deviceData.status === 'fulfilled' && deviceData.value) {
@@ -168,14 +207,24 @@ const DevicesDetailScreen = () => {
           setInspections([]);
         }
       } catch (error) {
+        // Ignore abort errors
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+        
+        // Check if component is still mounted before updating state
+        if (!isMountedRef.current) return;
+        
         console.error('Error loading device data:', error);
         const errorMessage =
           error instanceof Error ? error.message : 'Không thể tải dữ liệu thiết bị';
         setError(errorMessage);
         Alert.alert('Lỗi', errorMessage);
       } finally {
-        if (showLoading) {
+        // Always set loading to false if component is still mounted
+        if (isMountedRef.current) {
           setLoading(false);
+          setRefreshing(false);
         }
       }
     },
@@ -199,8 +248,7 @@ const DevicesDetailScreen = () => {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadDeviceData();
-    setRefreshing(false);
+    await loadDeviceData(false); // Don't show loading indicator, use refreshing state instead
   }, [loadDeviceData]);
 
   // Activity management functions
@@ -303,21 +351,34 @@ const DevicesDetailScreen = () => {
     // Tìm record đang mở (chưa có endDate) trong assignmentHistory
     const openRecord = device.assignmentHistory.find((hist: any) => !hist.endDate);
 
-    if (openRecord && openRecord.assignedBy) {
-      return normalizeVietnameseName(openRecord.assignedBy.fullname) || 'Không xác định';
+    if (openRecord) {
+      // Ưu tiên: assignedByName (string) > assignedBy.fullname (populated object)
+      if (openRecord.assignedByName) {
+        return normalizeVietnameseName(openRecord.assignedByName);
+      }
+      if (openRecord.assignedBy?.fullname) {
+        return normalizeVietnameseName(openRecord.assignedBy.fullname);
+      }
+      // Nếu assignedBy là string (chưa populate)
+      if (typeof openRecord.assignedBy === 'string') {
+        return 'Đang cập nhật...';
+      }
     }
 
     // Fallback: lấy record mới nhất có assignedBy
     const latestRecordWithAssignedBy = device.assignmentHistory
-      .filter((hist: any) => hist.assignedBy)
+      .filter((hist: any) => hist.assignedBy || hist.assignedByName)
       .sort(
         (a: any, b: any) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
       )[0];
 
-    if (latestRecordWithAssignedBy && latestRecordWithAssignedBy.assignedBy) {
-      return (
-        normalizeVietnameseName(latestRecordWithAssignedBy.assignedBy.fullname) || 'Không xác định'
-      );
+    if (latestRecordWithAssignedBy) {
+      if (latestRecordWithAssignedBy.assignedByName) {
+        return normalizeVietnameseName(latestRecordWithAssignedBy.assignedByName);
+      }
+      if (latestRecordWithAssignedBy.assignedBy?.fullname) {
+        return normalizeVietnameseName(latestRecordWithAssignedBy.assignedBy.fullname);
+      }
     }
 
     return 'Không xác định';
@@ -325,22 +386,38 @@ const DevicesDetailScreen = () => {
 
   const getCurrentUser = () => {
     if (!device?.assignmentHistory || device.assignmentHistory.length === 0) {
+      // Fallback: người dùng từ assigned array (nếu có)
+      if (device?.assigned && device.assigned.length > 0) {
+        const latestAssigned = device.assigned[device.assigned.length - 1];
+        return {
+          _id: latestAssigned._id || '',
+          fullname: normalizeVietnameseName(latestAssigned.fullname) || 'Không xác định',
+          department: latestAssigned.department || 'Không xác định',
+          jobTitle: latestAssigned.jobTitle || 'Không xác định',
+          avatarUrl: latestAssigned.avatarUrl,
+        };
+      }
       return null;
     }
 
     // Tìm record đang mở (chưa có endDate) trong assignmentHistory
     const openRecord = device.assignmentHistory.find((hist: any) => !hist.endDate);
 
-    if (openRecord && openRecord.user) {
+    if (openRecord) {
+      // Ưu tiên: userName (string) > user.fullname (populated object)
+      const fullname = openRecord.userName || 
+        (openRecord.user?.fullname ? normalizeVietnameseName(openRecord.user.fullname) : null) ||
+        'Đang cập nhật...';
+      
+      // user có thể là object (populated) hoặc string (userId chưa populate)
+      const userObj = typeof openRecord.user === 'object' ? openRecord.user : null;
+      
       return {
-        _id: openRecord.user._id || '',
-        fullname:
-          openRecord.userName ||
-          normalizeVietnameseName(openRecord.user.fullname) ||
-          'Không xác định',
-        department: openRecord.user.department || 'Không xác định',
-        jobTitle: openRecord.jobTitle || openRecord.user.jobTitle || 'Không xác định',
-        avatarUrl: openRecord.user.avatarUrl,
+        _id: userObj?._id || openRecord.userId || openRecord.user || '',
+        fullname,
+        department: userObj?.department || openRecord.department || 'Không xác định',
+        jobTitle: openRecord.jobTitle || userObj?.jobTitle || 'Không xác định',
+        avatarUrl: userObj?.avatarUrl,
       };
     }
 
@@ -416,32 +493,17 @@ const DevicesDetailScreen = () => {
     }
   };
 
-  const handleAssignDevice = async (userId: string, notes?: string) => {
+  const handleAssignDevice = async (userId: string, userName: string, notes?: string) => {
     try {
       if (!device) return;
 
-      const token = await AsyncStorage.getItem('authToken');
-      const response = await fetch(`${API_BASE_URL}/api/${deviceType}s/${device._id}/assign`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          newUserId: userId,
-          notes: notes,
-        }),
-      });
-
-      if (response.ok) {
-        await fetchDeviceDetail();
-        Alert.alert('Thành công', 'Cấp phát thiết bị thành công!');
-      } else {
-        const error = await response.json();
-        Alert.alert('Lỗi', error.message || 'Không thể cấp phát thiết bị');
-      }
+      await deviceService.assignDevice(deviceType, device._id, userId, userName, notes);
+      await loadDeviceData(false);
+      Alert.alert('Thành công', 'Cấp phát thiết bị thành công!');
     } catch (error) {
       console.error('Error assigning device:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Không thể cấp phát thiết bị';
+      Alert.alert('Lỗi', errorMessage);
       throw error;
     }
   };
@@ -450,28 +512,13 @@ const DevicesDetailScreen = () => {
     try {
       if (!device) return;
 
-      const token = await AsyncStorage.getItem('authToken');
-      const response = await fetch(`${API_BASE_URL}/api/${deviceType}s/${device._id}/status`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          status: 'Broken',
-          brokenReason: reason,
-        }),
-      });
-
-      if (response.ok) {
-        await fetchDeviceDetail();
-        Alert.alert('Thành công', 'Báo hỏng thiết bị thành công!');
-      } else {
-        const error = await response.json();
-        Alert.alert('Lỗi', error.message || 'Không thể báo hỏng thiết bị');
-      }
+      await deviceService.updateDeviceStatus(deviceType, device._id, 'Broken', reason);
+      await loadDeviceData(false);
+      Alert.alert('Thành công', 'Báo hỏng thiết bị thành công!');
     } catch (error) {
       console.error('Error reporting broken device:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Không thể báo hỏng thiết bị';
+      Alert.alert('Lỗi', errorMessage);
       throw error;
     }
   };
@@ -775,29 +822,17 @@ const DevicesDetailScreen = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              const token = await AsyncStorage.getItem('authToken');
-              const response = await fetch(`${API_BASE_URL}/api/${deviceType}s/${device._id}`, {
-                method: 'DELETE',
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  'Content-Type': 'application/json',
+              await deviceService.deleteDevice(deviceType, device._id);
+              Alert.alert('Thành công', 'Thiết bị đã được thanh lý thành công!', [
+                {
+                  text: 'OK',
+                  onPress: () => navigation.goBack(),
                 },
-              });
-
-              if (response.ok) {
-                Alert.alert('Thành công', 'Thiết bị đã được thanh lý thành công!', [
-                  {
-                    text: 'OK',
-                    onPress: () => navigation.goBack(),
-                  },
-                ]);
-              } else {
-                const error = await response.json();
-                Alert.alert('Lỗi', error.message || 'Không thể thanh lý thiết bị');
-              }
+              ]);
             } catch (error) {
               console.error('Error disposing device:', error);
-              Alert.alert('Lỗi', 'Có lỗi xảy ra khi thanh lý thiết bị');
+              const errorMessage = error instanceof Error ? error.message : 'Không thể thanh lý thiết bị';
+              Alert.alert('Lỗi', errorMessage);
             }
           },
         },
@@ -820,31 +855,13 @@ const DevicesDetailScreen = () => {
           text: 'Phục hồi',
           onPress: async () => {
             try {
-              const token = await AsyncStorage.getItem('authToken');
-              const response = await fetch(
-                `${API_BASE_URL}/api/${deviceType}s/${device._id}/status`,
-                {
-                  method: 'PUT',
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    status: 'Standby',
-                  }),
-                }
-              );
-
-              if (response.ok) {
-                await fetchDeviceDetail();
-                Alert.alert('Thành công', 'Thiết bị đã được phục hồi thành công!');
-              } else {
-                const error = await response.json();
-                Alert.alert('Lỗi', error.message || 'Không thể phục hồi thiết bị');
-              }
+              await deviceService.updateDeviceStatus(deviceType, device._id, 'Standby');
+              await loadDeviceData(false);
+              Alert.alert('Thành công', 'Thiết bị đã được phục hồi thành công!');
             } catch (error) {
               console.error('Error restoring device:', error);
-              Alert.alert('Lỗi', 'Có lỗi xảy ra khi phục hồi thiết bị');
+              const errorMessage = error instanceof Error ? error.message : 'Không thể phục hồi thiết bị';
+              Alert.alert('Lỗi', errorMessage);
             }
           },
         },
@@ -1000,6 +1017,7 @@ const DevicesDetailScreen = () => {
     <TouchableOpacity
       className="ml-2 items-center rounded-2xl bg-gray-100 p-3"
       style={{ width: 100, minWidth: 100 }}
+      delayPressIn={50}
       onPress={() => handleEditSpec(specKey, value, label)}>
       <View
         className="mb-2 h-8 w-8 items-center justify-center rounded-lg"
@@ -1324,10 +1342,6 @@ const DevicesDetailScreen = () => {
           )}
         </View>
       </ScrollView>
-      {/* Floating Action Button */}
-      <TouchableOpacity className="absolute bottom-8 right-5 h-14 w-14 items-center justify-center rounded-full bg-[#F05023] shadow-lg">
-        <Ionicons name="add" size={24} color="#fff" />
-      </TouchableOpacity>
       {/* Edit Spec Modal */}
       <InputModal
         visible={editModalVisible}

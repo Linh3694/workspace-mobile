@@ -1,15 +1,31 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
 // @ts-nocheck
-import { View, Text, TouchableOpacity, ScrollView, SafeAreaView } from 'react-native';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { ROUTES } from '../../constants/routes';
 import { useAuth } from '../../context/AuthContext';
 import { attendanceApiService } from '../../services/attendanceApiService';
+import { TouchableOpacity } from '../../components/Common';
+
+// Helper function to format time from HH:MM:SS to HH:MM
+const formatTime = (time: string | undefined): string => {
+  if (!time) return '';
+  // If time has seconds (HH:MM:SS), remove them
+  const parts = time.split(':');
+  if (parts.length >= 2) {
+    return `${parts[0]}:${parts[1]}`;
+  }
+  return time;
+};
 
 const AttendanceHome = () => {
   const nav = useNavigation<any>();
+  const route = useRoute<any>();
   const { user } = useAuth();
+
+  // Get initial tab from route params (for deep link from notification)
+  const initialTab = route.params?.initialTab as 'GVCN' | 'GVBM' | undefined;
 
   // Date state
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -53,8 +69,8 @@ const AttendanceHome = () => {
     setCurrentDate(d);
   };
 
-  // Tabs
-  const [tab, setTab] = useState<'GVCN' | 'GVBM'>('GVCN');
+  // Tabs - use initialTab from route params if provided
+  const [tab, setTab] = useState<'GVCN' | 'GVBM'>(initialTab || 'GVCN');
 
   // API Functions using service
   const fetchHomeroomClasses = useCallback(async () => {
@@ -95,7 +111,7 @@ const AttendanceHome = () => {
   }, [user?.email, currentDate]);
 
   const fetchClassStats = useCallback(
-    async (classes: any[]) => {
+    async (classes: any[], isTimetable: boolean = false) => {
       if (!classes || classes.length === 0) return;
 
       const currentDateStr = currentDate.toISOString().split('T')[0];
@@ -113,14 +129,27 @@ const AttendanceHome = () => {
       // Process each class/timetable entry concurrently for better performance
       const promises = classes.map(async (classData) => {
         // Handle both ClassData (homeroom) and TimetableEntry (teaching)
-        const classId = classData.name || classData.class_id;
-        if (!classId) {
+        // For timetable entries, use class_id; for homeroom, use name
+        const isTimetableEntry = classData.timetable_column_id !== undefined;
+        const actualClassId = isTimetableEntry ? classData.class_id : (classData.class_id || classData.name);
+        
+        if (!actualClassId) {
           return;
         }
 
+        // Use unique key for stats: for timetable entries, combine class_id and timetable_column_id
+        const statsKey = isTimetableEntry 
+          ? `${actualClassId}_${classData.timetable_column_id}` 
+          : actualClassId;
+
+        // Determine period for attendance query
+        const period = isTimetableEntry ? classData.timetable_column_id : 'homeroom';
+
         try {
+          console.log(`🔍 [Home Stats] Fetching stats for class ${actualClassId}, period: ${period}, statsKey: ${statsKey}`);
+          
           // 1. Get students in class
-          const studentsResult = await attendanceApiService.getClassStudents(classId, 1, 1000);
+          const studentsResult = await attendanceApiService.getClassStudents(actualClassId, 1, 1000);
 
           const studentIds =
             studentsResult.success && studentsResult.data ? studentsResult.data : [];
@@ -136,18 +165,20 @@ const AttendanceHome = () => {
             }
           }
 
-          // 2. Get attendance data (homeroom attendance)
+          // 3. Get attendance data with correct period
           const attendanceResult = await attendanceApiService.getClassAttendance(
-            classId,
+            actualClassId,
             currentDateStr,
-            'homeroom'
+            period
           );
           const attendanceRecords =
             attendanceResult.success && attendanceResult.data ? attendanceResult.data : [];
+          
+          console.log(`🔍 [Home Stats] Attendance result for ${statsKey}: ${attendanceRecords.length} records, hasAttendance: ${attendanceRecords.length > 0}`);
 
-          // 3. Get check-in/check-out data
+          // 4. Get check-in/check-out data (only for homeroom)
           let checkInOutData: Record<string, any> = {};
-          if (studentCodes.length > 0) {
+          if (!isTimetableEntry && studentCodes.length > 0) {
             const dayMapResult = await attendanceApiService.getStudentsDayMap(
               studentCodes,
               currentDateStr
@@ -158,7 +189,7 @@ const AttendanceHome = () => {
             }
           }
 
-          // 4. Calculate stats
+          // 5. Calculate stats
           const totalStudents = studentIds.length;
           const attendanceCount = attendanceRecords.length; // Students who have attendance records
           const hasAttendance = attendanceCount > 0;
@@ -172,7 +203,7 @@ const AttendanceHome = () => {
             if (data.checkOutTime) checkOutCount++;
           });
 
-          newStats[classId] = {
+          newStats[statsKey] = {
             checkInCount,
             attendanceCount,
             checkOutCount,
@@ -180,9 +211,9 @@ const AttendanceHome = () => {
             hasAttendance,
           };
         } catch (error) {
-          console.error(`Failed to fetch stats for class ${classId}:`, error);
+          console.error(`Failed to fetch stats for class ${actualClassId}:`, error);
           // Set default stats
-          newStats[classId] = {
+          newStats[statsKey] = {
             checkInCount: 0,
             attendanceCount: 0,
             checkOutCount: 0,
@@ -193,7 +224,7 @@ const AttendanceHome = () => {
       });
 
       await Promise.all(promises);
-      setClassStats(newStats);
+      setClassStats((prev) => ({ ...prev, ...newStats }));
     },
     [currentDate]
   );
@@ -218,30 +249,112 @@ const AttendanceHome = () => {
 
   // Fetch stats after classes data is loaded
   useEffect(() => {
-    if (classesData && !loading) {
-      const allClasses = [
+    if (!loading) {
+      // Fetch stats for homeroom classes
+      if (classesData) {
+        const homeroomClasses = [
+          ...(classesData.homeroom_classes || []),
+          ...(classesData.teaching_classes || []),
+        ];
+        if (homeroomClasses.length > 0) {
+          fetchClassStats(homeroomClasses, false);
+        }
+      }
+      // Fetch stats for timetable entries (GVBM)
+      const currentDateStr = currentDate.toISOString().split('T')[0];
+      const todayTimetable = attendanceApiService.getTimetableEntriesForDate(timetableData, currentDateStr);
+      if (todayTimetable.length > 0) {
+        fetchClassStats(todayTimetable, true);
+      }
+    }
+  }, [classesData, timetableData, loading, fetchClassStats, currentDate]);
+
+  // Quick check hasAttendance using new API (no cache)
+  const refreshHasAttendanceFlags = useCallback(async () => {
+    const currentDateStr = currentDate.toISOString().split('T')[0];
+    const items: { class_id: string; date: string; period: string }[] = [];
+    
+    // Add homeroom classes
+    if (classesData) {
+      const homeroomClasses = [
         ...(classesData.homeroom_classes || []),
         ...(classesData.teaching_classes || []),
       ];
-      if (allClasses.length > 0) {
-        fetchClassStats(allClasses);
-      }
+      homeroomClasses.forEach((cls) => {
+        const classId = cls.class_id || cls.name;
+        if (classId) {
+          items.push({ class_id: classId, date: currentDateStr, period: 'homeroom' });
+        }
+      });
     }
-  }, [classesData, loading, fetchClassStats]);
+    
+    // Add timetable entries
+    const todayTimetable = attendanceApiService.getTimetableEntriesForDate(timetableData, currentDateStr);
+    todayTimetable.forEach((entry) => {
+      if (entry.class_id && entry.timetable_column_id) {
+        items.push({ 
+          class_id: entry.class_id, 
+          date: currentDateStr, 
+          period: entry.timetable_column_id 
+        });
+      }
+    });
+    
+    if (items.length === 0) return;
+    
+    console.log('🔄 [Home] Checking hasAttendance for', items.length, 'items');
+    const result = await attendanceApiService.batchCheckHasAttendance(items);
+    
+    if (result.success && result.data) {
+      console.log('✅ [Home] hasAttendance results:', result.data);
+      // Update classStats with hasAttendance flags
+      setClassStats((prev) => {
+        const updated = { ...prev };
+        Object.entries(result.data).forEach(([key, value]) => {
+          if (updated[key]) {
+            updated[key] = { ...updated[key], hasAttendance: value.has_attendance };
+          } else {
+            updated[key] = {
+              checkInCount: 0,
+              attendanceCount: value.count,
+              checkOutCount: 0,
+              totalStudents: 0,
+              hasAttendance: value.has_attendance,
+            };
+          }
+        });
+        return updated;
+      });
+    }
+  }, [currentDate, classesData, timetableData]);
 
   // Refresh stats when screen comes back into focus (after editing attendance)
   useFocusEffect(
     useCallback(() => {
-      if (classesData && !loading) {
-        const allClasses = [
-          ...(classesData.homeroom_classes || []),
-          ...(classesData.teaching_classes || []),
-        ];
-        if (allClasses.length > 0) {
-          fetchClassStats(allClasses);
+      console.log('🔄 [Home] useFocusEffect triggered, loading:', loading);
+      
+      // Always refresh hasAttendance flags (quick check, no cache)
+      refreshHasAttendanceFlags();
+      
+      if (!loading) {
+        // Refresh full stats for homeroom classes (for check-in/out counts)
+        if (classesData) {
+          const homeroomClasses = [
+            ...(classesData.homeroom_classes || []),
+            ...(classesData.teaching_classes || []),
+          ];
+          if (homeroomClasses.length > 0) {
+            fetchClassStats(homeroomClasses, false);
+          }
+        }
+        // Refresh full stats for timetable entries (GVBM)
+        const currentDateStr = currentDate.toISOString().split('T')[0];
+        const todayTimetable = attendanceApiService.getTimetableEntriesForDate(timetableData, currentDateStr);
+        if (todayTimetable.length > 0) {
+          fetchClassStats(todayTimetable, true);
         }
       }
-    }, [classesData, loading, fetchClassStats])
+    }, [classesData, timetableData, loading, fetchClassStats, currentDate, refreshHasAttendanceFlags])
   );
 
   // Filter classes based on selected tab
@@ -269,7 +382,7 @@ const AttendanceHome = () => {
     const periodName = isTimetableEntry ? classData.period_name : null;
     const periodTime =
       isTimetableEntry && classData.start_time && classData.end_time
-        ? `${classData.start_time} - ${classData.end_time}`
+        ? `${formatTime(classData.start_time)} - ${formatTime(classData.end_time)}`
         : null;
     const subject = isTimetableEntry ? classData.subject_title : null;
     const room = isTimetableEntry ? classData.room_name : null;
@@ -352,6 +465,9 @@ const AttendanceHome = () => {
               classData,
               // Pass period info for timetable entries
               period: isTimetableEntry ? periodId : undefined,
+              periodName: isTimetableEntry ? periodName : undefined,
+              // Pass selected date
+              selectedDate: currentDate.toISOString().split('T')[0],
             })
           }>
           <Text
@@ -451,13 +567,15 @@ const AttendanceHome = () => {
             // For timetable entries, use class_id as key; for homeroom, use name
             const isTimetableEntry = classData.timetable_column_id !== undefined;
             const classId = isTimetableEntry ? classData.class_id : classData.name;
-            const stats = classStats[classId];
+            // Use unique stats key: for timetable entries, combine class_id and timetable_column_id
+            const statsKey = isTimetableEntry ? `${classId}_${classData.timetable_column_id}` : classId;
+            const stats = classStats[statsKey];
 
             // Calculate period info for display
             const periodName = isTimetableEntry ? classData.period_name : null;
             const periodTime =
               isTimetableEntry && classData.start_time && classData.end_time
-                ? `${classData.start_time} - ${classData.end_time}`
+                ? `${formatTime(classData.start_time)} - ${formatTime(classData.end_time)}`
                 : null;
 
             return (

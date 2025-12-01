@@ -3,11 +3,12 @@ import {
     View,
     Text,
     Modal,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
     ScrollView,
-    TextInput
+    TextInput,
+    ActivityIndicator,
+    Pressable,
 } from 'react-native';
+import { TouchableOpacity } from '../../../components/Common';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 interface AddActivityModalProps {
@@ -20,7 +21,13 @@ interface AddActivityModalProps {
     onTitleChange: (title: string) => void;
     description: string;
     onDescriptionChange: (description: string) => void;
+    isLoading?: boolean;
 }
+
+const ACTIVITY_TYPES = [
+    { key: 'repair' as const, label: 'Sửa chữa', icon: 'wrench' },
+    { key: 'software' as const, label: 'Phần mềm', icon: 'laptop' },
+];
 
 const AddActivityModal: React.FC<AddActivityModalProps> = ({
     visible,
@@ -31,110 +38,140 @@ const AddActivityModal: React.FC<AddActivityModalProps> = ({
     title,
     onTitleChange,
     description,
-    onDescriptionChange
+    onDescriptionChange,
+    isLoading = false,
 }) => {
+    const handleCancel = () => {
+        if (isLoading) return;
+        onClose();
+    };
+
     return (
         <Modal
             visible={visible}
-            transparent={true}
-            animationType="slide"
-            onRequestClose={onClose}
+            transparent
+            animationType="fade"
+            statusBarTranslucent
+            onRequestClose={handleCancel}
         >
-            <TouchableWithoutFeedback onPress={onClose}>
-                <View className="flex-1 bg-black/50 justify-end">
-                    <TouchableWithoutFeedback onPress={() => { }}>
-                        <View className="bg-white rounded-t-3xl p-6 max-h-[80%]">
-                            <View className="flex-row items-center justify-between mb-6">
-                                <Text className="text-xl font-bold text-gray-800">Thêm hoạt động</Text>
+            <View className="flex-1 items-center justify-center bg-black/50">
+                {/* Backdrop */}
+                <Pressable
+                    className="absolute bottom-0 left-0 right-0 top-0"
+                    onPress={handleCancel}
+                />
+
+                {/* Modal Content */}
+                <View className="mx-5 max-h-[80%] w-[90%] overflow-hidden rounded-2xl bg-white">
+                    {/* Header */}
+                    <View className="p-5 pb-3">
+                        <Text className="mb-2.5 text-center font-semibold text-lg text-black">
+                            Thêm hoạt động
+                        </Text>
+
+                        <Text className="mb-3 font-medium text-base text-black">
+                            Loại hoạt động <Text className="text-red-500">*</Text>
+                        </Text>
+                    </View>
+
+                    {/* Scrollable Content */}
+                    <ScrollView className="max-h-96 px-5" showsVerticalScrollIndicator={false}>
+                        {/* Activity Type Selection */}
+                        <View className="mb-4 gap-2">
+                            {ACTIVITY_TYPES.map((type) => (
                                 <TouchableOpacity
-                                    onPress={onClose}
-                                    className="p-2"
+                                    key={type.key}
+                                    onPress={() => onActivityTypeChange(type.key)}
+                                    className={`rounded-2xl p-3 ${
+                                        activityType === type.key
+                                            ? 'bg-[#FFF5F0]'
+                                            : 'bg-gray-50'
+                                    }`}
                                 >
-                                    <MaterialCommunityIcons name="close" size={24} color="#666" />
+                                    <View className="flex-row items-center">
+                                        <MaterialCommunityIcons
+                                            name={activityType === type.key ? 'radiobox-marked' : 'radiobox-blank'}
+                                            size={18}
+                                            color={activityType === type.key ? '#F05023' : '#6B7280'}
+                                        />
+                                        <MaterialCommunityIcons
+                                            name={type.icon as any}
+                                            size={18}
+                                            color={activityType === type.key ? '#F05023' : '#6B7280'}
+                                            style={{ marginLeft: 8 }}
+                                        />
+                                        <Text
+                                            className={`ml-2 text-sm ${
+                                                activityType === type.key
+                                                    ? 'font-medium text-[#F05023]'
+                                                    : 'text-gray-700'
+                                            }`}
+                                        >
+                                            {type.label}
+                                        </Text>
+                                    </View>
                                 </TouchableOpacity>
-                            </View>
-
-                            <ScrollView showsVerticalScrollIndicator={false}>
-                                {/* Activity Type Selection */}
-                                <View className="mb-6">
-                                    <Text className="text-base font-semibold text-gray-800 mb-3">Loại hoạt động</Text>
-                                    <View className="flex-row space-x-3 gap-5">
-                                        <TouchableOpacity
-                                            onPress={() => onActivityTypeChange('repair')}
-                                            className={`flex-1 py-3 px-4 rounded-xl  ${activityType === 'repair'
-                                                ? ' bg-secondary'
-                                                : 'bg-[#f8f8f8]'
-                                                }`}
-                                        >
-                                            <Text className={`text-center font-medium ${activityType === 'repair' ? 'text-white' : 'text-primary'
-                                                }`}>
-                                                Sửa chữa
-                                            </Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            onPress={() => onActivityTypeChange('software')}
-                                            className={`flex-1 py-3 px-4 rounded-xl  ${activityType === 'software'
-                                                ? ' bg-secondary'
-                                                : ' bg-[#f8f8f8]'
-                                                }`}
-                                        >
-                                            <Text className={`text-center font-medium ${activityType === 'software' ? 'text-white' : 'text-primary'
-                                                }`}>
-                                                Phần mềm
-                                            </Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
-
-                                {/* Title Input */}
-                                <View className="mb-4">
-                                    <Text className="text-base font-semibold text-gray-800 mb-2">Tiêu đề *</Text>
-                                    <View className="border border-gray-300 rounded-xl p-4 bg-white">
-                                        <TextInput
-                                            value={title}
-                                            onChangeText={onTitleChange}
-                                            placeholder="Nhập tiêu đề hoạt động..."
-                                            className="text-base text-gray-800"
-                                            multiline={false}
-                                        />
-                                    </View>
-                                </View>
-
-                                {/* Description Input */}
-                                <View className="mb-6">
-                                    <Text className="text-base font-semibold text-gray-800 mb-2">Mô tả chi tiết</Text>
-                                    <View className="border border-gray-300 rounded-xl p-4 bg-white h-24">
-                                        <TextInput
-                                            value={description}
-                                            onChangeText={onDescriptionChange}
-                                            placeholder="Nhập mô tả chi tiết..."
-                                            className="text-base text-gray-800 flex-1"
-                                            multiline={true}
-                                            textAlignVertical="top"
-                                        />
-                                    </View>
-                                </View>
-
-                                {/* Action Buttons */}
-                                <View className="flex-row gap-5 my-5">
-                                    <TouchableOpacity
-                                        onPress={onClose}
-                                        className="flex-1 py-3 bg-gray-200 rounded-xl"
-                                    >
-                                        <Text className="text-center font-semibold text-gray-700">Hủy</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        onPress={onAdd}
-                                        className="flex-1 py-3 bg-secondary rounded-xl"
-                                    >
-                                        <Text className="text-center font-semibold text-white">Thêm</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </ScrollView>
+                            ))}
                         </View>
-                    </TouchableWithoutFeedback>
+
+                        {/* Title Input */}
+                        <Text className="mb-2 font-medium text-sm text-black">
+                            Tiêu đề <Text className="text-red-500">*</Text>
+                        </Text>
+                        <TextInput
+                            value={title}
+                            onChangeText={onTitleChange}
+                            placeholder="Nhập tiêu đề hoạt động..."
+                            className="mb-4 rounded-xl bg-gray-100 p-3 text-sm text-black"
+                            placeholderTextColor="#999999"
+                            editable={!isLoading}
+                        />
+
+                        {/* Description Input */}
+                        <Text className="mb-2 font-medium text-sm text-black">Mô tả chi tiết (tùy chọn)</Text>
+                        <TextInput
+                            value={description}
+                            onChangeText={onDescriptionChange}
+                            placeholder="Nhập mô tả chi tiết..."
+                            multiline={true}
+                            numberOfLines={3}
+                            className="mb-4 rounded-xl bg-gray-100 p-3 text-sm text-black"
+                            style={{ minHeight: 80 }}
+                            textAlignVertical="top"
+                            placeholderTextColor="#999999"
+                            editable={!isLoading}
+                        />
+                    </ScrollView>
+
+                    {/* Action Buttons */}
+                    <View className="flex-row border-t border-gray-200">
+                        <TouchableOpacity
+                            className="flex-1 items-center justify-center bg-transparent py-4"
+                            onPress={handleCancel}
+                            disabled={isLoading}
+                        >
+                            <Text className="font-medium text-lg text-gray-600">Hủy</Text>
+                        </TouchableOpacity>
+                        <View className="w-px bg-gray-200" />
+                        <TouchableOpacity
+                            className="flex-1 items-center justify-center bg-transparent py-4"
+                            onPress={onAdd}
+                            disabled={isLoading || !title.trim()}
+                        >
+                            {isLoading ? (
+                                <ActivityIndicator size="small" color="#F05023" />
+                            ) : (
+                                <Text
+                                    className="font-semibold text-lg"
+                                    style={{ color: title.trim() ? '#F05023' : '#9CA3AF' }}
+                                >
+                                    Thêm
+                                </Text>
+                            )}
+                        </TouchableOpacity>
+                    </View>
                 </View>
-            </TouchableWithoutFeedback>
+            </View>
         </Modal>
     );
 };

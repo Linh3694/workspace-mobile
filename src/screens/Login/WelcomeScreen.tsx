@@ -1,8 +1,24 @@
-import React, { useEffect, useRef, useState } from 'react';
-// @ts-ignore
-import { View, Text, TouchableOpacity, Animated, Easing, Dimensions, SafeAreaView, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  Dimensions,
+  SafeAreaView,
+  Image,
+  StyleSheet,
+} from 'react-native';
+import { TouchableOpacity } from '../../components/Common';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
+import MaskedView from '@react-native-masked-view/masked-view';
 
 import { useMicrosoftAuthV2 } from '../../hooks/useMicrosoftAuthV2';
 import MicrosoftIcon from '../../assets/microsoft.svg';
@@ -21,45 +37,41 @@ type RootStackParamList = {
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+// Constants
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const IMAGE_ASPECT_RATIO = 1567 / 480;
+const BANNER_HEIGHT = Math.min(280, SCREEN_HEIGHT * 0.35);
+const ACTUAL_IMAGE_WIDTH = BANNER_HEIGHT * IMAGE_ASPECT_RATIO;
+
 const WelcomeScreen = () => {
   const navigation = useNavigation<NavigationProp>();
   const { loginWithMicrosoft } = useAuth();
-  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-  const BANNER_WIDTH = screenWidth; // Sử dụng screenWidth thay vì fixed 1100
-  const BANNER_HEIGHT = Math.min(480, screenHeight * 0.5);
+  
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
   const [notificationType, setNotificationType] = useState<'success' | 'error'>('error');
 
-  const translateX = useRef(new Animated.Value(0)).current;
+  // Reanimated shared value
+  const translateX = useSharedValue(0);
 
   useEffect(() => {
-    console.log('🎬 Starting carousel animation with BANNER_WIDTH:', BANNER_WIDTH);
-    translateX.setValue(0);
-
-    const startCarousel = () => {
-      Animated.timing(translateX, {
-        toValue: -BANNER_WIDTH,
-        duration: 8000,
+    console.log('🎬 Starting carousel with reanimated, width:', ACTUAL_IMAGE_WIDTH);
+    
+    // Start infinite scroll animation
+    translateX.value = withRepeat(
+      withTiming(-ACTUAL_IMAGE_WIDTH, {
+        duration: 15000, // 25 seconds per cycle
         easing: Easing.linear,
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (finished) {
-          // Reset to start position instantly for seamless loop
-          translateX.setValue(0);
-          // Start again
-          startCarousel();
-        }
-      });
-    };
+      }),
+      -1, // Infinite repeat
+      false // Don't reverse
+    );
+  }, []);
 
-    startCarousel();
-
-    return () => {
-      console.log('🛑 Stopping carousel animation');
-      translateX.stopAnimation();
-    };
-  }, [BANNER_WIDTH]);
+  // Animated style for the scrolling container
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
 
   const showNotification = (message: string, type: 'success' | 'error' = 'error') => {
     setNotificationMessage(message);
@@ -95,56 +107,51 @@ const WelcomeScreen = () => {
   return (
     <SafeAreaView className="flex-1 bg-white">
       <View className="w-full flex-1">
-        {/* Header section with logo - flex-1 to take available space */}
+        {/* Header section with logo */}
         <View className="flex-1 items-center justify-center px-6">
           <View className="items-center">
-            <ApplogoFull width={390} height={80} />
-            <View className="flex-row items-center justify-center mt-2">
-              <Text className="text-lg uppercase font-extrabold text-[#F5AA1E]">Wellspring</Text>
-              <Text className="text-lg uppercase font-extrabold text-[#BED232]"> Information System</Text>
+            {/* Logo */}
+            <ApplogoFull width={340} height={70} />
+            
+            {/* App name with gradient */}
+            {/* <View style={styles.titleContainer}>
+              <MaskedView
+                maskElement={
+                  <Text style={styles.appTitle}>WIS</Text>
+                }>
+                <LinearGradient
+                  colors={['#F5AA1E', '#F05023']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}>
+                  <Text style={[styles.appTitle, { opacity: 0 }]}>WIS</Text>
+                </LinearGradient>
+              </MaskedView>
+            </View> */}
+
+            {/* Subtitle */}
+            <View style={styles.subtitleRow}>
+              <Text style={styles.subtitleWellspring}>WELLSPRING</Text>
+              <View style={styles.divider} />
+              <Text style={styles.subtitleSystem}>School Information System</Text>
             </View>
           </View>
         </View>
 
-        {/* Banner section - flex-2 to take more space */}
-        <View className="flex-2 w-full items-center justify-center">
-          <View
-            style={{
-              width: screenWidth,
-              height: BANNER_HEIGHT,
-              overflow: 'hidden',
-              alignItems: 'flex-start',
-              justifyContent: 'center',
-            }}>
-            <Animated.View
-              style={{
-                flexDirection: 'row',
-                width: BANNER_WIDTH * 3,
-                height: BANNER_HEIGHT,
-                transform: [{ translateX }],
-              }}>
+        {/* Banner section - scrolling collage */}
+        <View style={styles.bannerContainer}>
+          <View style={styles.bannerWrapper}>
+            <Reanimated.View style={[styles.scrollingContainer, animatedStyle] as any}>
               <Image
                 source={require('../../assets/welcome.webp')}
-                resizeMode="contain"
-                style={{ width: BANNER_WIDTH, height: BANNER_HEIGHT }}
-                onError={(error) => console.log('❌ Image load error:', error.nativeEvent.error)}
-                onLoad={() => console.log('✅ Image loaded successfully')}
+                resizeMode="cover"
+                style={styles.bannerImage}
               />
               <Image
                 source={require('../../assets/welcome.webp')}
-                resizeMode="contain"
-                style={{ width: BANNER_WIDTH, height: BANNER_HEIGHT }}
-                onError={(error) => console.log('❌ Image load error:', error.nativeEvent.error)}
-                onLoad={() => console.log('✅ Image loaded successfully')}
+                resizeMode="cover"
+                style={styles.bannerImage}
               />
-              <Image
-                source={require('../../assets/welcome.webp')}
-                resizeMode="contain"
-                style={{ width: BANNER_WIDTH, height: BANNER_HEIGHT }}
-                onError={(error) => console.log('❌ Image load error:', error.nativeEvent.error)}
-                onLoad={() => console.log('✅ Image loaded successfully')}
-              />
-            </Animated.View>
+            </Reanimated.View>
           </View>
         </View>
 
@@ -164,7 +171,7 @@ const WelcomeScreen = () => {
             <Text className="font-bold text-secondary">Đăng nhập với Microsoft</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate(ROUTES.SCREENS.LOGIN)}>
-            <Text className="font-semibold text-base text-text-secondary">
+            <Text className="font-medium text-sm text-[#64748B]">
               Đăng nhập bằng tài khoản
             </Text>
           </TouchableOpacity>
@@ -179,5 +186,61 @@ const WelcomeScreen = () => {
     </SafeAreaView>
   );
 };
+
+const styles = StyleSheet.create({
+  titleContainer: {
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  appTitle: {
+    fontSize: 48,
+    fontWeight: '800',
+    letterSpacing: 6,
+    backgroundColor: 'transparent',
+  },
+  subtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 10,
+  },
+  subtitleWellspring: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#002855',
+    letterSpacing: 2,
+  },
+  divider: {
+    width: 1,
+    height: 14,
+    backgroundColor: '#CBD5E1',
+  },
+  subtitleSystem: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#64748B',
+    letterSpacing: 0.5,
+  },
+  bannerContainer: {
+    flex: 2,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerWrapper: {
+    width: SCREEN_WIDTH,
+    height: BANNER_HEIGHT,
+    overflow: 'hidden',
+  },
+  scrollingContainer: {
+    flexDirection: 'row',
+    width: ACTUAL_IMAGE_WIDTH * 2,
+    height: BANNER_HEIGHT,
+  },
+  bannerImage: {
+    width: ACTUAL_IMAGE_WIDTH,
+    height: BANNER_HEIGHT,
+  },
+});
 
 export default WelcomeScreen;

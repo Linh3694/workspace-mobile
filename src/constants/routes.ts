@@ -1,6 +1,7 @@
 export const ROUTES = {
   // Screen names cho navigation
   SCREENS: {
+    SPLASH: 'Splash',
     WELCOME: 'Welcome',
     LOGIN: 'Login',
     MAIN: 'Main',

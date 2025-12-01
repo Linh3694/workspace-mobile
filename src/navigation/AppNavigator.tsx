@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import BottomTabNavigator from './BottomTabNavigator';
+import SplashScreen from '../screens/Login/SplashScreen';
 import WelcomeScreen from '../screens/Login/WelcomeScreen';
 import LoginScreen from '../screens/Login/SignInScreen';
 import { ROUTES } from '../constants/routes';
@@ -35,6 +36,7 @@ export type User = {
 };
 
 export type RootStackParamList = {
+  [ROUTES.SCREENS.SPLASH]: undefined;
   [ROUTES.SCREENS.WELCOME]: undefined;
   [ROUTES.SCREENS.LOGIN]: undefined;
   [ROUTES.SCREENS.MAIN]: {
@@ -71,9 +73,26 @@ export type RootStackParamList = {
 
 const MainTabWrapper = ({ route }: { route: any }) => <BottomTabNavigator route={route} />;
 
+// Track if splash has been shown this session (persists across fast refresh)
+let splashShownThisSession = false;
+
 const AppNavigator = () => {
   const [ticketComponent, setTicketComponent] = useState(() => TicketGuestScreen);
+  const [showSplash, setShowSplash] = useState(() => {
+    // Only show splash if not shown this session
+    if (!splashShownThisSession) {
+      return true;
+    }
+    return false;
+  });
   const { isAuthenticated, loading } = useAuth();
+
+  // DEV: Reset để test lại splash
+  // @ts-ignore
+  global.resetSplash = () => {
+    splashShownThisSession = false;
+    setShowSplash(true);
+  };
 
   useEffect(() => {
     const checkUserRole = async () => {
@@ -111,6 +130,17 @@ const AppNavigator = () => {
       checkUserRole();
     }
   }, [isAuthenticated]);
+
+  // Show splash screen first
+  console.log('🚀 AppNavigator - showSplash:', showSplash, 'splashShownThisSession:', splashShownThisSession);
+  if (showSplash) {
+    console.log('🎬 Showing SplashScreen...');
+    return <SplashScreen onFinish={() => {
+      console.log('✅ SplashScreen finished!');
+      splashShownThisSession = true;
+      setShowSplash(false);
+    }} />;
+  }
 
   if (loading) {
     // Có thể thêm màn hình loading ở đây

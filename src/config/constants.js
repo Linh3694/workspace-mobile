@@ -1,3 +1,11 @@
+/**
+ * Global App Constants
+ * API endpoints và các config chung cho toàn app
+ *
+ * ⚠️ Lưu ý: Các constants liên quan đến Ticket (status, priority, category...)
+ * đã được chuyển sang: src/config/ticketConstants.ts
+ */
+
 // Thay đổi IP này thành IP của máy chủ của bạn
 // Sử dụng Frappe backend với microservices
 export const API_BASE_URL = 'https://admin.sis.wellspring.edu.vn'; // Frappe framework
@@ -23,23 +31,3 @@ export const API_URLS = {
   DEV: 'https://api-dev.wellspring.edu.vn',
   PROD: 'https://360wisers.wellspring.edu.vn',
 };
-
-// Ticket constants
-export const TICKET_PRIORITIES = {
-  LOW: 'Low',
-  MEDIUM: 'Medium',
-  HIGH: 'High',
-  URGENT: 'Urgent',
-};
-
-export const TICKET_STATUSES = {
-  ASSIGNED: 'Assigned',
-  PROCESSING: 'Processing',
-  WAITING: 'Waiting for Customer',
-  DONE: 'Done',
-  CLOSED: 'Closed',
-  CANCELLED: 'Cancelled',
-};
-
-// Other constants
-export const MAX_IMAGE_SIZE_MB = 10;

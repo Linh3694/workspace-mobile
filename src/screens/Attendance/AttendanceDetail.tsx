@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
@@ -14,6 +13,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { StudentAvatar } from '../../utils/studentAvatar';
 import { attendanceApiService } from '../../services/attendanceApiService';
+import { TouchableOpacity } from '../../components/Common';
 
 // Attendance status type aligned with web
 type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
@@ -76,7 +76,7 @@ const sortVietnameseName = (nameA: string, nameB: string): number => {
 const AttendanceDetail = () => {
   const nav = useNavigation<any>();
   const route = useRoute();
-  const { classData, period: routePeriod } = route.params as { classData: any; period?: string };
+  const { classData, period: routePeriod, periodName: routePeriodName, selectedDate: routeSelectedDate } = route.params as { classData: any; period?: string; periodName?: string; selectedDate?: string };
 
   const [students, setStudents] = useState<any[]>([]);
   const [statusMap, setStatusMap] = useState<Record<string, AttendanceStatus>>({});
@@ -94,16 +94,22 @@ const AttendanceDetail = () => {
   const [educationStageId, setEducationStageId] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Extract classId from classData
-  const classId = classData?.name;
+  // Extract classId from classData (support both GVCN and GVBM)
+  // GVBM (timetable entry) has class_id field, GVCN (homeroom) uses name field
+  // Prioritize class_id for GVBM since classData.name is timetable entry ID, not class ID
+  const classId = classData?.class_id || classData?.name;
 
+  // Use selected date from route params, fallback to today
   const today = useMemo(() => {
+    if (routeSelectedDate) {
+      return routeSelectedDate;
+    }
     const d = new Date();
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
-  }, []);
+  }, [routeSelectedDate]);
 
   // Determine mode based on classData structure (GVBM if has subject_title, GVCN otherwise)
   const mode = classData?.subject_title ? 'GVBM' : 'GVCN';
@@ -130,8 +136,10 @@ const AttendanceDetail = () => {
         String(classId);
 
       // Add period and subject info for timetable entries
-      if (routePeriod && classData.subject_title) {
-        title += ` - Tiết ${routePeriod} (${classData.subject_title})`;
+      if (routePeriodName && classData.subject_title) {
+        title += ` - ${routePeriodName} (${classData.subject_title})`;
+      } else if (routePeriod && classData.subject_title) {
+        title += ` - ${classData.subject_title}`;
       }
 
       setClassTitle(title);
@@ -461,7 +469,6 @@ const AttendanceDetail = () => {
       if (saveResult.success) {
         console.log('✅ [Mobile] handleSave: Save successful');
         Alert.alert('Thành công', 'Đã lưu điểm danh');
-        console.log('🔄 [Mobile] handleSave: Navigating back...');
         nav.goBack();
       } else {
         console.log('❌ [Mobile] handleSave: Save failed:', saveResult.error);

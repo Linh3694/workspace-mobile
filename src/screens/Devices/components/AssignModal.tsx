@@ -1,22 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   Modal,
-  TouchableOpacity,
   TextInput,
-  ScrollView,
+  FlatList,
   Alert,
   ActivityIndicator,
-  Animated,
-  Dimensions,
-  TouchableWithoutFeedback,
   Image,
+  Pressable,
+  Keyboard,
 } from 'react-native';
+import { TouchableOpacity } from '../../../components/Common';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getAvatar } from '../../../utils/avatar';
-import { API_BASE_URL } from '../../../config/constants';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import deviceService from '../../../services/deviceService';
 
 interface User {
   _id: string;
@@ -29,106 +27,117 @@ interface User {
 interface AssignModalProps {
   visible: boolean;
   onClose: () => void;
-  onConfirm: (userId: string, notes?: string) => Promise<void>;
+  onConfirm: (userId: string, userName: string, notes?: string) => Promise<void>;
   deviceName: string;
 }
 
-const { height } = Dimensions.get('window');
+const USERS_PER_PAGE = 20;
+const SEARCH_DEBOUNCE_MS = 400;
 
 const AssignModal: React.FC<AssignModalProps> = ({ visible, onClose, onConfirm, deviceName }) => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [users, setUsers] = useState<User[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [total, setTotal] = useState(0);
 
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(height)).current;
+  // Debounce timer ref
+  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSearchRef = useRef('');
 
+  // Reset state when modal opens
   useEffect(() => {
     if (visible) {
-      fetchUsers();
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          tension: 50,
-          friction: 8,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      resetAndFetch();
     } else {
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: height,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      // Cleanup when closing
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+      }
     }
   }, [visible]);
 
+  // Debounced search effect
   useEffect(() => {
-    if (searchQuery.trim() === '') {
-      setFilteredUsers(users);
-    } else {
-      const filtered = users.filter((user) => {
-        const userName = (user.fullname || user.full_name || user.name || '').toLowerCase();
-        const userDept = (user.department || '').toLowerCase();
-        const userJob = (user.jobTitle || user.job_title || '').toLowerCase();
-        const searchLower = searchQuery.toLowerCase();
+    if (!visible) return;
 
-        return (
-          userName.includes(searchLower) ||
-          userDept.includes(searchLower) ||
-          userJob.includes(searchLower)
-        );
-      });
-      setFilteredUsers(filtered);
+    // Clear previous timer
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
     }
-    console.log('Filtered users:', filteredUsers.length, 'Search query:', searchQuery); // Debug log
-  }, [searchQuery, users]);
 
-  const fetchUsers = async () => {
-    try {
-      setSearchLoading(true);
-      const token = await AsyncStorage.getItem('authToken');
-      const response = await fetch(`${API_BASE_URL}/api/users/?t=${Date.now()}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-store',
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Users data received:', data); // Debug log
-        const usersList = data.users || data || [];
-        setUsers(usersList);
-        setFilteredUsers(usersList);
-      } else {
-        console.error('Failed to fetch users:', response.status);
-        Alert.alert('Lỗi', 'Không thể tải danh sách người dùng');
+    // Debounce search
+    searchTimerRef.current = setTimeout(() => {
+      if (searchQuery !== lastSearchRef.current) {
+        lastSearchRef.current = searchQuery;
+        fetchUsers(1, searchQuery, true);
       }
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+      }
+    };
+  }, [searchQuery, visible]);
+
+  const resetAndFetch = () => {
+    setUsers([]);
+    setPage(1);
+    setHasMore(true);
+    setSearchQuery('');
+    setSelectedUser(null);
+    setNotes('');
+    lastSearchRef.current = '';
+    fetchUsers(1, '', true);
+  };
+
+  const fetchUsers = async (pageNum: number, search: string, isNewSearch: boolean) => {
+    try {
+      if (isNewSearch) {
+        setInitialLoading(true);
+        setSearchLoading(search.length > 0);
+      } else {
+        setLoadingMore(true);
+      }
+
+      const result = await deviceService.getUsers(pageNum, USERS_PER_PAGE, search);
+
+      if (isNewSearch) {
+        setUsers(result.users);
+      } else {
+        // Filter out duplicates when loading more
+        setUsers((prev) => {
+          const existingIds = new Set(prev.map((u) => u._id));
+          const newUsers = result.users.filter((u: User) => !existingIds.has(u._id));
+          return [...prev, ...newUsers];
+        });
+      }
+
+      setPage(pageNum);
+      setHasMore(result.pagination.hasNext);
+      setTotal(result.pagination.total);
     } catch (error) {
       console.error('Error fetching users:', error);
       Alert.alert('Lỗi', 'Không thể tải danh sách người dùng');
     } finally {
+      setInitialLoading(false);
+      setLoadingMore(false);
       setSearchLoading(false);
     }
   };
+
+  const handleLoadMore = useCallback(() => {
+    if (!loadingMore && hasMore && !searchLoading) {
+      fetchUsers(page + 1, searchQuery, false);
+    }
+  }, [loadingMore, hasMore, page, searchQuery, searchLoading]);
 
   const handleConfirm = async () => {
     if (!selectedUser) {
@@ -138,7 +147,8 @@ const AssignModal: React.FC<AssignModalProps> = ({ visible, onClose, onConfirm, 
 
     try {
       setIsLoading(true);
-      await onConfirm(selectedUser._id, notes.trim() || undefined);
+      Keyboard.dismiss();
+      await onConfirm(selectedUser._id, selectedUser.fullname, notes.trim() || undefined);
 
       // Reset form
       setSelectedUser(null);
@@ -154,22 +164,21 @@ const AssignModal: React.FC<AssignModalProps> = ({ visible, onClose, onConfirm, 
   };
 
   const handleCancel = () => {
+    if (isLoading) return;
+    Keyboard.dismiss();
     setSelectedUser(null);
     setNotes('');
     setSearchQuery('');
     onClose();
   };
 
-  const renderUserItem = (user: User) => (
+  const renderUserItem = ({ item: user }: { item: User }) => (
     <TouchableOpacity
-      key={user._id}
       onPress={() => setSelectedUser(user)}
-      activeOpacity={1}
-      className="rounded-lg border p-3"
+      className="mb-2 rounded-lg border p-3"
       style={{
         borderColor: selectedUser?._id === user._id ? '#F05023' : '#E5E7EB',
         backgroundColor: selectedUser?._id === user._id ? '#FFF5F0' : '#F9FAFB',
-        opacity: 1,
       }}>
       <View className="flex-row items-center">
         <Image source={{ uri: getAvatar(user) }} className="mr-3 h-10 w-10 rounded-full" />
@@ -194,112 +203,169 @@ const AssignModal: React.FC<AssignModalProps> = ({ visible, onClose, onConfirm, 
     </TouchableOpacity>
   );
 
+  const renderFooter = () => {
+    if (!loadingMore) return null;
+    return (
+      <View className="items-center py-3">
+        <ActivityIndicator size="small" color="#F05023" />
+      </View>
+    );
+  };
+
+  const renderEmpty = () => {
+    if (initialLoading || searchLoading) return null;
+    return (
+      <View className="items-center py-6">
+        <MaterialCommunityIcons name="account-search-outline" size={40} color="#9CA3AF" />
+        <Text className="mt-2 text-gray-500">
+          {searchQuery ? 'Không tìm thấy người dùng nào' : 'Không có người dùng'}
+        </Text>
+      </View>
+    );
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="none" statusBarTranslucent>
-      <TouchableWithoutFeedback onPress={handleCancel}>
-        <Animated.View
-          className="flex-1 items-center justify-center bg-black/40 px-5"
-          style={{ opacity: fadeAnim }}>
-          <TouchableWithoutFeedback>
-            <Animated.View
-              className="max-h-[80%] w-full max-w-md overflow-hidden rounded-[14px] bg-white"
-              style={{
-                transform: [
-                  {
-                    translateY: slideAnim,
-                  },
-                ],
-              }}>
-              {/* Header */}
-              <View className="p-5 pb-3">
-                <Text className="mb-2.5 text-center font-semibold text-lg text-black">
-                  Cấp phát thiết bị
-                </Text>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={handleCancel}>
+      <View className="flex-1 items-center justify-center bg-black/50">
+        {/* Backdrop */}
+        <Pressable className="absolute bottom-0 left-0 right-0 top-0" onPress={handleCancel} />
 
-                {/* Device Info */}
-                <View className="mb-4 rounded-lg p-3" style={{ backgroundColor: '#FFF5F0' }}>
-                  <Text className="text-center text-sm" style={{ color: '#F05023' }}>
-                    Cấp phát <Text className="font-semibold">{deviceName}</Text>
-                  </Text>
-                </View>
+        {/* Modal Content */}
+        <View className="mx-5 max-h-[85%] w-[90%] overflow-hidden rounded-2xl bg-white">
+          {/* Header */}
+          <View className="p-5 pb-3">
+            <Text className="mb-2.5 text-center font-semibold text-lg text-black">
+              Cấp phát thiết bị
+            </Text>
 
-                {/* Search */}
-                <View className="relative mb-3">
-                  <TextInput
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    placeholder="Tìm kiếm người dùng..."
-                    className="rounded-lg border border-gray-300 bg-gray-50 py-3 pl-10 pr-3 text-sm text-black"
-                    placeholderTextColor="#999999"
-                  />
-                  <MaterialCommunityIcons
-                    name="magnify"
-                    size={20}
-                    color="#6B7280"
-                    style={{ position: 'absolute', left: 12, top: 12 }}
-                  />
-                </View>
-              </View>
+            {/* Device Info */}
+            <View className="mb-4 rounded-lg p-3" style={{ backgroundColor: '#FFF5F0' }}>
+              <Text className="text-center text-sm" style={{ color: '#F05023' }}>
+                Cấp phát <Text className="font-semibold">{deviceName}</Text>
+              </Text>
+            </View>
 
-              {/* Scrollable Content */}
-              <ScrollView className="max-h-60 px-5" showsVerticalScrollIndicator={false}>
-                {/* User Selection */}
-                <Text className="mb-3 font-medium text-base text-black">
-                  Chọn người được cấp phát <Text className="text-red-500">*</Text>
-                </Text>
-
-                {searchLoading ? (
-                  <View className="items-center py-4">
-                    <ActivityIndicator size="small" color="#F05023" />
-                  </View>
-                ) : filteredUsers.length > 0 ? (
-                  <View className="mb-4 gap-2">{filteredUsers.map(renderUserItem)}</View>
-                ) : (
-                  <View className="items-center py-4">
-                    <Text className="text-gray-500">Không tìm thấy người dùng nào</Text>
-                  </View>
-                )}
-
-                {/* Notes */}
-                <Text className="mb-2 font-medium text-sm text-black">Ghi chú (tùy chọn)</Text>
-                <TextInput
-                  value={notes}
-                  onChangeText={setNotes}
-                  placeholder="Nhập ghi chú..."
-                  multiline={true}
-                  numberOfLines={2}
-                  className="mb-4 rounded-full border-none bg-gray-100 p-3 text-sm text-black"
-                  textAlignVertical="top"
-                  placeholderTextColor="#999999"
+            {/* Search */}
+            <View className="relative">
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Tìm kiếm người dùng..."
+                className="rounded-lg border border-gray-300 bg-gray-50 py-3 pl-10 pr-10 text-sm text-black"
+                placeholderTextColor="#999999"
+                editable={!isLoading}
+                returnKeyType="search"
+              />
+              <MaterialCommunityIcons
+                name="magnify"
+                size={20}
+                color="#6B7280"
+                style={{ position: 'absolute', left: 12, top: 12 }}
+              />
+              {searchLoading && (
+                <ActivityIndicator
+                  size="small"
+                  color="#F05023"
+                  style={{ position: 'absolute', right: 12, top: 12 }}
                 />
-              </ScrollView>
+              )}
+            </View>
+          </View>
 
-              {/* Action Buttons */}
-              <View className="-mx-5 my-5 flex-row border-[#E5E5E5]">
-                <TouchableOpacity
-                  className="flex-1 items-center justify-center bg-transparent"
-                  onPress={handleCancel}
-                  disabled={isLoading}>
-                  <Text className="font-medium text-lg text-[#666666]">Hủy</Text>
-                </TouchableOpacity>
-                <View className="w-[0.5px] bg-[#E5E5E5]" />
-                <TouchableOpacity
-                  className="flex-1 items-center justify-center bg-transparent"
-                  onPress={handleConfirm}
-                  disabled={isLoading}>
-                  {isLoading ? (
-                    <ActivityIndicator size="small" color="#F05023" />
-                  ) : (
-                    <Text className="font-semibold text-lg" style={{ color: '#F05023' }}>
-                      Xác nhận
-                    </Text>
-                  )}
-                </TouchableOpacity>
+          {/* User Selection Label */}
+          <View className="px-5 pb-2">
+            <View className="flex-row items-center justify-between">
+              <Text className="font-medium text-base text-black">
+                Chọn người được cấp phát <Text className="text-red-500">*</Text>
+              </Text>
+              {total > 0 && (
+                <Text className="text-xs text-gray-500">
+                  {users.length}/{total}
+                </Text>
+              )}
+            </View>
+          </View>
+
+          {/* Users List */}
+          <View className="max-h-52 px-5">
+            {initialLoading ? (
+              <View className="items-center py-8">
+                <ActivityIndicator size="large" color="#F05023" />
+                <Text className="mt-2 text-sm text-gray-500">Đang tải...</Text>
               </View>
-            </Animated.View>
-          </TouchableWithoutFeedback>
-        </Animated.View>
-      </TouchableWithoutFeedback>
+            ) : (
+              <FlatList
+                data={users}
+                keyExtractor={(item) => item._id}
+                renderItem={renderUserItem}
+                ListFooterComponent={renderFooter}
+                ListEmptyComponent={renderEmpty}
+                onEndReached={handleLoadMore}
+                onEndReachedThreshold={0.3}
+                showsVerticalScrollIndicator={true}
+                keyboardShouldPersistTaps="handled"
+              />
+            )}
+          </View>
+
+          {/* Notes Section - Separated */}
+          <View className="border-t border-gray-100 px-5 pt-4">
+            <Text className="mb-2 font-medium text-sm text-black">Ghi chú (tùy chọn)</Text>
+            <TextInput
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Nhập ghi chú..."
+              multiline={true}
+              numberOfLines={2}
+              className="rounded-xl bg-gray-100 p-3 text-sm text-black"
+              style={{ minHeight: 60, maxHeight: 80 }}
+              textAlignVertical="top"
+              placeholderTextColor="#999999"
+              editable={!isLoading}
+            />
+          </View>
+
+          {/* Selected User Preview */}
+          {selectedUser && (
+            <View className="mx-5 mt-3 flex-row items-center rounded-lg bg-green-50 p-2">
+              <MaterialCommunityIcons name="check-circle" size={18} color="#10B981" />
+              <Text className="ml-2 flex-1 text-sm text-green-700" numberOfLines={1}>
+                Đã chọn: <Text className="font-medium">{selectedUser.fullname}</Text>
+              </Text>
+            </View>
+          )}
+
+          {/* Action Buttons */}
+          <View className="mt-4 flex-row border-t border-gray-200">
+            <TouchableOpacity
+              className="flex-1 items-center justify-center bg-transparent py-4"
+              onPress={handleCancel}
+              disabled={isLoading}>
+              <Text className="font-medium text-lg text-gray-600">Hủy</Text>
+            </TouchableOpacity>
+            <View className="w-px bg-gray-200" />
+            <TouchableOpacity
+              className="flex-1 items-center justify-center bg-transparent py-4"
+              onPress={handleConfirm}
+              disabled={isLoading || !selectedUser}>
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#F05023" />
+              ) : (
+                <Text
+                  className="font-semibold text-lg"
+                  style={{ color: selectedUser ? '#F05023' : '#9CA3AF' }}>
+                  Xác nhận
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
     </Modal>
   );
 };

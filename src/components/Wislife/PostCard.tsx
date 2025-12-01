@@ -4,13 +4,13 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   Image,
   Alert,
   Dimensions,
   Modal,
   ScrollView,
 } from 'react-native';
+import { TouchableOpacity } from '../Common';
 import { Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
 import { Post, Reaction } from '../../types/post';
