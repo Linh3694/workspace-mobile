@@ -396,7 +396,7 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
 
         {/* Nút thêm mới ở dưới cùng */}
         <TouchableOpacity
-          className="absolute bottom-5 right-5 h-14 w-14 items-center justify-center rounded-full bg-orange-500 shadow-lg"
+          className="absolute bottom-[10%] right-[5%] h-14 w-14 items-center justify-center rounded-full bg-orange-500 shadow-lg"
           onPress={handleCreateTicket}>
           <Ionicons name="add" size={30} color="white" />
         </TouchableOpacity>

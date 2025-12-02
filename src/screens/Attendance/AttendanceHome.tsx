@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, SafeAreaView } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { ROUTES } from '../../constants/routes';

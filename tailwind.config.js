@@ -12,10 +12,23 @@ module.exports = {
         'text-secondary': '#757575',
       },
       fontFamily: {
-        sans: ['Mulish-Regular', 'Mulish-Medium'],
-        medium: ['Mulish-Medium'],
-        semibold: ['Mulish-SemiBold'],
-        bold: ['Mulish-Bold'],
+        // Base font families
+        sans: ['Mulish-Regular'],
+        mulish: ['Mulish-Regular'],
+        'mulish-medium': ['Mulish-Medium'],
+        'mulish-semibold': ['Mulish-SemiBold'],
+        'mulish-bold': ['Mulish-Bold'],
+        'mulish-extrabold': ['Mulish-ExtraBold'],
+        'mulish-black': ['Mulish-Black'],
+      },
+      // Map font weights to Mulish variants for NativeWind
+      fontWeight: {
+        normal: '400',
+        medium: '500',
+        semibold: '600',
+        bold: '700',
+        extrabold: '800',
+        black: '900',
       },
     },
   },

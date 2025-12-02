@@ -30,10 +30,10 @@ const linking = {
   prefixes: [Linking.createURL('/'), 'staffportal://'],
   config: {
     screens: {
-      Welcome: 'auth/success',
+      // Deep link auth/success chỉ dành cho màn hình Login
+      // Sau khi đăng nhập thành công, AuthContext sẽ tự chuyển sang Main
       Login: 'auth/success',
       Main: {
-        path: 'auth/success',
         screens: {
           Home: 'home',
         },

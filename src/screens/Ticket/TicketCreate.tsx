@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 // @ts-ignore
 import {
   View,
   Text,
+  TouchableOpacity,
   ScrollView,
   TextInput,
   Image,
@@ -12,10 +13,8 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Alert,
-  Modal,
-  Pressable,
 } from 'react-native';
-import { TouchableOpacity } from '../../components/Common';
+import ActionSheet, { ActionSheetRef } from 'react-native-actions-sheet';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons, FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -93,7 +92,8 @@ const TicketCreate = () => {
   const [userId, setUserId] = useState('');
   const [ticketCreatedId, setTicketCreatedId] = useState('');
   const [ticketCategories, setTicketCategories] = useState<TicketCategory[]>([]);
-  const [imagePickerVisible, setImagePickerVisible] = useState(false);
+
+  const actionSheetRef = useRef<ActionSheetRef>(null);
 
   const [ticketData, setTicketData] = useState({
     title: '',
@@ -329,14 +329,17 @@ const TicketCreate = () => {
   };
 
   const pickFromCamera = async () => {
-    // Đóng modal trước
-    setImagePickerVisible(false);
-
     try {
+      setLoading(true);
+
+      // Đóng action sheet trước khi mở camera
+      actionSheetRef.current?.setModalVisible(false);
+
       // Request camera permission
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission denied', 'Không có quyền truy cập camera');
+        setLoading(false);
         return;
       }
 
@@ -344,69 +347,95 @@ const TicketCreate = () => {
       const currentCount = ticketData.images.length;
       if (currentCount >= MAX_IMAGES_UPLOAD) {
         Alert.alert('Thông báo', `Bạn chỉ được tải lên tối đa ${MAX_IMAGES_UPLOAD} ảnh`);
+        setLoading(false);
         return;
       }
 
-      // Launch camera
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        quality: 0.7,
-      });
+      setTimeout(async () => {
+        try {
+          // Launch camera
+          const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ['images'],
+            quality: 0.7,
+          });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const newImage = { uri: result.assets[0].uri };
-        setTicketData((prev) => ({
-          ...prev,
-          images: [...prev.images, newImage],
-        }));
-      }
+          if (!result.canceled && result.assets && result.assets.length > 0) {
+            const newImage = { uri: result.assets[0].uri };
+            setTicketData((prev) => ({
+              ...prev,
+              images: [...prev.images, newImage],
+            }));
+          }
+        } catch (error) {
+          console.error('Lỗi khi chụp ảnh:', error);
+          Alert.alert('Thông báo', 'Có lỗi xảy ra khi chụp ảnh, vui lòng thử lại');
+        } finally {
+          setLoading(false);
+        }
+      }, 500);
     } catch (error) {
       console.error('Lỗi khi chụp ảnh:', error);
       Alert.alert('Thông báo', 'Có lỗi xảy ra khi chụp ảnh, vui lòng thử lại');
+      setLoading(false);
     }
   };
 
   const pickFromLibrary = async () => {
-    // Đóng modal trước
-    setImagePickerVisible(false);
-
     try {
+      setLoading(true);
+
+      // Đóng action sheet trước khi mở thư viện ảnh
+      actionSheetRef.current?.setModalVisible(false);
+
       // Request media library permission
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission denied', 'Không có quyền truy cập thư viện ảnh');
+        setLoading(false);
         return;
       }
 
-      // Launch image library picker
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: true,
-        quality: 0.5,
-        selectionLimit: MAX_IMAGES_UPLOAD,
-      });
+      setTimeout(async () => {
+        try {
+          // Launch image library picker
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsMultipleSelection: true,
+            quality: 0.5, // Giảm chất lượng để tránh lỗi bộ nhớ
+            selectionLimit: MAX_IMAGES_UPLOAD,
+          });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const currentCount = ticketData.images.length;
-        const remainingSlots = MAX_IMAGES_UPLOAD - currentCount;
+          if (!result.canceled && result.assets && result.assets.length > 0) {
+            // Giới hạn số lượng ảnh có thể thêm
+            const currentCount = ticketData.images.length;
+            const remainingSlots = MAX_IMAGES_UPLOAD - currentCount;
 
-        if (remainingSlots <= 0) {
-          Alert.alert('Thông báo', `Bạn chỉ được tải lên tối đa ${MAX_IMAGES_UPLOAD} ảnh`);
-          return;
+            if (remainingSlots <= 0) {
+              Alert.alert('Thông báo', `Bạn chỉ được tải lên tối đa ${MAX_IMAGES_UPLOAD} ảnh`);
+              setLoading(false);
+              return;
+            }
+
+            const newImages = result.assets
+              .slice(0, remainingSlots)
+              .map((asset) => ({ uri: asset.uri }));
+
+            setTicketData((prev) => ({
+              ...prev,
+              images: [...prev.images, ...newImages],
+            }));
+          }
+        } catch (innerError) {
+          console.error('Lỗi khi chọn ảnh:', innerError);
+          Alert.alert('Thông báo', 'Có lỗi xảy ra khi chọn ảnh, vui lòng thử lại');
+        } finally {
+          setLoading(false);
         }
-
-        const newImages = result.assets
-          .slice(0, remainingSlots)
-          .map((asset) => ({ uri: asset.uri }));
-
-        setTicketData((prev) => ({
-          ...prev,
-          images: [...prev.images, ...newImages],
-        }));
-      }
+      }, 500);
     } catch (error) {
       console.error('Lỗi khi chọn ảnh:', error);
       Alert.alert('Thông báo', 'Có lỗi xảy ra khi chọn ảnh, vui lòng thử lại');
+      setLoading(false);
     }
   };
 
@@ -432,7 +461,7 @@ const TicketCreate = () => {
           <Text className="mb-3 font-semibold text-base text-[#002147]">File đính kèm</Text>
           <TouchableOpacity
             className="mb-4 items-center justify-center rounded-xl border-2 border-dashed border-gray-300 p-6"
-            onPress={() => setImagePickerVisible(true)}>
+            onPress={() => actionSheetRef.current?.setModalVisible(true)}>
             <Ionicons name="cloud-upload-outline" size={40} color="#999" />
             <Text className="mt-3 text-base text-gray-600">Chọn ảnh từ thiết bị</Text>
           </TouchableOpacity>
@@ -565,45 +594,32 @@ const TicketCreate = () => {
             </TouchableOpacity>
           )}
         </View>
-        {/* Image Picker Modal */}
-        <Modal
-          visible={imagePickerVisible}
-          transparent
-          animationType="fade"
-          statusBarTranslucent
-          onRequestClose={() => setImagePickerVisible(false)}>
-          <View className="flex-1 justify-end">
-            <Pressable
-              className="absolute inset-0 bg-black/40"
-              onPress={() => setImagePickerVisible(false)}
-            />
-            <View className="mx-2.5 mb-8">
-              <View className="mb-2 overflow-hidden rounded-[14px] bg-white">
-                <TouchableOpacity
-                  className="border-b border-gray-100 px-4 py-[18px]"
-                  onPress={pickFromCamera}>
-                  <View className="flex-row items-center justify-center">
-                    <Ionicons name="camera-outline" size={24} color="#FF5733" />
-                    <Text className="ml-3 text-center text-lg text-[#002855]">Chụp ảnh</Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  className="px-4 py-[18px]"
-                  onPress={pickFromLibrary}>
-                  <View className="flex-row items-center justify-center">
-                    <Ionicons name="images-outline" size={24} color="#FF5733" />
-                    <Text className="ml-3 text-center text-lg text-[#002855]">Chọn từ thư viện</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-              <TouchableOpacity
-                className="overflow-hidden rounded-[14px] bg-white px-4 py-[18px]"
-                onPress={() => setImagePickerVisible(false)}>
-                <Text className="text-center text-lg font-semibold text-[#FF3B30]">Hủy</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
+        {/* ActionSheet for image selection */}
+        <ActionSheet ref={actionSheetRef} containerStyle={{ padding: 16 }}>
+          <TouchableOpacity
+            className="flex-row items-center border-b border-gray-100 px-8 py-4"
+            onPress={() => {
+              pickFromCamera();
+              actionSheetRef.current?.setModalVisible(false);
+            }}>
+            <Ionicons name="camera-outline" size={28} color="#FF5733" />
+            <Text className="ml-4 text-base text-[#333]">Chụp ảnh</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            className="flex-row items-center border-b border-gray-100 px-8 py-4"
+            onPress={() => {
+              pickFromLibrary();
+              actionSheetRef.current?.setModalVisible(false);
+            }}>
+            <Ionicons name="images-outline" size={28} color="#FF5733" />
+            <Text className="ml-4 text-base text-[#333]">Chọn từ thư viện</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            className="m-6 rounded-full bg-gray-100 py-4"
+            onPress={() => actionSheetRef.current?.setModalVisible(false)}>
+            <Text className="text-center font-semibold text-[#666]">Hủy</Text>
+          </TouchableOpacity>
+        </ActionSheet>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

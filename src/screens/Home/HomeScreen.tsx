@@ -472,7 +472,9 @@ const HomeScreen = () => {
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={{ flex: 1 }}>
-      <ScrollView keyboardShouldPersistTaps="always">
+      <ScrollView
+        keyboardShouldPersistTaps="always"
+        contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}>
         <View className="relative mt-[20%] w-full items-center">
           <Text className="mb-2 text-center font-medium text-2xl text-primary">
             {t('home.welcome')} WISer
@@ -499,8 +501,8 @@ const HomeScreen = () => {
           <MaskedView
             maskElement={
               <Text
-                className="text-center font-bold text-4xl"
-                style={{ backgroundColor: 'transparent' }}>
+                className="text-center text-3xl"
+                style={{ backgroundColor: 'transparent', fontFamily: 'Mulish-ExtraBold' }}>
                 {user?.fullname || 'User'}
               </Text>
             }>
@@ -508,7 +510,9 @@ const HomeScreen = () => {
               colors={['#F05023', '#F5AA1E']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}>
-              <Text className="text-center font-bold text-4xl opacity-0">
+              <Text
+                className="text-center text-4xl opacity-0"
+                style={{ fontFamily: 'Mulish-Bold' }}>
                 {user?.fullname || 'User'}
               </Text>
             </LinearGradient>

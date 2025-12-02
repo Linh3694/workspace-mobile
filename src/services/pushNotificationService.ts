@@ -3,6 +3,7 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL } from '../config/constants';
+import { soundService } from './soundService';
 
 interface PushNotificationData {
   type?: string;
@@ -113,7 +114,7 @@ class PushNotificationService {
       // Import Constants để lấy projectId động
       const Constants = require('expo-constants').default;
       const projectId = Constants?.expoConfig?.extra?.eas?.projectId;
-      
+
       if (!projectId) {
         console.error('❌ Không tìm thấy projectId trong app.json');
         return null;
@@ -122,13 +123,13 @@ class PushNotificationService {
       // Xác định app type (expo-go vs standalone)
       const isStandalone = Constants.appOwnership !== 'expo';
       const appType = isStandalone ? 'standalone' : 'expo-go';
-      
+
       console.log(`📱 App type: ${appType}, ProjectId: ${projectId}`);
 
       // Get cached token first - nhưng kiểm tra app type
       const cachedAppType = await AsyncStorage.getItem('pushTokenAppType');
       const cachedToken = await AsyncStorage.getItem('pushToken');
-      
+
       // Nếu app type thay đổi (từ expo-go sang standalone hoặc ngược lại), cần lấy token mới
       if (cachedToken && cachedAppType === appType) {
         // Verify token is still valid
@@ -184,7 +185,7 @@ class PushNotificationService {
       // Xác định app type (expo-go vs standalone) - QUAN TRỌNG cho iOS TestFlight
       const isStandalone = Constants.appOwnership !== 'expo';
       const appType = isStandalone ? 'standalone' : 'expo-go';
-      
+
       // Build device info
       const platform =
         Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'expo';
@@ -192,7 +193,7 @@ class PushNotificationService {
         Device.deviceName || `${Device.brand || 'Unknown'} ${Device.modelName || 'Device'}`;
       const osVersion = Device.osVersion || 'Unknown';
       const appVersion = Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
-      
+
       // Tạo unique device identifier để phân biệt Expo Go và standalone app
       const deviceId = `${Device.modelId || Device.modelName || 'unknown'}-${Platform.OS}-${appType}`;
 
@@ -211,7 +212,10 @@ class PushNotificationService {
         bundleId: Constants.expoConfig?.ios?.bundleIdentifier || 'com.wellspring.workspace',
       };
 
-      console.log('📤 Registering push token with device info:', JSON.stringify(deviceInfo, null, 2));
+      console.log(
+        '📤 Registering push token with device info:',
+        JSON.stringify(deviceInfo, null, 2)
+      );
 
       // Use new mobile device registration API
       const response = await fetch(
@@ -371,7 +375,10 @@ class PushNotificationService {
     }
   }
 
-  private handleTicketStatusChangeNotification(data: PushNotificationData, wasOpened: boolean): void {
+  private handleTicketStatusChangeNotification(
+    data: PushNotificationData,
+    wasOpened: boolean
+  ): void {
     console.log('🎫 Ticket status change notification:', data);
 
     if (wasOpened && data.ticketId) {
@@ -391,6 +398,12 @@ class PushNotificationService {
   private handleNewTicketAdminNotification(data: PushNotificationData, wasOpened: boolean): void {
     console.log('🆕 New ticket admin notification:', data);
 
+    // Play notification sound for support team when new ticket is created
+    if (!wasOpened) {
+      // Only play sound when notification arrives (not when tapped)
+      soundService.playTicketCreatedSound();
+    }
+
     if (wasOpened && data.ticketId) {
       this.navigateToTicketDetail(data.ticketId);
     }
@@ -404,7 +417,10 @@ class PushNotificationService {
     }
   }
 
-  private handleTicketCancelledAdminNotification(data: PushNotificationData, wasOpened: boolean): void {
+  private handleTicketCancelledAdminNotification(
+    data: PushNotificationData,
+    wasOpened: boolean
+  ): void {
     console.log('❌ Ticket cancelled admin notification:', data);
 
     if (wasOpened && data.ticketId) {
@@ -412,7 +428,10 @@ class PushNotificationService {
     }
   }
 
-  private handleCompletionConfirmedNotification(data: PushNotificationData, wasOpened: boolean): void {
+  private handleCompletionConfirmedNotification(
+    data: PushNotificationData,
+    wasOpened: boolean
+  ): void {
     console.log('✅ Completion confirmed notification:', data);
 
     if (wasOpened && data.ticketId) {

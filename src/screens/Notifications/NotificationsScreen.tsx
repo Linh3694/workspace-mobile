@@ -2,13 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
-  SafeAreaView,
   FlatList,
   ActivityIndicator,
   RefreshControl,
   Alert,
   Platform,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { G, Path, Rect, Defs, ClipPath } from 'react-native-svg';
 import { TouchableOpacity } from '../../components/Common';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +16,6 @@ import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/nativ
 import * as Notifications from 'expo-notifications';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { notificationCenterService } from '../../services/notificationCenterService';
 
 // Custom Mark As Read Icon component (giống parent-portal)
@@ -92,7 +91,7 @@ const NotificationsScreen = () => {
 
         if (response.success) {
           const rawNotifications = response.data.notifications || [];
-          
+
           // Map backend status (string) to frontend read (boolean)
           const notificationsData = rawNotifications.map((notif: any) => ({
             ...notif,
@@ -154,9 +153,7 @@ const NotificationsScreen = () => {
       setMarkingAllRead(true);
       const response = await notificationCenterService.markAllAsRead();
       if (response.success) {
-        setNotifications((prev) =>
-          prev.map((item) => ({ ...item, read: true }))
-        );
+        setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
         setPagination((prev) => ({
           ...prev,
           unreadCount: 0,
@@ -188,19 +185,21 @@ const NotificationsScreen = () => {
           screen: 'Ticket',
           params: { ticketId: data.ticketId },
         });
-      } else if (data?.action === 'ticket_status_changed' ||
-                 data?.action === 'ticket_assigned' ||
-                 data?.action === 'ticket_processing' ||
-                 data?.action === 'ticket_waiting' ||
-                 data?.action === 'ticket_done' ||
-                 data?.action === 'ticket_closed' ||
-                 data?.action === 'ticket_cancelled' ||
-                 // Admin notifications
-                 data?.action === 'new_ticket_admin' ||
-                 data?.action === 'user_reply' ||
-                 data?.action === 'ticket_cancelled_admin' ||
-                 data?.action === 'completion_confirmed' ||
-                 data?.action === 'ticket_feedback_received') {
+      } else if (
+        data?.action === 'ticket_status_changed' ||
+        data?.action === 'ticket_assigned' ||
+        data?.action === 'ticket_processing' ||
+        data?.action === 'ticket_waiting' ||
+        data?.action === 'ticket_done' ||
+        data?.action === 'ticket_closed' ||
+        data?.action === 'ticket_cancelled' ||
+        // Admin notifications
+        data?.action === 'new_ticket_admin' ||
+        data?.action === 'user_reply' ||
+        data?.action === 'ticket_cancelled_admin' ||
+        data?.action === 'completion_confirmed' ||
+        data?.action === 'ticket_feedback_received'
+      ) {
         // Handle all ticket-related notifications
         if (data.ticketId) {
           (navigation as any).navigate('Main', {
@@ -333,7 +332,6 @@ const NotificationsScreen = () => {
   };
 
   // Android cần thêm top padding vì SafeAreaView không xử lý đúng status bar
-  const topPadding = Platform.OS === 'android' ? insets.top + 16 : 24;
 
   if (loading) {
     return (
@@ -346,16 +344,16 @@ const NotificationsScreen = () => {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <View 
-        className="flex-row items-center justify-center px-5 my-5"
-        style={{ marginTop: topPadding }}>
-        <Text className="text-center font-bold text-2xl text-[#0A2240]">Thông báo</Text>
+    <SafeAreaView className="flex-1 bg-white pt-6">
+      <View className="mb-5 flex-row items-center justify-center px-5">
+        <Text className="text-center text-2xl text-[#0A2240]" style={{ fontFamily: 'Mulish-Bold' }}>
+          Thông báo
+        </Text>
       </View>
 
       {/* Nút đánh dấu tất cả đã đọc - chỉ hiển thị khi có thông báo chưa đọc */}
       {pagination.unreadCount > 0 && (
-        <View className="mb-3 mt-4 px-5 items-center justify-center flex mx-auto">
+        <View className="mx-auto mb-3 mt-4 flex items-center justify-center px-5">
           <TouchableOpacity
             onPress={markAllAsRead}
             disabled={markingAllRead}
@@ -382,6 +380,7 @@ const NotificationsScreen = () => {
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
         ListEmptyComponent={
           <View className="flex-1 items-center justify-center py-20">
             <Ionicons name="notifications-off-outline" size={64} color="#9CA3AF" />

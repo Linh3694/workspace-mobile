@@ -1,15 +1,7 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
-import {
-  View,
-  Text,
-  TextInput,
-  Image,
-  Pressable,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
+import { View, Text, TextInput, Image, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { TouchableOpacity } from '../../components/Common';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -497,11 +489,6 @@ const SignInScreen = () => {
           </Text>
         </TouchableOpacity>
 
-        {/* Quên mật khẩu */}
-        <TouchableOpacity className="mt-4 w-full items-center">
-          <Text className="font-medium  text-base text-text-secondary">Quên mật khẩu?</Text>
-        </TouchableOpacity>
-
         {/* Phân cách */}
         <View className="my-6 flex-row items-center">
           <View className="h-px flex-1 bg-[#E0E0E0]" />
@@ -517,8 +504,7 @@ const SignInScreen = () => {
           activeOpacity={0.7}
           className={`mb-2 w-full flex-row items-center justify-center rounded-full py-3 ${
             isReady ? 'bg-secondary/10' : 'bg-gray-200'
-          }`}
-        >
+          }`}>
           <View style={{ marginRight: 8 }}>
             <MicrosoftIcon width={20} height={20} />
           </View>

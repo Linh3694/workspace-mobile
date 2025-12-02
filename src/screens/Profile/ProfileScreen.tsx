@@ -1,15 +1,7 @@
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
-import {
-  View,
-  Text,
-  SafeAreaView,
-  Switch,
-  Alert,
-  Image,
-  ScrollView,
-  Platform,
-} from 'react-native';
+import { View, Text, Switch, Alert, Image, ScrollView, Platform } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TouchableOpacity } from '../../components/Common';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../context/AuthContext';
@@ -30,16 +22,17 @@ import SelectModal from '../../components/SelectModal';
 import attendanceService from '../../services/attendanceService';
 
 const ProfileScreen = () => {
+  const insets = useSafeAreaInsets();
   const { logout, user, refreshUserData } = useAuth();
   // Biometric hooks removed
   const { getCurrentLanguageName, showLanguageSelector, t } = useLanguage();
   // const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  // const [showPasswordModal, setShowPasswordModal] = useState(false);
+  // const [showConfirmModal, setShowConfirmModal] = useState(false);
+  // const [password, setPassword] = useState('');
+  // const [showPassword, setShowPassword] = useState(false);
+  // const [isLoading, setIsLoading] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const [campusOptions, setCampusOptions] = useState<
     { name: string; title_vn?: string; title_en?: string }[]
@@ -212,18 +205,21 @@ const ProfileScreen = () => {
 
       // Gửi token lên server và check kết quả
       const registerSuccess = await registerDeviceToken(token.data);
-      
+
       if (!registerSuccess) {
         console.error('❌ Đăng ký token với server thất bại');
         return false;
       }
-      
+
       console.log('✅ Push notification setup completed successfully');
       return true;
     } catch (error: any) {
       console.error('❌ Lỗi khi thiết lập thông báo đẩy:', error);
       console.error('Error details:', error.message || error);
-      Alert.alert(t('common.error'), 'Lỗi khi thiết lập thông báo đẩy: ' + (error.message || 'Unknown error'));
+      Alert.alert(
+        t('common.error'),
+        'Lỗi khi thiết lập thông báo đẩy: ' + (error.message || 'Unknown error')
+      );
       return false;
     }
   };
@@ -255,8 +251,9 @@ const ProfileScreen = () => {
       const deviceName =
         Device.deviceName || `${Device.brand || 'Unknown'} ${Device.modelName || 'Device'}`;
       const osVersion = Device.osVersion || 'Unknown';
-      const appVersion = Constants.expoConfig?.version || (Constants.manifest as any)?.version || '1.0.0';
-      
+      const appVersion =
+        Constants.expoConfig?.version || (Constants.manifest as any)?.version || '1.0.0';
+
       // Tạo unique device identifier để phân biệt Expo Go và standalone app
       const deviceId = `${Device.modelId || Device.modelName || 'unknown'}-${Platform.OS}-${appType}`;
 
@@ -287,17 +284,17 @@ const ProfileScreen = () => {
           Authorization: `Bearer ${authToken}`,
         },
       });
-      
+
       console.log(`✅ Push token registered successfully for ${appType}`);
       console.log('📥 Server response:', JSON.stringify(response.data, null, 2));
-      
+
       // Kiểm tra response có success không
       if (response.data?.success === false) {
         console.error('❌ Server returned error:', response.data?.message);
         Alert.alert(t('common.error'), response.data?.message || 'Đăng ký token thất bại');
         return false;
       }
-      
+
       await AsyncStorage.setItem('pushTokenAppType', appType);
       await AsyncStorage.setItem('pushTokenRegistered', 'true');
       return true;
@@ -381,10 +378,9 @@ const ProfileScreen = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView className="flex-1 bg-white" edges={['bottom', 'left', 'right']}>
       <StandardHeader logo={<Wismelogo width={130} height={50} />} />
-
-      <ScrollView className="flex-1">
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}>
         {/* Profile Section */}
         <View className="mx-4 mt-6 items-center rounded-2xl p-6">
           {/* Avatar - chỉ hiển thị, không cho phép thay đổi */}
@@ -403,49 +399,67 @@ const ProfileScreen = () => {
           </View>
 
           {/* User Info */}
-          <Text className="my-2 font-bold text-3xl text-primary">{user?.fullname}</Text>
-          <Text className="my-2 font-medium text-[#757575]">{user?.jobTitle}</Text>
+          <Text className="my-2 text-3xl text-[#002855]" style={{ fontFamily: 'Mulish-Bold' }}>
+            {user?.fullname}
+          </Text>
+          <Text className="my-2 text-[#757575]" style={{ fontFamily: 'Mulish-Medium' }}>
+            {user?.jobTitle}
+          </Text>
 
           {/* Employee ID Badge */}
           <View className="rounded-full bg-[#F9FBEB] px-4 py-2">
-            <Text className="font-semibold text-lg text-black">{user?.employeeCode}</Text>
+            <Text className="text-lg text-black" style={{ fontFamily: 'Mulish-SemiBold' }}>
+              {user?.employeeCode}
+            </Text>
           </View>
         </View>
 
         {/* Contact Info Section */}
         <View className="mx-4 mt-4 rounded-2xl bg-[#f8f8f8] p-4">
           <View className="my-2">
-            <Text className="font-semibold text-lg text-black">{t('profile.contact_info')}</Text>
+            <Text className="text-lg text-black" style={{ fontFamily: 'Mulish-SemiBold' }}>
+              {t('profile.contact_info')}
+            </Text>
           </View>
           <View className=" gap-2">
             {/* Phone */}
             <View className="my-2 flex-row items-center">
               <Ionicons name="call-outline" size={20} color="#757575" />
-              <Text className="ml-5 font-medium text-black">{user?.phone}</Text>
+              <Text className="ml-5 text-black" style={{ fontFamily: 'Mulish-Medium' }}>
+                {user?.phone}
+              </Text>
             </View>
 
             {/* Email */}
             <View className="my-2 flex-row items-center">
               <Ionicons name="mail-outline" size={20} color="#757575" />
-              <Text className="ml-5 font-medium text-black">{user?.email}</Text>
+              <Text className="ml-5 text-black" style={{ fontFamily: 'Mulish-Medium' }}>
+                {user?.email}
+              </Text>
             </View>
 
             {/* Department */}
             <View className="my-2 flex-row items-center">
               <Ionicons name="business-outline" size={20} color="#757575" />
-              <Text className="ml-5 font-medium text-black">{user?.department}</Text>
+              <Text className="ml-5 text-black" style={{ fontFamily: 'Mulish-Medium' }}>
+                {user?.department}
+              </Text>
             </View>
           </View>
         </View>
         {/* Settings Section */}
         <View className="mt-8 rounded-2xl border-t border-[#E5E5E5]">
           <View className="gap-8 p-5">
-            <Text className="font-semibold text-base text-black">{t('profile.settings')}</Text>
+            <Text className="text-base text-black" style={{ fontFamily: 'Mulish-SemiBold' }}>
+              {t('profile.settings')}
+            </Text>
             {/* Notifications */}
             <View className="flex-row items-center justify-between">
               <View className="flex-1 flex-row items-center">
                 <Ionicons name="notifications-outline" size={20} color="#757575" />
-                <Text className="ml-5 font-medium text-black">{t('profile.notifications')}</Text>
+                <Text className="ml-5 text-black" style={{ fontFamily: 'Mulish-Medium' }}>
+                  {t('profile.notifications')}
+                </Text>
               </View>
               <Switch
                 trackColor={{ false: '#D1D5DB', true: '#F97316' }}
@@ -455,18 +469,20 @@ const ProfileScreen = () => {
               />
             </View>
 
-            {/* FaceID removed */}
-
             {/* Language */}
             <TouchableOpacity
               className="flex-row items-center justify-between"
               onPress={showLanguageSelector}>
               <View className="flex-1 flex-row items-center">
                 <Ionicons name="language-outline" size={20} color="#757575" />
-                <Text className="ml-5 font-medium text-black">{t('profile.language')}</Text>
+                <Text className="ml-5 text-black" style={{ fontFamily: 'Mulish-Medium' }}>
+                  {t('profile.language')}
+                </Text>
               </View>
               <View className="flex-row items-center">
-                <Text className="mr-2 font-medium text-black">{getCurrentLanguageName()}</Text>
+                <Text className="mr-2 text-black" style={{ fontFamily: 'Mulish-Medium' }}>
+                  {getCurrentLanguageName()}
+                </Text>
                 <Ionicons name="chevron-down" size={16} color="#757575" />
               </View>
             </TouchableOpacity>
@@ -477,12 +493,12 @@ const ProfileScreen = () => {
               onPress={() => setCampusSelectorVisible(true)}>
               <View className="flex-1 flex-row items-center">
                 <Ionicons name="school-outline" size={20} color="#757575" />
-                <Text className="ml-5 font-medium text-black">
+                <Text className="ml-5 text-black" style={{ fontFamily: 'Mulish-Medium' }}>
                   {t('profile.campus') || 'Trường học'}
                 </Text>
               </View>
               <View className="flex-row items-center">
-                <Text className="mr-2 font-medium text-black">
+                <Text className="mr-2 text-black" style={{ fontFamily: 'Mulish-Medium' }}>
                   {(() => {
                     const cur = campusOptions.find((c) => c.name === selectedCampus);
                     return cur?.title_vn || cur?.title_en || selectedCampus || '—';
@@ -495,7 +511,9 @@ const ProfileScreen = () => {
             {/* Logout */}
             <TouchableOpacity onPress={handleLogout} className="flex-row items-center">
               <Ionicons name="log-out-outline" size={20} color="#EF4444" />
-              <Text className="ml-5 text-red-500">{t('profile.logout')}</Text>
+              <Text className="ml-5 text-red-500" style={{ fontFamily: 'Mulish-Medium' }}>
+                {t('profile.logout')}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>

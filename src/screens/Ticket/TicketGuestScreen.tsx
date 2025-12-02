@@ -145,7 +145,9 @@ const TicketGuestScreen = ({ isFromTab = false }: TicketGuestScreenProps) => {
           </Text>
           <View>
             <Text className="text-right font-medium text-base text-[#757575]">
-              {item.assignedTo ? normalizeVietnameseName(item.assignedTo.fullname) : 'Chưa phân công'}
+              {item.assignedTo
+                ? normalizeVietnameseName(item.assignedTo.fullname)
+                : 'Chưa phân công'}
             </Text>
           </View>
         </View>
@@ -295,7 +297,7 @@ const TicketGuestScreen = ({ isFromTab = false }: TicketGuestScreenProps) => {
 
         {/* Nút thêm mới ở dưới cùng */}
         <TouchableOpacity
-          className="absolute bottom-5 right-5 h-14 w-14 items-center justify-center rounded-full bg-[#F05023] shadow-lg"
+          className="absolute bottom-[10%] right-[5%] h-14 w-14 items-center justify-center rounded-full bg-[#F05023] shadow-lg"
           onPress={handleCreateTicket}>
           <Ionicons name="add" size={30} color="white" />
         </TouchableOpacity>

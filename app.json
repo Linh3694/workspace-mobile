@@ -2,7 +2,7 @@
   "expo": {
     "name": "Wis",
     "slug": "workspace",
-    "version": "1.2.15",
+    "version": "1.2.17",
     "web": {
       "favicon": "./src/assets/favicon.png"
     },
@@ -66,8 +66,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./src/assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./src/assets/icon.png",
+        "backgroundColor": "#FFFCF5"
       },
       "package": "com.hailinh.n23.workspace",
       "permissions": [

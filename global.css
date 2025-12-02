@@ -2,11 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global font setup */
-* {
-  font-family: 'Mulish-Regular';
+/* Global font setup - Map font weights to Mulish variants */
+@layer base {
+  * {
+    font-family: 'Mulish-Regular';
+  }
 }
 
-body {
-  font-family: 'Mulish-Regular';
+/* Custom utilities for font weights with Mulish */
+@layer utilities {
+  .font-normal {
+    font-family: 'Mulish-Regular';
+  }
+  .font-medium {
+    font-family: 'Mulish-Medium';
+  }
+  .font-semibold {
+    font-family: 'Mulish-SemiBold';
+  }
+  .font-bold {
+    font-family: 'Mulish-Bold';
+  }
+  .font-extrabold {
+    font-family: 'Mulish-ExtraBold';
+  }
+  .font-black {
+    font-family: 'Mulish-Black';
+  }
 }
