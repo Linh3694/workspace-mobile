@@ -35,12 +35,30 @@ type RootStackParamList = {
 // Define the key name for AsyncStorage
 const LAST_EMAIL_KEY = 'WELLSPRING_LAST_EMAIL';
 
+// Helper to detect if input is phone number
+const isPhoneNumber = (input: string): boolean => {
+  // Remove spaces and special chars except +
+  const cleaned = input.replace(/[\s\-\(\)]/g, '');
+  // Check if it's a phone number pattern (starts with 0, +84, 84, or is all digits)
+  return /^(\+?84|0)?\d{9,10}$/.test(cleaned) || /^\d{10,11}$/.test(cleaned);
+};
+
 const SignInScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { t } = useLanguage();
 
+  // Schema chấp nhận cả email và số điện thoại
   const schema = yup.object().shape({
-    email: yup.string().required(t('auth.email_required')).email(t('auth.email_invalid')),
+    email: yup
+      .string()
+      .required(t('auth.email_required'))
+      .test('email-or-phone', t('auth.email_invalid'), (value) => {
+        if (!value) return false;
+        // Accept email or phone number
+        const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+        const isPhone = isPhoneNumber(value);
+        return isEmail || isPhone;
+      }),
     password: yup.string().required(t('auth.password_required')),
   });
   const {
@@ -212,24 +230,111 @@ const SignInScreen = () => {
     setLoading(true);
     setLoginError('');
     try {
-      // Cập nhật để sử dụng Frappe API endpoint
-      const response = await fetch(
-        `${API_BASE_URL}/api/method/erp.api.erp_common_user.auth.login`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify({
-            email: data.email,
-            username: data.email, // Có thể là email hoặc username
-            password: data.password,
-            provider: 'local',
-          }),
+      const inputValue = data.email.trim();
+      const isPhone = isPhoneNumber(inputValue);
+
+      let response;
+      let resData;
+
+      if (isPhone) {
+        // Đăng nhập bằng số điện thoại cho Monitor
+        console.log('📱 [SignInScreen] Logging in with phone number...');
+        response = await fetch(
+          `${API_BASE_URL}/api/method/erp.api.bus_application.auth.login_with_password`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({
+              phone_number: inputValue,
+              password: data.password,
+            }),
+          }
+        );
+        resData = await response.json();
+
+        console.log('📱 [SignInScreen] Monitor login response:', JSON.stringify(resData, null, 2));
+
+        // Bus Monitor API trả về format khác
+        const apiResponse = resData.message || resData;
+
+        if (!apiResponse.success) {
+          const errorMessage = apiResponse.message || 'Đăng nhập thất bại';
+          setLoginError(errorMessage);
+          showNotification(errorMessage, 'error');
+          setLoading(false);
+          return;
         }
-      );
-      const resData = await response.json();
+
+        // Xử lý response thành công từ Monitor API
+        const { token, monitor, user } = apiResponse.data;
+
+        if (!token) {
+          throw new Error('Thiếu token từ máy chủ');
+        }
+
+        // Lưu thông tin đăng nhập
+        await AsyncStorage.setItem(LAST_EMAIL_KEY, inputValue);
+
+        const finalUser = {
+          _id: monitor.name,
+          email: user.email,
+          fullname: monitor.full_name,
+          username: monitor.monitor_code,
+          role: 'Mobile Monitor',
+          roles: ['Mobile Monitor'], // Đảm bảo luôn có Mobile Monitor role
+          jobTitle: 'Bus Monitor',
+          department: 'Bus Operation',
+          avatar: 'https://via.placeholder.com/150',
+          needProfileUpdate: false,
+          employeeCode: monitor.monitor_code,
+          provider: 'bus_monitor',
+          phone_number: monitor.phone_number,
+          campus_id: monitor.campus_id,
+          school_year_id: monitor.school_year_id,
+        };
+
+        try {
+          await login(token, finalUser);
+        } catch (e) {
+          if (e?.message === 'NO_MOBILE_ACCESS') {
+            showNotification('Bạn không có quyền đăng nhập hệ thống.', 'error');
+            setLoading(false);
+            return;
+          }
+          throw e;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        showNotification(`Chào mừng ${monitor.full_name}!`, 'success');
+
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Main', params: { screen: 'Home' } }],
+        });
+
+        setLoading(false);
+        return;
+      }
+
+      // Đăng nhập bằng email (logic cũ)
+      response = await fetch(`${API_BASE_URL}/api/method/erp.api.erp_common_user.auth.login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          email: data.email,
+          username: data.email, // Có thể là email hoặc username
+          password: data.password,
+          provider: 'local',
+        }),
+      });
+      resData = await response.json();
 
       // Debug: Log the actual response structure
       console.log('🔍 [SignInScreen] API Response Structure:', JSON.stringify(resData, null, 2));
@@ -420,7 +525,7 @@ const SignInScreen = () => {
           className="mb-6 h-16 w-[30%]"
           resizeMode="cover"
         />
-        <Text className="self-start font-bold text-xl text-primary">Đăng nhập</Text>
+        <Text className="self-start text-xl font-bold text-primary">Đăng nhập</Text>
         {/* Email */}
         <Text className="mt-6 self-start font-medium text-primary">
           Tên đăng nhập <Text className="text-error">*</Text>
@@ -431,7 +536,7 @@ const SignInScreen = () => {
           render={({ field: { onChange, onBlur, value } }) => (
             <TextInput
               className="mt-2 h-12 w-full rounded-xl  border border-[#ddd] bg-white px-3 font-medium"
-              placeholder="example@wellspring.edu.vn"
+              placeholder="Email hoặc số điện thoại"
               autoCapitalize="none"
               keyboardType="email-address"
               onBlur={onBlur}
@@ -484,7 +589,7 @@ const SignInScreen = () => {
           className="mt-2 w-full items-center rounded-full bg-secondary py-3"
           onPress={handleSubmit(onSubmit)}
           disabled={loading}>
-          <Text className="font-bold text-base text-white">
+          <Text className="text-base font-bold text-white">
             {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
           </Text>
         </TouchableOpacity>
@@ -492,7 +597,7 @@ const SignInScreen = () => {
         {/* Phân cách */}
         <View className="my-6 flex-row items-center">
           <View className="h-px flex-1 bg-[#E0E0E0]" />
-          <Text className="mx-2 font-medium  text-sm text-text-secondary">
+          <Text className="mx-2 text-sm  font-medium text-text-secondary">
             Đăng nhập với phương thức khác
           </Text>
           <View className="h-px flex-1 bg-[#E0E0E0]" />
@@ -508,7 +613,7 @@ const SignInScreen = () => {
           <View style={{ marginRight: 8 }}>
             <MicrosoftIcon width={20} height={20} />
           </View>
-          <Text className="font-bold text-base text-secondary">Đăng nhập với Microsoft</Text>
+          <Text className="text-base font-bold text-secondary">Đăng nhập với Microsoft</Text>
         </TouchableOpacity>
 
         {/* Nút đăng nhập Apple - chỉ hiển thị trên iOS */}
@@ -521,14 +626,14 @@ const SignInScreen = () => {
             <View style={{ marginRight: 8 }}>
               <AppleIcon width={20} height={20} />
             </View>
-            <Text className="font-bold text-base text-secondary">
+            <Text className="text-base font-bold text-secondary">
               {isAppleLoading ? 'Đang xử lý...' : 'Đăng nhập với Apple'}
             </Text>
           </TouchableOpacity>
         )}
       </View>
       <View className="absolute bottom-12 mt-4 w-full items-center">
-        <Text className="mt-8  text-center font-medium text-xs text-text-secondary">
+        <Text className="mt-8  text-center text-xs font-medium text-text-secondary">
           © Copyright 2025 Wellspring International Bilingual Schools.{'\n'}All Rights Reserved.
         </Text>
       </View>

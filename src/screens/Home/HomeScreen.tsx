@@ -256,12 +256,32 @@ const HomeScreen = () => {
     navigation.navigate(ROUTES.SCREENS.LEAVE_REQUESTS);
   };
 
+  const navigateToBus = () => {
+    navigation.navigate('BusHome' as any);
+  };
+
   // Role-based menu configuration
   const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
   const hasMobileTeacher = roles.includes('Mobile Teacher');
   const hasMobileIT = roles.includes('Mobile IT');
   const hasMobileBOD = roles.includes('Mobile BOD');
   const hasMobileUser = roles.includes('Mobile User');
+  const hasMobileMonitor = roles.includes('Mobile Monitor');
+
+  // Bus Icon component using Ionicons
+  const BusIconComponent = ({ width, height }: { width: number; height: number }) => (
+    <View
+      style={{
+        width,
+        height,
+        backgroundColor: '#E8F5E9',
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}>
+      <Ionicons name="bus" size={width * 0.5} color="#2E7D32" />
+    </View>
+  );
 
   const allItems = [
     {
@@ -296,12 +316,23 @@ const HomeScreen = () => {
       onPress: navigateToLeaveRequests,
       key: 'documents',
     },
+    {
+      id: 5,
+      title: 'Xe buýt',
+      component: BusIconComponent,
+      description: 'Quản lý xe buýt học sinh',
+      onPress: navigateToBus,
+      key: 'bus',
+    },
   ];
 
   let menuItems = allItems.filter(() => false);
   if (hasMobileBOD) {
-    // Mobile BOD: tất cả
+    // Mobile BOD: tất cả (bao gồm Bus)
     menuItems = allItems;
+  } else if (hasMobileMonitor) {
+    // Mobile Monitor: chỉ Bus
+    menuItems = allItems.filter((i) => ['bus'].includes(i.key));
   } else if (hasMobileIT) {
     // Mobile IT: Ticket Admin + Devices
     menuItems = allItems.filter((i) => ['tickets', 'devices'].includes(i.key));
@@ -476,7 +507,7 @@ const HomeScreen = () => {
         keyboardShouldPersistTaps="always"
         contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}>
         <View className="relative mt-[20%] w-full items-center">
-          <Text className="mb-2 text-center font-medium text-2xl text-primary">
+          <Text className="mb-2 text-center text-2xl font-medium text-primary">
             {t('home.welcome')} WISer
           </Text>
           <TouchableOpacity
@@ -492,7 +523,7 @@ const HomeScreen = () => {
                   transform: [{ scale: pulseAnim }],
                 }}
                 className="h-[14px] min-w-[12px] items-center justify-center rounded-full bg-red-500 px-1">
-                <Text className="font-bold text-[7px] text-white">
+                <Text className="text-[7px] font-bold text-white">
                   {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
                 </Text>
               </Animated.View>
@@ -523,7 +554,7 @@ const HomeScreen = () => {
             {/* Time labels with detail button */}
             <View className="flex-row items-center justify-between">
               <View className="left-[5%] flex-row items-center">
-                <Text className="font-medium text-base text-teal-700">{checkInTime}</Text>
+                <Text className="text-base font-medium text-teal-700">{checkInTime}</Text>
                 {isRefreshingAttendance && (
                   <View className="ml-2">
                     <Ionicons name="sync" size={14} color="#0d9488" />
@@ -532,7 +563,7 @@ const HomeScreen = () => {
               </View>
 
               <View className="right-[3%] flex-row items-center">
-                <Text className="font-medium text-base text-teal-700">{checkOutTime}</Text>
+                <Text className="text-base font-medium text-teal-700">{checkOutTime}</Text>
                 {isRefreshingAttendance && (
                   <View className="ml-2">
                     <Ionicons name="sync" size={14} color="#0d9488" />
@@ -589,7 +620,7 @@ const HomeScreen = () => {
                       className="mt-2 w-[25%] items-center"
                       onPress={item.onPress}>
                       <item.component width={80} height={80} />
-                      <Text className="mt-2 text-center font-medium text-sm">{item.title}</Text>
+                      <Text className="mt-2 text-center text-sm font-medium">{item.title}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -598,7 +629,7 @@ const HomeScreen = () => {
           </View>
         </View>
         <View className="mt-[10%] w-full px-5">
-          <Text className="mb-5 text-center font-medium text-xl text-primary">
+          <Text className="mb-5 text-center text-xl font-medium text-primary">
             {t('common.search')}?
           </Text>
           {/* iOS-style Search Bar */}
@@ -612,7 +643,7 @@ const HomeScreen = () => {
           {/* Search History */}
           {searchHistory.length > 0 && (
             <View className="mt-2">
-              <Text className="mb-2 font-semibold text-lg text-gray-700">
+              <Text className="mb-2 text-lg font-semibold text-gray-700">
                 {t('common.search')} gần đây
               </Text>
               {searchHistory.slice(0, 3).map((title) => {
@@ -685,7 +716,7 @@ const HomeScreen = () => {
                     <View className="px-1">
                       {/* Results in Suggestion Box */}
                       <View className="mx-2 rounded-xl px-4 py-4">
-                        <Text className="mb-3 font-semibold text-lg text-gray-900">
+                        <Text className="mb-3 text-lg font-semibold text-gray-900">
                           Kết quả phù hợp
                         </Text>
                         <GradientBorderContainer>
@@ -705,7 +736,7 @@ const HomeScreen = () => {
                                       className="mt-2 w-[25%] items-center"
                                       onPress={() => handleIOSSelectItem(item.title)}>
                                       <item.component width={80} height={80} />
-                                      <Text className="mt-2 text-center font-medium text-sm">
+                                      <Text className="mt-2 text-center text-sm font-medium">
                                         {item.title}
                                       </Text>
                                     </TouchableOpacity>
@@ -714,7 +745,7 @@ const HomeScreen = () => {
                               ) : (
                                 <View className="items-center py-8">
                                   <FontAwesome name="search" size={48} color="#ccc" />
-                                  <Text className="mt-4 font-medium text-base text-gray-500">
+                                  <Text className="mt-4 text-base font-medium text-gray-500">
                                     Không tìm thấy kết quả
                                   </Text>
                                   <Text className="mt-1 text-sm font-normal text-gray-400">
@@ -730,7 +761,7 @@ const HomeScreen = () => {
                       {/* Recent Searches Below */}
                       {searchHistory.length > 0 && (
                         <View className="mx-2 mb-4 rounded-xl px-4 py-4">
-                          <Text className="mb-3 font-semibold text-lg text-gray-900">
+                          <Text className="mb-3 text-lg font-semibold text-gray-900">
                             Tìm kiếm gần đây
                           </Text>
                           {searchHistory.map((title) => {
@@ -754,7 +785,7 @@ const HomeScreen = () => {
                     <View className="px-1">
                       {/* Suggestions */}
                       <View className="mx-2 rounded-xl px-4 py-4">
-                        <Text className="mb-3 font-semibold text-lg text-gray-900">Gợi ý</Text>
+                        <Text className="mb-3 text-lg font-semibold text-gray-900">Gợi ý</Text>
                         <GradientBorderContainer>
                           <LinearGradient
                             colors={[
@@ -770,7 +801,7 @@ const HomeScreen = () => {
                                   className="mt-2 w-[25%] items-center"
                                   onPress={() => handleIOSSelectItem(item.title)}>
                                   <item.component width={80} height={80} />
-                                  <Text className="mt-2 text-center font-medium text-sm">
+                                  <Text className="mt-2 text-center text-sm font-medium">
                                     {item.title}
                                   </Text>
                                 </TouchableOpacity>
@@ -783,7 +814,7 @@ const HomeScreen = () => {
                       {/* Recent Searches Below */}
                       {searchHistory.length > 0 && (
                         <View className="mx-2 mb-4 rounded-xl px-4 py-4">
-                          <Text className="mb-3 font-semibold text-lg text-gray-900">
+                          <Text className="mb-3 text-lg font-semibold text-gray-900">
                             Tìm kiếm gần đây
                           </Text>
                           {searchHistory.map((title) => {

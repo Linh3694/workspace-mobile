@@ -104,7 +104,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const hasRequiredMobileRole = (roles: string[] = []): boolean => {
-    const required = new Set(['Mobile IT', 'Mobile Teacher', 'Mobile BOD']);
+    const required = new Set(['Mobile IT', 'Mobile Teacher', 'Mobile BOD', 'Mobile Monitor']);
     return roles.some((r) => required.has(r));
   };
 

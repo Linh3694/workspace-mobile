@@ -19,6 +19,7 @@ import AttendanceHome from '../screens/Attendance/AttendanceHome';
 import AttendanceDetail from '../screens/Attendance/AttendanceDetail';
 import LeaveRequestsScreen from '../screens/LeaveRequests/LeaveRequestsScreen';
 import NotificationsScreen from '../screens/Notifications/NotificationsScreen';
+import { BusHomeScreen, BusTripDetailScreen, BusAttendanceScreen, FaceCameraScreen } from '../screens/Bus';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -69,6 +70,11 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.ATTENDANCE_DETAIL]: { classId: string; date: string };
   [ROUTES.SCREENS.LEAVE_REQUESTS]: { classId?: string };
   Notification: { notificationId?: string } | undefined;
+  // Bus Module Routes
+  BusHome: undefined;
+  BusTripDetail: { tripId: string };
+  BusAttendance: { tripId: string; tripType: string };
+  FaceCamera: { tripId: string; onSuccess?: () => void };
 };
 
 const MainTabWrapper = ({ route }: { route: any }) => <BottomTabNavigator route={route} />;
@@ -233,6 +239,27 @@ const AppNavigator = () => {
             name={ROUTES.MAIN.NOTIFICATIONS}
             component={NotificationsScreen}
             options={{ headerShown: false }}
+          />
+          {/* Bus Module Screens */}
+          <Stack.Screen
+            name="BusHome"
+            component={BusHomeScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="BusTripDetail"
+            component={BusTripDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="BusAttendance"
+            component={BusAttendanceScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="FaceCamera"
+            component={FaceCameraScreen}
+            options={{ headerShown: false, animation: 'slide_from_bottom' }}
           />
         </>
       )}
