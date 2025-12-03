@@ -277,7 +277,7 @@ export default function App() {
             );
 
             const response = await axios.post(
-              `${API_BASE_URL}/api/notification/register-device`,
+              `${API_BASE_URL}/api/method/erp.api.erp_sis.mobile_push_notification.register_device_token`,
               deviceInfo,
               {
                 headers: {

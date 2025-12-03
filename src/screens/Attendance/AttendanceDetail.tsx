@@ -1,13 +1,6 @@
 // @ts-nocheck
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  ActivityIndicator,
-  Alert,
-  TextInput,
-} from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -76,7 +69,43 @@ const sortVietnameseName = (nameA: string, nameB: string): number => {
 const AttendanceDetail = () => {
   const nav = useNavigation<any>();
   const route = useRoute();
-  const { classData, period: routePeriod, periodName: routePeriodName, selectedDate: routeSelectedDate } = route.params as { classData: any; period?: string; periodName?: string; selectedDate?: string };
+
+  // Safe destructure route.params with fallback to empty object
+  const params = (route.params || {}) as {
+    classData?: any;
+    period?: string;
+    periodName?: string;
+    selectedDate?: string;
+  };
+  const {
+    classData,
+    period: routePeriod,
+    periodName: routePeriodName,
+    selectedDate: routeSelectedDate,
+  } = params;
+
+  // Early return if classData is missing (prevents crash)
+  if (!classData) {
+    return (
+      <SafeAreaView className="flex-1 bg-white">
+        <View className="flex-row items-center justify-between px-4 py-3">
+          <TouchableOpacity onPress={() => nav.goBack()}>
+            <Ionicons name="chevron-back" size={24} color="#0A2240" />
+          </TouchableOpacity>
+          <Text className="text-2xl font-bold text-[#0A2240]">Điểm danh</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View className="flex-1 items-center justify-center">
+          <Text className="text-gray-500">Không tìm thấy thông tin lớp học</Text>
+          <TouchableOpacity
+            onPress={() => nav.goBack()}
+            className="mt-4 rounded-xl bg-[#3F4246] px-6 py-3">
+            <Text className="font-medium text-white">Quay lại</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const [students, setStudents] = useState<any[]>([]);
   const [statusMap, setStatusMap] = useState<Record<string, AttendanceStatus>>({});
@@ -484,12 +513,21 @@ const AttendanceDetail = () => {
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <View className="flex-row items-center justify-between px-4 py-3">
-        <TouchableOpacity onPress={() => nav.goBack()}>
+      <View className="relative flex-row items-center justify-between px-4 py-3">
+        <TouchableOpacity onPress={() => nav.goBack()} className="z-10">
           <Ionicons name="chevron-back" size={24} color="#0A2240" />
         </TouchableOpacity>
-        <Text className="font-bold text-2xl text-[#0A2240]">Điểm danh</Text>
-        <View style={{ width: 24 }} />
+        <Text className="absolute left-0 right-0 text-center text-2xl font-bold text-[#0A2240]">
+          Điểm danh
+        </Text>
+        <TouchableOpacity
+          onPress={handleSave}
+          disabled={saving || loading}
+          className={`z-10 rounded-xl ${saving || loading ? 'bg-[#D1D5DB]' : 'bg-[#3F4246]'} px-3 py-1.5`}>
+          <Text className="text-sm font-semibold text-white">
+            {saving ? 'Đang lưu...' : 'Cập nhật'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -498,18 +536,10 @@ const AttendanceDetail = () => {
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16 }}>
-          <View className="mb-4 flex-row items-center justify-between">
-            <Text className="font-bold text-xl text-[#0A2240]">
+          <View className="mb-4">
+            <Text className="text-xl font-bold text-[#0A2240]">
               {classTitle || String(classId)}
             </Text>
-            <TouchableOpacity
-              onPress={handleSave}
-              disabled={saving}
-              className={`rounded-2xl ${saving ? 'bg-[#D1D5DB]' : 'bg-[#3F4246]'} px-4 py-2`}>
-              <Text className="font-semibold text-white">
-                {saving ? 'Đang lưu...' : 'Cập nhật'}
-              </Text>
-            </TouchableOpacity>
           </View>
 
           {/* Search Bar */}
@@ -563,7 +593,7 @@ const AttendanceDetail = () => {
                     </View>
                     <View className="flex-1">
                       <View className="mb-2">
-                        <Text className="font-semibold text-xl text-[#000]">{s.student_name}</Text>
+                        <Text className="text-xl font-semibold text-[#000]">{s.student_name}</Text>
                       </View>
                       <View className="mb-6 flex-row items-center gap-2">
                         <Text className="text-base text-[#757575]">{statusLabel[finalStatus]}</Text>
@@ -577,13 +607,13 @@ const AttendanceDetail = () => {
                       <View className="flex-row items-center justify-between">
                         <View className="flex-row items-center gap-2">
                           <Ionicons name="log-in-outline" size={24} color="#757575" />
-                          <Text className="font-medium text-base text-[#757575]">
+                          <Text className="text-base font-medium text-[#757575]">
                             {checkInOutTimes[studentId]?.checkInTime || '--:--'}
                           </Text>
                         </View>
                         <View className="flex-row items-center gap-2">
                           <Ionicons name="log-in-outline" size={24} color="#757575" />
-                          <Text className="font-medium text-base text-[#757575]">
+                          <Text className="text-base font-medium text-[#757575]">
                             {checkInOutTimes[studentId]?.checkOutTime || '--:--'}
                           </Text>
                         </View>

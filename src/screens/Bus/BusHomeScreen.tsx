@@ -12,15 +12,14 @@ import {
   RefreshControl,
   ActivityIndicator,
   StyleSheet,
-  Modal,
 } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { busService, type BusDailyTrip, type TripsByDate } from '../../services/busService';
 import BusIcon from '../../assets/bus.svg';
-import { toast } from '../../utils/toast';
+import { useAuth } from '../../context/AuthContext';
 
 type RootStackParamList = {
   BusAttendance: { tripId: string; tripType: string };
@@ -30,18 +29,25 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const BusHomeScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
+  const { user } = useAuth();
   const [tripsByDate, setTripsByDate] = useState<TripsByDate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedDateIndex, setSelectedDateIndex] = useState(0);
   const [selectedTripIndex, setSelectedTripIndex] = useState(0);
-  const [isStarting, setIsStarting] = useState(false);
-  const [isCompleting, setIsCompleting] = useState(false);
-  const [showPendingModal, setShowPendingModal] = useState(false);
-  const [pendingStudentsList, setPendingStudentsList] = useState<string[]>([]);
+
+  // Check if user has Monitor role (only Monitor can access Bus features)
+  const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
+  const hasMobileMonitor = roles.includes('Mobile Monitor');
 
   const loadTrips = useCallback(async (showRefresh = false) => {
+    // Don't load if user is not a Monitor
+    if (!hasMobileMonitor) {
+      setIsLoading(false);
+      return;
+    }
+
     if (showRefresh) {
       setIsRefreshing(true);
     } else {
@@ -74,18 +80,11 @@ const BusHomeScreen: React.FC = () => {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [hasMobileMonitor]);
 
   useEffect(() => {
     loadTrips();
   }, [loadTrips]);
-
-  // Reload trips when screen comes into focus (e.g., returning from attendance)
-  useFocusEffect(
-    useCallback(() => {
-      loadTrips(true);
-    }, [loadTrips])
-  );
 
   // Reset selected trip when date changes
   useEffect(() => {
@@ -95,85 +94,6 @@ const BusHomeScreen: React.FC = () => {
   const onRefresh = useCallback(() => {
     loadTrips(true);
   }, [loadTrips]);
-
-  // Start trip
-  const handleStartTrip = async () => {
-    if (!selectedTrip) return;
-
-    setIsStarting(true);
-    try {
-      const response = await busService.startTrip(selectedTrip.name);
-      if (response.success) {
-        toast.success('Đã bắt đầu chuyến xe');
-        loadTrips(true);
-      } else {
-        toast.error(response.message || 'Không thể bắt đầu chuyến xe');
-      }
-    } catch {
-      toast.error('Có lỗi xảy ra');
-    } finally {
-      setIsStarting(false);
-    }
-  };
-
-  // Complete trip - check pending students first
-  const handleCompleteTrip = async () => {
-    if (!selectedTrip) return;
-
-    setIsCompleting(true);
-    try {
-      // Get trip detail to check pending students
-      const detailResponse = await busService.getDailyTripDetail(selectedTrip.name);
-
-      if (!detailResponse.success || !detailResponse.data) {
-        toast.error('Không thể kiểm tra thông tin chuyến xe');
-        setIsCompleting(false);
-        return;
-      }
-
-      const tripDetail = detailResponse.data;
-
-      // Find pending students based on trip type
-      const pendingStudents = tripDetail.students.filter((s) => {
-        if (selectedTrip.trip_type === 'Đón') {
-          return s.student_status === 'Not Boarded';
-        } else {
-          return s.student_status !== 'Dropped Off' && s.student_status !== 'Absent';
-        }
-      });
-
-      if (pendingStudents.length > 0) {
-        // Show modal with pending students
-        setPendingStudentsList(pendingStudents.map((s) => s.student_name));
-        setShowPendingModal(true);
-        setIsCompleting(false);
-        return;
-      }
-
-      // All students are processed, complete the trip
-      const response = await busService.completeTrip(selectedTrip.name);
-      if (response.success) {
-        toast.success('Đã hoàn thành chuyến xe');
-        loadTrips(true);
-      } else {
-        toast.error(response.message || 'Không thể hoàn thành chuyến xe');
-      }
-    } catch {
-      toast.error('Có lỗi xảy ra');
-    } finally {
-      setIsCompleting(false);
-    }
-  };
-
-  // Navigate to attendance screen
-  const handleGoToAttendance = () => {
-    if (selectedTrip) {
-      navigation.navigate('BusAttendance', {
-        tripId: selectedTrip.name,
-        tripType: selectedTrip.trip_type,
-      });
-    }
-  };
 
   const formatDateShort = (dateString: string) => {
     const date = new Date(dateString);
@@ -197,6 +117,36 @@ const BusHomeScreen: React.FC = () => {
       setSelectedTripIndex(index);
     }
   };
+
+  const handleStartTrip = () => {
+    if (selectedTrip) {
+      navigation.navigate('BusAttendance', {
+        tripId: selectedTrip.name,
+        tripType: selectedTrip.trip_type,
+      });
+    }
+  };
+
+  // Show access denied message for non-Monitor users
+  if (!hasMobileMonitor) {
+    return (
+      <LinearGradient
+        colors={['#F1F2E9', '#F5F1CD']}
+        style={styles.errorContainer}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}>
+        <Ionicons name="information-circle" size={48} color="#F59E0B" />
+        <Text style={styles.accessDeniedTitle}>Tính năng đang phát triển</Text>
+        <Text style={styles.accessDeniedText}>
+          Tính năng đang chỉ phát triển cho Monitor.{'\n'}
+          Tính năng dành cho quản lý sẽ ra mắt sau.
+        </Text>
+        <TouchableOpacity style={styles.retryButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.retryButtonText}>Quay lại</Text>
+        </TouchableOpacity>
+      </LinearGradient>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -295,50 +245,16 @@ const BusHomeScreen: React.FC = () => {
                   </View>
                 </View>
 
-                {/* Action Buttons */}
-                {selectedTrip.trip_status === 'Not Started' && (
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={handleStartTrip}
-                    disabled={isStarting}>
-                    {isStarting ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.actionButtonText}>Bắt đầu</Text>
-                    )}
-                  </TouchableOpacity>
-                )}
-
-                {selectedTrip.trip_status === 'In Progress' && (
-                  <View style={styles.actionButtonsRow}>
-                    <TouchableOpacity
-                      style={[styles.actionButtonHalf, styles.actionButtonAttendance]}
-                      onPress={handleGoToAttendance}>
-                      <Ionicons name="people" size={20} color="#FFFFFF" />
-                      <Text style={styles.actionButtonText}>Điểm danh</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.actionButtonHalf, styles.actionButtonComplete]}
-                      onPress={handleCompleteTrip}
-                      disabled={isCompleting}>
-                      {isCompleting ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <>
-                          <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
-                          <Text style={styles.actionButtonText}>Kết thúc</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {selectedTrip.trip_status === 'Completed' && (
-                  <View style={styles.completedBanner}>
-                    <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-                    <Text style={styles.completedBannerText}>Đã hoàn thành</Text>
-                  </View>
-                )}
+                {/* Action Button */}
+                <TouchableOpacity style={styles.actionButton} onPress={handleStartTrip}>
+                  <Text style={styles.actionButtonText}>
+                    {selectedTrip.trip_status === 'Not Started'
+                      ? 'Bắt đầu'
+                      : selectedTrip.trip_status === 'In Progress'
+                        ? 'Tiếp tục'
+                        : 'Xem chi tiết'}
+                  </Text>
+                </TouchableOpacity>
               </LinearGradient>
             )}
 
@@ -460,51 +376,6 @@ const BusHomeScreen: React.FC = () => {
           </>
         )}
       </ScrollView>
-
-      {/* Pending Students Modal */}
-      <Modal
-        visible={showPendingModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowPendingModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Ionicons name="warning" size={48} color="#F59E0B" />
-              <Text style={styles.modalTitle}>Chưa thể kết thúc</Text>
-              <Text style={styles.modalSubtitle}>
-                Còn {pendingStudentsList.length} học sinh chưa{' '}
-                {selectedTrip?.trip_type === 'Đón' ? 'lên xe' : 'xuống xe'}
-              </Text>
-            </View>
-
-            <ScrollView style={styles.pendingList} showsVerticalScrollIndicator={false}>
-              {pendingStudentsList.map((name, index) => (
-                <View key={index} style={styles.pendingItem}>
-                  <Ionicons name="person-circle" size={24} color="#6B7280" />
-                  <Text style={styles.pendingItemText}>{name}</Text>
-                </View>
-              ))}
-            </ScrollView>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalButtonPrimary}
-                onPress={() => {
-                  setShowPendingModal(false);
-                  handleGoToAttendance();
-                }}>
-                <Text style={styles.modalButtonPrimaryText}>Điểm danh ngay</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalButtonSecondary}
-                onPress={() => setShowPendingModal(false)}>
-                <Text style={styles.modalButtonSecondaryText}>Đóng</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </LinearGradient>
   );
 };
@@ -543,6 +414,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#EF4444',
     textAlign: 'center',
+    fontFamily: 'Mulish',
+  },
+  accessDeniedTitle: {
+    marginTop: 16,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+    textAlign: 'center',
+    fontFamily: 'Mulish',
+  },
+  accessDeniedText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 24,
+    paddingHorizontal: 20,
     fontFamily: 'Mulish',
   },
   retryButton: {
@@ -664,56 +552,16 @@ const styles = StyleSheet.create({
   actionButton: {
     backgroundColor: '#F05023',
     borderRadius: 30,
-    paddingVertical: 12,
+    paddingVertical: 10,
     alignItems: 'center',
     marginTop: 20,
     marginBottom: 25,
     marginHorizontal: 25,
-  },
-  actionButtonsRow: {
-    flexDirection: 'row',
-    marginTop: 20,
-    marginBottom: 25,
-    marginHorizontal: 20,
-    gap: 12,
-  },
-  actionButtonHalf: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 30,
-    gap: 8,
-  },
-  actionButtonAttendance: {
-    backgroundColor: '#F05023',
-  },
-  actionButtonComplete: {
-    backgroundColor: '#10B981',
   },
   actionButtonText: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
     color: '#FFFFFF',
-    fontFamily: 'Mulish',
-  },
-  completedBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-    marginBottom: 25,
-    marginHorizontal: 25,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderRadius: 30,
-    gap: 8,
-  },
-  completedBannerText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#10B981',
     fontFamily: 'Mulish',
   },
   dateSelectorContainer: {
@@ -835,80 +683,6 @@ const styles = StyleSheet.create({
   },
   dateTabCountActive: {
     color: 'rgba(255, 255, 255, 0.8)',
-    fontFamily: 'Mulish',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    width: '100%',
-    maxHeight: '70%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 24,
-  },
-  modalHeader: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    marginTop: 12,
-    fontFamily: 'Mulish',
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginTop: 8,
-    textAlign: 'center',
-    fontFamily: 'Mulish',
-  },
-  pendingList: {
-    maxHeight: 200,
-    marginBottom: 20,
-  },
-  pendingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-    gap: 12,
-  },
-  pendingItemText: {
-    fontSize: 16,
-    color: '#111827',
-    fontFamily: 'Mulish',
-  },
-  modalActions: {
-    gap: 12,
-  },
-  modalButtonPrimary: {
-    backgroundColor: '#F05023',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  modalButtonPrimaryText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    fontFamily: 'Mulish',
-  },
-  modalButtonSecondary: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  modalButtonSecondaryText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#6B7280',
     fontFamily: 'Mulish',
   },
 });

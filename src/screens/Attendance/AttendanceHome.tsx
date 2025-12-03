@@ -407,7 +407,7 @@ const AttendanceHome = () => {
               marginTop: 12,
             }}>
             {/* Môn học - Bên trái */}
-            <View style={{ alignItems: 'left', flex: 1 }}>
+            <View style={{ alignItems: 'flex-start', flex: 1 }}>
               <Ionicons name="book-outline" size={24} color="#666" />
               <Text style={{ fontSize: 12, color: '#666', marginTop: 4, textAlign: 'left' }}>
                 {subject || 'Chưa có môn'}
@@ -415,7 +415,7 @@ const AttendanceHome = () => {
             </View>
 
             {/* Phòng học - Bên phải */}
-            <View style={{ alignItems: 'left', flex: 1 }}>
+            <View style={{ alignItems: 'flex-start', flex: 1 }}>
               <Ionicons name="location-outline" size={24} color="#666" />
               <Text style={{ fontSize: 12, color: '#666', marginTop: 4, textAlign: 'left' }}>
                 {room || 'Chưa có phòng'}
@@ -432,7 +432,7 @@ const AttendanceHome = () => {
               marginBottom: 24,
               marginTop: 12,
             }}>
-            <View style={{ alignItems: 'left' }}>
+            <View style={{ alignItems: 'flex-start' }}>
               <Ionicons name="log-in-outline" size={22} color="#444" />
               <Text style={{ marginTop: 8, fontSize: 13 }}>
                 {stats?.checkInCount || 0}/{stats?.totalStudents || 0} học sinh
@@ -444,7 +444,7 @@ const AttendanceHome = () => {
                 {stats?.attendanceCount || 0}/{stats?.totalStudents || 0} học sinh
               </Text>
             </View>
-            <View style={{ alignItems: 'end' }}>
+            <View style={{ alignItems: 'flex-end' }}>
               <Ionicons name="log-out-outline" size={22} color="#444" />
               <Text style={{ marginTop: 8, fontSize: 13 }}>
                 {stats?.checkOutCount || 0}/{stats?.totalStudents || 0} học sinh

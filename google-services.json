@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "46096655170",
+    "project_id": "wismobile-fd743",
+    "storage_bucket": "wismobile-fd743.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:46096655170:android:f13f0e6ba09c6c14601edb",
+        "android_client_info": {
+          "package_name": "com.hailinh.n23.workspace"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC0DNt6UFeC0zgljm6Wj3VWF_PL2Sj_1Bc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

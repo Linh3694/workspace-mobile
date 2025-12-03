@@ -61,7 +61,7 @@ const Card = ({
 }) => (
   <TouchableOpacity onPress={onPress} className="mb-3 w-full">
     <View className="rounded-2xl bg-[#F6F6F6] p-4">
-      <Text className="mb-1 font-semibold text-lg text-[#3F4246]">{title}</Text>
+      <Text className="mb-1 text-lg font-semibold text-[#3F4246]">{title}</Text>
       {!!subtitle && <Text className="text-sm text-[#757575]">{subtitle}</Text>}
     </View>
   </TouchableOpacity>
@@ -468,17 +468,24 @@ const LeaveRequestsScreen = () => {
   return (
     <SafeAreaView className="flex-1 bg-white">
       {/* Header */}
-      <View className="px-5 pt-6">
-        <View className="mb-5 flex-row items-center justify-between">
+      <View className="px-4 pt-4">
+        <View className="mb-4 flex-row items-center">
           <TouchableOpacity
             onPress={selectedClassId ? handleBackToList : () => navigation.goBack()}
-            className="-ml-2 p-2 pr-4">
-            <Ionicons name="chevron-back" size={24} color="#0A2240" />
+            style={{
+              width: 44,
+              height: 44,
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginLeft: -8,
+            }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="chevron-back" size={26} color="#0A2240" />
           </TouchableOpacity>
-          <Text className="-ml-8 flex-1 text-center font-bold text-2xl text-[#0A2240]">
+          <Text className="flex-1 text-center text-2xl font-bold text-[#0A2240]">
             {selectedClassId ? `Lớp ${getClassTitle(selectedClassId)}` : 'Đơn từ'}
           </Text>
-          <View style={{ width: 24 }} />
+          <View style={{ width: 44 }} />
         </View>
       </View>
 
@@ -505,7 +512,7 @@ const LeaveRequestsScreen = () => {
             {leaveRequests.length === 0 ? (
               <View className="items-center p-8">
                 <MaterialIcons name="description" size={64} color="#D1D5DB" />
-                <Text className="mt-4 font-medium text-lg text-gray-900">
+                <Text className="mt-4 text-lg font-medium text-gray-900">
                   {searchQuery ? 'Không tìm thấy đơn nghỉ phép nào' : 'Chưa có đơn nghỉ phép nào'}
                 </Text>
                 <Text className="mt-2 text-center text-gray-500">
@@ -520,7 +527,7 @@ const LeaveRequestsScreen = () => {
                   <View key={group.date} className="space-y-3">
                     {/* Date Header */}
                     <View className="flex-row items-center">
-                      <Text className="font-bold text-lg text-[#002855]">{group.date}</Text>
+                      <Text className="text-lg font-bold text-[#002855]">{group.date}</Text>
                     </View>
 
                     {/* Cards for this date */}
@@ -544,7 +551,7 @@ const LeaveRequestsScreen = () => {
                                 <Text className="text-center text-sm text-gray-600">Học sinh:</Text>
                                 <Text
                                   style={{ width: '100%' }}
-                                  className="text-center font-semibold text-base text-gray-900"
+                                  className="text-center text-base font-semibold text-gray-900"
                                   numberOfLines={1}
                                   ellipsizeMode="tail">
                                   {request.student_name}
@@ -566,7 +573,7 @@ const LeaveRequestsScreen = () => {
                                 </Text>
                                 <Text
                                   style={{ width: '100%' }}
-                                  className="text-center font-semibold text-base text-gray-900"
+                                  className="text-center text-base font-semibold text-gray-900"
                                   numberOfLines={1}
                                   ellipsizeMode="tail">
                                   {request.parent_name}
@@ -582,7 +589,7 @@ const LeaveRequestsScreen = () => {
                               {/* Start Date */}
                               <View className="flex-1 items-center text-center">
                                 <Text className="text-sm text-gray-600">Ngày bắt đầu</Text>
-                                <Text className="font-bold text-base text-[#009483]">
+                                <Text className="text-base font-bold text-[#009483]">
                                   {formatShortDate(request.start_date)}
                                 </Text>
                               </View>
@@ -595,7 +602,7 @@ const LeaveRequestsScreen = () => {
                               {/* End Date */}
                               <View className="flex-1 items-center text-center">
                                 <Text className="text-sm text-gray-600">Ngày kết thúc</Text>
-                                <Text className="font-bold text-base text-[#F05023]">
+                                <Text className="text-base font-bold text-[#F05023]">
                                   {formatShortDate(request.end_date)}
                                 </Text>
                               </View>
@@ -604,9 +611,9 @@ const LeaveRequestsScreen = () => {
 
                           {/* Reason - In a box like parent portal */}
                           <View className="space-y-1">
-                            <Text className="font-medium text-sm text-gray-900">Lý do:</Text>
+                            <Text className="text-sm font-medium text-gray-900">Lý do:</Text>
                             <View className="rounded-md bg-[#F6F6F6] p-3">
-                              <Text className="font-semibold text-sm text-[#002855]">
+                              <Text className="text-sm font-semibold text-[#002855]">
                                 {getReasonDisplay(request.reason)}
                               </Text>
                               {request.other_reason && (

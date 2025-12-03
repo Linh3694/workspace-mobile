@@ -216,10 +216,25 @@ const ProfileScreen = () => {
     } catch (error: any) {
       console.error('❌ Lỗi khi thiết lập thông báo đẩy:', error);
       console.error('Error details:', error.message || error);
-      Alert.alert(
-        t('common.error'),
-        'Lỗi khi thiết lập thông báo đẩy: ' + (error.message || 'Unknown error')
-      );
+
+      // Kiểm tra lỗi Firebase không được khởi tạo (Android)
+      const errorMessage = error.message || '';
+      if (
+        errorMessage.includes('FirebaseApp is not initialized') ||
+        errorMessage.includes('firebase') ||
+        errorMessage.includes('Firebase') ||
+        errorMessage.includes('FCM') ||
+        errorMessage.includes('fcm-credentials')
+      ) {
+        console.log('⚠️ Firebase/FCM chưa được cấu hình đúng');
+        Alert.alert(
+          t('common.info') || 'Thông báo',
+          'Tính năng thông báo đẩy đang được cập nhật. Vui lòng thử lại sau khi có bản cập nhật mới.'
+        );
+        return false;
+      }
+
+      Alert.alert(t('common.error'), 'Lỗi khi thiết lập thông báo đẩy. Vui lòng thử lại sau.');
       return false;
     }
   };

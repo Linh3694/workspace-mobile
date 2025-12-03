@@ -62,7 +62,7 @@ export const StudentAvatar: React.FC<StudentAvatarProps> = ({
         source={{ uri }}
         style={{ width: size, height: size, borderRadius, ...(style || {}) }}
         onError={() => setFailed(true)}
-        resizeMode="cover-top"
+        resizeMode="cover"
       />
     );
   }

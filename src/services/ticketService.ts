@@ -223,7 +223,7 @@ export const createTicket = async (ticketData: {
     if (ticketData.files && ticketData.files.length > 0) {
       ticketData.files.forEach((file, index) => {
         if (file.uri && file.name && file.type) {
-          formData.append('files', {
+          formData.append('attachments', {
             uri: file.uri,
             name: file.name,
             type: file.type,
@@ -432,7 +432,11 @@ export const assignTicketToMe = async (ticketId: string): Promise<Ticket> => {
 export const cancelTicket = async (ticketId: string, reason: string): Promise<Ticket> => {
   try {
     const config = await getAxiosConfig();
-    const response = await axios.put(`/api/ticket/${ticketId}/cancel`, { cancelReason: reason }, config);
+    const response = await axios.put(
+      `/api/ticket/${ticketId}/cancel`,
+      { cancelReason: reason },
+      config
+    );
 
     if (response.data?.success && response.data?.data) {
       return response.data.data;
@@ -564,7 +568,7 @@ export const acceptFeedback = async (ticketId: string, feedbackData: Feedback): 
   try {
     const config = await getAxiosConfig();
     console.log('[acceptFeedback] Submitting feedback for ticket:', ticketId, feedbackData);
-    
+
     const response = await axios.post(`/api/ticket/${ticketId}/feedback`, feedbackData, config);
     console.log('[acceptFeedback] Response:', JSON.stringify(response.data, null, 2));
 
@@ -572,7 +576,7 @@ export const acceptFeedback = async (ticketId: string, feedbackData: Feedback): 
     if (response.data?.success && response.data?.data) {
       return response.data.data;
     }
-    
+
     // Some backends return data directly
     if (response.data?.ticket || response.data?._id) {
       return response.data.ticket || response.data;
@@ -588,7 +592,8 @@ export const acceptFeedback = async (ticketId: string, feedbackData: Feedback): 
     throw new Error(errorMsg);
   } catch (error: any) {
     console.error('[acceptFeedback] Error:', error?.response?.data || error?.message || error);
-    const errorMessage = error?.response?.data?.message || error?.message || 'Không thể gửi đánh giá';
+    const errorMessage =
+      error?.response?.data?.message || error?.message || 'Không thể gửi đánh giá';
     throw new Error(errorMessage);
   }
 };

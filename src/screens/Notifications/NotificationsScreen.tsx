@@ -1,13 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  ActivityIndicator,
-  RefreshControl,
-  Alert,
-  Platform,
-} from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { G, Path, Rect, Defs, ClipPath } from 'react-native-svg';
 import { TouchableOpacity } from '../../components/Common';
@@ -17,6 +9,8 @@ import * as Notifications from 'expo-notifications';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { notificationCenterService } from '../../services/notificationCenterService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ROUTES } from '../../constants/routes';
 
 // Custom Mark As Read Icon component (giống parent-portal)
 const MarkAsReadIcon = ({ size = 16, color = '#002855' }: { size?: number; color?: string }) => (
@@ -167,7 +161,7 @@ const NotificationsScreen = () => {
     }
   }, []);
 
-  // Handle notification press
+  // Handle notification press - navigate to ticket detail based on user role
   const handleNotificationPress = useCallback(
     async (notification: NotificationData) => {
       // Mark as read if not already read
@@ -180,12 +174,36 @@ const NotificationsScreen = () => {
 
       // Handle navigation based on notification type
       const data = notification.data;
+
+      // Helper function để navigate đến ticket detail dựa trên role
+      const navigateToTicketDetail = async (ticketId: string) => {
+        try {
+          // Kiểm tra role để navigate đến đúng màn hình
+          const storedRolesStr = await AsyncStorage.getItem('userRoles');
+          const storedRoles: string[] = storedRolesStr ? JSON.parse(storedRolesStr) : [];
+          const hasMobileIT = storedRoles.includes('Mobile IT');
+
+          if (hasMobileIT) {
+            // Admin -> TicketAdminDetail
+            (navigation as any).navigate(ROUTES.SCREENS.TICKET_ADMIN_DETAIL, { ticketId });
+          } else {
+            // Guest -> TicketGuestDetail
+            (navigation as any).navigate(ROUTES.SCREENS.TICKET_GUEST_DETAIL, { ticketId });
+          }
+        } catch (error) {
+          console.error('Error navigating to ticket detail:', error);
+          // Fallback to guest detail
+          (navigation as any).navigate(ROUTES.SCREENS.TICKET_GUEST_DETAIL, { ticketId });
+        }
+      };
+
+      // Ticket notifications (user/guest)
       if (data?.type === 'new_ticket' || data?.type === 'ticket_update') {
-        (navigation as any).navigate('Main', {
-          screen: 'Ticket',
-          params: { ticketId: data.ticketId },
-        });
+        if (data.ticketId) {
+          await navigateToTicketDetail(data.ticketId);
+        }
       } else if (
+        // All ticket-related actions
         data?.action === 'ticket_status_changed' ||
         data?.action === 'ticket_assigned' ||
         data?.action === 'ticket_processing' ||
@@ -200,12 +218,8 @@ const NotificationsScreen = () => {
         data?.action === 'completion_confirmed' ||
         data?.action === 'ticket_feedback_received'
       ) {
-        // Handle all ticket-related notifications
         if (data.ticketId) {
-          (navigation as any).navigate('Main', {
-            screen: 'Ticket',
-            params: { ticketId: data.ticketId },
-          });
+          await navigateToTicketDetail(data.ticketId);
         }
       } else if (data?.type === 'attendance' || data?.type === 'staff_attendance') {
         // Attendance notifications: không điều hướng, chỉ đánh dấu đã đọc
@@ -268,7 +282,7 @@ const NotificationsScreen = () => {
           {!item.read && <View className="mr-3 mt-2 h-2 w-2 rounded-full bg-red-500" />}
           <View className="flex-1">
             <Text
-              className={`font-semibold text-base ${!item.read ? 'text-red-900' : 'text-gray-900'}`}>
+              className={`text-base font-semibold ${!item.read ? 'text-red-900' : 'text-gray-900'}`}>
               {title}
             </Text>
             <Text className={`mt-1 text-sm ${!item.read ? 'text-red-700' : 'text-gray-600'}`}>
@@ -363,7 +377,7 @@ const NotificationsScreen = () => {
             ) : (
               <MarkAsReadIcon size={16} color="#002855" />
             )}
-            <Text className="ml-2 font-medium text-sm text-[#002855]">
+            <Text className="ml-2 text-sm font-medium text-[#002855]">
               {markingAllRead ? 'Đang xử lý...' : 'Đánh dấu tất cả đã đọc'}
             </Text>
           </TouchableOpacity>

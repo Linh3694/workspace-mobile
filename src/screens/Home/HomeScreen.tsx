@@ -35,6 +35,7 @@ import LibraryIcon from '../../assets/library-icon.svg';
 import PolygonIcon from '../../assets/polygon.svg';
 import LeaveIcon from '../../assets/leave.svg';
 import AttendanceIcon from '../../assets/attendance.svg';
+import BusIcon from '../../assets/bus-icon.svg';
 import attendanceService from '../../services/attendanceService';
 import pushNotificationService from '../../services/pushNotificationService';
 import notificationCenterService from '../../services/notificationCenterService';
@@ -268,21 +269,6 @@ const HomeScreen = () => {
   const hasMobileUser = roles.includes('Mobile User');
   const hasMobileMonitor = roles.includes('Mobile Monitor');
 
-  // Bus Icon component using Ionicons
-  const BusIconComponent = ({ width, height }: { width: number; height: number }) => (
-    <View
-      style={{
-        width,
-        height,
-        backgroundColor: '#E8F5E9',
-        borderRadius: 16,
-        justifyContent: 'center',
-        alignItems: 'center',
-      }}>
-      <Ionicons name="bus" size={width * 0.5} color="#2E7D32" />
-    </View>
-  );
-
   const allItems = [
     {
       id: 1,
@@ -319,7 +305,7 @@ const HomeScreen = () => {
     {
       id: 5,
       title: 'Xe buýt',
-      component: BusIconComponent,
+      component: BusIcon,
       description: 'Quản lý xe buýt học sinh',
       onPress: navigateToBus,
       key: 'bus',
@@ -613,17 +599,26 @@ const HomeScreen = () => {
                 ]}
                 start={{ x: 1, y: 0 }}
                 end={{ x: 0, y: 1 }}>
-                <View className="flex-row flex-wrap justify-start p-4">
-                  {menuItems.map((item) => (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 16 }}>
+                  {menuItems.map((item, index) => (
                     <TouchableOpacity
                       key={item.id}
-                      className="mt-2 w-[25%] items-center"
+                      style={{
+                        width: 80,
+                        alignItems: 'center',
+                        marginHorizontal: 8,
+                      }}
                       onPress={item.onPress}>
-                      <item.component width={80} height={80} />
-                      <Text className="mt-2 text-center text-sm font-medium">{item.title}</Text>
+                      <item.component width={56} height={56} />
+                      <Text className="mt-2 text-center text-sm font-medium" numberOfLines={2}>
+                        {item.title}
+                      </Text>
                     </TouchableOpacity>
                   ))}
-                </View>
+                </ScrollView>
               </LinearGradient>
             </GradientBorderContainer>
           </View>
@@ -727,21 +722,33 @@ const HomeScreen = () => {
                             ]}
                             start={{ x: 1, y: 0 }}
                             end={{ x: 0, y: 1 }}>
-                            <View className="p-4">
+                            <View>
                               {searchResults.length > 0 ? (
-                                <View className="flex-row flex-wrap justify-between">
+                                <ScrollView
+                                  horizontal
+                                  showsHorizontalScrollIndicator={false}
+                                  contentContainerStyle={{
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 16,
+                                  }}>
                                   {searchResults.map((item) => (
                                     <TouchableOpacity
                                       key={item.id}
-                                      className="mt-2 w-[25%] items-center"
+                                      style={{
+                                        width: 80,
+                                        alignItems: 'center',
+                                        marginHorizontal: 8,
+                                      }}
                                       onPress={() => handleIOSSelectItem(item.title)}>
-                                      <item.component width={80} height={80} />
-                                      <Text className="mt-2 text-center text-sm font-medium">
+                                      <item.component width={56} height={56} />
+                                      <Text
+                                        className="mt-2 text-center text-sm font-medium"
+                                        numberOfLines={2}>
                                         {item.title}
                                       </Text>
                                     </TouchableOpacity>
                                   ))}
-                                </View>
+                                </ScrollView>
                               ) : (
                                 <View className="items-center py-8">
                                   <FontAwesome name="search" size={48} color="#ccc" />
@@ -794,19 +801,28 @@ const HomeScreen = () => {
                             ]}
                             start={{ x: 1, y: 0 }}
                             end={{ x: 0, y: 1 }}>
-                            <View className="flex-row flex-wrap justify-start p-4">
+                            <ScrollView
+                              horizontal
+                              showsHorizontalScrollIndicator={false}
+                              contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 16 }}>
                               {menuItems.map((item) => (
                                 <TouchableOpacity
                                   key={item.id}
-                                  className="mt-2 w-[25%] items-center"
+                                  style={{
+                                    width: 80,
+                                    alignItems: 'center',
+                                    marginHorizontal: 8,
+                                  }}
                                   onPress={() => handleIOSSelectItem(item.title)}>
-                                  <item.component width={80} height={80} />
-                                  <Text className="mt-2 text-center text-sm font-medium">
+                                  <item.component width={56} height={56} />
+                                  <Text
+                                    className="mt-2 text-center text-sm font-medium"
+                                    numberOfLines={2}>
                                     {item.title}
                                   </Text>
                                 </TouchableOpacity>
                               ))}
-                            </View>
+                            </ScrollView>
                           </LinearGradient>
                         </GradientBorderContainer>
                       </View>

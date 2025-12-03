@@ -154,7 +154,7 @@ const BusAttendanceScreen: React.FC = () => {
     } catch {
       toast.error('Có lỗi xảy ra');
     } finally {
-      setIsUpdating(false);
+      setIsUpdating(true);
       setSelectedStudent(null);
     }
   };

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Wis",
     "slug": "workspace",
-    "version": "1.2.17",
+    "version": "1.2.21",
     "web": {
       "favicon": "./src/assets/favicon.png"
     },
@@ -26,6 +26,13 @@
       ],
       "expo-secure-store",
       "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ứng dụng cần quyền truy cập thư viện ảnh để đính kèm ảnh vào ticket hỗ trợ và cập nhật avatar.",
+          "cameraPermission": "Ứng dụng cần quyền truy cập camera để chụp ảnh."
+        }
+      ],
       [
         "expo-build-properties",
         {
@@ -58,7 +65,7 @@
           "remote-notification"
         ],
         "NSCameraUsageDescription": "Ứng dụng cần quyền truy cập camera để chụp ảnh và gửi trong tin nhắn",
-        "NSPhotoLibraryUsageDescription": "Ứng dụng cần quyền truy cập thư viện ảnh để gửi ảnh trong tin nhắn",
+        "NSPhotoLibraryUsageDescription": "Ứng dụng cần quyền truy cập thư viện ảnh và video để gửi media trong tin nhắn",
         "NSMicrophoneUsageDescription": "Ứng dụng cần quyền truy cập microphone để ghi âm",
         "NSFaceIDUsageDescription": "Ứng dụng cần sử dụng FaceID để xác thực đăng nhập an toàn",
         "CFBundleAllowMixedLocalizations": true
@@ -69,15 +76,12 @@
         "foregroundImage": "./src/assets/icon.png",
         "backgroundColor": "#FFFCF5"
       },
+      "googleServicesFile": "./google-services.json",
       "package": "com.hailinh.n23.workspace",
       "permissions": [
         "NOTIFICATIONS",
         "VIBRATE",
-        "NOTIFICATIONS",
-        "VIBRATE",
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "CAMERA"
       ]
     },
     "scheme": "staffportal",

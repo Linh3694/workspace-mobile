@@ -8,17 +8,25 @@ import {
   assignTicketToMe,
   assignTicketToUser,
   cancelTicket as cancelTicketApi,
+  acceptFeedback as acceptFeedbackApi,
   createSubTask as createSubTaskApi,
   updateSubTaskStatus as updateSubTaskStatusApi,
   getSupportTeamMembers,
   getTicketMessages,
+  Feedback,
 } from '../services/ticketService';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export type TicketStatus = 'Assigned' | 'Processing' | 'Waiting for Customer' | 'Done' | 'Closed' | 'Cancelled';
+export type TicketStatus =
+  | 'Assigned'
+  | 'Processing'
+  | 'Waiting for Customer'
+  | 'Done'
+  | 'Closed'
+  | 'Cancelled';
 export type SubTaskStatus = 'In Progress' | 'Completed' | 'Cancelled';
 
 interface TicketUIState {
@@ -28,11 +36,15 @@ interface TicketUIState {
   showConfirmAssignModal: boolean;
   showSubTaskStatusModal: boolean;
   showTicketStatusSheet: boolean;
+  showCompleteModal: boolean;
 
   // Modal data
   cancelReason: string;
   selectedSubTask: SubTask | null;
   pendingStatus: TicketStatus | '';
+  feedbackRating: number;
+  feedbackComment: string;
+  feedbackBadges: string[];
 }
 
 interface TicketStore {
@@ -78,6 +90,7 @@ interface TicketStore {
   assignToMe: () => Promise<boolean>;
   assignToUser: (userId: string, userName?: string) => Promise<boolean>;
   cancelTicket: (reason: string) => Promise<boolean>;
+  completeTicket: (feedback: Feedback) => Promise<boolean>;
   updateStatus: (status: TicketStatus) => Promise<boolean>;
 
   // ============================================================================
@@ -109,6 +122,11 @@ interface TicketStore {
   openTicketStatusSheet: () => void;
   closeTicketStatusSheet: () => void;
   setCancelReason: (reason: string) => void;
+  openCompleteModal: () => void;
+  closeCompleteModal: () => void;
+  setFeedbackRating: (rating: number) => void;
+  setFeedbackComment: (comment: string) => void;
+  setFeedbackBadges: (badges: string[]) => void;
 
   // ============================================================================
   // Actions - Reset
@@ -127,9 +145,13 @@ const initialUIState: TicketUIState = {
   showConfirmAssignModal: false,
   showSubTaskStatusModal: false,
   showTicketStatusSheet: false,
+  showCompleteModal: false,
   cancelReason: '',
   selectedSubTask: null,
   pendingStatus: '',
+  feedbackRating: 0,
+  feedbackComment: '',
+  feedbackBadges: [],
 };
 
 const initialState = {
@@ -262,10 +284,39 @@ export const useTicketStore = create<TicketStore>()(
       try {
         await cancelTicketApi(currentTicketId, reason);
         await get().refreshTicket();
-        set({ actionLoading: false, ui: { ...get().ui, cancelReason: '', showCancelModal: false } });
+        set({
+          actionLoading: false,
+          ui: { ...get().ui, cancelReason: '', showCancelModal: false },
+        });
         return true;
       } catch (error) {
         console.error('Error cancelling ticket:', error);
+        set({ actionLoading: false });
+        return false;
+      }
+    },
+
+    completeTicket: async (feedback: Feedback) => {
+      const { currentTicketId } = get();
+      if (!currentTicketId) return false;
+
+      set({ actionLoading: true });
+      try {
+        await acceptFeedbackApi(currentTicketId, feedback);
+        await get().refreshTicket();
+        set({
+          actionLoading: false,
+          ui: {
+            ...get().ui,
+            showCompleteModal: false,
+            feedbackRating: 0,
+            feedbackComment: '',
+            feedbackBadges: [],
+          },
+        });
+        return true;
+      } catch (error) {
+        console.error('Error completing ticket:', error);
         set({ actionLoading: false });
         return false;
       }
@@ -378,9 +429,13 @@ export const useTicketStore = create<TicketStore>()(
       set((state) => ({ ui: { ...state.ui, showConfirmAssignModal: false } })),
 
     openSubTaskStatusModal: (subTask: SubTask) =>
-      set((state) => ({ ui: { ...state.ui, showSubTaskStatusModal: true, selectedSubTask: subTask } })),
+      set((state) => ({
+        ui: { ...state.ui, showSubTaskStatusModal: true, selectedSubTask: subTask },
+      })),
     closeSubTaskStatusModal: () =>
-      set((state) => ({ ui: { ...state.ui, showSubTaskStatusModal: false, selectedSubTask: null } })),
+      set((state) => ({
+        ui: { ...state.ui, showSubTaskStatusModal: false, selectedSubTask: null },
+      })),
 
     openTicketStatusSheet: () =>
       set((state) => ({ ui: { ...state.ui, showTicketStatusSheet: true } })),
@@ -389,6 +444,24 @@ export const useTicketStore = create<TicketStore>()(
 
     setCancelReason: (reason: string) =>
       set((state) => ({ ui: { ...state.ui, cancelReason: reason } })),
+
+    openCompleteModal: () => set((state) => ({ ui: { ...state.ui, showCompleteModal: true } })),
+    closeCompleteModal: () =>
+      set((state) => ({
+        ui: {
+          ...state.ui,
+          showCompleteModal: false,
+          feedbackRating: 0,
+          feedbackComment: '',
+          feedbackBadges: [],
+        },
+      })),
+    setFeedbackRating: (rating: number) =>
+      set((state) => ({ ui: { ...state.ui, feedbackRating: rating } })),
+    setFeedbackComment: (comment: string) =>
+      set((state) => ({ ui: { ...state.ui, feedbackComment: comment } })),
+    setFeedbackBadges: (badges: string[]) =>
+      set((state) => ({ ui: { ...state.ui, feedbackBadges: badges } })),
 
     // ============================================================================
     // Actions - Reset
@@ -463,6 +536,7 @@ export const useTicketActions = () =>
       assignToMe: state.assignToMe,
       assignToUser: state.assignToUser,
       cancelTicket: state.cancelTicket,
+      completeTicket: state.completeTicket,
       updateStatus: state.updateStatus,
       addSubTask: state.addSubTask,
       updateSubTaskStatus: state.updateSubTaskStatus,
@@ -485,6 +559,11 @@ export const useTicketUIActions = () =>
       openTicketStatusSheet: state.openTicketStatusSheet,
       closeTicketStatusSheet: state.closeTicketStatusSheet,
       setCancelReason: state.setCancelReason,
+      openCompleteModal: state.openCompleteModal,
+      closeCompleteModal: state.closeCompleteModal,
+      setFeedbackRating: state.setFeedbackRating,
+      setFeedbackComment: state.setFeedbackComment,
+      setFeedbackBadges: state.setFeedbackBadges,
     }))
   );
 

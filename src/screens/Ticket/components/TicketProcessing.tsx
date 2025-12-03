@@ -1,7 +1,65 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ActivityIndicator, TextInput, ScrollView, RefreshControl } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  ActivityIndicator,
+  TextInput,
+  ScrollView,
+  RefreshControl,
+  Image,
+  Modal,
+} from 'react-native';
 import { TouchableOpacity } from '../../../components/Common';
 import LottieView from 'lottie-react-native';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { Video, ResizeMode } from 'expo-av';
+
+// Store & Hooks
+import {
+  useTicketStore,
+  useTicketData,
+  useTicketActions,
+  useTicketUIActions,
+  useTicketSubTasks,
+  useTicketMessages,
+} from '../../../hooks/useTicketStore';
+
+// Utils & Constants
+import { toast } from '../../../utils/toast';
+import { getStatusLabel } from '../../../config/ticketConstants';
+import { normalizeVietnameseName } from '../../../utils/nameFormatter';
+import { getFullImageUrl } from '../../../utils/imageUtils';
+
+// Services
+import { sendMessage } from '../../../services/ticketService';
+
+// Components
+import { TicketStatusSheet, SubTaskStatusSheet } from './TicketModals';
+
+import type { SubTask } from '../../../services/ticketService';
+import type { SubTaskStatus, TicketStatus } from '../../../hooks/useTicketStore';
+
+// Helper function để kiểm tra URL có phải là video không
+const isVideoUrl = (url: string): boolean => {
+  if (!url) return false;
+  const videoExtensions = [
+    '.mp4',
+    '.mov',
+    '.avi',
+    '.webm',
+    '.mkv',
+    '.m4v',
+    '.3gp',
+    '.3g2',
+    '.wmv',
+    '.flv',
+    '.mpeg',
+    '.mpg',
+  ];
+  const lowerUrl = url.toLowerCase();
+  return videoExtensions.some((ext) => lowerUrl.includes(ext));
+};
 
 // Lottie animations for feedback stars
 const ratingAnimations = [
@@ -11,25 +69,6 @@ const ratingAnimations = [
   require('../../../assets/emoji/4star.json'),
   require('../../../assets/emoji/5star.json'),
 ];
-
-// Store & Hooks
-import {
-  useTicketStore,
-  useTicketData,
-  useTicketActions,
-  useTicketUIActions,
-  useTicketSubTasks,
-} from '../../../hooks/useTicketStore';
-
-// Utils & Constants
-import { toast } from '../../../utils/toast';
-import { getStatusLabel } from '../../../config/ticketConstants';
-
-// Components
-import { TicketStatusSheet, SubTaskStatusSheet } from './TicketModals';
-
-import type { SubTask } from '../../../services/ticketService';
-import type { SubTaskStatus, TicketStatus } from '../../../hooks/useTicketStore';
 
 interface TicketProcessingProps {
   ticketId: string;
@@ -76,13 +115,29 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
   const [cancelReason, setCancelReason] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('Processing');
 
+  // Quick reply states
+  const [replyText, setReplyText] = useState('');
+  const [selectedImages, setSelectedImages] = useState<any[]>([]);
+  const [isSendingReply, setIsSendingReply] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewVideo, setPreviewVideo] = useState<string | null>(null);
+
   // Global store - ticket đã được fetch từ parent (TicketAdminDetail)
   const { ticket, loading, refreshing } = useTicketData();
   const { subTasks, hasIncompleteSubTasks } = useTicketSubTasks();
-  const { updateStatus, addSubTask, updateSubTaskStatus, refreshTicket } = useTicketActions();
+  const { messages, messagesLoading } = useTicketMessages();
+  const { updateStatus, addSubTask, updateSubTaskStatus, refreshTicket, fetchMessages } =
+    useTicketActions();
   const { openTicketStatusSheet, openSubTaskStatusModal } = useTicketUIActions();
   const actionLoading = useTicketStore((state) => state.actionLoading);
   const ui = useTicketStore((state) => state.ui);
+
+  // Load messages when ticket changes
+  useEffect(() => {
+    if (ticketId) {
+      fetchMessages(ticketId);
+    }
+  }, [ticketId, fetchMessages]);
 
   // Sync selected status with ticket status
   useEffect(() => {
@@ -183,6 +238,68 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
     openSubTaskStatusModal(task);
   };
 
+  // Quick reply handlers
+  const handlePickImage = useCallback(async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All, // Cho phép chọn cả ảnh và video
+        allowsMultipleSelection: true,
+        quality: 0.8,
+        selectionLimit: 10,
+        videoMaxDuration: 60, // Giới hạn video 60 giây
+      });
+
+      if (!result.canceled && result.assets) {
+        const newImages = result.assets.map((asset) => ({
+          uri: asset.uri,
+          name: asset.fileName || `media_${Date.now()}${asset.type === 'video' ? '.mp4' : '.jpg'}`,
+          type: asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'),
+        }));
+        setSelectedImages((prev) => [...prev, ...newImages].slice(0, 10));
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      toast.error('Không thể chọn ảnh');
+    }
+  }, []);
+
+  const handleRemoveImage = useCallback((index: number) => {
+    setSelectedImages((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleSendReply = useCallback(async () => {
+    if (!replyText.trim() && selectedImages.length === 0) return;
+
+    // Yêu cầu phải có text khi gửi media
+    if (selectedImages.length > 0 && !replyText.trim()) {
+      toast.error('Vui lòng nhập nội dung tin nhắn kèm theo');
+      return;
+    }
+
+    setIsSendingReply(true);
+    try {
+      await sendMessage(ticketId, {
+        text: replyText.trim(),
+        images: selectedImages.length > 0 ? selectedImages : undefined,
+      });
+
+      setReplyText('');
+      setSelectedImages([]);
+      toast.success('Đã gửi phản hồi');
+
+      // Refresh messages
+      await fetchMessages(ticketId);
+    } catch (error) {
+      console.error('Error sending reply:', error);
+      toast.error('Không thể gửi phản hồi');
+    } finally {
+      setIsSendingReply(false);
+    }
+  }, [replyText, selectedImages, ticketId, fetchMessages]);
+
+  const canSendMessage =
+    ticket?.status === 'Processing' || ticket?.status === 'Waiting for Customer';
+
   // ============================================================================
   // Render Helpers
   // ============================================================================
@@ -192,7 +309,7 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
 
     return (
       <View className="mt-4 rounded-2xl bg-[#FFFBE8] p-4">
-        <Text className="mb-3 text-center font-semibold text-lg text-[#F5AA1E]">Phản hồi</Text>
+        <Text className="mb-3 text-center text-lg font-semibold text-[#F5AA1E]">Phản hồi</Text>
 
         {/* Lottie Star with Glow Effect */}
         <View className="mb-3 items-center">
@@ -260,7 +377,9 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
         {/* Comment */}
         {ticket.feedback.comment && (
           <View className="mb-3 rounded-xl bg-white p-3">
-            <Text className="text-center italic text-gray-700">&ldquo;{ticket.feedback.comment}&rdquo;</Text>
+            <Text className="text-center italic text-gray-700">
+              &ldquo;{ticket.feedback.comment}&rdquo;
+            </Text>
           </View>
         )}
 
@@ -279,9 +398,7 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
                   borderWidth: 1,
                   borderColor: '#F5AA1E',
                 }}>
-                <Text style={{ color: '#F5AA1E', fontWeight: '600', fontSize: 12 }}>
-                  {badge}
-                </Text>
+                <Text style={{ color: '#F5AA1E', fontWeight: '600', fontSize: 12 }}>{badge}</Text>
               </View>
             ))}
           </View>
@@ -344,10 +461,10 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
             justifyContent: 'space-between',
             alignItems: 'center',
           }}>
-          <Text className="font-semibold text-lg" style={{ color: textColor, textDecorationLine }}>
+          <Text className="text-lg font-semibold" style={{ color: textColor, textDecorationLine }}>
             {task.title}
           </Text>
-          <Text className="font-semibold text-lg" style={{ color: textColor }}>
+          <Text className="text-lg font-semibold" style={{ color: textColor }}>
             {statusLabel}
           </Text>
         </View>
@@ -371,13 +488,18 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
     <ScrollView
       className="flex-1 bg-white p-4"
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={refreshTicket} colors={['#F05023']} tintColor="#F05023" />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={refreshTicket}
+          colors={['#F05023']}
+          tintColor="#F05023"
+        />
       }>
       {/* STATUS BAR */}
       <View
         className="mb-2 mt-4 h-auto flex-col items-start justify-center gap-4 rounded-2xl bg-[#f8f8f8] p-4"
         style={{ position: 'relative', zIndex: 1 }}>
-        <Text className="mr-2 font-semibold text-lg">Trạng thái:</Text>
+        <Text className="mr-2 text-lg font-semibold">Trạng thái:</Text>
         <View style={{ width: '100%' }}>
           <TouchableOpacity
             onPress={openTicketStatusSheet}
@@ -440,6 +562,229 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
       {/* FEEDBACK DISPLAY */}
       {renderFeedback()}
 
+      {/* QUICK REPLY SECTION - Only show when ticket is in processing state */}
+      {canSendMessage && (
+        <View className="mb-4 mt-4 rounded-2xl bg-[#f8f8f8] p-4">
+          <Text className="mb-3 text-lg font-semibold">Phản hồi người dùng</Text>
+
+          {/* Input area */}
+          <View className="mb-3 rounded-xl bg-white p-3">
+            <TextInput
+              value={replyText}
+              onChangeText={setReplyText}
+              placeholder="Nhập phản hồi cho người dùng..."
+              multiline
+              numberOfLines={3}
+              className="text-base"
+              style={{ minHeight: 60, textAlignVertical: 'top' }}
+              editable={!isSendingReply}
+            />
+
+            {/* Image/Video preview */}
+            {selectedImages.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2">
+                {selectedImages.map((media, index) => {
+                  const isVideo = media.type?.startsWith('video/');
+                  return (
+                    <View key={index} className="relative mr-2">
+                      {isVideo ? (
+                        // Video preview với icon play
+                        <View
+                          style={{
+                            width: 60,
+                            height: 60,
+                            borderRadius: 8,
+                            overflow: 'hidden',
+                            backgroundColor: '#1a1a1a',
+                          }}>
+                          <Video
+                            source={{ uri: media.uri }}
+                            style={{ width: 60, height: 60 }}
+                            resizeMode={ResizeMode.COVER}
+                            shouldPlay={false}
+                            isMuted
+                          />
+                          <View
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              backgroundColor: 'rgba(0,0,0,0.3)',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                            }}>
+                            <Ionicons name="play" size={20} color="white" />
+                          </View>
+                        </View>
+                      ) : (
+                        // Image preview
+                        <Image
+                          source={{ uri: media.uri }}
+                          style={{ width: 60, height: 60, borderRadius: 8 }}
+                        />
+                      )}
+                      <TouchableOpacity
+                        onPress={() => handleRemoveImage(index)}
+                        style={{
+                          position: 'absolute',
+                          top: -6,
+                          right: -6,
+                          backgroundColor: '#ef4444',
+                          borderRadius: 10,
+                          width: 20,
+                          height: 20,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}>
+                        <Ionicons name="close" size={14} color="white" />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+
+            {/* Action buttons */}
+            <View className="mt-2 flex-row items-center justify-between">
+              <TouchableOpacity
+                onPress={handlePickImage}
+                disabled={isSendingReply}
+                className="rounded-lg p-2">
+                <Ionicons name="image-outline" size={24} color="#6b7280" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleSendReply}
+                disabled={isSendingReply || (!replyText.trim() && selectedImages.length === 0)}
+                style={{
+                  backgroundColor:
+                    !replyText.trim() && selectedImages.length === 0 ? '#d1d5db' : '#002855',
+                  borderRadius: 20,
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                }}>
+                {isSendingReply ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <>
+                    <Ionicons name="send" size={16} color="white" />
+                    <Text className="ml-1 font-medium text-white">Gửi</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Recent messages */}
+          <View>
+            <Text className="mb-2 font-medium text-gray-600">Tin nhắn gần đây</Text>
+            {messagesLoading ? (
+              <ActivityIndicator size="small" color="#002855" />
+            ) : messages.length === 0 ? (
+              <Text className="text-center text-sm italic text-gray-400">Chưa có tin nhắn</Text>
+            ) : (
+              [...messages]
+                .slice(-3)
+                .reverse()
+                .map((message) => (
+                  <View key={message._id} className="mb-2 rounded-lg bg-white p-3">
+                    {/* Thời gian */}
+                    <Text className="mb-1 text-xs text-gray-400">
+                      {new Date(message.timestamp).toLocaleString('vi-VN', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </Text>
+                    {/* Nội dung text */}
+                    {message.text && message.type !== 'image' && (
+                      <Text className="text-sm text-gray-700">{message.text}</Text>
+                    )}
+                    {/* Ảnh/Video */}
+                    {message.images && message.images.length > 0 && (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        className="mt-2">
+                        {message.images.map((mediaUrl, idx) => {
+                          const fullUrl = getFullImageUrl(mediaUrl);
+                          const isVideo = isVideoUrl(mediaUrl);
+
+                          return isVideo ? (
+                            // Video thumbnail với icon play
+                            <TouchableOpacity
+                              key={idx}
+                              onPress={() => setPreviewVideo(fullUrl)}
+                              style={{ marginRight: 6 }}>
+                              <View
+                                style={{
+                                  width: 100,
+                                  height: 80,
+                                  borderRadius: 8,
+                                  overflow: 'hidden',
+                                  backgroundColor: '#1a1a1a',
+                                }}>
+                                <Video
+                                  source={{ uri: fullUrl }}
+                                  style={{ width: 100, height: 80 }}
+                                  resizeMode={ResizeMode.COVER}
+                                  shouldPlay={false}
+                                  isMuted
+                                />
+                                <View
+                                  style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    backgroundColor: 'rgba(0,0,0,0.3)',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                  }}>
+                                  <View
+                                    style={{
+                                      width: 36,
+                                      height: 36,
+                                      borderRadius: 18,
+                                      backgroundColor: 'rgba(255,255,255,0.9)',
+                                      justifyContent: 'center',
+                                      alignItems: 'center',
+                                    }}>
+                                    <Ionicons
+                                      name="play"
+                                      size={20}
+                                      color="#333"
+                                      style={{ marginLeft: 2 }}
+                                    />
+                                  </View>
+                                </View>
+                              </View>
+                            </TouchableOpacity>
+                          ) : (
+                            // Image
+                            <TouchableOpacity key={idx} onPress={() => setPreviewImage(fullUrl)}>
+                              <Image
+                                source={{ uri: fullUrl }}
+                                style={{ width: 80, height: 80, borderRadius: 8, marginRight: 6 }}
+                              />
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    )}
+                  </View>
+                ))
+            )}
+          </View>
+        </View>
+      )}
+
       {/* SUBTASKS OR COMPLETION BANNER */}
       {!isTerminalStatus &&
         (ticketStatus === 'Done' ? (
@@ -451,9 +796,9 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
         ) : (
           <View className="mb-2 mt-6 rounded-2xl bg-[#f8f8f8] p-4">
             <View className="mb-2 flex-row items-center justify-between">
-              <Text className="font-semibold text-lg">Danh sách công việc</Text>
+              <Text className="text-lg font-semibold">Danh sách công việc</Text>
               <TouchableOpacity onPress={() => setShowAddSubTask(true)} className="rounded-lg px-4">
-                <Text className="font-medium text-3xl text-primary">+</Text>
+                <Text className="text-3xl font-medium text-primary">+</Text>
               </TouchableOpacity>
             </View>
 
@@ -491,7 +836,9 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
             {subTasks.length > 0 ? (
               subTasks.map(renderSubTask)
             ) : (
-              <Text className="text-center font-medium text-sm text-gray-500">Không có subtask</Text>
+              <Text className="text-center text-sm font-medium text-gray-500">
+                Không có subtask
+              </Text>
             )}
           </View>
         ))}
@@ -514,6 +861,68 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
           }
         }}
       />
+
+      {/* Image Preview Modal */}
+      <Modal
+        visible={!!previewImage}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewImage(null)}>
+        <View className="flex-1 items-center justify-center bg-black/80">
+          <TouchableOpacity
+            onPress={() => setPreviewImage(null)}
+            style={{
+              position: 'absolute',
+              top: 50,
+              right: 20,
+              zIndex: 10,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              borderRadius: 20,
+              padding: 8,
+            }}>
+            <Ionicons name="close" size={24} color="white" />
+          </TouchableOpacity>
+          {previewImage && (
+            <Image
+              source={{ uri: previewImage }}
+              style={{ width: '90%', height: '70%' }}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+      </Modal>
+
+      {/* Video Preview Modal */}
+      <Modal
+        visible={!!previewVideo}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewVideo(null)}>
+        <View className="flex-1 items-center justify-center bg-black">
+          <TouchableOpacity
+            onPress={() => setPreviewVideo(null)}
+            style={{
+              position: 'absolute',
+              top: 50,
+              right: 20,
+              zIndex: 10,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              borderRadius: 20,
+              padding: 8,
+            }}>
+            <Ionicons name="close" size={24} color="white" />
+          </TouchableOpacity>
+          {previewVideo && (
+            <Video
+              source={{ uri: previewVideo }}
+              style={{ width: '100%', height: '70%' }}
+              resizeMode={ResizeMode.CONTAIN}
+              useNativeControls
+              shouldPlay
+            />
+          )}
+        </View>
+      </Modal>
     </ScrollView>
   );
 };

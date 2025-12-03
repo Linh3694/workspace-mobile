@@ -20,6 +20,15 @@ import type { Message } from '../../../services/ticketService';
 import { getFullImageUrl } from '../../../utils/imageUtils';
 import Modal from 'react-native-modal';
 import { normalizeVietnameseName } from '../../../utils/nameFormatter';
+import { Video, ResizeMode } from 'expo-av';
+
+// Helper function để kiểm tra URL có phải là video không
+const isVideoUrl = (url: string): boolean => {
+  if (!url) return false;
+  const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v', '.3gp', '.3g2', '.wmv', '.flv', '.mpeg', '.mpg'];
+  const lowerUrl = url.toLowerCase();
+  return videoExtensions.some(ext => lowerUrl.includes(ext));
+};
 
 interface TicketMessagingProps {
   ticketId: string;
@@ -28,9 +37,10 @@ interface TicketMessagingProps {
 interface MessageItemProps {
   message: Message;
   onImagePress: (imageUrl: string) => void;
+  onVideoPress: (videoUrl: string) => void;
 }
 
-const MessageItem: React.FC<MessageItemProps> = ({ message, onImagePress }) => {
+const MessageItem: React.FC<MessageItemProps> = ({ message, onImagePress, onVideoPress }) => {
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString('vi-VN', {
@@ -63,21 +73,64 @@ const MessageItem: React.FC<MessageItemProps> = ({ message, onImagePress }) => {
           {/* Text Message */}
           {message.text && <Text className="mb-2 text-gray-700">{message.text}</Text>}
 
-          {/* Images */}
+          {/* Images/Videos */}
           {message.images && message.images.length > 0 && (
             <View className="flex-row flex-wrap space-x-2">
-              {message.images.map((imageUrl, index) => (
-                <TouchableOpacity
-                  key={index}
-                  onPress={() => onImagePress(getFullImageUrl(imageUrl))}
-                  className="mb-2">
-                  <Image
-                    source={{ uri: getFullImageUrl(imageUrl) }}
-                    className="h-20 w-20 rounded-lg"
-                    resizeMode="cover"
-                  />
-                </TouchableOpacity>
-              ))}
+              {message.images.map((mediaUrl, index) => {
+                const fullUrl = getFullImageUrl(mediaUrl);
+                const isVideo = isVideoUrl(mediaUrl);
+                
+                return isVideo ? (
+                  // Video thumbnail với icon play
+                  <TouchableOpacity
+                    key={index}
+                    onPress={() => onVideoPress(fullUrl)}
+                    className="mb-2">
+                    <View style={{ width: 100, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#1a1a1a' }}>
+                      <Video
+                        source={{ uri: fullUrl }}
+                        style={{ width: 100, height: 80 }}
+                        resizeMode={ResizeMode.COVER}
+                        shouldPlay={false}
+                        isMuted
+                      />
+                      <View style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0,0,0,0.3)',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                      }}>
+                        <View style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 18,
+                          backgroundColor: 'rgba(255,255,255,0.9)',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        }}>
+                          <Ionicons name="play" size={20} color="#333" style={{ marginLeft: 2 }} />
+                        </View>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ) : (
+                  // Image
+                  <TouchableOpacity
+                    key={index}
+                    onPress={() => onImagePress(fullUrl)}
+                    className="mb-2">
+                    <Image
+                      source={{ uri: fullUrl }}
+                      className="h-20 w-20 rounded-lg"
+                      resizeMode="cover"
+                    />
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           )}
         </View>
@@ -90,6 +143,7 @@ const TicketMessaging: React.FC<TicketMessagingProps> = ({ ticketId }) => {
   const [messageText, setMessageText] = useState('');
   const [selectedImages, setSelectedImages] = useState<any[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewVideo, setPreviewVideo] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
@@ -120,6 +174,12 @@ const TicketMessaging: React.FC<TicketMessagingProps> = ({ ticketId }) => {
   const handleSendMessage = async () => {
     if (!messageText.trim() && selectedImages.length === 0) return;
 
+    // Yêu cầu phải có text khi gửi media
+    if (selectedImages.length > 0 && !messageText.trim()) {
+      Alert.alert('Thông báo', 'Vui lòng nhập nội dung tin nhắn kèm theo ảnh/video');
+      return;
+    }
+
     try {
       setSending(true);
       await sendMessageMutation.send(ticketId, {
@@ -145,23 +205,24 @@ const TicketMessaging: React.FC<TicketMessagingProps> = ({ ticketId }) => {
   const handleImagePick = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permissionResult.granted === false) {
-      Alert.alert('Cần quyền truy cập', 'Ứng dụng cần quyền truy cập thư viện ảnh để chọn hình.');
+      Alert.alert('Cần quyền truy cập', 'Ứng dụng cần quyền truy cập thư viện ảnh để chọn file.');
       return;
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      mediaTypes: ImagePicker.MediaTypeOptions.All, // Cho phép chọn cả ảnh và video
+      allowsEditing: false, // Tắt editing để chọn được nhiều file
       quality: 0.8,
       allowsMultipleSelection: true,
       selectionLimit: 5,
+      videoMaxDuration: 60, // Giới hạn video 60 giây
     });
 
     if (!result.canceled && result.assets) {
       const newImages = result.assets.map((asset) => ({
         uri: asset.uri,
-        name: asset.uri.split('/').pop() || 'image.jpg',
-        type: 'image/jpeg',
+        name: asset.uri.split('/').pop() || (asset.type === 'video' ? 'video.mp4' : 'image.jpg'),
+        type: asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'),
       }));
 
       if (selectedImages.length + newImages.length > 5) {
@@ -179,6 +240,10 @@ const TicketMessaging: React.FC<TicketMessagingProps> = ({ ticketId }) => {
 
   const handleImagePress = (imageUrl: string) => {
     setPreviewImage(imageUrl);
+  };
+
+  const handleVideoPress = (videoUrl: string) => {
+    setPreviewVideo(videoUrl);
   };
 
   if (!canSendMessage) {
@@ -208,7 +273,7 @@ const TicketMessaging: React.FC<TicketMessagingProps> = ({ ticketId }) => {
         ref={flatListRef}
         data={messages}
         keyExtractor={(item) => item._id}
-        renderItem={({ item }) => <MessageItem message={item} onImagePress={handleImagePress} />}
+        renderItem={({ item }) => <MessageItem message={item} onImagePress={handleImagePress} onVideoPress={handleVideoPress} />}
         className="flex-1 p-4"
         showsVerticalScrollIndicator={false}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
@@ -221,27 +286,56 @@ const TicketMessaging: React.FC<TicketMessagingProps> = ({ ticketId }) => {
         }
       />
 
-      {/* Selected Images Preview */}
+      {/* Selected Images/Videos Preview */}
       {selectedImages.length > 0 && (
         <View className="border-t border-gray-200 p-2">
           <FlatList
             data={selectedImages}
             horizontal
             keyExtractor={(item, index) => index.toString()}
-            renderItem={({ item, index }) => (
-              <View className="relative mr-2">
-                <Image
-                  source={{ uri: item.uri }}
-                  className="h-16 w-16 rounded-lg"
-                  resizeMode="cover"
-                />
-                <TouchableOpacity
-                  onPress={() => removeImage(index)}
-                  className="absolute -right-2 -top-2 h-6 w-6 items-center justify-center rounded-full bg-red-500">
-                  <Ionicons name="close" size={16} color="white" />
-                </TouchableOpacity>
-              </View>
-            )}
+            renderItem={({ item, index }) => {
+              const isVideo = item.type?.startsWith('video/');
+              return (
+                <View className="relative mr-2">
+                  {isVideo ? (
+                    // Video preview với icon play
+                    <View style={{ width: 64, height: 64, borderRadius: 8, overflow: 'hidden', backgroundColor: '#1a1a1a' }}>
+                      <Video
+                        source={{ uri: item.uri }}
+                        style={{ width: 64, height: 64 }}
+                        resizeMode={ResizeMode.COVER}
+                        shouldPlay={false}
+                        isMuted
+                      />
+                      <View style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0,0,0,0.3)',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                      }}>
+                        <Ionicons name="play" size={20} color="white" />
+                      </View>
+                    </View>
+                  ) : (
+                    // Image preview
+                    <Image
+                      source={{ uri: item.uri }}
+                      className="h-16 w-16 rounded-lg"
+                      resizeMode="cover"
+                    />
+                  )}
+                  <TouchableOpacity
+                    onPress={() => removeImage(index)}
+                    className="absolute -right-2 -top-2 h-6 w-6 items-center justify-center rounded-full bg-red-500">
+                    <Ionicons name="close" size={16} color="white" />
+                  </TouchableOpacity>
+                </View>
+              );
+            }}
             showsHorizontalScrollIndicator={false}
           />
         </View>
@@ -305,6 +399,29 @@ const TicketMessaging: React.FC<TicketMessagingProps> = ({ ticketId }) => {
           </TouchableOpacity>
           {previewImage && (
             <Image source={{ uri: previewImage }} className="h-full w-full" resizeMode="contain" />
+          )}
+        </View>
+      </Modal>
+
+      {/* Video Preview Modal */}
+      <Modal
+        isVisible={!!previewVideo}
+        onBackdropPress={() => setPreviewVideo(null)}
+        style={{ margin: 0 }}>
+        <View className="flex-1 items-center justify-center bg-black">
+          <TouchableOpacity
+            onPress={() => setPreviewVideo(null)}
+            className="absolute right-4 top-10 z-10 rounded-full bg-black/50 p-2">
+            <Ionicons name="close" size={24} color="white" />
+          </TouchableOpacity>
+          {previewVideo && (
+            <Video
+              source={{ uri: previewVideo }}
+              style={{ width: '100%', height: '70%' }}
+              resizeMode={ResizeMode.CONTAIN}
+              useNativeControls
+              shouldPlay
+            />
           )}
         </View>
       </Modal>

@@ -1,25 +1,28 @@
 import React, { useEffect } from 'react';
-import {
-  View,
-  Text,
-  SafeAreaView,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
+import { View, Text, SafeAreaView, ActivityIndicator, Platform } from 'react-native';
 import { TouchableOpacity } from '../../components/Common';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
-import { AntDesign, FontAwesome } from '@expo/vector-icons';
+import { Ionicons, AntDesign, FontAwesome } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Store & Hooks
-import { useTicketStore, useTicketData, useTicketActions } from '../../hooks/useTicketStore';
+import {
+  useTicketStore,
+  useTicketData,
+  useTicketActions,
+  useTicketUIActions,
+} from '../../hooks/useTicketStore';
+
+// Utils
+import { toast } from '../../utils/toast';
 
 // Components
 import TicketInformation from './components/TicketInformation';
 import TicketHistory from './components/TicketHistory';
 import TicketProcessingGuest from './components/TicketProcessingGuest';
+import { TicketGuestModals } from './components/TicketModals';
 
 type TicketDetailScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -41,7 +44,10 @@ const TicketGuestDetail = () => {
 
   // Global store
   const { ticket, loading, error } = useTicketData();
-  const { fetchTicket } = useTicketActions();
+  const { fetchTicket, cancelTicket, completeTicket } = useTicketActions();
+  const { openCompleteModal, openCancelModal } = useTicketUIActions();
+  const actionLoading = useTicketStore((state) => state.actionLoading);
+  const ui = useTicketStore((state) => state.ui);
   const reset = useTicketStore((state) => state.reset);
 
   // Fetch ticket on mount
@@ -64,6 +70,50 @@ const TicketGuestDetail = () => {
   const handleGoBack = () => {
     navigation.goBack();
   };
+
+  // ============================================================================
+  // Handlers
+  // ============================================================================
+
+  const handleCompleteTicket = async () => {
+    const { feedbackRating, feedbackComment, feedbackBadges } = ui;
+
+    if (feedbackRating === 0) {
+      toast.error('Vui lòng chọn số sao đánh giá');
+      return;
+    }
+
+    const success = await completeTicket({
+      rating: feedbackRating,
+      comment: feedbackComment,
+      badges: feedbackBadges,
+    });
+
+    if (success) {
+      toast.success('Đã hoàn thành ticket và gửi đánh giá!');
+    } else {
+      toast.error('Không thể hoàn thành ticket');
+    }
+  };
+
+  const handleCancelTicket = async () => {
+    const reason = ui.cancelReason;
+    if (!reason.trim()) {
+      toast.error('Vui lòng nhập lý do hủy');
+      return;
+    }
+
+    const success = await cancelTicket(reason);
+    if (success) {
+      toast.success('Đã hủy ticket');
+    } else {
+      toast.error('Không thể hủy ticket');
+    }
+  };
+
+  // Check if ticket can show action buttons
+  const isTerminalStatus =
+    ticket?.status?.toLowerCase() === 'cancelled' || ticket?.status?.toLowerCase() === 'closed';
 
   const renderContent = () => {
     switch (activeTab) {
@@ -93,7 +143,7 @@ const TicketGuestDetail = () => {
         <View className="bg-white">
           <View className="w-full flex-row items-start justify-between px-4 py-4">
             <View className="flex-row items-center">
-              <Text className="mr-2 font-medium text-lg text-black">{ticket.ticketCode}</Text>
+              <Text className="mr-2 text-lg font-medium text-black">{ticket.ticketCode}</Text>
               {ticket.feedback && ticket.feedback.rating && (
                 <View className="flex-row items-center">
                   {[1, 2, 3, 4, 5].map((star) => (
@@ -114,8 +164,33 @@ const TicketGuestDetail = () => {
           </View>
 
           <View className="mb-4 px-4">
-            <Text className="font-medium text-xl text-[#E84A37]">{ticket.title}</Text>
+            <Text className="text-xl font-medium text-[#E84A37]">{ticket.title}</Text>
           </View>
+
+          {/* Action buttons - Only show when not in terminal status */}
+          {!isTerminalStatus && (
+            <View className="mb-6 flex-row items-center gap-4 pl-5">
+              {/* Nút hoàn thành ticket */}
+              <TouchableOpacity
+                onPress={openCompleteModal}
+                disabled={actionLoading}
+                className="h-11 w-11 items-center justify-center rounded-full bg-green-600">
+                {actionLoading ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Ionicons name="checkmark" size={24} color="white" />
+                )}
+              </TouchableOpacity>
+
+              {/* Nút hủy ticket */}
+              <TouchableOpacity
+                onPress={openCancelModal}
+                disabled={actionLoading}
+                className="h-11 w-11 items-center justify-center rounded-full bg-red-600">
+                <Ionicons name="square" size={16} color="white" />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       ) : error ? (
         <View className="flex-1 items-center justify-center p-4">
@@ -141,7 +216,9 @@ const TicketGuestDetail = () => {
             onPress={() => setActiveTab(tab.key)}
             className={`mr-6 py-3 ${activeTab === tab.key ? 'border-b-2 border-black' : ''}`}>
             <Text
-              className={activeTab === tab.key ? 'font-bold text-[#002855]' : 'font-medium text-gray-400'}>
+              className={
+                activeTab === tab.key ? 'font-bold text-[#002855]' : 'font-medium text-gray-400'
+              }>
               {tab.label}
             </Text>
           </TouchableOpacity>
@@ -150,6 +227,12 @@ const TicketGuestDetail = () => {
 
       {/* Content */}
       <View className="flex-1">{renderContent()}</View>
+
+      {/* Modals */}
+      <TicketGuestModals
+        onCompleteTicket={handleCompleteTicket}
+        onCancelTicket={handleCancelTicket}
+      />
     </SafeAreaView>
   );
 };

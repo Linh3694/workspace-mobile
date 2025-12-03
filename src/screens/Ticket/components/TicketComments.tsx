@@ -18,16 +18,42 @@ import { TouchableOpacity } from '../../../components/Common';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Video, ResizeMode } from 'expo-av';
 
 // Store & Hooks
 import { useTicketStore, useCanSendMessage, useTicketData } from '../../../hooks/useTicketStore';
-import { sendMessage as sendMessageApi, getTicketMessages, getTicketDetail } from '../../../services/ticketService';
+import {
+  sendMessage as sendMessageApi,
+  getTicketMessages,
+  getTicketDetail,
+} from '../../../services/ticketService';
 
 // Utils
 import { getFullImageUrl } from '../../../utils/imageUtils';
 import { normalizeVietnameseName } from '../../../utils/nameFormatter';
 
 import type { Message } from '../../../services/ticketService';
+
+// Helper function để kiểm tra URL có phải là video không
+const isVideoUrl = (url: string): boolean => {
+  if (!url) return false;
+  const videoExtensions = [
+    '.mp4',
+    '.mov',
+    '.avi',
+    '.webm',
+    '.mkv',
+    '.m4v',
+    '.3gp',
+    '.3g2',
+    '.wmv',
+    '.flv',
+    '.mpeg',
+    '.mpg',
+  ];
+  const lowerUrl = url.toLowerCase();
+  return videoExtensions.some((ext) => lowerUrl.includes(ext));
+};
 
 interface TicketCommentsProps {
   ticketId: string;
@@ -60,76 +86,140 @@ const groupMessages = (messages: Message[]): GroupedMessage[] => {
 interface MessageItemProps {
   message: GroupedMessage;
   onImagePress: (imageUrl: string) => void;
+  onVideoPress: (videoUrl: string) => void;
 }
 
-const MessageItem: React.FC<MessageItemProps> = React.memo(({ message, onImagePress }) => {
-  const formatTime = (timestamp: string) => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-  };
+const MessageItem: React.FC<MessageItemProps> = React.memo(
+  ({ message, onImagePress, onVideoPress }) => {
+    const formatTime = (timestamp: string) => {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+    };
 
-  return (
-    <View className={`px-4 ${message.showHeader ? 'mt-4' : 'mt-1'}`}>
-      <View className="flex-row">
-        {/* Avatar - only show for first message in group */}
-        <View className="mr-3" style={{ width: 40 }}>
-          {message.showHeader && (
-            <Image
-              source={{
-                uri: message.sender.avatarUrl
-                  ? getFullImageUrl(message.sender.avatarUrl)
-                  : `https://ui-avatars.com/api/?name=${encodeURIComponent(message.sender.fullname)}&background=002855&color=fff&size=80`,
-              }}
-              className="h-10 w-10 rounded-full bg-gray-200"
-            />
-          )}
-        </View>
+    return (
+      <View className={`px-4 ${message.showHeader ? 'mt-4' : 'mt-1'}`}>
+        <View className="flex-row">
+          {/* Avatar - only show for first message in group */}
+          <View className="mr-3" style={{ width: 40 }}>
+            {message.showHeader && (
+              <Image
+                source={{
+                  uri: message.sender.avatarUrl
+                    ? getFullImageUrl(message.sender.avatarUrl)
+                    : `https://ui-avatars.com/api/?name=${encodeURIComponent(message.sender.fullname)}&background=002855&color=fff&size=80`,
+                }}
+                className="h-10 w-10 rounded-full bg-gray-200"
+              />
+            )}
+          </View>
 
-        {/* Message Content */}
-        <View className="flex-1">
-          {/* Header - only show for first message in group */}
-          {message.showHeader && (
-            <View className="mb-1 flex-row items-center">
-              <Text className="font-semibold text-[#002855]">
-                {normalizeVietnameseName(message.sender.fullname)}
-              </Text>
-              <Text className="ml-2 text-xs text-gray-400">{formatTime(message.timestamp)}</Text>
-            </View>
-          )}
+          {/* Message Content */}
+          <View className="flex-1">
+            {/* Header - only show for first message in group */}
+            {message.showHeader && (
+              <View className="mb-1 flex-row items-center">
+                <Text className="font-semibold text-[#002855]">
+                  {normalizeVietnameseName(message.sender.fullname)}
+                </Text>
+                <Text className="ml-2 text-xs text-gray-400">{formatTime(message.timestamp)}</Text>
+              </View>
+            )}
 
-          {/* Text Message */}
-          {message.text && (
-            <View className="self-start rounded-2xl rounded-tl-none bg-[#F3F4F6] px-4 py-3">
-              <Text className="text-base text-gray-800">{message.text}</Text>
-            </View>
-          )}
+            {/* Text Message */}
+            {message.text && (
+              <View className="self-start rounded-2xl rounded-tl-none bg-[#F3F4F6] px-4 py-3">
+                <Text className="text-base text-gray-800">{message.text}</Text>
+              </View>
+            )}
 
-          {/* Images */}
-          {message.images && message.images.length > 0 && (
-            <View className="mt-2 flex-row flex-wrap">
-              {message.images.map((imageUrl, index) => (
-                <Pressable
-                  key={`${message._id}-img-${index}`}
-                  onPress={() => onImagePress(getFullImageUrl(imageUrl))}
-                  style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
-                  <Image
-                    source={{ uri: getFullImageUrl(imageUrl) }}
-                    className="mb-2 mr-2 h-24 w-24 rounded-xl"
-                    resizeMode="cover"
-                  />
-                </Pressable>
-              ))}
-            </View>
-          )}
+            {/* Images/Videos */}
+            {message.images && message.images.length > 0 && (
+              <View className="mt-2 flex-row flex-wrap">
+                {message.images.map((mediaUrl, index) => {
+                  const fullUrl = getFullImageUrl(mediaUrl);
+                  const isVideo = isVideoUrl(mediaUrl);
+
+                  return isVideo ? (
+                    // Video thumbnail với icon play
+                    <Pressable
+                      key={`${message._id}-media-${index}`}
+                      onPress={() => onVideoPress(fullUrl)}
+                      style={({ pressed }) => ({
+                        opacity: pressed ? 0.7 : 1,
+                        marginRight: 8,
+                        marginBottom: 8,
+                      })}>
+                      <View
+                        style={{
+                          width: 120,
+                          height: 96,
+                          borderRadius: 12,
+                          overflow: 'hidden',
+                          backgroundColor: '#1a1a1a',
+                        }}>
+                        <Video
+                          source={{ uri: fullUrl }}
+                          style={{ width: 120, height: 96 }}
+                          resizeMode={ResizeMode.COVER}
+                          shouldPlay={false}
+                          isMuted
+                        />
+                        <View
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: 'rgba(0,0,0,0.3)',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                          }}>
+                          <View
+                            style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: 20,
+                              backgroundColor: 'rgba(255,255,255,0.9)',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                            }}>
+                            <Ionicons
+                              name="play"
+                              size={22}
+                              color="#333"
+                              style={{ marginLeft: 2 }}
+                            />
+                          </View>
+                        </View>
+                      </View>
+                    </Pressable>
+                  ) : (
+                    // Image
+                    <Pressable
+                      key={`${message._id}-media-${index}`}
+                      onPress={() => onImagePress(fullUrl)}
+                      style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+                      <Image
+                        source={{ uri: fullUrl }}
+                        className="mb-2 mr-2 h-24 w-24 rounded-xl"
+                        resizeMode="cover"
+                      />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
         </View>
       </View>
-    </View>
-  );
-});
+    );
+  }
+);
 
 // Custom hook to track keyboard
 const useKeyboardHeight = () => {
@@ -160,6 +250,7 @@ const TicketComments: React.FC<TicketCommentsProps> = ({ ticketId }) => {
   const [messageText, setMessageText] = useState('');
   const [selectedImages, setSelectedImages] = useState<any[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewVideo, setPreviewVideo] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -251,6 +342,12 @@ const TicketComments: React.FC<TicketCommentsProps> = ({ ticketId }) => {
     if (isSending) return;
     if (!messageText.trim() && selectedImages.length === 0) return;
 
+    // Yêu cầu phải có text khi gửi media
+    if (selectedImages.length > 0 && !messageText.trim()) {
+      Alert.alert('Thông báo', 'Vui lòng nhập nội dung tin nhắn kèm theo ảnh/video');
+      return;
+    }
+
     const textToSend = messageText.trim();
     const imagesToSend = [...selectedImages];
 
@@ -291,23 +388,24 @@ const TicketComments: React.FC<TicketCommentsProps> = ({ ticketId }) => {
   const handleImagePick = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permissionResult.granted === false) {
-      Alert.alert('Cần quyền truy cập', 'Ứng dụng cần quyền truy cập thư viện ảnh để chọn hình.');
+      Alert.alert('Cần quyền truy cập', 'Ứng dụng cần quyền truy cập thư viện ảnh để chọn file.');
       return;
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ImagePicker.MediaTypeOptions.All, // Cho phép chọn cả ảnh và video
       allowsEditing: false,
       quality: 0.8,
       allowsMultipleSelection: true,
       selectionLimit: 5 - selectedImages.length,
+      videoMaxDuration: 60, // Giới hạn video 60 giây
     });
 
     if (!result.canceled && result.assets) {
       const newImages = result.assets.map((asset) => ({
         uri: asset.uri,
-        name: asset.uri.split('/').pop() || 'image.jpg',
-        type: 'image/jpeg',
+        name: asset.uri.split('/').pop() || (asset.type === 'video' ? 'video.mp4' : 'image.jpg'),
+        type: asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'),
       }));
 
       if (selectedImages.length + newImages.length > 5) {
@@ -330,6 +428,15 @@ const TicketComments: React.FC<TicketCommentsProps> = ({ ticketId }) => {
 
   const closePreview = () => {
     setPreviewImage(null);
+  };
+
+  const handleVideoPress = (videoUrl: string) => {
+    console.log('[TicketComments] Opening video preview:', videoUrl);
+    setPreviewVideo(videoUrl);
+  };
+
+  const closeVideoPreview = () => {
+    setPreviewVideo(null);
   };
 
   // Check if messaging is allowed
@@ -365,7 +472,13 @@ const TicketComments: React.FC<TicketCommentsProps> = ({ ticketId }) => {
         ref={flatListRef}
         data={groupedMessages}
         keyExtractor={(item) => item._id}
-        renderItem={({ item }) => <MessageItem message={item} onImagePress={handleImagePress} />}
+        renderItem={({ item }) => (
+          <MessageItem
+            message={item}
+            onImagePress={handleImagePress}
+            onVideoPress={handleVideoPress}
+          />
+        )}
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingTop: 8,
@@ -376,7 +489,12 @@ const TicketComments: React.FC<TicketCommentsProps> = ({ ticketId }) => {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#F05023']} tintColor="#F05023" />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#F05023']}
+            tintColor="#F05023"
+          />
         }
         onContentSizeChange={() => {
           if (groupedMessages.length > 0) {
@@ -409,27 +527,64 @@ const TicketComments: React.FC<TicketCommentsProps> = ({ ticketId }) => {
           borderTopWidth: 1,
           borderTopColor: '#E5E7EB',
         }}>
-        {/* Selected Images Preview */}
+        {/* Selected Images/Videos Preview */}
         {selectedImages.length > 0 && (
           <View className="border-b border-gray-100 bg-gray-50 px-4 py-3">
             <FlatList
               data={selectedImages}
               horizontal
               keyExtractor={(_, index) => `selected-${index}`}
-              renderItem={({ item, index }) => (
-                <View className="relative mr-3">
-                  <Image
-                    source={{ uri: item.uri }}
-                    className="h-20 w-20 rounded-xl"
-                    resizeMode="cover"
-                  />
-                  <TouchableOpacity
-                    onPress={() => removeImage(index)}
-                    className="absolute -right-2 -top-2 h-6 w-6 items-center justify-center rounded-full bg-red-500 shadow-sm">
-                    <Ionicons name="close" size={14} color="white" />
-                  </TouchableOpacity>
-                </View>
-              )}
+              renderItem={({ item, index }) => {
+                const isVideo = item.type?.startsWith('video/');
+                return (
+                  <View className="relative mr-3">
+                    {isVideo ? (
+                      // Video preview với icon play
+                      <View
+                        style={{
+                          width: 80,
+                          height: 80,
+                          borderRadius: 12,
+                          overflow: 'hidden',
+                          backgroundColor: '#1a1a1a',
+                        }}>
+                        <Video
+                          source={{ uri: item.uri }}
+                          style={{ width: 80, height: 80 }}
+                          resizeMode={ResizeMode.COVER}
+                          shouldPlay={false}
+                          isMuted
+                        />
+                        <View
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: 'rgba(0,0,0,0.3)',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                          }}>
+                          <Ionicons name="play" size={24} color="white" />
+                        </View>
+                      </View>
+                    ) : (
+                      // Image preview
+                      <Image
+                        source={{ uri: item.uri }}
+                        className="h-20 w-20 rounded-xl"
+                        resizeMode="cover"
+                      />
+                    )}
+                    <TouchableOpacity
+                      onPress={() => removeImage(index)}
+                      className="absolute -right-2 -top-2 h-6 w-6 items-center justify-center rounded-full bg-red-500 shadow-sm">
+                      <Ionicons name="close" size={14} color="white" />
+                    </TouchableOpacity>
+                  </View>
+                );
+              }}
               showsHorizontalScrollIndicator={false}
             />
           </View>
@@ -518,6 +673,49 @@ const TicketComments: React.FC<TicketCommentsProps> = ({ ticketId }) => {
                 source={{ uri: previewImage }}
                 style={{ width: '100%', height: '100%' }}
                 resizeMode="contain"
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Video Preview Modal */}
+      <Modal
+        visible={!!previewVideo}
+        transparent
+        animationType="fade"
+        onRequestClose={closeVideoPreview}
+        statusBarTranslucent>
+        <View style={{ flex: 1, backgroundColor: 'black' }}>
+          <StatusBar barStyle="light-content" backgroundColor="black" />
+
+          {/* Close Button */}
+          <Pressable
+            onPress={closeVideoPreview}
+            style={{
+              position: 'absolute',
+              top: insets.top + 10,
+              right: 16,
+              zIndex: 999,
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: 'rgba(255,255,255,0.2)',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+            <Ionicons name="close" size={28} color="white" />
+          </Pressable>
+
+          {/* Video */}
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            {previewVideo && (
+              <Video
+                source={{ uri: previewVideo }}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode={ResizeMode.CONTAIN}
+                useNativeControls
+                shouldPlay
               />
             )}
           </View>
