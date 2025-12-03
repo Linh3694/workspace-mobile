@@ -369,14 +369,15 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
                     </View>
                   </View>
                   <View className="mt-2 flex-row items-center justify-between">
-                    <View>
-                      <Text className="font-medium text-lg text-primary">
+                    <View className="mr-2 flex-1">
+                      <Text className="font-medium text-lg text-primary" numberOfLines={1}>
                         {item.creator
                           ? normalizeVietnameseName(item.creator.fullname)
                           : 'Không xác định'}
                       </Text>
                     </View>
-                    <View className={`${getStatusColor(item.status)} rounded-lg px-3 py-1`}>
+                    <View
+                      className={`${getStatusColor(item.status)} shrink-0 rounded-lg px-3 py-1`}>
                       <Text className="font-medium text-base text-white">
                         {getStatusLabel(item.status) || item.status}
                       </Text>

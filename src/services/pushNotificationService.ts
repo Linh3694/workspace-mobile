@@ -105,14 +105,18 @@ class PushNotificationService {
 
   private async getPushToken(): Promise<string | null> {
     try {
-      // Check if running on physical device
-      if (!Device.isDevice) {
-        console.log('⚠️ Push notifications only work on physical devices');
-        return null;
-      }
-
       // Import Constants để lấy projectId động
       const Constants = require('expo-constants').default;
+
+      // Check if running on physical device or allow emulator in dev mode
+      if (!Device.isDevice) {
+        if (__DEV__) {
+          console.log('⚠️ Running on emulator in DEV mode - attempting to get FCM token anyway...');
+        } else {
+          console.log('⚠️ Push notifications only work on physical devices');
+          return null;
+        }
+      }
       const projectId = Constants?.expoConfig?.extra?.eas?.projectId;
 
       if (!projectId) {

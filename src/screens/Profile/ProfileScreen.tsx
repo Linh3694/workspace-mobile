@@ -20,6 +20,12 @@ import axios from 'axios';
 import StandardHeader from '../../components/Common/StandardHeader';
 import SelectModal from '../../components/SelectModal';
 import attendanceService from '../../services/attendanceService';
+import {
+  sendTestLocalNotification,
+  sendTestAttendanceNotification,
+  sendTestTicketNotification,
+  getNotificationDebugInfo,
+} from '../../utils/testNotifications';
 
 const ProfileScreen = () => {
   const insets = useSafeAreaInsets();
@@ -150,9 +156,14 @@ const ProfileScreen = () => {
   // Cài đặt thông báo đẩy
   const setupPushNotifications = async () => {
     // Kiểm tra xem thiết bị có phải là thiết bị thật không
-    if (!Device.isDevice) {
+    // Cho phép emulator trong DEV mode để test
+    if (!Device.isDevice && !__DEV__) {
       Alert.alert(t('profile.notifications'), t('notifications.simulator_not_supported'));
       return false;
+    }
+    
+    if (!Device.isDevice && __DEV__) {
+      console.log('⚠️ Running on emulator in DEV mode - attempting push notification setup...');
     }
 
     // Kiểm tra quyền thông báo

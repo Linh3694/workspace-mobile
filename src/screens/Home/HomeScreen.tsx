@@ -607,13 +607,13 @@ const HomeScreen = () => {
                     <TouchableOpacity
                       key={item.id}
                       style={{
-                        width: 80,
+                        width: 72,
                         alignItems: 'center',
-                        marginHorizontal: 8,
+                        marginHorizontal: 4,
                       }}
                       onPress={item.onPress}>
-                      <item.component width={56} height={56} />
-                      <Text className="mt-2 text-center text-sm font-medium" numberOfLines={2}>
+                      <item.component width={64} height={64} />
+                      <Text className="mt-1 text-center text-sm font-medium" numberOfLines={2}>
                         {item.title}
                       </Text>
                     </TouchableOpacity>
@@ -649,8 +649,8 @@ const HomeScreen = () => {
                     key={title}
                     className="ml-2 flex-row items-center border-b border-gray-200 py-2 pb-4"
                     onPress={() => handleSelectItem(title)}>
-                    <item.component width={40} height={40} />
-                    <Text className="ml-2 font-medium text-gray-700">{title}</Text>
+                    <item.component width={48} height={48} />
+                    <Text className="ml-3 font-medium text-gray-700">{title}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -735,14 +735,14 @@ const HomeScreen = () => {
                                     <TouchableOpacity
                                       key={item.id}
                                       style={{
-                                        width: 80,
+                                        width: 72,
                                         alignItems: 'center',
-                                        marginHorizontal: 8,
+                                        marginHorizontal: 4,
                                       }}
                                       onPress={() => handleIOSSelectItem(item.title)}>
-                                      <item.component width={56} height={56} />
+                                      <item.component width={64} height={64} />
                                       <Text
-                                        className="mt-2 text-center text-sm font-medium"
+                                        className="mt-1 text-center text-sm font-medium"
                                         numberOfLines={2}>
                                         {item.title}
                                       </Text>
@@ -809,14 +809,14 @@ const HomeScreen = () => {
                                 <TouchableOpacity
                                   key={item.id}
                                   style={{
-                                    width: 80,
+                                    width: 72,
                                     alignItems: 'center',
-                                    marginHorizontal: 8,
+                                    marginHorizontal: 4,
                                   }}
                                   onPress={() => handleIOSSelectItem(item.title)}>
-                                  <item.component width={56} height={56} />
+                                  <item.component width={64} height={64} />
                                   <Text
-                                    className="mt-2 text-center text-sm font-medium"
+                                    className="mt-1 text-center text-sm font-medium"
                                     numberOfLines={2}>
                                     {item.title}
                                   </Text>

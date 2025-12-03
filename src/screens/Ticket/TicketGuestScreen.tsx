@@ -152,12 +152,12 @@ const TicketGuestScreen = ({ isFromTab = false }: TicketGuestScreenProps) => {
           </View>
         </View>
         <View className="mt-2 flex-row items-center justify-between">
-          <View>
-            <Text className="font-medium text-lg text-primary">
+          <View className="mr-2 flex-1">
+            <Text className="font-medium text-lg text-primary" numberOfLines={1}>
               {item.creator ? normalizeVietnameseName(item.creator.fullname) : 'Không xác định'}
             </Text>
           </View>
-          <View className={`${getStatusColor(item.status)} rounded-lg px-3 py-1`}>
+          <View className={`${getStatusColor(item.status)} shrink-0 rounded-lg px-3 py-1`}>
             <Text className="font-medium text-base text-white">{getStatusLabel(item.status)}</Text>
           </View>
         </View>
@@ -184,18 +184,21 @@ const TicketGuestScreen = ({ isFromTab = false }: TicketGuestScreenProps) => {
     <SafeAreaView
       className="flex-1 bg-white"
       style={{ paddingTop: Platform.OS === 'android' ? insets.top : 0 }}>
-      <View className="w-full flex-1 pb-16">
+      <View className="w-full flex-1">
         {/* Header với tiêu đề và nút back */}
         <View className="w-full flex-row items-center px-4 py-4">
           {!isFromTab && (
-            <TouchableOpacity onPress={handleGoBack} className="mr-3">
+            <TouchableOpacity
+              onPress={handleGoBack}
+              className="-ml-2 mr-1 items-center justify-center p-2"
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="arrow-back" size={24} color="#000" />
             </TouchableOpacity>
           )}
           <View className="flex-1 items-center justify-center">
             <Text className="font-medium text-xl">Ticket</Text>
           </View>
-          {!isFromTab && <View style={{ width: 24 }} />}
+          {!isFromTab && <View style={{ width: 40 }} />}
         </View>
 
         {/* Ô tìm kiếm cải tiến với nút lọc */}
