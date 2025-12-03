@@ -22,6 +22,25 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}   Android Build & Submit Script${NC}"
 echo -e "${BLUE}========================================${NC}"
 
+# ============================================
+# Check and copy google-services.json for Firebase
+# ============================================
+GOOGLE_SERVICES_SRC="./google-services.json"
+GOOGLE_SERVICES_DEST="./android/app/google-services.json"
+
+if [ -f "$GOOGLE_SERVICES_SRC" ]; then
+    if [ -d "./android/app" ]; then
+        cp "$GOOGLE_SERVICES_SRC" "$GOOGLE_SERVICES_DEST"
+        echo -e "${GREEN}✅ Copied google-services.json to android/app/${NC}"
+    else
+        echo -e "${YELLOW}⚠️  android/app/ directory not found. Run 'expo prebuild' first if needed.${NC}"
+    fi
+else
+    echo -e "${RED}❌ google-services.json not found in project root!${NC}"
+    echo -e "${RED}   Firebase push notifications will NOT work on Android.${NC}"
+    exit 1
+fi
+
 # Get current version from app.json
 CURRENT_VERSION=$(node -p "require('./app.json').expo.version")
 echo -e "${YELLOW}Current version: ${CURRENT_VERSION}${NC}"
