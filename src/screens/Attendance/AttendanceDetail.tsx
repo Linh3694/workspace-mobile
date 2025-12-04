@@ -174,7 +174,9 @@ const AttendanceDetail = () => {
       setClassTitle(title);
       console.log('✅ [Mobile] Using class title from classData:', title, 'period:', routePeriod);
 
-      // 1) Load class info to get education_stage_id (only if needed for events)
+      // 1) Load class info to get education_stage_id
+      // Store locally to use in this function, also set state for other effects
+      let localEducationStageId: string | undefined = undefined;
       try {
         const classResult = await attendanceApiService.getClassInfo(String(classId));
         if (classResult.success && classResult.data) {
@@ -184,7 +186,8 @@ const AttendanceDetail = () => {
           if (cls.education_grade) {
             const gradeResult = await attendanceApiService.getEducationStage(cls.education_grade);
             if (gradeResult.success && gradeResult.data?.education_stage_id) {
-              setEducationStageId(gradeResult.data.education_stage_id);
+              localEducationStageId = gradeResult.data.education_stage_id;
+              setEducationStageId(localEducationStageId);
             }
           }
         }
@@ -333,16 +336,19 @@ const AttendanceDetail = () => {
         setCheckInOutTimes({});
       }
 
-      // 5) Load event attendance statuses (aligned with web)
-      if (educationStageId) {
+      // 6) Load event attendance statuses (aligned with web)
+      // Use localEducationStageId instead of state variable to avoid race condition
+      if (localEducationStageId) {
         try {
+          console.log('🔍 [Mobile] Loading event statuses with educationStageId:', localEducationStageId);
           const eventStatusesResult = await attendanceApiService.getEventAttendanceStatuses(
             String(classId),
             today,
             p,
-            educationStageId
+            localEducationStageId
           );
           if (eventStatusesResult.success && eventStatusesResult.data) {
+            console.log('✅ [Mobile] Event statuses loaded:', Object.keys(eventStatusesResult.data).length, 'students');
             setEventStatuses(eventStatusesResult.data);
           } else {
             setEventStatuses({});
@@ -353,9 +359,10 @@ const AttendanceDetail = () => {
             String(classId),
             today,
             p,
-            educationStageId
+            localEducationStageId
           );
           if (eventsResult.success && eventsResult.data) {
+            console.log('✅ [Mobile] Events loaded:', eventsResult.data.length, 'events');
             setEvents(eventsResult.data);
           } else {
             setEvents([]);
@@ -365,9 +372,13 @@ const AttendanceDetail = () => {
           setEventStatuses({});
           setEvents([]);
         }
+      } else {
+        console.log('⚠️ [Mobile] No educationStageId available, skipping event statuses');
+        setEventStatuses({});
+        setEvents([]);
       }
 
-      // 6) Load active leaves
+      // 7) Load active leaves
       try {
         const leavesResult = await attendanceApiService.getActiveLeaves(String(classId), today);
         if (leavesResult.success && leavesResult.data) {
@@ -396,7 +407,7 @@ const AttendanceDetail = () => {
     } finally {
       setLoading(false);
     }
-  }, [classId, mode, classData, today, period]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [classId, mode, classData, today, period, routePeriod, routePeriodName]);
 
   useEffect(() => {
     if (classData) {
