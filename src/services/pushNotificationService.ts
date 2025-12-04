@@ -21,6 +21,10 @@ interface PushNotificationData {
   assignedBy?: string;
   priority?: string;
   ticketCode?: string;
+  // Feedback related
+  feedbackId?: string;
+  feedbackCode?: string;
+  guardianName?: string;
 }
 
 interface NotificationResponse {
@@ -61,6 +65,13 @@ class PushNotificationService {
     }
 
     try {
+      // Skip initialization on simulator - push notifications not supported
+      if (!Device.isDevice) {
+        console.log('📱 Simulator detected, skipping push notification initialization');
+        this.isInitialized = true;
+        return null;
+      }
+
       // Request permissions
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
@@ -108,15 +119,6 @@ class PushNotificationService {
       // Import Constants để lấy projectId động
       const Constants = require('expo-constants').default;
 
-      // Check if running on physical device or allow emulator in dev mode
-      if (!Device.isDevice) {
-        if (__DEV__) {
-          console.log('⚠️ Running on emulator in DEV mode - attempting to get FCM token anyway...');
-        } else {
-          console.log('⚠️ Push notifications only work on physical devices');
-          return null;
-        }
-      }
       const projectId = Constants?.expoConfig?.extra?.eas?.projectId;
 
       if (!projectId) {
@@ -287,6 +289,15 @@ class PushNotificationService {
         sound: 'default',
       });
 
+      await Notifications.setNotificationChannelAsync('feedback', {
+        name: 'Góp ý phụ huynh',
+        description: 'Thông báo về góp ý từ phụ huynh',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#10B981',
+        sound: 'default',
+      });
+
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Mặc định',
         description: 'Thông báo chung',
@@ -316,6 +327,15 @@ class PushNotificationService {
         break;
       case 'chat_message':
         this.handleChatNotification(data, wasOpened);
+        break;
+      // Feedback notifications
+      case 'feedback_created':
+      case 'feedback_new':
+        this.handleNewFeedbackNotification(data, wasOpened);
+        break;
+      case 'feedback_reply':
+      case 'feedback_updated':
+        this.handleFeedbackUpdateNotification(data, wasOpened);
         break;
       default:
         // Handle action-based notifications (from ticket-service)
@@ -348,6 +368,18 @@ class PushNotificationService {
             break;
           case 'ticket_feedback_received':
             this.handleFeedbackReceivedNotification(data, wasOpened);
+            break;
+          // Parent Portal Feedback actions
+          case 'new_feedback':
+          case 'feedback_created':
+            this.handleNewFeedbackNotification(data, wasOpened);
+            break;
+          case 'feedback_reply':
+          case 'guardian_reply':
+            this.handleFeedbackUpdateNotification(data, wasOpened);
+            break;
+          case 'feedback_assigned':
+            this.handleFeedbackAssignedNotification(data, wasOpened);
             break;
           default:
             console.log('📝 General notification received:', data);
@@ -456,6 +488,41 @@ class PushNotificationService {
 
     if (wasOpened && data.chatId) {
       this.navigateToScreen('ChatDetail', { chatId: data.chatId });
+    }
+  }
+
+  // Feedback notification handlers
+  private handleNewFeedbackNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('📝 New feedback notification:', data);
+
+    // Play notification sound for new feedback
+    if (!wasOpened) {
+      soundService.playTicketCreatedSound();
+    }
+
+    if (wasOpened && data.feedbackId) {
+      this.navigateToFeedbackDetail(data.feedbackId);
+    }
+  }
+
+  private handleFeedbackUpdateNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('📝 Feedback update notification:', data);
+
+    if (wasOpened && data.feedbackId) {
+      this.navigateToFeedbackDetail(data.feedbackId);
+    }
+  }
+
+  private navigateToFeedbackDetail(feedbackId: string): void {
+    console.log(`🧭 Navigate to Feedback Detail: ${feedbackId}`);
+    this.navigateToScreen('FeedbackDetail', { feedbackId });
+  }
+
+  private handleFeedbackAssignedNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('👤 Feedback assigned notification:', data);
+
+    if (wasOpened && data.feedbackId) {
+      this.navigateToFeedbackDetail(data.feedbackId);
     }
   }
 

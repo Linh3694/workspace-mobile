@@ -401,121 +401,6 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
                 {renderTechnician()}
               </View>
 
-              {/* Messages from technician */}
-              <View className="mb-4 rounded-xl bg-[#f8f8f8] p-4">
-                <Text className="mb-3 text-base font-bold text-gray-700">
-                  Phản hồi từ kỹ thuật viên
-                </Text>
-                {messagesLoading ? (
-                  <ActivityIndicator size="small" color="#002855" />
-                ) : messages.length === 0 ? (
-                  <Text className="text-center text-sm italic text-gray-400">
-                    Chưa có phản hồi nào
-                  </Text>
-                ) : (
-                  [...messages]
-                    .slice(-5)
-                    .reverse()
-                    .map((message) => (
-                      <View key={message._id} className="mb-2 rounded-lg bg-white p-3">
-                        {/* Thời gian */}
-                        <Text className="mb-1 text-xs text-gray-400">
-                          {new Date(message.timestamp).toLocaleString('vi-VN', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </Text>
-                        {/* Nội dung text */}
-                        {message.text && message.type !== 'image' && (
-                          <Text className="text-sm text-gray-700">{message.text}</Text>
-                        )}
-                        {/* Ảnh/Video */}
-                        {message.images && message.images.length > 0 && (
-                          <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            className="mt-2">
-                            {message.images.map((mediaUrl, idx) => {
-                              const fullUrl = getFullImageUrl(mediaUrl);
-                              const isVideo = isVideoUrl(mediaUrl);
-
-                              return isVideo ? (
-                                // Video thumbnail với icon play
-                                <TouchableOpacity
-                                  key={idx}
-                                  onPress={() => setPreviewVideo(fullUrl)}
-                                  style={{ marginRight: 6 }}>
-                                  <View
-                                    style={{
-                                      width: 100,
-                                      height: 80,
-                                      borderRadius: 8,
-                                      overflow: 'hidden',
-                                      backgroundColor: '#1a1a1a',
-                                    }}>
-                                    <Video
-                                      source={{ uri: fullUrl }}
-                                      style={{ width: 100, height: 80 }}
-                                      resizeMode={ResizeMode.COVER}
-                                      shouldPlay={false}
-                                      isMuted
-                                    />
-                                    <View
-                                      style={{
-                                        position: 'absolute',
-                                        top: 0,
-                                        left: 0,
-                                        right: 0,
-                                        bottom: 0,
-                                        backgroundColor: 'rgba(0,0,0,0.3)',
-                                        justifyContent: 'center',
-                                        alignItems: 'center',
-                                      }}>
-                                      <View
-                                        style={{
-                                          width: 36,
-                                          height: 36,
-                                          borderRadius: 18,
-                                          backgroundColor: 'rgba(255,255,255,0.9)',
-                                          justifyContent: 'center',
-                                          alignItems: 'center',
-                                        }}>
-                                        <Ionicons
-                                          name="play"
-                                          size={20}
-                                          color="#333"
-                                          style={{ marginLeft: 2 }}
-                                        />
-                                      </View>
-                                    </View>
-                                  </View>
-                                </TouchableOpacity>
-                              ) : (
-                                // Image
-                                <TouchableOpacity
-                                  key={idx}
-                                  onPress={() => setPreviewImage(fullUrl)}>
-                                  <Image
-                                    source={{ uri: fullUrl }}
-                                    style={{
-                                      width: 80,
-                                      height: 80,
-                                      borderRadius: 8,
-                                      marginRight: 6,
-                                    }}
-                                  />
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </ScrollView>
-                        )}
-                      </View>
-                    ))
-                )}
-              </View>
-
               {subTasks && subTasks.length > 0 ? (
                 <View className="mb-4 rounded-xl bg-[#f8f8f8] p-4">
                   <Text className="mb-3 text-base font-bold text-gray-700">
@@ -527,6 +412,123 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
                 <Text className="text-base text-gray-700">
                   Ticket đang được xử lý, vui lòng chờ.
                 </Text>
+              )}
+            </View>
+          )}
+
+          {/* Messages from technician - Show for processing, done and completed status */}
+          {(status === 'processing' || status === 'done' || status === 'completed') && (
+            <View className="mb-4 rounded-xl bg-[#f8f8f8] p-4">
+              <Text className="mb-3 text-base font-bold text-gray-700">
+                Phản hồi từ kỹ thuật viên
+              </Text>
+              {messagesLoading ? (
+                <ActivityIndicator size="small" color="#002855" />
+              ) : messages.length === 0 ? (
+                <Text className="text-center text-sm italic text-gray-400">
+                  Chưa có phản hồi nào
+                </Text>
+              ) : (
+                [...messages]
+                  .slice(-5)
+                  .reverse()
+                  .map((message) => (
+                    <View key={message._id} className="mb-2 rounded-lg bg-white p-3">
+                      {/* Thời gian */}
+                      <Text className="mb-1 text-xs text-gray-400">
+                        {new Date(message.timestamp).toLocaleString('vi-VN', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </Text>
+                      {/* Nội dung text */}
+                      {message.text && message.type !== 'image' && (
+                        <Text className="text-sm text-gray-700">{message.text}</Text>
+                      )}
+                      {/* Ảnh/Video */}
+                      {message.images && message.images.length > 0 && (
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          className="mt-2">
+                          {message.images.map((mediaUrl, idx) => {
+                            const fullUrl = getFullImageUrl(mediaUrl);
+                            const isVideo = isVideoUrl(mediaUrl);
+
+                            return isVideo ? (
+                              // Video thumbnail với icon play
+                              <TouchableOpacity
+                                key={idx}
+                                onPress={() => setPreviewVideo(fullUrl)}
+                                style={{ marginRight: 6 }}>
+                                <View
+                                  style={{
+                                    width: 100,
+                                    height: 80,
+                                    borderRadius: 8,
+                                    overflow: 'hidden',
+                                    backgroundColor: '#1a1a1a',
+                                  }}>
+                                  <Video
+                                    source={{ uri: fullUrl }}
+                                    style={{ width: 100, height: 80 }}
+                                    resizeMode={ResizeMode.COVER}
+                                    shouldPlay={false}
+                                    isMuted
+                                  />
+                                  <View
+                                    style={{
+                                      position: 'absolute',
+                                      top: 0,
+                                      left: 0,
+                                      right: 0,
+                                      bottom: 0,
+                                      backgroundColor: 'rgba(0,0,0,0.3)',
+                                      justifyContent: 'center',
+                                      alignItems: 'center',
+                                    }}>
+                                    <View
+                                      style={{
+                                        width: 36,
+                                        height: 36,
+                                        borderRadius: 18,
+                                        backgroundColor: 'rgba(255,255,255,0.9)',
+                                        justifyContent: 'center',
+                                        alignItems: 'center',
+                                      }}>
+                                      <Ionicons
+                                        name="play"
+                                        size={20}
+                                        color="#333"
+                                        style={{ marginLeft: 2 }}
+                                      />
+                                    </View>
+                                  </View>
+                                </View>
+                              </TouchableOpacity>
+                            ) : (
+                              // Image
+                              <TouchableOpacity
+                                key={idx}
+                                onPress={() => setPreviewImage(fullUrl)}>
+                                <Image
+                                  source={{ uri: fullUrl }}
+                                  style={{
+                                    width: 80,
+                                    height: 80,
+                                    borderRadius: 8,
+                                    marginRight: 6,
+                                  }}
+                                />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+                      )}
+                    </View>
+                  ))
               )}
             </View>
           )}

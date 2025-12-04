@@ -15,7 +15,10 @@
         "expo-notifications",
         {
           "icon": "./src/assets/notifications/notification-icon.png",
-          "color": "#ffffff"
+          "color": "#ffffff",
+          "sounds": [
+            "./src/assets/sound/ticket_create.wav"
+          ]
         }
       ],
       [

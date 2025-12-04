@@ -45,6 +45,7 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
   const [userId, setUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('all'); // 'all' hoặc 'assigned'
   const insets = useSafeAreaInsets();
+  const skipNextFetchRef = React.useRef(false);
 
   useEffect(() => {
     const loadUserId = async () => {
@@ -55,9 +56,15 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
   }, []);
 
   useEffect(() => {
+    // Skip nếu đã fetch từ toggleTab để tránh duplicate
+    if (skipNextFetchRef.current) {
+      skipNextFetchRef.current = false;
+      return;
+    }
     if (userId) {
       fetchTickets();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterStatus, filterRole, activeTab, userId]);
 
   useFocusEffect(
@@ -68,12 +75,24 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
     }, [filterStatus, filterRole, activeTab, userId])
   );
 
-  const fetchTickets = async (showLoading: boolean = true) => {
+  const fetchTickets = async (
+    showLoading: boolean = true,
+    options?: {
+      overrideTab?: string;
+      overrideSearch?: string;
+      overrideStatus?: string;
+    }
+  ) => {
     try {
       if (showLoading) setLoading(true);
 
+      // Sử dụng override nếu có, nếu không dùng state hiện tại
+      const currentTab = options?.overrideTab ?? activeTab;
+      const currentSearch = options?.overrideSearch ?? searchTerm;
+      const currentStatus = options?.overrideStatus ?? filterStatus;
+
       console.log('Fetching all tickets...');
-      console.log('Active Tab:', activeTab);
+      console.log('Active Tab:', currentTab);
 
       const allTickets = await getAllTickets();
 
@@ -81,13 +100,13 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
       let filteredTickets = allTickets;
 
       // Filter by status if specified
-      if (filterStatus) {
-        filteredTickets = filteredTickets.filter((ticket) => ticket.status === filterStatus);
+      if (currentStatus) {
+        filteredTickets = filteredTickets.filter((ticket) => ticket.status === currentStatus);
       }
 
       // Filter by search term
-      if (searchTerm) {
-        const searchLower = searchTerm.toLowerCase();
+      if (currentSearch) {
+        const searchLower = currentSearch.toLowerCase();
         filteredTickets = filteredTickets.filter(
           (ticket) =>
             ticket.title?.toLowerCase().includes(searchLower) ||
@@ -116,29 +135,15 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
 
       // Apply additional tab filtering
       let tabFilteredTickets = formattedTickets;
-      if (activeTab === 'assigned') {
+      if (currentTab === 'assigned') {
         // Show tickets created by current user
-
         if (!userId) {
           tabFilteredTickets = [];
         } else {
           tabFilteredTickets = formattedTickets.filter((ticket) => {
             const matchById = ticket.creator && ticket.creator._id === userId;
             const matchByEmail = ticket.creator && ticket.creator.email === userId;
-            const match = matchById || matchByEmail;
-            console.log(
-              '🔍 [TicketAdminScreen] Ticket:',
-              ticket._id,
-              'Creator ID:',
-              ticket.creator?._id,
-              'Creator Email:',
-              ticket.creator?.email,
-              'User ID:',
-              userId,
-              'Match:',
-              match
-            );
-            return match;
+            return matchById || matchByEmail;
           });
         }
       }
@@ -196,16 +201,23 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
 
   const toggleTab = (tab: string) => {
     if (activeTab !== tab) {
-      setActiveTab(tab);
       // Đặt lại các filter khi chuyển tab
       setFilterStatus('');
       setFilterRole('');
       setShowFilters(false);
       setShowRoleFilters(false);
       setSearchTerm('');
-      // Gọi lại API để lấy dữ liệu mới (chỉ khi userId đã có)
+      setActiveTab(tab);
+
+      // Fetch ngay với override options để đảm bảo sử dụng giá trị mới
       if (userId) {
-        fetchTickets();
+        // Skip useEffect fetch vì đã fetch ở đây
+        skipNextFetchRef.current = true;
+        fetchTickets(true, {
+          overrideTab: tab,
+          overrideSearch: '',
+          overrideStatus: '',
+        });
       }
     }
   };
@@ -228,7 +240,7 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
         ) : (
           <View style={{ width: 40 }} />
         )}
-        <Text className="flex-1 text-center font-bold text-2xl text-[#0A2240]">Ticket</Text>
+        <Text className="flex-1 text-center text-2xl font-bold text-[#0A2240]">Ticket</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -355,30 +367,36 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
                 className="mb-3 rounded-xl bg-[#F8F8F8] p-4"
                 onPress={() => handleViewTicketDetail(item._id)}>
                 <View>
-                  <Text className="font-medium text-lg text-[#E84A37]">{item.title}</Text>
+                  <Text className="text-lg font-medium text-[#E84A37]">{item.title}</Text>
                   <View className="mt-2 flex-row items-center justify-between">
-                    <Text className="mt-1 font-medium text-sm text-gray-500">
+                    <Text className="mt-1 text-sm font-medium text-gray-500">
                       {item.ticketCode || `Ticket-${item._id.slice(-3).padStart(3, '0')}`}
                     </Text>
                     <View>
-                      <Text className="text-right font-medium text-base text-[#757575]">
+                      <Text className="text-right text-base font-medium text-[#757575]">
                         {item.assignedTo
                           ? normalizeVietnameseName(item.assignedTo.fullname)
                           : 'Chưa phân công'}
                       </Text>
                     </View>
                   </View>
-                  <View className="mt-2 flex-row items-center justify-between">
-                    <View className="mr-2 flex-1">
-                      <Text className="font-medium text-lg text-primary" numberOfLines={1}>
-                        {item.creator
-                          ? normalizeVietnameseName(item.creator.fullname)
-                          : 'Không xác định'}
-                      </Text>
-                    </View>
+                  <View
+                    className="mt-2 flex-row items-center justify-between"
+                    style={{ flexWrap: 'nowrap' }}>
+                    <Text
+                      className="mr-3 flex-1 text-lg font-medium text-primary"
+                      numberOfLines={1}
+                      ellipsizeMode="tail">
+                      {item.creator
+                        ? normalizeVietnameseName(item.creator.fullname)
+                        : 'Không xác định'}
+                    </Text>
                     <View
-                      className={`${getStatusColor(item.status)} shrink-0 rounded-lg px-3 py-1`}>
-                      <Text className="font-medium text-base text-white">
+                      className={`${getStatusColor(item.status)} rounded-lg px-3 py-1`}
+                      style={{ flexShrink: 0, minWidth: 90 }}>
+                      <Text
+                        className="text-center text-base font-medium text-white"
+                        numberOfLines={1}>
                         {getStatusLabel(item.status) || item.status}
                       </Text>
                     </View>

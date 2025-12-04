@@ -156,15 +156,6 @@ const ProfileScreen = () => {
   // Cài đặt thông báo đẩy
   const setupPushNotifications = async () => {
     // Kiểm tra xem thiết bị có phải là thiết bị thật không
-    // Cho phép emulator trong DEV mode để test
-    if (!Device.isDevice && !__DEV__) {
-      Alert.alert(t('profile.notifications'), t('notifications.simulator_not_supported'));
-      return false;
-    }
-    
-    if (!Device.isDevice && __DEV__) {
-      console.log('⚠️ Running on emulator in DEV mode - attempting push notification setup...');
-    }
 
     // Kiểm tra quyền thông báo
     const { status: existingStatus } = await Notifications.getPermissionsAsync();

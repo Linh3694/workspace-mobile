@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   RefreshControl,
   Image,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { TouchableOpacity } from '../../../components/Common';
 import LottieView from 'lottie-react-native';
@@ -121,6 +123,10 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewVideo, setPreviewVideo] = useState<string | null>(null);
+
+  // Refs for keyboard handling
+  const scrollViewRef = useRef<ScrollView>(null);
+  const replyInputRef = useRef<View>(null);
 
   // Global store - ticket đã được fetch từ parent (TicketAdminDetail)
   const { ticket, loading, refreshing } = useTicketData();
@@ -299,6 +305,19 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
 
   const canSendMessage =
     ticket?.status === 'Processing' || ticket?.status === 'Waiting for Customer';
+
+  // Handler để scroll đến ô input khi focus
+  const handleReplyInputFocus = useCallback(() => {
+    setTimeout(() => {
+      replyInputRef.current?.measureLayout(
+        scrollViewRef.current as any,
+        (x, y) => {
+          scrollViewRef.current?.scrollTo({ y: y - 100, animated: true });
+        },
+        () => {}
+      );
+    }, 300);
+  }, []);
 
   // ============================================================================
   // Render Helpers
@@ -485,210 +504,223 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
   }
 
   return (
-    <ScrollView
-      className="flex-1 bg-white p-4"
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={refreshTicket}
-          colors={['#F05023']}
-          tintColor="#F05023"
-        />
-      }>
-      {/* STATUS BAR */}
-      <View
-        className="mb-2 mt-4 h-auto flex-col items-start justify-center gap-4 rounded-2xl bg-[#f8f8f8] p-4"
-        style={{ position: 'relative', zIndex: 1 }}>
-        <Text className="mr-2 text-lg font-semibold">Trạng thái:</Text>
-        <View style={{ width: '100%' }}>
-          <TouchableOpacity
-            onPress={openTicketStatusSheet}
-            disabled={isTerminalStatus}
-            style={{
-              backgroundColor: '#fff',
-              borderRadius: 25,
-              height: 50,
-              justifyContent: 'center',
-              paddingHorizontal: 16,
-              opacity: isTerminalStatus ? 0.6 : 1,
-            }}>
-            <Text style={{ fontSize: 16 }}>{getStatusLabel(selectedStatus)}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* CANCEL REASON INPUT */}
-      {showCancelReasonInput && (
-        <View className="rounded-lg p-4">
-          <Text className="mb-2 font-medium">Lý do huỷ ticket:</Text>
-          <TextInput
-            value={cancelReason}
-            onChangeText={setCancelReason}
-            placeholder="Nhập lý do huỷ..."
-            className="mb-2 rounded-lg bg-[#f8f8f8] p-3 font-medium"
-            multiline
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+      <ScrollView
+        ref={scrollViewRef}
+        className="flex-1 bg-white p-4"
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refreshTicket}
+            colors={['#F05023']}
+            tintColor="#F05023"
           />
-          <View className="flex-row justify-end">
+        }>
+        {/* STATUS BAR */}
+        <View
+          className="mb-2 mt-4 h-auto flex-col items-start justify-center gap-4 rounded-2xl bg-[#f8f8f8] p-4"
+          style={{ position: 'relative', zIndex: 1 }}>
+          <Text className="mr-2 text-lg font-semibold">Trạng thái:</Text>
+          <View style={{ width: '100%' }}>
             <TouchableOpacity
-              onPress={() => {
-                setCancelReason('');
-                setShowCancelReasonInput(false);
-              }}
-              className="mr-2 rounded-lg bg-gray-200 px-4 py-2">
-              <Text className="font-medium">Huỷ bỏ</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={confirmCancel}
-              disabled={actionLoading}
-              className="rounded-lg bg-red-500 px-4 py-2">
-              {actionLoading ? (
-                <ActivityIndicator size="small" color="white" />
-              ) : (
-                <Text className="font-medium text-white">Xác nhận</Text>
-              )}
+              onPress={openTicketStatusSheet}
+              disabled={isTerminalStatus}
+              style={{
+                backgroundColor: '#fff',
+                borderRadius: 25,
+                height: 50,
+                justifyContent: 'center',
+                paddingHorizontal: 16,
+                opacity: isTerminalStatus ? 0.6 : 1,
+              }}>
+              <Text style={{ fontSize: 16 }}>{getStatusLabel(selectedStatus)}</Text>
             </TouchableOpacity>
           </View>
         </View>
-      )}
 
-      {/* CANCELLATION REASON DISPLAY */}
-      {ticketStatus === 'Cancelled' && ticket?.cancellationReason && (
-        <View className="mt-4 rounded-lg bg-red-100 p-4">
-          <Text className="font-bold text-red-600">Lý do huỷ ticket:</Text>
-          <Text className="font-medium text-red-600">{ticket.cancellationReason}</Text>
-        </View>
-      )}
-
-      {/* FEEDBACK DISPLAY */}
-      {renderFeedback()}
-
-      {/* QUICK REPLY SECTION - Only show when ticket is in processing state */}
-      {canSendMessage && (
-        <View className="mb-4 mt-4 rounded-2xl bg-[#f8f8f8] p-4">
-          <Text className="mb-3 text-lg font-semibold">Phản hồi người dùng</Text>
-
-          {/* Input area */}
-          <View className="mb-3 rounded-xl bg-white p-3">
+        {/* CANCEL REASON INPUT */}
+        {showCancelReasonInput && (
+          <View className="rounded-lg p-4">
+            <Text className="mb-2 font-medium">Lý do huỷ ticket:</Text>
             <TextInput
-              value={replyText}
-              onChangeText={setReplyText}
-              placeholder="Nhập phản hồi cho người dùng..."
+              value={cancelReason}
+              onChangeText={setCancelReason}
+              placeholder="Nhập lý do huỷ..."
+              className="mb-2 rounded-lg bg-[#f8f8f8] p-3 font-medium"
               multiline
-              numberOfLines={3}
-              className="text-base"
-              style={{ minHeight: 60, textAlignVertical: 'top' }}
-              editable={!isSendingReply}
             />
-
-            {/* Image/Video preview */}
-            {selectedImages.length > 0 && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2">
-                {selectedImages.map((media, index) => {
-                  const isVideo = media.type?.startsWith('video/');
-                  return (
-                    <View key={index} className="relative mr-2">
-                      {isVideo ? (
-                        // Video preview với icon play
-                        <View
-                          style={{
-                            width: 60,
-                            height: 60,
-                            borderRadius: 8,
-                            overflow: 'hidden',
-                            backgroundColor: '#1a1a1a',
-                          }}>
-                          <Video
-                            source={{ uri: media.uri }}
-                            style={{ width: 60, height: 60 }}
-                            resizeMode={ResizeMode.COVER}
-                            shouldPlay={false}
-                            isMuted
-                          />
-                          <View
-                            style={{
-                              position: 'absolute',
-                              top: 0,
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              backgroundColor: 'rgba(0,0,0,0.3)',
-                              justifyContent: 'center',
-                              alignItems: 'center',
-                            }}>
-                            <Ionicons name="play" size={20} color="white" />
-                          </View>
-                        </View>
-                      ) : (
-                        // Image preview
-                        <Image
-                          source={{ uri: media.uri }}
-                          style={{ width: 60, height: 60, borderRadius: 8 }}
-                        />
-                      )}
-                      <TouchableOpacity
-                        onPress={() => handleRemoveImage(index)}
-                        style={{
-                          position: 'absolute',
-                          top: -6,
-                          right: -6,
-                          backgroundColor: '#ef4444',
-                          borderRadius: 10,
-                          width: 20,
-                          height: 20,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}>
-                        <Ionicons name="close" size={14} color="white" />
-                      </TouchableOpacity>
-                    </View>
-                  );
-                })}
-              </ScrollView>
-            )}
-
-            {/* Action buttons */}
-            <View className="mt-2 flex-row items-center justify-between">
+            <View className="flex-row justify-end">
               <TouchableOpacity
-                onPress={handlePickImage}
-                disabled={isSendingReply}
-                className="rounded-lg p-2">
-                <Ionicons name="image-outline" size={24} color="#6b7280" />
+                onPress={() => {
+                  setCancelReason('');
+                  setShowCancelReasonInput(false);
+                }}
+                className="mr-2 rounded-lg bg-gray-200 px-4 py-2">
+                <Text className="font-medium">Huỷ bỏ</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
-                onPress={handleSendReply}
-                disabled={isSendingReply || (!replyText.trim() && selectedImages.length === 0)}
-                style={{
-                  backgroundColor:
-                    !replyText.trim() && selectedImages.length === 0 ? '#d1d5db' : '#002855',
-                  borderRadius: 20,
-                  paddingHorizontal: 16,
-                  paddingVertical: 8,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                }}>
-                {isSendingReply ? (
+                onPress={confirmCancel}
+                disabled={actionLoading}
+                className="rounded-lg bg-red-500 px-4 py-2">
+                {actionLoading ? (
                   <ActivityIndicator size="small" color="white" />
                 ) : (
-                  <>
-                    <Ionicons name="send" size={16} color="white" />
-                    <Text className="ml-1 font-medium text-white">Gửi</Text>
-                  </>
+                  <Text className="font-medium text-white">Xác nhận</Text>
                 )}
               </TouchableOpacity>
             </View>
           </View>
+        )}
 
-          {/* Recent messages */}
-          <View>
-            <Text className="mb-2 font-medium text-gray-600">Tin nhắn gần đây</Text>
+        {/* CANCELLATION REASON DISPLAY */}
+        {ticketStatus === 'Cancelled' && ticket?.cancellationReason && (
+          <View className="mt-4 rounded-lg bg-red-100 p-4">
+            <Text className="font-bold text-red-600">Lý do huỷ ticket:</Text>
+            <Text className="font-medium text-red-600">{ticket.cancellationReason}</Text>
+          </View>
+        )}
+
+        {/* FEEDBACK DISPLAY */}
+        {renderFeedback()}
+
+        {/* QUICK REPLY INPUT - Only show when ticket is in processing state */}
+        {canSendMessage && (
+          <View ref={replyInputRef} className="mb-4 mt-4 rounded-2xl bg-[#f8f8f8] p-4">
+            <Text className="mb-3 text-lg font-semibold">Phản hồi người dùng</Text>
+
+            {/* Input area */}
+            <View className="rounded-xl bg-white p-3">
+              <TextInput
+                value={replyText}
+                onChangeText={setReplyText}
+                placeholder="Nhập phản hồi cho người dùng..."
+                multiline
+                numberOfLines={3}
+                className="text-base"
+                style={{ minHeight: 60, textAlignVertical: 'top' }}
+                editable={!isSendingReply}
+                onFocus={handleReplyInputFocus}
+              />
+
+              {/* Image/Video preview */}
+              {selectedImages.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2">
+                  {selectedImages.map((media, index) => {
+                    const isVideo = media.type?.startsWith('video/');
+                    return (
+                      <View key={index} className="relative mr-2">
+                        {isVideo ? (
+                          // Video preview với icon play
+                          <View
+                            style={{
+                              width: 60,
+                              height: 60,
+                              borderRadius: 8,
+                              overflow: 'hidden',
+                              backgroundColor: '#1a1a1a',
+                            }}>
+                            <Video
+                              source={{ uri: media.uri }}
+                              style={{ width: 60, height: 60 }}
+                              resizeMode={ResizeMode.COVER}
+                              shouldPlay={false}
+                              isMuted
+                            />
+                            <View
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                backgroundColor: 'rgba(0,0,0,0.3)',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                              }}>
+                              <Ionicons name="play" size={20} color="white" />
+                            </View>
+                          </View>
+                        ) : (
+                          // Image preview
+                          <Image
+                            source={{ uri: media.uri }}
+                            style={{ width: 60, height: 60, borderRadius: 8 }}
+                          />
+                        )}
+                        <TouchableOpacity
+                          onPress={() => handleRemoveImage(index)}
+                          style={{
+                            position: 'absolute',
+                            top: -6,
+                            right: -6,
+                            backgroundColor: '#ef4444',
+                            borderRadius: 10,
+                            width: 20,
+                            height: 20,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}>
+                          <Ionicons name="close" size={14} color="white" />
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              )}
+
+              {/* Action buttons */}
+              <View className="mt-2 flex-row items-center justify-between">
+                <TouchableOpacity
+                  onPress={handlePickImage}
+                  disabled={isSendingReply}
+                  className="rounded-lg p-2">
+                  <Ionicons name="image-outline" size={24} color="#6b7280" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleSendReply}
+                  disabled={isSendingReply || (!replyText.trim() && selectedImages.length === 0)}
+                  style={{
+                    backgroundColor:
+                      !replyText.trim() && selectedImages.length === 0 ? '#d1d5db' : '#002855',
+                    borderRadius: 20,
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}>
+                  {isSendingReply ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <>
+                      <Ionicons name="send" size={16} color="white" />
+                      <Text className="ml-1 font-medium text-white">Gửi</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Recent messages - Show for all status from Processing onwards */}
+        {(ticket?.status === 'Processing' ||
+          ticket?.status === 'Waiting for Customer' ||
+          ticket?.status === 'Done' ||
+          ticket?.status === 'Completed') && (
+          <View className="mb-4 mt-4 rounded-2xl bg-[#f8f8f8] p-4">
+            <Text className="mb-2 text-lg font-semibold text-gray-600">Tin nhắn trao đổi</Text>
             {messagesLoading ? (
               <ActivityIndicator size="small" color="#002855" />
             ) : messages.length === 0 ? (
               <Text className="text-center text-sm italic text-gray-400">Chưa có tin nhắn</Text>
             ) : (
               [...messages]
-                .slice(-3)
+                .slice(-5)
                 .reverse()
                 .map((message) => (
                   <View key={message._id} className="mb-2 rounded-lg bg-white p-3">
@@ -782,148 +814,150 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
                 ))
             )}
           </View>
-        </View>
-      )}
+        )}
 
-      {/* SUBTASKS OR COMPLETION BANNER */}
-      {!isTerminalStatus &&
-        (ticketStatus === 'Done' ? (
-          <View className="mb-2 mt-2 rounded-2xl bg-[#f3f4f6] p-4">
-            <Text className="text-center text-gray-600" style={{ fontSize: 16, lineHeight: 24 }}>
-              Vui lòng thông báo tới người dùng kiểm tra kết quả và chất lượng phục vụ
-            </Text>
-          </View>
-        ) : (
-          <View className="mb-2 mt-6 rounded-2xl bg-[#f8f8f8] p-4">
-            <View className="mb-2 flex-row items-center justify-between">
-              <Text className="text-lg font-semibold">Danh sách công việc</Text>
-              <TouchableOpacity onPress={() => setShowAddSubTask(true)} className="rounded-lg px-4">
-                <Text className="text-3xl font-medium text-primary">+</Text>
-              </TouchableOpacity>
+        {/* SUBTASKS OR COMPLETION BANNER */}
+        {!isTerminalStatus &&
+          (ticketStatus === 'Done' ? (
+            <View className="mb-2 mt-2 rounded-2xl bg-[#f3f4f6] p-4">
+              <Text className="text-center text-gray-600" style={{ fontSize: 16, lineHeight: 24 }}>
+                Vui lòng thông báo tới người dùng kiểm tra kết quả và chất lượng phục vụ
+              </Text>
             </View>
-
-            {/* Add subtask input */}
-            {showAddSubTask && (
-              <View className="mb-3 flex-row items-center">
-                <TextInput
-                  value={newSubTaskTitle}
-                  onChangeText={setNewSubTaskTitle}
-                  placeholder="Nhập việc cần làm"
-                  className="mr-2 flex-1 rounded-lg bg-[#ebebeb] p-3"
-                />
+          ) : (
+            <View className="mb-2 mt-6 rounded-2xl bg-[#f8f8f8] p-4">
+              <View className="mb-2 flex-row items-center justify-between">
+                <Text className="text-lg font-semibold">Danh sách công việc</Text>
                 <TouchableOpacity
-                  onPress={handleAddSubTask}
-                  disabled={actionLoading}
-                  className="mr-2 rounded-lg bg-[#009483] px-3 py-2">
-                  {actionLoading ? (
-                    <ActivityIndicator size="small" color="white" />
-                  ) : (
-                    <Text className="font-medium text-white">Thêm</Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => {
-                    setShowAddSubTask(false);
-                    setNewSubTaskTitle('');
-                  }}
-                  className="rounded-lg bg-gray-400 px-3 py-2">
-                  <Text className="font-medium text-white">Huỷ</Text>
+                  onPress={() => setShowAddSubTask(true)}
+                  className="rounded-lg px-4">
+                  <Text className="text-3xl font-medium text-primary">+</Text>
                 </TouchableOpacity>
               </View>
-            )}
 
-            {/* Subtask list */}
-            {subTasks.length > 0 ? (
-              subTasks.map(renderSubTask)
-            ) : (
-              <Text className="text-center text-sm font-medium text-gray-500">
-                Không có subtask
-              </Text>
+              {/* Add subtask input */}
+              {showAddSubTask && (
+                <View className="mb-3 flex-row items-center">
+                  <TextInput
+                    value={newSubTaskTitle}
+                    onChangeText={setNewSubTaskTitle}
+                    placeholder="Nhập việc cần làm"
+                    className="mr-2 flex-1 rounded-lg bg-[#ebebeb] p-3"
+                  />
+                  <TouchableOpacity
+                    onPress={handleAddSubTask}
+                    disabled={actionLoading}
+                    className="mr-2 rounded-lg bg-[#009483] px-3 py-2">
+                    {actionLoading ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <Text className="font-medium text-white">Thêm</Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowAddSubTask(false);
+                      setNewSubTaskTitle('');
+                    }}
+                    className="rounded-lg bg-gray-400 px-3 py-2">
+                    <Text className="font-medium text-white">Huỷ</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Subtask list */}
+              {subTasks.length > 0 ? (
+                subTasks.map(renderSubTask)
+              ) : (
+                <Text className="text-center text-sm font-medium text-gray-500">
+                  Không có subtask
+                </Text>
+              )}
+            </View>
+          ))}
+
+        {/* Action Sheets */}
+        <TicketStatusSheet
+          currentStatus={ticketStatus}
+          onSelect={(value) => {
+            handleUpdateStatus(value);
+            setSelectedStatus(value);
+          }}
+        />
+
+        <SubTaskStatusSheet
+          subTask={ui.selectedSubTask}
+          allSubTasks={subTasks}
+          onSelect={(value) => {
+            if (ui.selectedSubTask) {
+              handleUpdateSubTaskStatus(ui.selectedSubTask._id, value);
+            }
+          }}
+        />
+
+        {/* Image Preview Modal */}
+        <Modal
+          visible={!!previewImage}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPreviewImage(null)}>
+          <View className="flex-1 items-center justify-center bg-black/80">
+            <TouchableOpacity
+              onPress={() => setPreviewImage(null)}
+              style={{
+                position: 'absolute',
+                top: 50,
+                right: 20,
+                zIndex: 10,
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                borderRadius: 20,
+                padding: 8,
+              }}>
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
+            {previewImage && (
+              <Image
+                source={{ uri: previewImage }}
+                style={{ width: '90%', height: '70%' }}
+                resizeMode="contain"
+              />
             )}
           </View>
-        ))}
+        </Modal>
 
-      {/* Action Sheets */}
-      <TicketStatusSheet
-        currentStatus={ticketStatus}
-        onSelect={(value) => {
-          handleUpdateStatus(value);
-          setSelectedStatus(value);
-        }}
-      />
-
-      <SubTaskStatusSheet
-        subTask={ui.selectedSubTask}
-        allSubTasks={subTasks}
-        onSelect={(value) => {
-          if (ui.selectedSubTask) {
-            handleUpdateSubTaskStatus(ui.selectedSubTask._id, value);
-          }
-        }}
-      />
-
-      {/* Image Preview Modal */}
-      <Modal
-        visible={!!previewImage}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPreviewImage(null)}>
-        <View className="flex-1 items-center justify-center bg-black/80">
-          <TouchableOpacity
-            onPress={() => setPreviewImage(null)}
-            style={{
-              position: 'absolute',
-              top: 50,
-              right: 20,
-              zIndex: 10,
-              backgroundColor: 'rgba(0,0,0,0.5)',
-              borderRadius: 20,
-              padding: 8,
-            }}>
-            <Ionicons name="close" size={24} color="white" />
-          </TouchableOpacity>
-          {previewImage && (
-            <Image
-              source={{ uri: previewImage }}
-              style={{ width: '90%', height: '70%' }}
-              resizeMode="contain"
-            />
-          )}
-        </View>
-      </Modal>
-
-      {/* Video Preview Modal */}
-      <Modal
-        visible={!!previewVideo}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPreviewVideo(null)}>
-        <View className="flex-1 items-center justify-center bg-black">
-          <TouchableOpacity
-            onPress={() => setPreviewVideo(null)}
-            style={{
-              position: 'absolute',
-              top: 50,
-              right: 20,
-              zIndex: 10,
-              backgroundColor: 'rgba(0,0,0,0.5)',
-              borderRadius: 20,
-              padding: 8,
-            }}>
-            <Ionicons name="close" size={24} color="white" />
-          </TouchableOpacity>
-          {previewVideo && (
-            <Video
-              source={{ uri: previewVideo }}
-              style={{ width: '100%', height: '70%' }}
-              resizeMode={ResizeMode.CONTAIN}
-              useNativeControls
-              shouldPlay
-            />
-          )}
-        </View>
-      </Modal>
-    </ScrollView>
+        {/* Video Preview Modal */}
+        <Modal
+          visible={!!previewVideo}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPreviewVideo(null)}>
+          <View className="flex-1 items-center justify-center bg-black">
+            <TouchableOpacity
+              onPress={() => setPreviewVideo(null)}
+              style={{
+                position: 'absolute',
+                top: 50,
+                right: 20,
+                zIndex: 10,
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                borderRadius: 20,
+                padding: 8,
+              }}>
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
+            {previewVideo && (
+              <Video
+                source={{ uri: previewVideo }}
+                style={{ width: '100%', height: '70%' }}
+                resizeMode={ResizeMode.CONTAIN}
+                useNativeControls
+                shouldPlay
+              />
+            )}
+          </View>
+        </Modal>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 

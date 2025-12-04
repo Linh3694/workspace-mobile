@@ -20,6 +20,7 @@ import AttendanceDetail from '../screens/Attendance/AttendanceDetail';
 import LeaveRequestsScreen from '../screens/LeaveRequests/LeaveRequestsScreen';
 import NotificationsScreen from '../screens/Notifications/NotificationsScreen';
 import { BusHomeScreen, BusTripDetailScreen, BusAttendanceScreen, FaceCameraScreen } from '../screens/Bus';
+import { FeedbackScreen, FeedbackDetailScreen } from '../screens/Feedback';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -75,6 +76,9 @@ export type RootStackParamList = {
   BusTripDetail: { tripId: string };
   BusAttendance: { tripId: string; tripType: string };
   FaceCamera: { tripId: string; onSuccess?: () => void };
+  // Feedback Module Routes
+  [ROUTES.SCREENS.FEEDBACK]: undefined;
+  [ROUTES.SCREENS.FEEDBACK_DETAIL]: { feedbackId: string };
 };
 
 const MainTabWrapper = ({ route }: { route: any }) => <BottomTabNavigator route={route} />;
@@ -260,6 +264,17 @@ const AppNavigator = () => {
             name="FaceCamera"
             component={FaceCameraScreen}
             options={{ headerShown: false, animation: 'slide_from_bottom' }}
+          />
+          {/* Feedback Module Screens */}
+          <Stack.Screen
+            name={ROUTES.SCREENS.FEEDBACK}
+            component={FeedbackScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.FEEDBACK_DETAIL}
+            component={FeedbackDetailScreen}
+            options={{ headerShown: false }}
           />
         </>
       )}

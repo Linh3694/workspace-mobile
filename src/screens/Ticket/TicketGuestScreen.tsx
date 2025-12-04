@@ -138,27 +138,32 @@ const TicketGuestScreen = ({ isFromTab = false }: TicketGuestScreenProps) => {
       className="mb-3 rounded-xl bg-[#F8F8F8] p-4"
       onPress={() => handleViewTicketDetail(item._id)}>
       <View>
-        <Text className="font-medium text-lg text-[#E84A37]">{item.title}</Text>
+        <Text className="text-lg font-medium text-[#E84A37]">{item.title}</Text>
         <View className="mt-2 flex-row items-center justify-between">
-          <Text className="mt-1 font-medium text-sm text-gray-500">
+          <Text className="mt-1 text-sm font-medium text-gray-500">
             {item.ticketCode || `Ticket-${item._id.padStart(3, '0')}`}
           </Text>
           <View>
-            <Text className="text-right font-medium text-base text-[#757575]">
+            <Text className="text-right text-base font-medium text-[#757575]">
               {item.assignedTo
                 ? normalizeVietnameseName(item.assignedTo.fullname)
                 : 'Chưa phân công'}
             </Text>
           </View>
         </View>
-        <View className="mt-2 flex-row items-center justify-between">
-          <View className="mr-2 flex-1">
-            <Text className="font-medium text-lg text-primary" numberOfLines={1}>
-              {item.creator ? normalizeVietnameseName(item.creator.fullname) : 'Không xác định'}
+        <View className="mt-2 flex-row items-center justify-between" style={{ flexWrap: 'nowrap' }}>
+          <Text
+            className="mr-3 flex-1 text-lg font-medium text-primary"
+            numberOfLines={1}
+            ellipsizeMode="tail">
+            {item.creator ? normalizeVietnameseName(item.creator.fullname) : 'Không xác định'}
+          </Text>
+          <View
+            className={`${getStatusColor(item.status)} rounded-lg px-3 py-1`}
+            style={{ flexShrink: 0, minWidth: 90 }}>
+            <Text className="text-center text-base font-medium text-white" numberOfLines={1}>
+              {getStatusLabel(item.status)}
             </Text>
-          </View>
-          <View className={`${getStatusColor(item.status)} shrink-0 rounded-lg px-3 py-1`}>
-            <Text className="font-medium text-base text-white">{getStatusLabel(item.status)}</Text>
           </View>
         </View>
       </View>
@@ -196,7 +201,7 @@ const TicketGuestScreen = ({ isFromTab = false }: TicketGuestScreenProps) => {
             </TouchableOpacity>
           )}
           <View className="flex-1 items-center justify-center">
-            <Text className="font-medium text-xl">Ticket</Text>
+            <Text className="text-xl font-medium">Ticket</Text>
           </View>
           {!isFromTab && <View style={{ width: 40 }} />}
         </View>

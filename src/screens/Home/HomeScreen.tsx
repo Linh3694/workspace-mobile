@@ -36,6 +36,7 @@ import PolygonIcon from '../../assets/polygon.svg';
 import LeaveIcon from '../../assets/leave.svg';
 import AttendanceIcon from '../../assets/attendance.svg';
 import BusIcon from '../../assets/bus-icon.svg';
+import FeedbackIcon from '../../assets/feedback-icon.svg';
 import attendanceService from '../../services/attendanceService';
 import pushNotificationService from '../../services/pushNotificationService';
 import notificationCenterService from '../../services/notificationCenterService';
@@ -261,6 +262,10 @@ const HomeScreen = () => {
     navigation.navigate('BusHome' as any);
   };
 
+  const navigateToFeedback = () => {
+    navigation.navigate(ROUTES.SCREENS.FEEDBACK);
+  };
+
   // Role-based menu configuration
   const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
   const hasMobileTeacher = roles.includes('Mobile Teacher');
@@ -279,7 +284,7 @@ const HomeScreen = () => {
       key: 'tickets',
     },
     {
-      id: 2,
+      id: 3,
       title: t('home.devices'),
       component: DevicesIcon,
       description: 'Quản lý thiết bị',
@@ -287,7 +292,7 @@ const HomeScreen = () => {
       key: 'devices',
     },
     {
-      id: 3,
+      id: 4,
       title: 'Điểm danh',
       component: AttendanceIcon,
       description: 'Điểm danh nhân viên/giáo viên',
@@ -295,7 +300,7 @@ const HomeScreen = () => {
       key: 'attendance',
     },
     {
-      id: 4,
+      id: 5,
       title: 'Đơn từ',
       component: LeaveIcon,
       description: 'Đơn từ',
@@ -303,25 +308,33 @@ const HomeScreen = () => {
       key: 'documents',
     },
     {
-      id: 5,
+      id: 6,
       title: 'Xe buýt',
       component: BusIcon,
       description: 'Quản lý xe buýt học sinh',
       onPress: navigateToBus,
       key: 'bus',
     },
+    {
+      id: 2,
+      title: 'Góp ý',
+      component: FeedbackIcon,
+      description: 'Góp ý phụ huynh',
+      onPress: navigateToFeedback,
+      key: 'feedback',
+    },
   ];
 
   let menuItems = allItems.filter(() => false);
   if (hasMobileBOD) {
-    // Mobile BOD: tất cả (bao gồm Bus)
+    // Mobile BOD: tất cả (bao gồm Bus và Feedback)
     menuItems = allItems;
   } else if (hasMobileMonitor) {
     // Mobile Monitor: chỉ Bus
     menuItems = allItems.filter((i) => ['bus'].includes(i.key));
   } else if (hasMobileIT) {
-    // Mobile IT: Ticket Admin + Devices
-    menuItems = allItems.filter((i) => ['tickets', 'devices'].includes(i.key));
+    // Mobile IT: Ticket Admin + Devices + Feedback
+    menuItems = allItems.filter((i) => ['tickets', 'devices', 'feedback'].includes(i.key));
   } else if (hasMobileTeacher) {
     // Mobile Teacher: Ticket Guest + Attendance + Leaves
     menuItems = allItems.filter((i) => ['tickets', 'attendance', 'documents'].includes(i.key));
