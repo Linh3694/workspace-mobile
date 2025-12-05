@@ -21,9 +21,10 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../hooks/useLanguage';
 import { leaveService, type LeaveRequest } from '../../services/leaveService';
 import { API_BASE_URL } from '../../config/constants';
-import { Ionicons, MaterialIcons, Feather } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons, Feather, AntDesign } from '@expo/vector-icons';
 import { formatShortDate, formatFullDate } from '../../utils/dateUtils';
 import attendanceService from '../../services/attendanceService';
+import { normalizeVietnameseName } from '../../utils/nameFormatter';
 
 type LeaveRequestsNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -159,6 +160,13 @@ const LeaveRequestsScreen = () => {
   const teacherClasses = useMemo(() => {
     return Array.from(new Set([...homeroomClasses, ...viceClasses]));
   }, [homeroomClasses, viceClasses]);
+
+  const getCreatorName = useCallback((request: LeaveRequest) => {
+    const isParent = request.is_created_by_parent || request.creator_role === 'Parent';
+    const rawName = request.creator_name || request.parent_name || '';
+    if (!rawName) return '—';
+    return isParent ? rawName : normalizeVietnameseName(rawName);
+  }, []);
 
   const loadLeaveRequests = useCallback(
     async (showLoading = true) => {
@@ -422,6 +430,16 @@ const LeaveRequestsScreen = () => {
     navigation.setParams({ classId: undefined });
   };
 
+  // Handle creating new leave request
+  const handleCreateLeaveRequest = () => {
+    if (selectedClassId) {
+      navigation.navigate(ROUTES.SCREENS.CREATE_LEAVE_REQUEST, {
+        classId: selectedClassId,
+        classTitle: `Lớp ${getClassTitle(selectedClassId)}`,
+      });
+    }
+  };
+
   useEffect(() => {
     if (leaveRequests.length > 0) {
       loadStudentPhotos(leaveRequests);
@@ -485,7 +503,21 @@ const LeaveRequestsScreen = () => {
           <Text className="flex-1 text-center text-2xl font-bold text-[#0A2240]">
             {selectedClassId ? `Lớp ${getClassTitle(selectedClassId)}` : 'Đơn từ'}
           </Text>
-          <View style={{ width: 44 }} />
+          {selectedClassId ? (
+            <TouchableOpacity
+              onPress={handleCreateLeaveRequest}
+              style={{
+                width: 44,
+                height: 44,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <AntDesign name="plus" size={24} color="#0A2240" />
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 44 }} />
+          )}
         </View>
       </View>
 
@@ -566,19 +598,26 @@ const LeaveRequestsScreen = () => {
                                 <View className="h-12 w-px bg-gray-300"></View>
                               </View>
 
-                              {/* Parent Column */}
+                              {/* Creator Column */}
                               <View className="flex-1 px-2">
                                 <Text className="text-center text-sm text-gray-600">
-                                  Người tạo:
+                                  {request.is_created_by_parent || request.creator_role === 'Parent'
+                                    ? 'Phụ huynh'
+                                    : 'Giáo viên'}
+                                  :
                                 </Text>
                                 <Text
                                   style={{ width: '100%' }}
                                   className="text-center text-base font-semibold text-gray-900"
                                   numberOfLines={1}
                                   ellipsizeMode="tail">
-                                  {request.parent_name}
+                                  {getCreatorName(request)}
                                 </Text>
-                                <Text className="text-center text-xs text-gray-500">Phụ huynh</Text>
+                                <Text className="text-center text-xs text-gray-500">
+                                  {request.is_created_by_parent || request.creator_role === 'Parent'
+                                    ? 'Phụ huynh'
+                                    : 'Giáo viên'}
+                                </Text>
                               </View>
                             </View>
                           </View>

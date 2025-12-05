@@ -19,9 +19,12 @@ export const ROUTES = {
     ATTENDANCE_HOME: 'AttendanceHome',
     ATTENDANCE_DETAIL: 'AttendanceDetail',
     LEAVE_REQUESTS: 'LeaveRequests',
+    CREATE_LEAVE_REQUEST: 'CreateLeaveRequest',
     // Feedback screens
     FEEDBACK: 'Feedback',
     FEEDBACK_DETAIL: 'FeedbackDetail',
+    // Menu screens
+    MENU: 'Menu',
   },
   // Tab names trong bottom navigation
   TABS: {

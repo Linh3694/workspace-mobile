@@ -18,9 +18,16 @@ import { useAuth } from '../context/AuthContext';
 import AttendanceHome from '../screens/Attendance/AttendanceHome';
 import AttendanceDetail from '../screens/Attendance/AttendanceDetail';
 import LeaveRequestsScreen from '../screens/LeaveRequests/LeaveRequestsScreen';
+import CreateLeaveRequestScreen from '../screens/LeaveRequests/CreateLeaveRequestScreen';
 import NotificationsScreen from '../screens/Notifications/NotificationsScreen';
-import { BusHomeScreen, BusTripDetailScreen, BusAttendanceScreen, FaceCameraScreen } from '../screens/Bus';
+import {
+  BusHomeScreen,
+  BusTripDetailScreen,
+  BusAttendanceScreen,
+  FaceCameraScreen,
+} from '../screens/Bus';
 import { FeedbackScreen, FeedbackDetailScreen } from '../screens/Feedback';
+import { MenuScreen } from '../screens/Menu';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -70,6 +77,7 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.ATTENDANCE_HOME]: undefined;
   [ROUTES.SCREENS.ATTENDANCE_DETAIL]: { classId: string; date: string };
   [ROUTES.SCREENS.LEAVE_REQUESTS]: { classId?: string };
+  [ROUTES.SCREENS.CREATE_LEAVE_REQUEST]: { classId: string; classTitle?: string };
   Notification: { notificationId?: string } | undefined;
   // Bus Module Routes
   BusHome: undefined;
@@ -79,6 +87,8 @@ export type RootStackParamList = {
   // Feedback Module Routes
   [ROUTES.SCREENS.FEEDBACK]: undefined;
   [ROUTES.SCREENS.FEEDBACK_DETAIL]: { feedbackId: string };
+  // Menu Module Routes
+  [ROUTES.SCREENS.MENU]: undefined;
 };
 
 const MainTabWrapper = ({ route }: { route: any }) => <BottomTabNavigator route={route} />;
@@ -142,14 +152,23 @@ const AppNavigator = () => {
   }, [isAuthenticated]);
 
   // Show splash screen first
-  console.log('🚀 AppNavigator - showSplash:', showSplash, 'splashShownThisSession:', splashShownThisSession);
+  console.log(
+    '🚀 AppNavigator - showSplash:',
+    showSplash,
+    'splashShownThisSession:',
+    splashShownThisSession
+  );
   if (showSplash) {
     console.log('🎬 Showing SplashScreen...');
-    return <SplashScreen onFinish={() => {
-      console.log('✅ SplashScreen finished!');
-      splashShownThisSession = true;
-      setShowSplash(false);
-    }} />;
+    return (
+      <SplashScreen
+        onFinish={() => {
+          console.log('✅ SplashScreen finished!');
+          splashShownThisSession = true;
+          setShowSplash(false);
+        }}
+      />
+    );
   }
 
   if (loading) {
@@ -240,16 +259,17 @@ const AppNavigator = () => {
             options={{ headerShown: false }}
           />
           <Stack.Screen
+            name={ROUTES.SCREENS.CREATE_LEAVE_REQUEST}
+            component={CreateLeaveRequestScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
             name={ROUTES.MAIN.NOTIFICATIONS}
             component={NotificationsScreen}
             options={{ headerShown: false }}
           />
           {/* Bus Module Screens */}
-          <Stack.Screen
-            name="BusHome"
-            component={BusHomeScreen}
-            options={{ headerShown: false }}
-          />
+          <Stack.Screen name="BusHome" component={BusHomeScreen} options={{ headerShown: false }} />
           <Stack.Screen
             name="BusTripDetail"
             component={BusTripDetailScreen}
@@ -274,6 +294,12 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.FEEDBACK_DETAIL}
             component={FeedbackDetailScreen}
+            options={{ headerShown: false }}
+          />
+          {/* Menu Module Screen */}
+          <Stack.Screen
+            name={ROUTES.SCREENS.MENU}
+            component={MenuScreen}
             options={{ headerShown: false }}
           />
         </>

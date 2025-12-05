@@ -37,6 +37,7 @@ import LeaveIcon from '../../assets/leave.svg';
 import AttendanceIcon from '../../assets/attendance.svg';
 import BusIcon from '../../assets/bus-icon.svg';
 import FeedbackIcon from '../../assets/feedback-icon.svg';
+import MenuIcon from '../../assets/menu.svg';
 import attendanceService from '../../services/attendanceService';
 import pushNotificationService from '../../services/pushNotificationService';
 import notificationCenterService from '../../services/notificationCenterService';
@@ -266,6 +267,10 @@ const HomeScreen = () => {
     navigation.navigate(ROUTES.SCREENS.FEEDBACK);
   };
 
+  const navigateToMenu = () => {
+    navigation.navigate(ROUTES.SCREENS.MENU);
+  };
+
   // Role-based menu configuration
   const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
   const hasMobileTeacher = roles.includes('Mobile Teacher');
@@ -323,21 +328,31 @@ const HomeScreen = () => {
       onPress: navigateToFeedback,
       key: 'feedback',
     },
+    {
+      id: 7,
+      title: 'Thực đơn',
+      component: MenuIcon,
+      description: 'Xem thực đơn hàng ngày',
+      onPress: navigateToMenu,
+      key: 'menu',
+    },
   ];
 
   let menuItems = allItems.filter(() => false);
   if (hasMobileBOD) {
-    // Mobile BOD: tất cả (bao gồm Bus và Feedback)
+    // Mobile BOD: tất cả (bao gồm Bus, Feedback và Menu)
     menuItems = allItems;
   } else if (hasMobileMonitor) {
     // Mobile Monitor: chỉ Bus
     menuItems = allItems.filter((i) => ['bus'].includes(i.key));
   } else if (hasMobileIT) {
-    // Mobile IT: Ticket Admin + Devices + Feedback
-    menuItems = allItems.filter((i) => ['tickets', 'devices', 'feedback'].includes(i.key));
+    // Mobile IT: Ticket Admin + Devices + Feedback + Menu
+    menuItems = allItems.filter((i) => ['tickets', 'devices', 'feedback', 'menu'].includes(i.key));
   } else if (hasMobileTeacher) {
-    // Mobile Teacher: Ticket Guest + Attendance + Leaves
-    menuItems = allItems.filter((i) => ['tickets', 'attendance', 'documents'].includes(i.key));
+    // Mobile Teacher: Ticket Guest + Attendance + Leaves + Menu
+    menuItems = allItems.filter((i) =>
+      ['tickets', 'attendance', 'documents', 'menu'].includes(i.key)
+    );
   } else if (hasMobileUser) {
     // Mobile User: chỉ Ticket Guest
     menuItems = allItems.filter((i) => ['tickets'].includes(i.key));

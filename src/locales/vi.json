@@ -272,5 +272,49 @@
     "afternoon": "Buổi chiều",
     "evening": "Buổi tối",
     "night": "Buổi tối"
+  },
+  "menu": {
+    "title": "Thực đơn",
+    "loading": "Đang tải...",
+    "noMenu": "Chưa có thực đơn",
+    "noMenuForDate": "Chưa có thực đơn cho ngày {{date}}",
+    "buffetTitle": "Sự kiện Buffet",
+    "noBuffet": "Không có sự kiện buffet trong tháng này",
+    "calendarDays": {
+      "mon": "T2",
+      "tue": "T3",
+      "wed": "T4",
+      "thu": "T5",
+      "fri": "T6",
+      "sat": "T7",
+      "sun": "CN"
+    },
+    "mealTypes": {
+      "breakfast": "Bữa sáng",
+      "lunch": "Bữa trưa",
+      "dinner": "Bữa xế",
+      "snack": "Bữa phụ"
+    },
+    "breakfastOptions": {
+      "option1": "Lựa chọn 1",
+      "option2": "Lựa chọn 2",
+      "external": "Phục vụ ngoài line"
+    },
+    "dinnerOptions": {
+      "drink": "Đồ uống",
+      "snack": "Đồ ăn nhẹ"
+    },
+    "lunchSets": {
+      "set_a": "Set Á",
+      "set_au": "Set Âu",
+      "eat_clean": "Eat Clean"
+    },
+    "educationLevels": {
+      "elementary": "Tiểu học",
+      "secondary": "Trung học"
+    },
+    "units": {
+      "kcal": "kcal"
+    }
   }
 }

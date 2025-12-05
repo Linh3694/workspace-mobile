@@ -259,5 +259,49 @@
     "afternoon": "Afternoon",
     "evening": "Evening",
     "night": "Night"
+  },
+  "menu": {
+    "title": "Menu",
+    "loading": "Loading...",
+    "noMenu": "No menu available",
+    "noMenuForDate": "No menu available for {{date}}",
+    "buffetTitle": "Buffet Events",
+    "noBuffet": "No buffet events this month",
+    "calendarDays": {
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat",
+      "sun": "Sun"
+    },
+    "mealTypes": {
+      "breakfast": "Breakfast",
+      "lunch": "Lunch",
+      "dinner": "Afternoon Snack",
+      "snack": "Snack"
+    },
+    "breakfastOptions": {
+      "option1": "Option 1",
+      "option2": "Option 2",
+      "external": "External"
+    },
+    "dinnerOptions": {
+      "drink": "Drink",
+      "snack": "Snack"
+    },
+    "lunchSets": {
+      "set_a": "Asian Set",
+      "set_au": "Western Set",
+      "eat_clean": "Eat Clean"
+    },
+    "educationLevels": {
+      "elementary": "Elementary",
+      "secondary": "Secondary"
+    },
+    "units": {
+      "kcal": "kcal"
+    }
   }
 }

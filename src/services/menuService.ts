@@ -130,7 +130,10 @@ class MenuService {
       const data = await response.json();
       const actualData = data.message || data;
 
-      if ((actualData as FrappeResponse<DailyMenuData>).success && (actualData as FrappeResponse<DailyMenuData>).data) {
+      if (
+        (actualData as FrappeResponse<DailyMenuData>).success &&
+        (actualData as FrappeResponse<DailyMenuData>).data
+      ) {
         return {
           success: true,
           data: (actualData as FrappeResponse<DailyMenuData>).data,
@@ -140,7 +143,9 @@ class MenuService {
 
       return {
         success: false,
-        message: (actualData as FrappeResponse<DailyMenuData>).message || 'Không thể tải thông tin thực đơn',
+        message:
+          (actualData as FrappeResponse<DailyMenuData>).message ||
+          'Không thể tải thông tin thực đơn',
       };
     } catch (error: unknown) {
       console.error('Error fetching daily menu by date:', error);
@@ -175,7 +180,10 @@ class MenuService {
       const data = await response.json();
       const actualData = data.message || data;
 
-      if ((actualData as FrappeResponse<BuffetEvent[]>).success && (actualData as FrappeResponse<BuffetEvent[]>).data) {
+      if (
+        (actualData as FrappeResponse<BuffetEvent[]>).success &&
+        (actualData as FrappeResponse<BuffetEvent[]>).data
+      ) {
         return {
           success: true,
           data: (actualData as FrappeResponse<BuffetEvent[]>).data,
@@ -185,7 +193,8 @@ class MenuService {
 
       return {
         success: false,
-        message: (actualData as FrappeResponse<BuffetEvent[]>).message || 'Không thể tải thông tin buffet',
+        message:
+          (actualData as FrappeResponse<BuffetEvent[]>).message || 'Không thể tải thông tin buffet',
       };
     } catch (error: unknown) {
       console.error('Error fetching buffet events:', error);
