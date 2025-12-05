@@ -2,7 +2,11 @@
   "expo": {
     "name": "Wis",
     "slug": "workspace",
+<<<<<<< HEAD
     "version": "1.2.22",
+=======
+    "version": "1.2.23",
+>>>>>>> 84cccc9 (update)
     "web": {
       "favicon": "./src/assets/favicon.png"
     },
