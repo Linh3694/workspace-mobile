@@ -22,6 +22,14 @@ export interface MicrosoftAuthResponse {
     username: string;
     user_image: string;
     account_enabled: boolean;
+    // Teacher info - thêm để đồng bộ với local login
+    teacher_info?: {
+      homeroom_class_ids?: string[];
+      vice_homeroom_class_ids?: string[];
+      teaching_class_ids?: string[];
+    };
+    avatar?: string;
+    avatar_url?: string;
   };
   error?: string;
   error_code?: string;

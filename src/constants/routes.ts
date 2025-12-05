@@ -25,6 +25,8 @@ export const ROUTES = {
     FEEDBACK_DETAIL: 'FeedbackDetail',
     // Menu screens
     MENU: 'Menu',
+    // Timetable screens
+    TIMETABLE: 'Timetable',
   },
   // Tab names trong bottom navigation
   TABS: {

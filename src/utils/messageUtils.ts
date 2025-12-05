@@ -30,7 +30,7 @@ export const formatMessageDate = (timestamp: string): string => {
 
     const diff = Math.floor((now.getTime() - messageDate.getTime()) / (1000 * 60 * 60 * 24));
     if (diff < 7) {
-        const days = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+        const days = ['Chủ Nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
         return `${days[messageDate.getDay()]}, ${day} tháng ${month}`;
     }
 

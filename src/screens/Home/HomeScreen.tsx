@@ -37,7 +37,8 @@ import LeaveIcon from '../../assets/leave.svg';
 import AttendanceIcon from '../../assets/attendance.svg';
 import BusIcon from '../../assets/bus-icon.svg';
 import FeedbackIcon from '../../assets/feedback-icon.svg';
-import MenuIcon from '../../assets/menu.svg';
+import MenuIcon from '../../assets/menu-icon.svg';
+import TimetableIcon from '../../assets/timetable-icon.svg';
 import attendanceService from '../../services/attendanceService';
 import pushNotificationService from '../../services/pushNotificationService';
 import notificationCenterService from '../../services/notificationCenterService';
@@ -271,6 +272,10 @@ const HomeScreen = () => {
     navigation.navigate(ROUTES.SCREENS.MENU);
   };
 
+  const navigateToTimetable = () => {
+    navigation.navigate(ROUTES.SCREENS.TIMETABLE);
+  };
+
   // Role-based menu configuration
   const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
   const hasMobileTeacher = roles.includes('Mobile Teacher');
@@ -336,6 +341,14 @@ const HomeScreen = () => {
       onPress: navigateToMenu,
       key: 'menu',
     },
+    {
+      id: 8,
+      title: 'Thời khoá biểu',
+      component: TimetableIcon,
+      description: 'Xem thời khoá biểu lớp chủ nhiệm',
+      onPress: navigateToTimetable,
+      key: 'timetable',
+    },
   ];
 
   let menuItems = allItems.filter(() => false);
@@ -346,12 +359,12 @@ const HomeScreen = () => {
     // Mobile Monitor: chỉ Bus
     menuItems = allItems.filter((i) => ['bus'].includes(i.key));
   } else if (hasMobileIT) {
-    // Mobile IT: Ticket Admin + Devices + Feedback + Menu
-    menuItems = allItems.filter((i) => ['tickets', 'devices', 'feedback', 'menu'].includes(i.key));
+    // Mobile IT: Ticket Admin + Devices + Feedback
+    menuItems = allItems.filter((i) => ['tickets', 'devices', 'feedback'].includes(i.key));
   } else if (hasMobileTeacher) {
-    // Mobile Teacher: Ticket Guest + Attendance + Leaves + Menu
+    // Mobile Teacher: Ticket Guest + Attendance + Leaves + Menu + Timetable
     menuItems = allItems.filter((i) =>
-      ['tickets', 'attendance', 'documents', 'menu'].includes(i.key)
+      ['tickets', 'attendance', 'documents', 'menu', 'timetable'].includes(i.key)
     );
   } else if (hasMobileUser) {
     // Mobile User: chỉ Ticket Guest

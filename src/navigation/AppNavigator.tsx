@@ -28,6 +28,7 @@ import {
 } from '../screens/Bus';
 import { FeedbackScreen, FeedbackDetailScreen } from '../screens/Feedback';
 import { MenuScreen } from '../screens/Menu';
+import { TimetableScreen } from '../screens/Timetable';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -89,6 +90,8 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.FEEDBACK_DETAIL]: { feedbackId: string };
   // Menu Module Routes
   [ROUTES.SCREENS.MENU]: undefined;
+  // Timetable Module Routes
+  [ROUTES.SCREENS.TIMETABLE]: undefined;
 };
 
 const MainTabWrapper = ({ route }: { route: any }) => <BottomTabNavigator route={route} />;
@@ -300,6 +303,12 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.MENU}
             component={MenuScreen}
+            options={{ headerShown: false }}
+          />
+          {/* Timetable Module Screen */}
+          <Stack.Screen
+            name={ROUTES.SCREENS.TIMETABLE}
+            component={TimetableScreen}
             options={{ headerShown: false }}
           />
         </>

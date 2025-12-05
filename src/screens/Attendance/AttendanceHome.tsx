@@ -493,7 +493,7 @@ const AttendanceHome = () => {
           <TouchableOpacity onPress={() => nav.goBack()} style={{ padding: 4 }}>
             <Ionicons name="chevron-back" size={26} color="#222" />
           </TouchableOpacity>
-          <Text style={{ flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '700' }}>
+          <Text style={{ flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '600', color: '#002855', fontFamily: 'Mulish-Bold' }}>
             Điểm danh
           </Text>
           <View style={{ width: 30 }} />

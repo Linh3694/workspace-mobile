@@ -52,3 +52,5 @@ echo ""
 echo "🔥 Firebase configuration check completed!"
 
 
+
+

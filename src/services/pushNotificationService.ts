@@ -25,6 +25,22 @@ interface PushNotificationData {
   feedbackId?: string;
   feedbackCode?: string;
   guardianName?: string;
+  // Leave request related
+  leaveRequestId?: string;
+  leave_request_id?: string;
+  studentId?: string;
+  student_id?: string;
+  studentName?: string;
+  student_name?: string;
+  parentName?: string;
+  parent_name?: string;
+  reason?: string;
+  reasonDisplay?: string;
+  reason_display?: string;
+  startDate?: string;
+  start_date?: string;
+  endDate?: string;
+  end_date?: string;
 }
 
 interface NotificationResponse {
@@ -298,6 +314,15 @@ class PushNotificationService {
         sound: 'default',
       });
 
+      await Notifications.setNotificationChannelAsync('leave_request', {
+        name: 'Đơn xin nghỉ phép',
+        description: 'Thông báo về đơn xin nghỉ phép từ phụ huynh',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#F59E0B',
+        sound: 'default',
+      });
+
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Mặc định',
         description: 'Thông báo chung',
@@ -336,6 +361,14 @@ class PushNotificationService {
       case 'feedback_reply':
       case 'feedback_updated':
         this.handleFeedbackUpdateNotification(data, wasOpened);
+        break;
+      // Leave request notifications (from parent portal)
+      case 'leave_request':
+        this.handleLeaveRequestNotification(data, wasOpened);
+        break;
+      // Leave notification (from teacher to parent - already handled in mobile_push_notification)
+      case 'leave':
+        this.handleLeaveNotification(data, wasOpened);
         break;
       default:
         // Handle action-based notifications (from ticket-service)
@@ -495,11 +528,6 @@ class PushNotificationService {
   private handleNewFeedbackNotification(data: PushNotificationData, wasOpened: boolean): void {
     console.log('📝 New feedback notification:', data);
 
-    // Play notification sound for new feedback
-    if (!wasOpened) {
-      soundService.playTicketCreatedSound();
-    }
-
     if (wasOpened && data.feedbackId) {
       this.navigateToFeedbackDetail(data.feedbackId);
     }
@@ -524,6 +552,38 @@ class PushNotificationService {
     if (wasOpened && data.feedbackId) {
       this.navigateToFeedbackDetail(data.feedbackId);
     }
+  }
+
+  // Leave request notification handler (from parent portal to teacher)
+  private handleLeaveRequestNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('📝 Leave request notification (from parent):', data);
+
+    if (wasOpened) {
+      // Navigate to leave requests screen
+      this.navigateToLeaveRequests(data);
+    }
+  }
+
+  // Leave notification handler (from teacher to parent - workspace-mobile created)
+  private handleLeaveNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('📝 Leave notification:', data);
+
+    if (wasOpened) {
+      // Navigate to leave requests screen
+      this.navigateToLeaveRequests(data);
+    }
+  }
+
+  private navigateToLeaveRequests(data: PushNotificationData): void {
+    const studentId = data.student_id || data.studentId;
+    const leaveRequestId = data.leave_request_id || data.leaveRequestId;
+
+    console.log(`🧭 Navigate to Leave Requests - Student: ${studentId}, LeaveRequest: ${leaveRequestId}`);
+    this.navigateToScreen('LeaveRequests', {
+      studentId,
+      leaveRequestId,
+      fromNotification: true,
+    });
   }
 
   private navigateToScreen(screenName: string, params?: any): void {

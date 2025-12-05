@@ -121,12 +121,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  // Đồng bộ user data mới nhất từ Frappe (bao gồm roles)
+  // Đồng bộ user data mới nhất từ Frappe (bao gồm roles, teacher_info)
+  // QUAN TRỌNG: Hàm này được sử dụng cho cả local login và Microsoft login
   const refreshUserData = useCallback(async () => {
     try {
-      console.log('=== Refreshing User Data ===');
+      console.log('=== [refreshUserData] Starting ===');
       const token = await AsyncStorage.getItem('authToken');
-      if (!token) return;
+      if (!token) {
+        console.warn('[refreshUserData] No token found, skipping');
+        return;
+      }
+
+      // Lấy provider từ user hiện tại hoặc từ AsyncStorage
+      let currentProvider = user?.provider;
+      if (!currentProvider) {
+        const storedUser = await AsyncStorage.getItem('user');
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser);
+          currentProvider = parsed.provider || 'local';
+        }
+      }
+      console.log('[refreshUserData] Current provider:', currentProvider);
 
       const resp = await fetch(
         `${getApiBaseUrl()}/api/method/erp.api.erp_common_user.auth.get_current_user`,
@@ -139,31 +154,46 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
       );
 
+      console.log('[refreshUserData] API response status:', resp.status);
+
       if (!resp.ok) {
-        console.warn('refreshUserData failed with status:', resp.status);
+        console.warn('[refreshUserData] API failed with status:', resp.status);
         return;
       }
 
       const data = await resp.json();
+      console.log('[refreshUserData] API response structure:', {
+        success: data.success,
+        status: data.status,
+        hasData: !!data.data,
+        hasUser: !!(data.data?.user || data.user),
+      });
+
       const ok = (data && data.success === true) || (data && data.status === 'success');
       const payload = (data && data.data) || data;
       const userData = payload && payload.user;
+
       if (ok && userData) {
-        console.log('[Auth][refreshUserData] raw avatar fields:', {
-          avatar_url: userData.avatar_url,
-          user_image: userData.user_image,
-          avatar: userData.avatar,
-          avatarUrl: userData.avatarUrl,
+        console.log('[refreshUserData] Raw user data received:', {
+          email: userData.email,
+          full_name: userData.full_name,
+          provider: userData.provider,
+          hasTeacherInfo: !!userData.teacher_info,
+          teacherInfoPreview: userData.teacher_info,
         });
-        let normalized = normalizeUserData(userData, user?.provider || 'local');
+
+        // Giữ nguyên provider từ login ban đầu (Microsoft hoặc local)
+        const finalProvider = currentProvider || userData.provider || 'local';
+        let normalized = normalizeUserData(userData, finalProvider);
         const roles = normalized.roles || [];
+
         if (!hasRequiredMobileRole(roles)) {
-          console.warn('[Auth][refreshUserData] User lacks mobile roles');
+          console.warn('[refreshUserData] User lacks mobile roles');
           await logout();
           return;
         }
 
-        // Thử lấy URL avatar mới nhất từ endpoint chuyên dụng (tránh cache tầng CDN)
+        // Thử lấy URL avatar mới nhất từ endpoint chuyên dụng
         try {
           const avatarResp = await userService.getAvatarUrl(userData.email);
           if (avatarResp.success && avatarResp.avatar_url) {
@@ -174,29 +204,38 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
 
         normalized = await attachAvatarCacheBust(normalized);
-        console.log('[Auth][refreshUserData] normalized.avatar:', normalized.avatar);
-        console.log('[Auth][refreshUserData] roles:', normalized.roles);
-        console.log('[Auth][refreshUserData] teacher_info:', {
-          homeroom: normalized.teacher_info?.homeroom_class_ids?.length || 0,
-          vice: normalized.teacher_info?.vice_homeroom_class_ids?.length || 0,
-          teaching: normalized.teacher_info?.teaching_class_ids?.length || 0,
-          preview: normalized.teacher_info,
+
+        console.log('[refreshUserData] Normalized user data:', {
+          fullname: normalized.fullname,
+          email: normalized.email,
+          provider: normalized.provider,
+          roles: normalized.roles,
+          teacherInfo: {
+            homeroom: normalized.teacher_info?.homeroom_class_ids?.length || 0,
+            vice: normalized.teacher_info?.vice_homeroom_class_ids?.length || 0,
+            teaching: normalized.teacher_info?.teaching_class_ids?.length || 0,
+          },
         });
+
+        // Cập nhật state và AsyncStorage
         setUser(normalized);
         await AsyncStorage.setItem('user', JSON.stringify(normalized));
-        await AsyncStorage.setItem('userId', normalized._id);
-        await AsyncStorage.setItem('userFullname', normalized.fullname);
-        await AsyncStorage.setItem('userJobTitle', normalized.jobTitle || 'N/A');
+        await AsyncStorage.setItem('userId', normalized._id || normalized.email);
+        await AsyncStorage.setItem('userFullname', normalized.fullname || '');
+        await AsyncStorage.setItem('userJobTitle', normalized.jobTitle || '');
         await AsyncStorage.setItem('userDepartment', normalized.department || '');
         await AsyncStorage.setItem('userRole', normalized.role || 'user');
         await AsyncStorage.setItem('userRoles', JSON.stringify(normalized.roles || []));
         await AsyncStorage.setItem('userEmployeeCode', normalized.employeeCode || '');
         await AsyncStorage.setItem('userAvatarUrl', normalized.avatar || '');
         await persistTeacherInfo(normalized.teacher_info);
-        console.log('[Auth][refreshUserData] teacher_info persisted to AsyncStorage');
+
+        console.log('=== [refreshUserData] Completed successfully ===');
+      } else {
+        console.warn('[refreshUserData] API returned no user data or success=false');
       }
     } catch (error) {
-      console.error('Lỗi khi lấy thông tin người dùng:', error);
+      console.error('[refreshUserData] Error:', error);
     }
   }, [user?.provider, attachAvatarCacheBust]);
 
@@ -514,11 +553,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(true);
       console.log('🔄 [login] Saving regular token and user data');
 
+      // Lưu token trước
       await AsyncStorage.setItem('authToken', token);
 
       // Save user information
       if (userData) {
-        const normalized = normalizeUserData(userData, userData.provider || 'local');
+        const provider = userData.provider || 'local';
+        const normalized = normalizeUserData(userData, provider);
         const roles = normalized.roles || [];
         if (!hasRequiredMobileRole(roles)) {
           console.warn('[login] User does not have required mobile roles');
@@ -526,29 +567,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           throw new Error('NO_MOBILE_ACCESS');
         }
         const withBust = await attachAvatarCacheBust(normalized);
+
+        // Lưu TẤT CẢ thông tin vào AsyncStorage - CHUẨN HÓA
         await AsyncStorage.setItem('user', JSON.stringify(withBust));
-        await AsyncStorage.setItem('userId', withBust._id || withBust.id || withBust.email);
-        await AsyncStorage.setItem('userFullname', withBust.fullname || withBust.full_name);
-        await AsyncStorage.setItem('userJobTitle', withBust.jobTitle || withBust.job_title || '');
+        await AsyncStorage.setItem('userId', withBust._id || withBust.email);
+        await AsyncStorage.setItem('userFullname', withBust.fullname || '');
+        await AsyncStorage.setItem('userJobTitle', withBust.jobTitle || '');
         await AsyncStorage.setItem('userDepartment', withBust.department || '');
-        await AsyncStorage.setItem(
-          'userEmployeeCode',
-          withBust.employeeCode || withBust.employee_code || ''
-        );
-        const role = withBust.role || withBust.user_role || 'user';
-        await AsyncStorage.setItem('userRole', role);
+        await AsyncStorage.setItem('userRole', withBust.role || 'user');
         await AsyncStorage.setItem('userRoles', JSON.stringify(roles));
-        await AsyncStorage.setItem(
-          'userAvatarUrl',
-          withBust.avatar || withBust.avatarUrl || withBust.user_image || ''
-        );
+        await AsyncStorage.setItem('userEmployeeCode', withBust.employeeCode || '');
+        await AsyncStorage.setItem('userAvatarUrl', withBust.avatar || '');
+
         setUser(withBust);
         await persistTeacherInfo(withBust.teacher_info);
-        console.log('✅ [login] User data saved with full info:', {
-          fullname: withBust.fullname || withBust.full_name,
-          jobTitle: withBust.jobTitle || withBust.job_title,
-          department: withBust.department,
-          role: role,
+
+        console.log('✅ [login] Initial user data saved:', {
+          fullname: withBust.fullname,
+          email: withBust.email,
+          roles: roles,
+          provider: provider,
         });
 
         // Initialize push notifications after successful login
@@ -559,11 +597,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           console.warn('⚠️ [login] Failed to initialize push notifications:', pushError);
         }
 
-        // Fetch enriched user info (teacher_info, latest avatar, roles) from API
+        // QUAN TRỌNG: Gọi refreshUserData để lấy đầy đủ thông tin (teacher_info, avatar mới nhất)
         try {
+          console.log('🔄 [login] Fetching enriched user data...');
           await refreshUserData();
+          console.log('✅ [login] Enriched user data fetched successfully');
         } catch (e) {
-          console.warn('[login] refreshUserData after login failed', e);
+          console.warn('[login] refreshUserData after login failed:', e);
+          // Không throw error vì đăng nhập vẫn thành công
         }
       }
     } catch (error) {
@@ -583,29 +624,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         throw new Error('Invalid Microsoft authentication response');
       }
 
-      // Save auth data using the microsoftAuthService (this handles AsyncStorage)
-      await microsoftAuthService.saveAuthData(authResponse);
+      // Lưu token trước - QUAN TRỌNG: giống như login() thường
+      await AsyncStorage.setItem('authToken', authResponse.token);
 
-      // Create normalized user object for context (matching the format from local login)
+      // Normalize user data - giống như login() thường
       let normalizedUser = normalizeUserData(authResponse.user, 'microsoft');
       const roles = normalizedUser.roles || [];
       if (!hasRequiredMobileRole(roles)) {
         console.warn('[loginWithMicrosoft] User lacks required mobile roles');
         await AsyncStorage.removeItem('authToken');
-        await AsyncStorage.removeItem('user');
         throw new Error('NO_MOBILE_ACCESS');
       }
       normalizedUser = await attachAvatarCacheBust(normalizedUser);
 
-      // Set normalized user state
+      // Lưu TẤT CẢ thông tin vào AsyncStorage - CHUẨN HÓA giống như login() thường
+      await AsyncStorage.setItem('user', JSON.stringify(normalizedUser));
+      await AsyncStorage.setItem('userId', normalizedUser._id || normalizedUser.email);
+      await AsyncStorage.setItem('userFullname', normalizedUser.fullname || normalizedUser.full_name || '');
+      await AsyncStorage.setItem('userJobTitle', normalizedUser.jobTitle || '');
+      await AsyncStorage.setItem('userDepartment', normalizedUser.department || '');
+      await AsyncStorage.setItem('userRole', normalizedUser.role || 'user');
+      await AsyncStorage.setItem('userRoles', JSON.stringify(normalizedUser.roles || []));
+      await AsyncStorage.setItem('userEmployeeCode', normalizedUser.employeeCode || '');
+      await AsyncStorage.setItem('userAvatarUrl', normalizedUser.avatar || '');
+
+      // Set user state
       setUser(normalizedUser);
-      // Ensure roles are stored for module access control
-      try {
-        await AsyncStorage.setItem('userRoles', JSON.stringify(normalizedUser.roles || []));
-      } catch (e) {
-        console.warn('[loginWithMicrosoft] Failed to store userRoles', e);
-      }
       await persistTeacherInfo(normalizedUser.teacher_info);
+
+      console.log('✅ [loginWithMicrosoft] Initial user data saved:', {
+        fullname: normalizedUser.fullname,
+        email: normalizedUser.email,
+        roles: normalizedUser.roles,
+        provider: normalizedUser.provider,
+      });
 
       // Initialize push notifications after successful Microsoft login
       try {
@@ -615,11 +667,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         console.warn('⚠️ [loginWithMicrosoft] Failed to initialize push notifications:', pushError);
       }
 
-      // Fetch enriched user info (teacher_info, latest avatar, roles) from API
+      // QUAN TRỌNG: Gọi refreshUserData để lấy đầy đủ thông tin (teacher_info, avatar mới nhất)
+      // Phải await để đảm bảo có dữ liệu trước khi hiển thị
       try {
+        console.log('🔄 [loginWithMicrosoft] Fetching enriched user data...');
         await refreshUserData();
+        console.log('✅ [loginWithMicrosoft] Enriched user data fetched successfully');
       } catch (e) {
-        console.warn('[loginWithMicrosoft] refreshUserData after login failed', e);
+        console.warn('[loginWithMicrosoft] refreshUserData after login failed:', e);
+        // Không throw error vì đăng nhập vẫn thành công
       }
 
       console.log(
