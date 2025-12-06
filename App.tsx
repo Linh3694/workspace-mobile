@@ -24,6 +24,7 @@ import * as Font from 'expo-font';
 import './global.css';
 import './src/config/i18n';
 import { AuthProvider } from './src/context/AuthContext';
+import VersionChecker from './src/components/VersionChecker';
 
 // Cấu hình linking cho deep links
 const linking = {
@@ -134,11 +135,20 @@ export default function App() {
       ticketId?: string;
       chatId?: string;
       type?: string;
+      action?: string;
       screen?: string;
       tab?: string;
       senderId?: string;
       employeeCode?: string;
       notificationId?: string;
+      // Feedback related
+      feedbackId?: string;
+      feedbackCode?: string;
+      // Leave request related
+      leaveRequestId?: string;
+      leave_request_id?: string;
+      studentId?: string;
+      student_id?: string;
     };
     console.log('🔔 Phản hồi thông báo:', data);
 
@@ -150,40 +160,102 @@ export default function App() {
       console.warn('⚠️ Could not clear notification:', error);
     }
 
-    if (data?.type === 'new_ticket' || data?.type === 'ticket_update') {
-      if (navigationRef.current && data.ticketId) {
-        navigationRef.current.navigate('TicketDetail', { ticketId: data.ticketId });
-      } else if (data.ticketId) {
-        setInitialRoute({ name: 'TicketDetail', params: { ticketId: data.ticketId } });
-      }
-    } else if (data?.type === 'attendance_reminder') {
-      // Navigate to AttendanceHome with GVCN tab
+    // Helper function to navigate
+    const navigateTo = (screenName: string, params?: any) => {
       if (navigationRef.current) {
-        (navigationRef.current as any).navigate('AttendanceHome', {
-          initialTab: data.tab || 'GVCN',
-        });
+        (navigationRef.current as any).navigate(screenName, params);
       } else {
-        setInitialRoute({
-          name: 'AttendanceHome',
-          params: { initialTab: data.tab || 'GVCN' },
-        } as any);
+        setInitialRoute({ name: screenName, params } as any);
       }
-    } else if (data?.type === 'attendance' || data?.type === 'staff_attendance') {
-      if (navigationRef.current) {
-        navigationRef.current.navigate('Main', {
-          screen: 'Notification',
-          params: data.notificationId ? { notificationId: data.notificationId } : undefined,
-        });
-      } else {
-        setInitialRoute({
-          name: 'Main',
-          params: {
-            screen: 'Notification',
-            params: data.notificationId ? { notificationId: data.notificationId } : undefined,
-          },
-        });
+    };
+
+    // === TICKET NOTIFICATIONS ===
+    const ticketTypes = ['new_ticket', 'ticket_update', 'ticket_created', 'ticket_updated'];
+    const ticketActions = [
+      'ticket_status_changed',
+      'ticket_assigned',
+      'ticket_processing',
+      'ticket_waiting',
+      'ticket_done',
+      'ticket_closed',
+      'ticket_cancelled',
+      'new_ticket_admin',
+      'user_reply',
+      'ticket_cancelled_admin',
+      'completion_confirmed',
+      'ticket_feedback_received',
+    ];
+
+    if (ticketTypes.includes(data?.type || '') || ticketActions.includes(data?.action || '')) {
+      if (data.ticketId) {
+        navigateTo('TicketDetail', { ticketId: data.ticketId });
+        return;
       }
     }
+
+    // === FEEDBACK NOTIFICATIONS ===
+    const feedbackTypes = ['feedback_created', 'feedback_new', 'feedback_reply', 'feedback_updated'];
+    const feedbackActions = [
+      'new_feedback',
+      'feedback_created',
+      'feedback_reply',
+      'guardian_reply',
+      'feedback_assigned',
+    ];
+
+    if (feedbackTypes.includes(data?.type || '') || feedbackActions.includes(data?.action || '')) {
+      if (data.feedbackId) {
+        navigateTo('FeedbackDetail', { feedbackId: data.feedbackId });
+        return;
+      }
+    }
+
+    // === LEAVE REQUEST NOTIFICATIONS ===
+    const leaveTypes = ['leave_request', 'leave'];
+
+    if (leaveTypes.includes(data?.type || '')) {
+      const studentId = data.student_id || data.studentId;
+      const leaveRequestId = data.leave_request_id || data.leaveRequestId;
+      navigateTo('LeaveRequests', {
+        studentId,
+        leaveRequestId,
+        fromNotification: true,
+      });
+      return;
+    }
+
+    // === ATTENDANCE NOTIFICATIONS ===
+    if (data?.type === 'attendance_reminder') {
+      navigateTo('AttendanceHome', {
+        initialTab: data.tab || 'GVCN',
+      });
+      return;
+    }
+
+    if (data?.type === 'attendance' || data?.type === 'staff_attendance') {
+      navigateTo('Main', {
+        screen: 'Notification',
+        params: data.notificationId ? { notificationId: data.notificationId } : undefined,
+      });
+      return;
+    }
+
+    // === CHAT NOTIFICATIONS ===
+    if (data?.type === 'chat_message' && data.chatId) {
+      // Navigate to Main with Chat tab, then to chat detail
+      navigateTo('Main', {
+        screen: 'Chat',
+        params: { chatId: data.chatId },
+      });
+      return;
+    }
+
+    // === DEFAULT: Navigate to Notifications screen ===
+    console.log('📝 Unhandled notification type, navigating to Notifications screen');
+    navigateTo('Main', {
+      screen: 'Notification',
+      params: data.notificationId ? { notificationId: data.notificationId } : undefined,
+    });
   };
 
   // Register notification listeners and setup push token registration
@@ -338,9 +410,11 @@ export default function App() {
         <ToastProvider>
           <ToastInitializer />
           <AuthProvider>
-            <NavigationContainer linking={linking} ref={navigationRef}>
-              <AppNavigator />
-            </NavigationContainer>
+            <VersionChecker>
+              <NavigationContainer linking={linking} ref={navigationRef}>
+                <AppNavigator />
+              </NavigationContainer>
+            </VersionChecker>
           </AuthProvider>
           <StatusBar style="auto" />
         </ToastProvider>

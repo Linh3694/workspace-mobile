@@ -77,7 +77,12 @@ export type RootStackParamList = {
   };
   [ROUTES.SCREENS.ATTENDANCE_HOME]: undefined;
   [ROUTES.SCREENS.ATTENDANCE_DETAIL]: { classId: string; date: string };
-  [ROUTES.SCREENS.LEAVE_REQUESTS]: { classId?: string };
+  [ROUTES.SCREENS.LEAVE_REQUESTS]: {
+    classId?: string;
+    studentId?: string;
+    leaveRequestId?: string;
+    fromNotification?: boolean;
+  };
   [ROUTES.SCREENS.CREATE_LEAVE_REQUEST]: { classId: string; classTitle?: string };
   Notification: { notificationId?: string } | undefined;
   // Bus Module Routes

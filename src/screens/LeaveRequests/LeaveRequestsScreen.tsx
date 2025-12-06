@@ -74,8 +74,10 @@ const LeaveRequestsScreen = () => {
   const { user } = useAuth();
   const { t } = useLanguage();
 
-  // Get classId from route params (if viewing specific class)
+  // Get params from route (classId, or notification params)
   const selectedClassId = route.params?.classId;
+  const notificationLeaveRequestId = route.params?.leaveRequestId;
+  const fromNotification = route.params?.fromNotification;
 
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +89,10 @@ const LeaveRequestsScreen = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [classTitles, setClassTitles] = useState<Record<string, string>>({});
+  const [showAllRequests, setShowAllRequests] = useState(fromNotification === true);
+  const [highlightedRequestId, setHighlightedRequestId] = useState<string | null>(
+    notificationLeaveRequestId || null
+  );
   const limit = 20;
 
   // Get class IDs where teacher is homeroom or vice homeroom teacher
@@ -170,7 +176,7 @@ const LeaveRequestsScreen = () => {
 
   const loadLeaveRequests = useCallback(
     async (showLoading = true) => {
-      if (!selectedClassId && teacherClasses.length === 0) {
+      if (!selectedClassId && !showAllRequests && teacherClasses.length === 0) {
         // Still loading classes, don't show error yet
         console.log('[LeaveRequests] No classes loaded yet, skipping leave requests fetch');
         return;
@@ -191,10 +197,10 @@ const LeaveRequestsScreen = () => {
             limit,
             search: searchQuery.trim() || undefined,
           });
-        } else {
-          // Load leave requests for all teacher classes
+        } else if (showAllRequests || fromNotification) {
+          // Load leave requests for all teacher classes (from notification or showAll mode)
           console.log(
-            '[LeaveRequests] Fetching leave requests for all teacher classes:',
+            '[LeaveRequests] Fetching ALL leave requests for teacher classes:',
             teacherClasses
           );
           response = await leaveService.getAllTeacherLeaveRequests(teacherClasses, {
@@ -202,6 +208,11 @@ const LeaveRequestsScreen = () => {
             limit,
             search: searchQuery.trim() || undefined,
           });
+        } else {
+          // Not showing requests, just class selection
+          console.log('[LeaveRequests] Class selection mode, not loading requests');
+          setLoading(false);
+          return;
         }
 
         // Parse response - Frappe API returns data in message field
@@ -235,7 +246,7 @@ const LeaveRequestsScreen = () => {
         }
       }
     },
-    [selectedClassId, teacherClasses, currentPage, searchQuery]
+    [selectedClassId, teacherClasses, currentPage, searchQuery, showAllRequests, fromNotification]
   );
 
   const loadStudentPhotos = useCallback(async (requests: LeaveRequest[]) => {
@@ -403,14 +414,14 @@ const LeaveRequestsScreen = () => {
 
   // Load leave requests when teacher classes are loaded or when selected class changes
   useEffect(() => {
-    if (selectedClassId || teacherClasses.length > 0) {
+    if (selectedClassId || (showAllRequests && teacherClasses.length > 0) || (fromNotification && teacherClasses.length > 0)) {
       console.log(
         '[LeaveRequests] Teacher classes or selectedClassId changed, loading leave requests'
       );
       loadLeaveRequests();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClassId, teacherClasses.length]); // Remove loadLeaveRequests from dependencies to avoid loop
+  }, [selectedClassId, teacherClasses.length, showAllRequests, fromNotification]); // Remove loadLeaveRequests from dependencies to avoid loop
 
   // Get display title for a class
   const getClassTitle = (classId: string): string => {
@@ -456,7 +467,7 @@ const LeaveRequestsScreen = () => {
     }, [loadTeacherClasses])
   );
 
-  if (loading && !refreshing && selectedClassId) {
+  if (loading && !refreshing && (selectedClassId || showAllRequests || fromNotification)) {
     return (
       <SafeAreaView className="flex-1 bg-gray-50">
         <View className="flex-1 items-center justify-center">
@@ -489,7 +500,17 @@ const LeaveRequestsScreen = () => {
       <View className="px-4 pt-4">
         <View className="mb-4 flex-row items-center">
           <TouchableOpacity
-            onPress={selectedClassId ? handleBackToList : () => navigation.goBack()}
+            onPress={
+              selectedClassId
+                ? handleBackToList
+                : showAllRequests || fromNotification
+                  ? () => {
+                      setShowAllRequests(false);
+                      setHighlightedRequestId(null);
+                      navigation.setParams({ fromNotification: undefined, leaveRequestId: undefined });
+                    }
+                  : () => navigation.goBack()
+            }
             style={{
               width: 44,
               height: 44,
@@ -501,7 +522,11 @@ const LeaveRequestsScreen = () => {
             <Ionicons name="chevron-back" size={26} color="#0A2240" />
           </TouchableOpacity>
           <Text className="flex-1 text-center text-2xl font-bold text-[#0A2240]">
-            {selectedClassId ? `Lớp ${getClassTitle(selectedClassId)}` : 'Đơn từ'}
+            {selectedClassId
+              ? `Lớp ${getClassTitle(selectedClassId)}`
+              : showAllRequests || fromNotification
+                ? 'Tất cả đơn từ'
+                : 'Đơn từ'}
           </Text>
           {selectedClassId ? (
             <TouchableOpacity
@@ -521,8 +546,8 @@ const LeaveRequestsScreen = () => {
         </View>
       </View>
 
-      {selectedClassId ? (
-        // View for specific class - show leave requests
+      {selectedClassId || showAllRequests || fromNotification ? (
+        // View for specific class or all requests (from notification) - show leave requests
         <ScrollView
           className="flex-1 bg-white"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
@@ -567,13 +592,17 @@ const LeaveRequestsScreen = () => {
                       {group.requests.map((request) => (
                         <View
                           key={request.name}
-                          className="rounded-lg bg-[#FAFAFA] p-4"
+                          className={`rounded-lg p-4 ${
+                            highlightedRequestId === request.name
+                              ? 'border-2 border-[#F05023] bg-[#FFF5F2]'
+                              : 'bg-[#FAFAFA]'
+                          }`}
                           style={{
-                            shadowColor: '#000',
+                            shadowColor: highlightedRequestId === request.name ? '#F05023' : '#000',
                             shadowOffset: { width: 0, height: 1 },
-                            shadowOpacity: 0.05,
-                            shadowRadius: 2,
-                            elevation: 1,
+                            shadowOpacity: highlightedRequestId === request.name ? 0.15 : 0.05,
+                            shadowRadius: highlightedRequestId === request.name ? 4 : 2,
+                            elevation: highlightedRequestId === request.name ? 3 : 1,
                           }}>
                           {/* Student & Parent Info - Two Columns */}
                           <View className="mb-3">

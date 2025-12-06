@@ -161,7 +161,7 @@ const NotificationsScreen = () => {
     }
   }, []);
 
-  // Handle notification press - navigate to ticket detail based on user role
+  // Handle notification press - navigate to appropriate screen based on notification type
   const handleNotificationPress = useCallback(
     async (notification: NotificationData) => {
       // Mark as read if not already read
@@ -197,34 +197,101 @@ const NotificationsScreen = () => {
         }
       };
 
-      // Ticket notifications (user/guest)
-      if (data?.type === 'new_ticket' || data?.type === 'ticket_update') {
-        if (data.ticketId) {
+      // Helper function để navigate đến feedback detail
+      const navigateToFeedbackDetail = (feedbackId: string) => {
+        (navigation as any).navigate(ROUTES.SCREENS.FEEDBACK_DETAIL, { feedbackId });
+      };
+
+      // Helper function để navigate đến leave requests
+      const navigateToLeaveRequests = (params: any) => {
+        const studentId = params?.student_id || params?.studentId;
+        const leaveRequestId = params?.leave_request_id || params?.leaveRequestId;
+        (navigation as any).navigate(ROUTES.SCREENS.LEAVE_REQUESTS, {
+          studentId,
+          leaveRequestId,
+          fromNotification: true,
+        });
+      };
+
+      // Helper function để navigate đến attendance home
+      const navigateToAttendanceHome = (params: any) => {
+        (navigation as any).navigate(ROUTES.SCREENS.ATTENDANCE_HOME, {
+          initialTab: params?.tab || 'GVCN',
+        });
+      };
+
+      // === TICKET NOTIFICATIONS ===
+      const ticketTypes = ['new_ticket', 'ticket_update', 'ticket_created', 'ticket_updated'];
+      const ticketActions = [
+        'ticket_status_changed',
+        'ticket_assigned',
+        'ticket_processing',
+        'ticket_waiting',
+        'ticket_done',
+        'ticket_closed',
+        'ticket_cancelled',
+        'new_ticket_admin',
+        'user_reply',
+        'ticket_cancelled_admin',
+        'completion_confirmed',
+        'ticket_feedback_received',
+      ];
+
+      if (ticketTypes.includes(data?.type) || ticketActions.includes(data?.action)) {
+        if (data?.ticketId) {
           await navigateToTicketDetail(data.ticketId);
+          return;
         }
-      } else if (
-        // All ticket-related actions
-        data?.action === 'ticket_status_changed' ||
-        data?.action === 'ticket_assigned' ||
-        data?.action === 'ticket_processing' ||
-        data?.action === 'ticket_waiting' ||
-        data?.action === 'ticket_done' ||
-        data?.action === 'ticket_closed' ||
-        data?.action === 'ticket_cancelled' ||
-        // Admin notifications
-        data?.action === 'new_ticket_admin' ||
-        data?.action === 'user_reply' ||
-        data?.action === 'ticket_cancelled_admin' ||
-        data?.action === 'completion_confirmed' ||
-        data?.action === 'ticket_feedback_received'
-      ) {
-        if (data.ticketId) {
-          await navigateToTicketDetail(data.ticketId);
+      }
+
+      // === FEEDBACK NOTIFICATIONS ===
+      const feedbackTypes = ['feedback_created', 'feedback_new', 'feedback_reply', 'feedback_updated'];
+      const feedbackActions = [
+        'new_feedback',
+        'feedback_created',
+        'feedback_reply',
+        'guardian_reply',
+        'feedback_assigned',
+      ];
+
+      if (feedbackTypes.includes(data?.type) || feedbackActions.includes(data?.action)) {
+        if (data?.feedbackId) {
+          navigateToFeedbackDetail(data.feedbackId);
+          return;
         }
-      } else if (data?.type === 'attendance' || data?.type === 'staff_attendance') {
-        // Attendance notifications: không điều hướng, chỉ đánh dấu đã đọc
+      }
+
+      // === LEAVE REQUEST NOTIFICATIONS ===
+      const leaveTypes = ['leave_request', 'leave'];
+
+      if (leaveTypes.includes(data?.type)) {
+        navigateToLeaveRequests(data);
         return;
       }
+
+      // === ATTENDANCE NOTIFICATIONS ===
+      if (data?.type === 'attendance_reminder') {
+        navigateToAttendanceHome(data);
+        return;
+      }
+
+      // attendance, staff_attendance: chỉ đánh dấu đã đọc, không điều hướng
+      if (data?.type === 'attendance' || data?.type === 'staff_attendance') {
+        return;
+      }
+
+      // === CHAT NOTIFICATIONS ===
+      if (data?.type === 'chat_message' && data?.chatId) {
+        // Navigate to Main with Chat tab
+        (navigation as any).navigate(ROUTES.SCREENS.MAIN, {
+          screen: 'Chat',
+          params: { chatId: data.chatId },
+        });
+        return;
+      }
+
+      // === DEFAULT: Không xử lý đặc biệt ===
+      console.log('📝 Unhandled notification type in NotificationsScreen:', data?.type, data?.action);
     },
     [navigation, markAsRead]
   );

@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
+  Modal,
 } from 'react-native';
 import { TouchableOpacity } from '../../components/Common';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -99,6 +100,8 @@ const TimetableScreen: React.FC = () => {
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => getMondayOfWeek());
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+  const [showClassPicker, setShowClassPicker] = useState(false);
+  const [teacherUserId, setTeacherUserId] = useState<string | null>(null);
 
   // Track if initial load done
   const initialLoadDone = useRef(false);
@@ -125,6 +128,11 @@ const TimetableScreen: React.FC = () => {
       console.log('🏫 Data received:', data);
 
       if (data) {
+        // Save teacher user ID for role checking
+        if (data.teacher_user_id) {
+          setTeacherUserId(data.teacher_user_id);
+        }
+        
         // Combine homeroom and vice-homeroom classes (remove duplicates)
         const allClasses = [...(data.homeroom_classes || [])];
         console.log('🏫 Homeroom classes found:', allClasses.length);
@@ -224,10 +232,10 @@ const TimetableScreen: React.FC = () => {
     setCurrentDate(newDate);
   };
 
-  // Filter entries for current date
+  // Filter entries for current date and deduplicate
   const currentDateStr = formatDate(currentDate);
   const dayEntries = useMemo(() => {
-    return timetableEntries
+    const filtered = timetableEntries
       .filter((entry) => entry.date === currentDateStr)
       .sort((a, b) => {
         // Sort by period_priority first, then by start_time
@@ -236,6 +244,15 @@ const TimetableScreen: React.FC = () => {
         if (aPriority !== bPriority) return aPriority - bPriority;
         return (a.start_time || '').localeCompare(b.start_time || '');
       });
+    
+    // Deduplicate by timetable_column_id (keep first occurrence)
+    const seen = new Set<string>();
+    return filtered.filter((entry) => {
+      const key = entry.timetable_column_id || entry.name || `${entry.date}-${entry.period_id}-${entry.subject_id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }, [timetableEntries, currentDateStr]);
 
   // Count curriculum periods
@@ -255,9 +272,32 @@ const TimetableScreen: React.FC = () => {
     return counts;
   }, [dayEntries]);
 
-  // Get current class title
+  // Get current class title and role info
   const currentClass = teacherClasses.find((c) => c.name === selectedClassId);
   const currentClassTitle = currentClass?.title || 'Chọn lớp';
+  
+  // Determine teacher's role for each class
+  const getTeacherRole = (cls: TeacherClass): 'homeroom' | 'vice_homeroom' | 'teaching' => {
+    if (!teacherUserId) return 'teaching';
+    
+    // Check homeroom_teacher_info or vice_homeroom_teacher_info
+    const homeroomInfo = cls.homeroom_teacher_info;
+    const viceInfo = cls.vice_homeroom_teacher_info;
+    
+    // If current user is homeroom teacher
+    if (homeroomInfo?.user_id === teacherUserId) {
+      return 'homeroom';
+    }
+    // If current user is vice homeroom teacher  
+    if (viceInfo?.user_id === teacherUserId) {
+      return 'vice_homeroom';
+    }
+    return 'teaching';
+  };
+  
+  const currentRole = currentClass ? getTeacherRole(currentClass) : null;
+  const roleLabel = currentRole === 'homeroom' ? 'Chủ nhiệm' : currentRole === 'vice_homeroom' ? 'Phó CN' : '';
+  const hasMultipleClasses = teacherClasses.length > 1;
 
   // Check if today
   const isToday = formatDate(new Date()) === currentDateStr;
@@ -308,7 +348,7 @@ const TimetableScreen: React.FC = () => {
   return (
     <View style={{ flex: 1, backgroundColor: '#FFFFFF', paddingTop: insets.top }}>
       {/* Header */}
-      <View className="flex-row items-center px-4 py-4">
+      <View className="flex-row items-center px-4 py-3">
         <TouchableOpacity onPress={() => navigation.goBack()} className="p-2 rounded-full">
           <Ionicons name="arrow-back" size={24} color="#002855" />
         </TouchableOpacity>
@@ -317,26 +357,87 @@ const TimetableScreen: React.FC = () => {
         </Text>
       </View>
 
-      {/* Class Selector - Only show if more than 1 class */}
-      {/* {teacherClasses.length > 1 ? (
-        <View className="mx-4 mb-4 bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <Picker
-            selectedValue={selectedClassId}
-            onValueChange={(value) => setSelectedClassId(value)}
-            style={{ height: 50 }}
+      {/* Class Selector Badge */}
+      <View className="px-4 mb-2">
+        <TouchableOpacity 
+          onPress={() => hasMultipleClasses && setShowClassPicker(true)}
+          activeOpacity={hasMultipleClasses ? 0.7 : 1}
+          className="self-center"
+        >
+          <View 
+            className="flex-row items-center px-4 py-2 rounded-full"
+            style={{ backgroundColor: '#E5EAF0' }}
           >
-            {teacherClasses.map((cls) => (
-              <Picker.Item key={cls.name} label={cls.title} value={cls.name} />
-            ))}
-          </Picker>
-        </View>
-      ) : teacherClasses.length === 1 ? (
-        <View className="mx-4 mb-2 px-4 py-2">
-          <Text className="text-center text-base font-semibold text-[#002855]">
-            {currentClassTitle}
-          </Text>
-        </View>
-      ) : null} */}
+            <Text className="text-base font-semibold text-[#002855]" numberOfLines={1}>
+              {currentClassTitle}
+            </Text>
+            {hasMultipleClasses && (
+              <Ionicons name="chevron-down" size={16} color="#002855" style={{ marginLeft: 6 }} />
+            )}
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* Class Picker Modal */}
+      <Modal
+        visible={showClassPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowClassPicker(false)}
+      >
+        <Pressable 
+          className="flex-1 bg-black/50 justify-end"
+          onPress={() => setShowClassPicker(false)}
+        >
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            <View className="bg-white rounded-t-3xl" style={{ paddingBottom: insets.bottom + 16 }}>
+              {/* Modal Header */}
+              <View className="flex-row items-center justify-between px-5 py-4 border-b border-gray-100">
+                <Text className="text-lg font-bold text-[#002855]">Chọn lớp</Text>
+                <TouchableOpacity onPress={() => setShowClassPicker(false)} className="p-1">
+                  <Ionicons name="close" size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
+              
+              {/* Class List */}
+              <ScrollView className="max-h-80">
+                {teacherClasses.map((cls) => {
+                  const isSelected = cls.name === selectedClassId;
+                  const role = getTeacherRole(cls);
+                  const roleBadge = role === 'homeroom' ? 'Chủ nhiệm' : role === 'vice_homeroom' ? 'Phó Chủ nhiệm' : '';
+                  
+                  return (
+                    <TouchableOpacity
+                      key={cls.name}
+                      onPress={() => {
+                        setSelectedClassId(cls.name);
+                        setShowClassPicker(false);
+                      }}
+                      className={`flex-row items-center px-5 py-4 border-b border-gray-50 ${isSelected ? 'bg-blue-50' : ''}`}
+                    >
+                      <View className="flex-1">
+                        <Text className={`text-base ${isSelected ? 'font-bold text-[#002855]' : 'text-gray-800'}`}>
+                          {cls.title}
+                        </Text>
+                        {roleBadge ? (
+                          <View className="flex-row items-center mt-1">
+                            <View className={`px-2 py-0.5 rounded-full ${role === 'homeroom' ? 'bg-[#002855]' : 'bg-[#009483]'}`}>
+                              <Text className="text-xs text-white font-medium">{roleBadge}</Text>
+                            </View>
+                          </View>
+                        ) : null}
+                      </View>
+                      {isSelected && (
+                        <Ionicons name="checkmark-circle" size={24} color="#002855" />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Date Navigation */}
       <View className="flex-row items-center justify-center mb-4 bg-white">
@@ -393,7 +494,7 @@ const TimetableScreen: React.FC = () => {
                   : '';
 
               return (
-                <View key={`${entry.timetable_column_id || entry.name || index}`} className="mb-6">
+                <View key={`${entry.date}-${entry.timetable_column_id || entry.name}-${index}`} className="mb-6">
                   {/* Period Name and Time - Above the card */}
                   <View className="flex-row items-center justify-between mb-2 px-1">
                     {!isNonStudy ? (
@@ -452,12 +553,13 @@ const TimetableScreen: React.FC = () => {
                                 const avatarUrl = getFullImageUrl(teacher?.avatar_url);
                                 const teacherFullName = teacher?.full_name || entry.teacher_names || '';
                                 const initials = getTeacherInitials(teacherFullName);
-                                const tooltipKey = `${entry.timetable_column_id}-${teacherId}`;
+                                // Use index to ensure unique tooltipKey even with duplicate data
+                                const tooltipKey = `entry-${index}-teacher-${idx}`;
                                 const displayName = formatTeacherDisplayName(teacherFullName, teacher?.gender);
 
                                 return (
                                   <View
-                                    key={teacherId}
+                                    key={`${entry.date}-${entry.timetable_column_id}-teacher-${idx}`}
                                     style={{ marginLeft: idx > 0 ? -10 : 0, zIndex: 10 }}
                                   >
                                     {/* Tooltip */}

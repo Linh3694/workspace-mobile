@@ -84,7 +84,48 @@ export interface ClassStudentsResponse {
   message?: string;
 }
 
+export interface SingleLeaveRequestResponse {
+  success: boolean;
+  data?: LeaveRequest & { class_id?: string };
+  message?: string;
+}
+
 class LeaveService {
+  /**
+   * Get a single leave request by ID
+   */
+  async getLeaveRequestById(leaveRequestId: string): Promise<SingleLeaveRequestResponse> {
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.get_leave_request?leave_request_id=${encodeURIComponent(leaveRequestId)}`,
+        { headers }
+      );
+
+      const result = await response.json();
+      const actualResult = result.message || result;
+
+      return {
+        success: actualResult.success === true,
+        data: actualResult.data,
+        message: actualResult.message,
+      };
+    } catch (error) {
+      console.error('Error fetching leave request by ID:', error);
+      return {
+        success: false,
+        message: 'Không thể tải thông tin đơn nghỉ phép',
+      };
+    }
+  }
+
   /**
    * Create leave request for a student (teacher view)
    */
