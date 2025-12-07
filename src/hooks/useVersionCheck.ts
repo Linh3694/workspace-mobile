@@ -1,26 +1,29 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Platform, Linking } from 'react-native';
-import VersionCheck from 'react-native-version-check-expo';
 import Constants from 'expo-constants';
+import * as Application from 'expo-application';
+import { API_BASE_URL } from '../config/constants';
 
 export interface VersionInfo {
   currentVersion: string;
   latestVersion: string | null;
+  minVersion: string | null;
   storeUrl: string | null;
   needsUpdate: boolean;
+  forceUpdate: boolean;
   isChecking: boolean;
   error: string | null;
   isProduction: boolean;
 }
 
-// Kiểm tra có phải production build không (không phải Expo Go hay dev build)
+// Fallback store URLs
+const IOS_STORE_URL = 'https://apps.apple.com/app/id6746143732';
+const ANDROID_STORE_URL = 'https://play.google.com/store/apps/details?id=com.hailinh.n23.workspace';
+
+// Kiểm tra có phải production build không
 const isProductionBuild = (): boolean => {
-  // Expo Go có appOwnership = 'expo'
-  // Development build có appOwnership = 'guest' hoặc executionEnvironment khác 'standalone'
   const isExpoGo = Constants.appOwnership === 'expo';
   const isStandalone = Constants.executionEnvironment === 'standalone';
-  
-  // Chỉ là production khi là standalone build (không phải Expo Go, không phải dev client)
   return !isExpoGo && isStandalone;
 };
 
@@ -28,8 +31,10 @@ export const useVersionCheck = () => {
   const [versionInfo, setVersionInfo] = useState<VersionInfo>({
     currentVersion: '',
     latestVersion: null,
+    minVersion: null,
     storeUrl: null,
     needsUpdate: false,
+    forceUpdate: false,
     isChecking: true,
     error: null,
     isProduction: isProductionBuild(),
@@ -38,15 +43,18 @@ export const useVersionCheck = () => {
   const checkVersion = useCallback(async () => {
     // Chỉ check version trên production build
     if (!isProductionBuild()) {
+      const devVersion = Constants.expoConfig?.version || Application.nativeApplicationVersion || '0.0.0';
       console.log('📱 Version Check: Skipped (not production build)', {
         appOwnership: Constants.appOwnership,
         executionEnvironment: Constants.executionEnvironment,
+        currentVersion: devVersion,
       });
       setVersionInfo(prev => ({
         ...prev,
         isChecking: false,
         needsUpdate: false,
-        currentVersion: Constants.expoConfig?.version || '0.0.0',
+        forceUpdate: false,
+        currentVersion: devVersion,
       }));
       return;
     }
@@ -54,52 +62,72 @@ export const useVersionCheck = () => {
     try {
       setVersionInfo(prev => ({ ...prev, isChecking: true, error: null }));
 
-      const currentVersion = VersionCheck.getCurrentVersion();
-      
-      // Lấy version mới nhất từ store
-      const latestVersion = await VersionCheck.getLatestVersion({
-        provider: Platform.OS === 'ios' ? 'appStore' : 'playStore',
-      });
+      // Lấy version hiện tại từ native app
+      const currentVersion = Application.nativeApplicationVersion || Constants.expoConfig?.version || '0.0.0';
+      const platform = Platform.OS;
 
-      // Lấy store URL
-      const storeUrl = await VersionCheck.getStoreUrl({
-        appID: Platform.OS === 'ios' ? 'com.wellspring.workspace' : undefined,
-        packageName: Platform.OS === 'android' ? 'com.hailinh.n23.workspace' : undefined,
-      });
+      // Gọi API backend để check version
+      const response = await fetch(
+        `${API_BASE_URL}/api/method/erp.api.erp_sis.app_version.check_update`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            app_id: 'wis_staff',
+            platform: platform,
+            current_version: currentVersion,
+          }),
+        }
+      );
 
-      // Kiểm tra có cần update không
-      let needsUpdate = false;
-      if (latestVersion && currentVersion) {
-        const result = await VersionCheck.needUpdate({
+      const data = await response.json();
+      const result = data.message;
+
+      if (result?.success) {
+        console.log('📱 Version Check:', {
           currentVersion,
-          latestVersion,
+          latestVersion: result.latest_version,
+          needsUpdate: result.needs_update,
+          forceUpdate: result.force_update,
+          platform,
         });
-        needsUpdate = result?.isNeeded || false;
+
+        setVersionInfo({
+          currentVersion,
+          latestVersion: result.latest_version,
+          minVersion: result.min_version,
+          storeUrl: result.store_url,
+          needsUpdate: result.needs_update,
+          forceUpdate: result.force_update,
+          isChecking: false,
+          error: null,
+          isProduction: true,
+        });
+      } else {
+        // API failed, skip update check
+        console.warn('📱 Version Check API failed:', result?.error);
+        setVersionInfo(prev => ({
+          ...prev,
+          currentVersion,
+          isChecking: false,
+          needsUpdate: false,
+          forceUpdate: false,
+          error: result?.error || 'API error',
+        }));
       }
-
-      console.log('📱 Version Check:', {
-        currentVersion,
-        latestVersion,
-        needsUpdate,
-        storeUrl,
-        isProduction: true,
-      });
-
-      setVersionInfo({
-        currentVersion,
-        latestVersion,
-        storeUrl,
-        needsUpdate,
-        isChecking: false,
-        error: null,
-        isProduction: true,
-      });
     } catch (error) {
       console.error('❌ Error checking version:', error);
+      // Network error - skip update check, don't block user
+      const currentVersion = Application.nativeApplicationVersion || '0.0.0';
       setVersionInfo(prev => ({
         ...prev,
+        currentVersion,
         isChecking: false,
-        error: error instanceof Error ? error.message : 'Không thể kiểm tra phiên bản',
+        needsUpdate: false,
+        forceUpdate: false,
+        error: error instanceof Error ? error.message : 'Network error',
       }));
     }
   }, []);
@@ -109,10 +137,7 @@ export const useVersionCheck = () => {
       let url = versionInfo.storeUrl;
       
       if (!url) {
-        // Fallback URLs
-        url = Platform.OS === 'ios'
-          ? 'https://apps.apple.com/app/id' // Thêm App Store ID của bạn
-          : 'https://play.google.com/store/apps/details?id=com.hailinh.n23.workspace';
+        url = Platform.OS === 'ios' ? IOS_STORE_URL : ANDROID_STORE_URL;
       }
 
       const canOpen = await Linking.canOpenURL(url);
@@ -136,4 +161,3 @@ export const useVersionCheck = () => {
     openStore,
   };
 };
-
