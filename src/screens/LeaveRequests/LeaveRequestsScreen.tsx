@@ -451,6 +451,15 @@ const LeaveRequestsScreen = () => {
     }
   };
 
+  // Handle editing leave request
+  const handleEditLeaveRequest = (request: LeaveRequest) => {
+    navigation.navigate(ROUTES.SCREENS.CREATE_LEAVE_REQUEST, {
+      classId: selectedClassId,
+      classTitle: selectedClassId ? `Lớp ${getClassTitle(selectedClassId)}` : undefined,
+      leaveId: request.name,
+    });
+  };
+
   useEffect(() => {
     if (leaveRequests.length > 0) {
       loadStudentPhotos(leaveRequests);
@@ -590,20 +599,23 @@ const LeaveRequestsScreen = () => {
                     {/* Cards for this date */}
                     <View className="space-y-4">
                       {group.requests.map((request) => (
-                        <View
+                        <TouchableOpacity
                           key={request.name}
-                          className={`rounded-lg p-4 ${
-                            highlightedRequestId === request.name
-                              ? 'border-2 border-[#F05023] bg-[#FFF5F2]'
-                              : 'bg-[#FAFAFA]'
-                          }`}
-                          style={{
-                            shadowColor: highlightedRequestId === request.name ? '#F05023' : '#000',
-                            shadowOffset: { width: 0, height: 1 },
-                            shadowOpacity: highlightedRequestId === request.name ? 0.15 : 0.05,
-                            shadowRadius: highlightedRequestId === request.name ? 4 : 2,
-                            elevation: highlightedRequestId === request.name ? 3 : 1,
-                          }}>
+                          onPress={() => handleEditLeaveRequest(request)}
+                          activeOpacity={0.7}>
+                          <View
+                            className={`rounded-lg p-4 ${
+                              highlightedRequestId === request.name
+                                ? 'border-2 border-[#F05023] bg-[#FFF5F2]'
+                                : 'bg-[#FAFAFA]'
+                            }`}
+                            style={{
+                              shadowColor: highlightedRequestId === request.name ? '#F05023' : '#000',
+                              shadowOffset: { width: 0, height: 1 },
+                              shadowOpacity: highlightedRequestId === request.name ? 0.15 : 0.05,
+                              shadowRadius: highlightedRequestId === request.name ? 4 : 2,
+                              elevation: highlightedRequestId === request.name ? 3 : 1,
+                            }}>
                           {/* Student & Parent Info - Two Columns */}
                           <View className="mb-3">
                             <View className="flex-row">
@@ -691,7 +703,14 @@ const LeaveRequestsScreen = () => {
                               )}
                             </View>
                           </View>
+
+                          {/* Edit Indicator */}
+                          <View className="mt-3 flex-row items-center justify-end">
+                            <Text className="text-xs text-gray-500">Nhấn để xem chi tiết</Text>
+                            <Ionicons name="chevron-forward" size={16} color="#6B7280" style={{ marginLeft: 4 }} />
+                          </View>
                         </View>
+                        </TouchableOpacity>
                       ))}
                     </View>
                   </View>

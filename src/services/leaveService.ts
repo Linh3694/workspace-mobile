@@ -86,7 +86,54 @@ export interface ClassStudentsResponse {
 
 export interface SingleLeaveRequestResponse {
   success: boolean;
-  data?: LeaveRequest & { class_id?: string };
+  data?: LeaveRequest & { 
+    class_id?: string;
+    id?: string;
+    is_created_by_parent?: boolean;
+  };
+  message?: string;
+}
+
+export interface LeaveAttachment {
+  name: string;
+  file_name: string;
+  file_url: string;
+  file_size: number;
+  creation: string;
+}
+
+export interface LeaveAttachmentsResponse {
+  success: boolean;
+  data?: LeaveAttachment[];
+  message?: string;
+}
+
+export interface UpdateLeaveRequestData {
+  id: string;
+  reason?: string;
+  other_reason?: string;
+  start_date?: string;
+  end_date?: string;
+  description?: string;
+}
+
+export interface UpdateLeaveRequestResponse {
+  success: boolean;
+  data?: {
+    message: string;
+    request: {
+      id: string;
+      student_name: string;
+    };
+  };
+  message?: string;
+}
+
+export interface DeleteLeaveRequestResponse {
+  success: boolean;
+  data?: {
+    message: string;
+  };
   message?: string;
 }
 
@@ -382,6 +429,253 @@ class LeaveService {
       return {
         success: false,
         message: 'Không thể tải ảnh học sinh',
+      };
+    }
+  }
+
+  /**
+   * Get detailed information of a specific leave request
+   */
+  async getLeaveRequestDetails(leaveRequestId: string): Promise<SingleLeaveRequestResponse> {
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.get_leave_request_details?leave_request_id=${encodeURIComponent(leaveRequestId)}`,
+        { headers }
+      );
+
+      const result = await response.json();
+      const actualResult = result.message || result;
+
+      return {
+        success: actualResult.success === true,
+        data: actualResult.data,
+        message: actualResult.message,
+      };
+    } catch (error) {
+      console.error('Error fetching leave request details:', error);
+      return {
+        success: false,
+        message: 'Không thể tải thông tin đơn nghỉ phép',
+      };
+    }
+  }
+
+  /**
+   * Update leave request (admin/teacher view)
+   */
+  async updateLeaveRequest(data: UpdateLeaveRequestData): Promise<UpdateLeaveRequestResponse> {
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      
+      // Use FormData for consistency with web version
+      const formData = new FormData();
+      formData.append('id', data.id);
+      if (data.reason) formData.append('reason', data.reason);
+      if (data.other_reason !== undefined) formData.append('other_reason', data.other_reason);
+      if (data.start_date) formData.append('start_date', data.start_date);
+      if (data.end_date) formData.append('end_date', data.end_date);
+      if (data.description !== undefined) formData.append('description', data.description);
+
+      const headers: HeadersInit = {};
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.update_leave_request`,
+        {
+          method: 'POST',
+          headers,
+          body: formData,
+        }
+      );
+
+      const result = await response.json();
+      const actualResult = result.message || result;
+
+      return {
+        success: actualResult.success === true,
+        data: actualResult.data,
+        message: actualResult.message,
+      };
+    } catch (error) {
+      console.error('Error updating leave request:', error);
+      return {
+        success: false,
+        message: 'Không thể cập nhật đơn nghỉ phép',
+      };
+    }
+  }
+
+  /**
+   * Delete leave request (admin/teacher view)
+   */
+  async deleteLeaveRequest(leaveRequestId: string): Promise<DeleteLeaveRequestResponse> {
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.delete_leave_request`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ id: leaveRequestId }),
+        }
+      );
+
+      const result = await response.json();
+      const actualResult = result.message || result;
+
+      return {
+        success: actualResult.success === true,
+        data: actualResult.data,
+        message: actualResult.message,
+      };
+    } catch (error) {
+      console.error('Error deleting leave request:', error);
+      return {
+        success: false,
+        message: 'Không thể xóa đơn nghỉ phép',
+      };
+    }
+  }
+
+  /**
+   * Get attachments for a leave request
+   */
+  async getLeaveRequestAttachments(leaveRequestId: string): Promise<LeaveAttachmentsResponse> {
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.get_leave_request_attachments?leave_request_id=${encodeURIComponent(leaveRequestId)}`,
+        { headers }
+      );
+
+      const result = await response.json();
+      const actualResult = result.message || result;
+
+      return {
+        success: actualResult.success === true,
+        data: actualResult.data,
+        message: actualResult.message,
+      };
+    } catch (error) {
+      console.error('Error fetching leave request attachments:', error);
+      return {
+        success: false,
+        message: 'Không thể tải file đính kèm',
+      };
+    }
+  }
+
+  /**
+   * Upload attachments for a leave request
+   */
+  async uploadLeaveAttachments(
+    leaveRequestId: string,
+    files: { uri: string; name: string; type: string }[]
+  ): Promise<LeaveAttachmentsResponse> {
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+
+      const formData = new FormData();
+      formData.append('leave_request_id', leaveRequestId);
+
+      files.forEach((file, index) => {
+        formData.append(`documents[${index}]`, {
+          uri: file.uri,
+          name: file.name,
+          type: file.type,
+        } as any);
+      });
+
+      const headers: HeadersInit = {};
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.upload_leave_attachment`,
+        {
+          method: 'POST',
+          headers,
+          body: formData,
+        }
+      );
+
+      const result = await response.json();
+      const actualResult = result.message || result;
+
+      return {
+        success: actualResult.success === true,
+        data: actualResult.files || actualResult.data,
+        message: actualResult.message,
+      };
+    } catch (error) {
+      console.error('Error uploading leave attachments:', error);
+      return {
+        success: false,
+        message: 'Không thể tải file lên',
+      };
+    }
+  }
+
+  /**
+   * Delete attachment from a leave request
+   */
+  async deleteLeaveAttachment(fileName: string): Promise<DeleteLeaveRequestResponse> {
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.delete_leave_attachment`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ file_name: fileName }),
+        }
+      );
+
+      const result = await response.json();
+      const actualResult = result.message || result;
+
+      return {
+        success: actualResult.success === true,
+        data: actualResult.data,
+        message: actualResult.message,
+      };
+    } catch (error) {
+      console.error('Error deleting leave attachment:', error);
+      return {
+        success: false,
+        message: 'Không thể xóa file',
       };
     }
   }

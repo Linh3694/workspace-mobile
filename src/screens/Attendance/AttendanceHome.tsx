@@ -192,7 +192,12 @@ const AttendanceHome = () => {
 
           // 5. Calculate stats
           const totalStudents = studentIds.length;
-          const attendanceCount = attendanceRecords.length; // Students who have attendance records
+          // Only count attendance records for students currently in class
+          // This prevents showing 21/17 when some students have left the class
+          const validAttendanceRecords = attendanceRecords.filter(
+            (record: any) => studentIds.includes(record.student_id)
+          );
+          const attendanceCount = validAttendanceRecords.length;
           const hasAttendance = attendanceCount > 0;
 
           let checkInCount = 0;
