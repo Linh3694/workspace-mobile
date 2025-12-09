@@ -33,7 +33,8 @@
         "expo-image-picker",
         {
           "photosPermission": "Ứng dụng cần quyền truy cập thư viện ảnh để đính kèm ảnh vào ticket hỗ trợ và cập nhật avatar.",
-          "cameraPermission": "Ứng dụng cần quyền truy cập camera để chụp ảnh."
+          "cameraPermission": "Ứng dụng cần quyền truy cập camera để chụp ảnh.",
+          "usePhotoPicker": true
         }
       ],
       [
