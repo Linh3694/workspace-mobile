@@ -2,7 +2,7 @@
   "expo": {
     "name": "Wis",
     "slug": "workspace",
-    "version": "1.5.2",
+    "version": "1.5.0",
     "web": {
       "favicon": "./src/assets/favicon.png"
     },
@@ -101,7 +101,7 @@
         "projectId": "f6365a6d-3c57-4b54-aaa8-119f05e3698e"
       }
     },
-    "runtimeVersion": "1.5.2",
+    "runtimeVersion": "1.5.0",
     "updates": {
       "url": "https://u.expo.dev/f6365a6d-3c57-4b54-aaa8-119f05e3698e"
     }
