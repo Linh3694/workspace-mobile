@@ -71,9 +71,18 @@ else
     console.log('✅ Updated package.json');
     "
 
+    # Update version in ios/Wis/Info.plist (bare workflow)
+    if [ -f "./ios/Wis/Info.plist" ]; then
+        /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${NEW_VERSION}" "./ios/Wis/Info.plist"
+        echo -e "${GREEN}✅ Updated ios/Wis/Info.plist (CFBundleShortVersionString)${NC}"
+    fi
+
     # Git commit version bump
     echo -e "${BLUE}📝 Committing version bump...${NC}"
     git add app.json package.json
+    if [ -f "./ios/Wis/Info.plist" ]; then
+        git add ./ios/Wis/Info.plist
+    fi
     git commit -m "chore: bump version to ${NEW_VERSION} [ios]" || echo -e "${YELLOW}No changes to commit${NC}"
     VERSION_BUMPED=true
 fi
@@ -99,9 +108,17 @@ rollback_version() {
         packageJson.version = '${OLD_VERSION}';
         fs.writeFileSync('./package.json', JSON.stringify(packageJson, null, 2) + '\n');
         "
+
+        # Revert version in ios/Wis/Info.plist (bare workflow)
+        if [ -f "./ios/Wis/Info.plist" ]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${OLD_VERSION}" "./ios/Wis/Info.plist"
+        fi
         
         # Amend the last commit or create revert commit
         git add app.json package.json
+        if [ -f "./ios/Wis/Info.plist" ]; then
+            git add ./ios/Wis/Info.plist
+        fi
         git commit --amend -m "chore: bump version to ${OLD_VERSION} [ios] (reverted due to build failure)" --no-edit 2>/dev/null || \
         git commit -m "revert: rollback version to ${OLD_VERSION} due to build failure" 2>/dev/null || true
         
