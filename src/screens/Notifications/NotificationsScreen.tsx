@@ -202,15 +202,21 @@ const NotificationsScreen = () => {
         (navigation as any).navigate(ROUTES.SCREENS.FEEDBACK_DETAIL, { feedbackId });
       };
 
-      // Helper function để navigate đến leave requests
+      // Helper function để navigate đến leave requests detail
       const navigateToLeaveRequests = (params: any) => {
-        const studentId = params?.student_id || params?.studentId;
+        const classId = params?.class_id || params?.classId;
         const leaveRequestId = params?.leave_request_id || params?.leaveRequestId;
-        (navigation as any).navigate(ROUTES.SCREENS.LEAVE_REQUESTS, {
-          studentId,
-          leaveRequestId,
-          fromNotification: true,
-        });
+
+        if (classId) {
+          (navigation as any).navigate(ROUTES.SCREENS.LEAVE_REQUESTS_DETAIL, {
+            classId,
+            leaveRequestId,
+            fromNotification: true,
+          });
+        } else {
+          // Fallback to class list if no classId
+          (navigation as any).navigate(ROUTES.SCREENS.LEAVE_REQUESTS);
+        }
       };
 
       // Helper function để navigate đến attendance home
@@ -245,7 +251,12 @@ const NotificationsScreen = () => {
       }
 
       // === FEEDBACK NOTIFICATIONS ===
-      const feedbackTypes = ['feedback_created', 'feedback_new', 'feedback_reply', 'feedback_updated'];
+      const feedbackTypes = [
+        'feedback_created',
+        'feedback_new',
+        'feedback_reply',
+        'feedback_updated',
+      ];
       const feedbackActions = [
         'new_feedback',
         'feedback_created',
@@ -291,7 +302,11 @@ const NotificationsScreen = () => {
       }
 
       // === DEFAULT: Không xử lý đặc biệt ===
-      console.log('📝 Unhandled notification type in NotificationsScreen:', data?.type, data?.action);
+      console.log(
+        '📝 Unhandled notification type in NotificationsScreen:',
+        data?.type,
+        data?.action
+      );
     },
     [navigation, markAsRead]
   );

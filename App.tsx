@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 // @ts-ignore
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, Platform, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import AppNavigator, { RootStackParamList } from './src/navigation/AppNavigator';
@@ -194,7 +194,12 @@ export default function App() {
     }
 
     // === FEEDBACK NOTIFICATIONS ===
-    const feedbackTypes = ['feedback_created', 'feedback_new', 'feedback_reply', 'feedback_updated'];
+    const feedbackTypes = [
+      'feedback_created',
+      'feedback_new',
+      'feedback_reply',
+      'feedback_updated',
+    ];
     const feedbackActions = [
       'new_feedback',
       'feedback_created',
@@ -300,7 +305,7 @@ export default function App() {
         // Xác định app type (expo-go vs standalone) - QUAN TRỌNG cho iOS TestFlight
         const isStandalone = Constants.appOwnership !== 'expo';
         const appType = isStandalone ? 'standalone' : 'expo-go';
-        
+
         console.log(`📱 App.tsx - App type: ${appType}, ProjectId: ${projectId}`);
 
         const token = await Notifications.getExpoPushTokenAsync({ projectId });
@@ -324,7 +329,7 @@ export default function App() {
             const osVersion = Device.osVersion || 'Unknown';
             const appVersion =
               Constants.expoConfig?.version || (Constants.manifest as any)?.version || '1.0.0';
-            
+
             // Tạo unique device identifier để phân biệt Expo Go và standalone app
             const deviceId = `${Device.modelId || Device.modelName || 'unknown'}-${Platform.OS}-${appType}`;
 
@@ -359,7 +364,10 @@ export default function App() {
               }
             );
 
-            console.log(`✅ App.tsx Push token registered successfully for ${appType}:`, response.data);
+            console.log(
+              `✅ App.tsx Push token registered successfully for ${appType}:`,
+              response.data
+            );
           } catch (error) {
             console.error('❌ App.tsx Lỗi đăng ký token thiết bị:', error);
           }
@@ -394,11 +402,15 @@ export default function App() {
 
   console.log('🔍 [App] fontsLoaded (forced):', fontsLoaded);
 
+  // Lấy version từ package.json
+  const appVersion = Constants.expoConfig?.version || '1.0.0';
+
   // Hiển thị màn hình trống trong khi fonts đang load (native splash đã ẩn)
   if (!fontsLoaded) {
     return (
       <View style={styles.splashContainer}>
         <SvgSplash width={200} height={200} />
+        <Text style={styles.versionText}>v{appVersion}</Text>
       </View>
     );
   }
@@ -429,5 +441,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
+  },
+  versionText: {
+    marginTop: 20,
+    fontSize: 14,
+    color: '#FFC107',
+    fontWeight: '600',
   },
 });

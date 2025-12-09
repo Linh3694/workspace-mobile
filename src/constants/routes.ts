@@ -19,6 +19,7 @@ export const ROUTES = {
     ATTENDANCE_HOME: 'AttendanceHome',
     ATTENDANCE_DETAIL: 'AttendanceDetail',
     LEAVE_REQUESTS: 'LeaveRequests',
+    LEAVE_REQUESTS_DETAIL: 'LeaveRequestsDetail',
     CREATE_LEAVE_REQUEST: 'CreateLeaveRequest',
     // Feedback screens
     FEEDBACK: 'Feedback',

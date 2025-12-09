@@ -54,6 +54,11 @@ const AttendanceHome = () => {
         checkOutCount: number;
         totalStudents: number;
         hasAttendance: boolean;
+        // Status counts
+        presentCount: number;
+        absentCount: number;
+        lateCount: number;
+        excusedCount: number;
       }
     >
   >({});
@@ -124,6 +129,10 @@ const AttendanceHome = () => {
           checkOutCount: number;
           totalStudents: number;
           hasAttendance: boolean;
+          presentCount: number;
+          absentCount: number;
+          lateCount: number;
+          excusedCount: number;
         }
       > = {};
 
@@ -132,25 +141,33 @@ const AttendanceHome = () => {
         // Handle both ClassData (homeroom) and TimetableEntry (teaching)
         // For timetable entries, use class_id; for homeroom, use name
         const isTimetableEntry = classData.timetable_column_id !== undefined;
-        const actualClassId = isTimetableEntry ? classData.class_id : (classData.class_id || classData.name);
-        
+        const actualClassId = isTimetableEntry
+          ? classData.class_id
+          : classData.class_id || classData.name;
+
         if (!actualClassId) {
           return;
         }
 
         // Use unique key for stats: for timetable entries, combine class_id and timetable_column_id
-        const statsKey = isTimetableEntry 
-          ? `${actualClassId}_${classData.timetable_column_id}` 
+        const statsKey = isTimetableEntry
+          ? `${actualClassId}_${classData.timetable_column_id}`
           : actualClassId;
 
         // Determine period for attendance query
         const period = isTimetableEntry ? classData.timetable_column_id : 'homeroom';
 
         try {
-          console.log(`🔍 [Home Stats] Fetching stats for class ${actualClassId}, period: ${period}, statsKey: ${statsKey}`);
-          
+          console.log(
+            `🔍 [Home Stats] Fetching stats for class ${actualClassId}, period: ${period}, statsKey: ${statsKey}`
+          );
+
           // 1. Get students in class
-          const studentsResult = await attendanceApiService.getClassStudents(actualClassId, 1, 1000);
+          const studentsResult = await attendanceApiService.getClassStudents(
+            actualClassId,
+            1,
+            1000
+          );
 
           const studentIds =
             studentsResult.success && studentsResult.data ? studentsResult.data : [];
@@ -174,8 +191,10 @@ const AttendanceHome = () => {
           );
           const attendanceRecords =
             attendanceResult.success && attendanceResult.data ? attendanceResult.data : [];
-          
-          console.log(`🔍 [Home Stats] Attendance result for ${statsKey}: ${attendanceRecords.length} records, hasAttendance: ${attendanceRecords.length > 0}`);
+
+          console.log(
+            `🔍 [Home Stats] Attendance result for ${statsKey}: ${attendanceRecords.length} records, hasAttendance: ${attendanceRecords.length > 0}`
+          );
 
           // 4. Get check-in/check-out data (only for homeroom)
           let checkInOutData: Record<string, any> = {};
@@ -194,8 +213,8 @@ const AttendanceHome = () => {
           const totalStudents = studentIds.length;
           // Only count attendance records for students currently in class
           // This prevents showing 21/17 when some students have left the class
-          const validAttendanceRecords = attendanceRecords.filter(
-            (record: any) => studentIds.includes(record.student_id)
+          const validAttendanceRecords = attendanceRecords.filter((record: any) =>
+            studentIds.includes(record.student_id)
           );
           const attendanceCount = validAttendanceRecords.length;
           const hasAttendance = attendanceCount > 0;
@@ -209,12 +228,40 @@ const AttendanceHome = () => {
             if (data.checkOutTime) checkOutCount++;
           });
 
+          // Count students by attendance status
+          let presentCount = 0;
+          let absentCount = 0;
+          let lateCount = 0;
+          let excusedCount = 0;
+
+          validAttendanceRecords.forEach((record: any) => {
+            const status = record.status?.toLowerCase();
+            switch (status) {
+              case 'present':
+                presentCount++;
+                break;
+              case 'absent':
+                absentCount++;
+                break;
+              case 'late':
+                lateCount++;
+                break;
+              case 'excused':
+                excusedCount++;
+                break;
+            }
+          });
+
           newStats[statsKey] = {
             checkInCount,
             attendanceCount,
             checkOutCount,
             totalStudents,
             hasAttendance,
+            presentCount,
+            absentCount,
+            lateCount,
+            excusedCount,
           };
         } catch (error) {
           console.error(`Failed to fetch stats for class ${actualClassId}:`, error);
@@ -225,6 +272,10 @@ const AttendanceHome = () => {
             checkOutCount: 0,
             totalStudents: 0,
             hasAttendance: false,
+            presentCount: 0,
+            absentCount: 0,
+            lateCount: 0,
+            excusedCount: 0,
           };
         }
       });
@@ -268,7 +319,10 @@ const AttendanceHome = () => {
       }
       // Fetch stats for timetable entries (GVBM)
       const currentDateStr = currentDate.toISOString().split('T')[0];
-      const todayTimetable = attendanceApiService.getTimetableEntriesForDate(timetableData, currentDateStr);
+      const todayTimetable = attendanceApiService.getTimetableEntriesForDate(
+        timetableData,
+        currentDateStr
+      );
       if (todayTimetable.length > 0) {
         fetchClassStats(todayTimetable, true);
       }
@@ -279,7 +333,7 @@ const AttendanceHome = () => {
   const refreshHasAttendanceFlags = useCallback(async () => {
     const currentDateStr = currentDate.toISOString().split('T')[0];
     const items: { class_id: string; date: string; period: string }[] = [];
-    
+
     // Add homeroom classes
     if (classesData) {
       const homeroomClasses = [
@@ -293,24 +347,27 @@ const AttendanceHome = () => {
         }
       });
     }
-    
+
     // Add timetable entries
-    const todayTimetable = attendanceApiService.getTimetableEntriesForDate(timetableData, currentDateStr);
+    const todayTimetable = attendanceApiService.getTimetableEntriesForDate(
+      timetableData,
+      currentDateStr
+    );
     todayTimetable.forEach((entry) => {
       if (entry.class_id && entry.timetable_column_id) {
-        items.push({ 
-          class_id: entry.class_id, 
-          date: currentDateStr, 
-          period: entry.timetable_column_id 
+        items.push({
+          class_id: entry.class_id,
+          date: currentDateStr,
+          period: entry.timetable_column_id,
         });
       }
     });
-    
+
     if (items.length === 0) return;
-    
+
     console.log('🔄 [Home] Checking hasAttendance for', items.length, 'items');
     const result = await attendanceApiService.batchCheckHasAttendance(items);
-    
+
     if (result.success && result.data) {
       console.log('✅ [Home] hasAttendance results:', result.data);
       // Update classStats with hasAttendance flags
@@ -326,6 +383,10 @@ const AttendanceHome = () => {
               checkOutCount: 0,
               totalStudents: 0,
               hasAttendance: value.has_attendance,
+              presentCount: 0,
+              absentCount: 0,
+              lateCount: 0,
+              excusedCount: 0,
             };
           }
         });
@@ -338,10 +399,10 @@ const AttendanceHome = () => {
   useFocusEffect(
     useCallback(() => {
       console.log('🔄 [Home] useFocusEffect triggered, loading:', loading);
-      
+
       // Always refresh hasAttendance flags (quick check, no cache)
       refreshHasAttendanceFlags();
-      
+
       if (!loading) {
         // Refresh full stats for homeroom classes (for check-in/out counts)
         if (classesData) {
@@ -355,12 +416,22 @@ const AttendanceHome = () => {
         }
         // Refresh full stats for timetable entries (GVBM)
         const currentDateStr = currentDate.toISOString().split('T')[0];
-        const todayTimetable = attendanceApiService.getTimetableEntriesForDate(timetableData, currentDateStr);
+        const todayTimetable = attendanceApiService.getTimetableEntriesForDate(
+          timetableData,
+          currentDateStr
+        );
         if (todayTimetable.length > 0) {
           fetchClassStats(todayTimetable, true);
         }
       }
-    }, [classesData, timetableData, loading, fetchClassStats, currentDate, refreshHasAttendanceFlags])
+    }, [
+      classesData,
+      timetableData,
+      loading,
+      fetchClassStats,
+      currentDate,
+      refreshHasAttendanceFlags,
+    ])
   );
 
   // Filter classes based on selected tab
@@ -386,13 +457,15 @@ const AttendanceHome = () => {
       'Unknown Class';
     const periodId = isTimetableEntry ? classData.timetable_column_id : null;
     const periodName = isTimetableEntry ? classData.period_name : null;
-    const periodTime =
-      isTimetableEntry && classData.start_time && classData.end_time
-        ? `${formatTime(classData.start_time)} - ${formatTime(classData.end_time)}`
-        : null;
     const subject = isTimetableEntry ? classData.subject_title : null;
     const room = isTimetableEntry ? classData.room_name : null;
     const hasAttendance = stats?.hasAttendance || false;
+
+    // Status counts
+    const presentCount = stats?.presentCount || 0;
+    const absentCount = stats?.absentCount || 0;
+    const lateCount = stats?.lateCount || 0;
+    const excusedCount = stats?.excusedCount || 0;
 
     return (
       <View
@@ -401,69 +474,212 @@ const AttendanceHome = () => {
           padding: 16,
           borderRadius: 16,
         }}>
-        <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 10 }}>{title}</Text>
-
-        {isTimetableEntry && (subject || true) && (
+        {/* Header với title và badge */}
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 12,
+          }}>
+          <Text style={{ fontSize: 18, fontWeight: '600', flex: 1, fontFamily: 'Mulish-Bold' }}>
+            {title}
+          </Text>
           <View
             style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              marginBottom: 24,
-              marginTop: 12,
+              backgroundColor: hasAttendance ? '#3DB838' : '#FFFFFF',
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 20,
+              borderWidth: hasAttendance ? 0 : 1,
+              borderColor: '#E5E7EB',
             }}>
-            {/* Môn học - Bên trái */}
-            <View style={{ alignItems: 'flex-start', flex: 1 }}>
-              <Ionicons name="book-outline" size={24} color="#666" />
-              <Text style={{ fontSize: 12, color: '#666', marginTop: 4, textAlign: 'left' }}>
+            <Text
+              style={{
+                fontSize: 13,
+                fontWeight: '600',
+                color: hasAttendance ? '#FFFFFF' : '#6B7280',
+                fontFamily: 'Mulish-Bold',
+              }}>
+              {hasAttendance ? 'Đã điểm danh' : 'Chưa điểm danh'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Môn học và phòng - chỉ cho tab GVBM */}
+        {isTimetableEntry && (
+          <View style={{ marginBottom: 16 }}>
+            {/* Môn học */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+              <Ionicons name="globe-outline" size={24} color="#666" />
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: '#666',
+                  marginLeft: 10,
+                  fontFamily: 'Mulish-Medium',
+                }}>
                 {subject || 'Chưa có môn'}
               </Text>
             </View>
-
-            {/* Phòng học - Bên phải */}
-            <View style={{ alignItems: 'flex-start', flex: 1 }}>
+            {/* Phòng học */}
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Ionicons name="location-outline" size={24} color="#666" />
-              <Text style={{ fontSize: 12, color: '#666', marginTop: 4, textAlign: 'left' }}>
-                {room || 'Chưa có phòng'}
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: '#666',
+                  marginLeft: 10,
+                  fontFamily: 'Mulish-Medium',
+                }}>
+                {room || title}
               </Text>
             </View>
           </View>
         )}
 
+        {/* Check-in/Check-out stats - chỉ cho tab GVCN */}
         {tab === 'GVCN' && (
           <View
             style={{
               flexDirection: 'row',
               justifyContent: 'space-between',
-              marginBottom: 24,
-              marginTop: 12,
+              marginVertical: 12,
             }}>
-            <View style={{ alignItems: 'flex-start' }}>
-              <Ionicons name="log-in-outline" size={22} color="#444" />
-              <Text style={{ marginTop: 8, fontSize: 13 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="log-in-outline" size={20} color="#444" />
+              <Text
+                style={{
+                  marginLeft: 6,
+                  fontSize: 13,
+                  color: '#444',
+                  fontFamily: 'Mulish-Medium',
+                }}>
                 {stats?.checkInCount || 0}/{stats?.totalStudents || 0} học sinh
               </Text>
             </View>
-            <View style={{ alignItems: 'center' }}>
-              <Ionicons name="checkmark-circle-outline" size={22} color="#444" />
-              <Text style={{ marginTop: 8, fontSize: 13 }}>
-                {stats?.attendanceCount || 0}/{stats?.totalStudents || 0} học sinh
-              </Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Ionicons name="log-out-outline" size={22} color="#444" />
-              <Text style={{ marginTop: 8, fontSize: 13 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="log-out-outline" size={20} color="#444" />
+              <Text
+                style={{
+                  marginLeft: 6,
+                  fontSize: 13,
+                  color: '#444',
+                  fontFamily: 'Mulish-Medium',
+                }}>
                 {stats?.checkOutCount || 0}/{stats?.totalStudents || 0} học sinh
               </Text>
             </View>
           </View>
         )}
 
+        {/* Attendance status icons */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-around',
+            marginHorizontal: 4,
+            marginTop: 12,
+            marginBottom: 24,
+          }}>
+          {/* Present - Green checkmark */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="checkmark" size={24} color="#22C55E" />
+            <Text
+              style={{
+                marginLeft: 4,
+                fontSize: 16,
+                color: '#22C55E',
+                fontWeight: '500',
+                fontFamily: 'Mulish-Medium',
+              }}>
+              {presentCount}
+            </Text>
+          </View>
+
+          <Text
+            style={{
+              color: '#757575',
+              fontSize: 16,
+              fontWeight: 'semibold',
+              fontFamily: 'Mulish-SemiBold',
+            }}>
+            |
+          </Text>
+
+          {/* Absent - Red X */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="close" size={24} color="#EF4444" />
+            <Text
+              style={{
+                marginLeft: 4,
+                fontSize: 16,
+                color: '#EF4444',
+                fontWeight: '500',
+                fontFamily: 'Mulish-Medium',
+              }}>
+              {absentCount}
+            </Text>
+          </View>
+
+          <Text
+            style={{
+              color: '#757575',
+              fontSize: 16,
+              fontWeight: 'semibold',
+              fontFamily: 'Mulish-SemiBold',
+            }}>
+            |
+          </Text>
+
+          {/* Late - Yellow clock */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="time-outline" size={24} color="#F5AA1E" />
+            <Text
+              style={{
+                marginLeft: 4,
+                fontSize: 16,
+                color: '#F5AA1E',
+                fontWeight: '500',
+                fontFamily: 'Mulish-Medium',
+              }}>
+              {lateCount}
+            </Text>
+          </View>
+
+          <Text
+            style={{
+              color: '#757575',
+              fontSize: 16,
+              fontWeight: 'semibold',
+              fontFamily: 'Mulish-SemiBold',
+            }}>
+            |
+          </Text>
+
+          {/* Excused - Gray ban */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="ban-outline" size={24} color="#6B7280" />
+            <Text
+              style={{
+                marginLeft: 4,
+                fontSize: 16,
+                color: '#6B7280',
+                fontWeight: '500',
+                fontFamily: 'Mulish-Medium',
+              }}>
+              {excusedCount}
+            </Text>
+          </View>
+        </View>
+
         <TouchableOpacity
           style={{
             backgroundColor: hasAttendance ? '#FFFFFF' : '#333333',
             borderWidth: hasAttendance ? 1 : 0,
             borderColor: hasAttendance ? '#E5E7EB' : 'transparent',
-            paddingVertical: 12,
+            paddingVertical: 10,
             borderRadius: 30,
           }}
           onPress={() =>
@@ -480,8 +696,9 @@ const AttendanceHome = () => {
             style={{
               color: hasAttendance ? '#333333' : 'white',
               textAlign: 'center',
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: '600',
+              fontFamily: 'Mulish-Bold',
             }}>
             {hasAttendance ? 'Chỉnh sửa' : 'Điểm danh'}
           </Text>
@@ -498,7 +715,15 @@ const AttendanceHome = () => {
           <TouchableOpacity onPress={() => nav.goBack()} style={{ padding: 4 }}>
             <Ionicons name="chevron-back" size={26} color="#222" />
           </TouchableOpacity>
-          <Text style={{ flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '600', color: '#002855', fontFamily: 'Mulish-Bold' }}>
+          <Text
+            style={{
+              flex: 1,
+              textAlign: 'center',
+              fontSize: 20,
+              fontWeight: '600',
+              color: '#002855',
+              fontFamily: 'Mulish-Bold',
+            }}>
             Điểm danh
           </Text>
           <View style={{ width: 30 }} />
@@ -517,8 +742,16 @@ const AttendanceHome = () => {
           </TouchableOpacity>
 
           <View style={{ alignItems: 'center', marginHorizontal: 20 }}>
-            <Text style={{ fontSize: 22, fontWeight: '700', color: '#e14a1e' }}>{dayName}</Text>
-            <Text style={{ marginTop: 2, fontSize: 14, color: '#666' }}>
+            <Text
+              style={{
+                fontSize: 28,
+                fontWeight: '800',
+                color: '#F05023',
+                fontFamily: 'Mulish-ExtraBold',
+              }}>
+              {dayName}
+            </Text>
+            <Text style={{ marginTop: 2, fontSize: 14, color: '#666', fontFamily: 'Mulish-Bold' }}>
               {dayNum} tháng {monthNum}
             </Text>
           </View>
@@ -574,7 +807,9 @@ const AttendanceHome = () => {
             const isTimetableEntry = classData.timetable_column_id !== undefined;
             const classId = isTimetableEntry ? classData.class_id : classData.name;
             // Use unique stats key: for timetable entries, combine class_id and timetable_column_id
-            const statsKey = isTimetableEntry ? `${classId}_${classData.timetable_column_id}` : classId;
+            const statsKey = isTimetableEntry
+              ? `${classId}_${classData.timetable_column_id}`
+              : classId;
             const stats = classStats[statsKey];
 
             // Calculate period info for display
@@ -584,10 +819,13 @@ const AttendanceHome = () => {
                 ? `${formatTime(classData.start_time)} - ${formatTime(classData.end_time)}`
                 : null;
 
+            // Generate unique key using index to prevent duplicate key errors
+            const uniqueKey = isTimetableEntry
+              ? `GVBM-${index}-${classData.timetable_column_id}-${classId}`
+              : `GVCN-${index}-${classId}`;
+
             return (
-              <View
-                key={`container-${classData.timetable_column_id !== undefined ? `GVBM-${classData.timetable_column_id}-${classId}` : `GVCN-${classId}`}`}
-                style={{ marginBottom: 16 }}>
+              <View key={uniqueKey} style={{ marginBottom: 16 }}>
                 {isTimetableEntry && periodName && (
                   <View
                     style={{
@@ -604,15 +842,7 @@ const AttendanceHome = () => {
                     )}
                   </View>
                 )}
-                <ClassCard
-                  key={
-                    classData.timetable_column_id !== undefined
-                      ? `GVBM-${classData.timetable_column_id}-${classId}`
-                      : `GVCN-${classId}`
-                  }
-                  classData={classData}
-                  stats={stats}
-                />
+                <ClassCard classData={classData} stats={stats} />
               </View>
             );
           })

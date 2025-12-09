@@ -302,7 +302,7 @@ class PushNotificationService {
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#4A90D9',
-        sound: 'default',
+        sound: 'ticket_create.wav', // Custom sound for ticket notifications
       });
 
       await Notifications.setNotificationChannelAsync('feedback', {
@@ -578,7 +578,9 @@ class PushNotificationService {
     const studentId = data.student_id || data.studentId;
     const leaveRequestId = data.leave_request_id || data.leaveRequestId;
 
-    console.log(`🧭 Navigate to Leave Requests - Student: ${studentId}, LeaveRequest: ${leaveRequestId}`);
+    console.log(
+      `🧭 Navigate to Leave Requests - Student: ${studentId}, LeaveRequest: ${leaveRequestId}`
+    );
     this.navigateToScreen('LeaveRequests', {
       studentId,
       leaveRequestId,

@@ -328,17 +328,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           id: userData._id,
         });
 
-        // Normalize user data from AsyncStorage (in case it was saved in old format)
-        let normalizedUser = normalizeUserData(userData, userData.provider || 'local');
-        normalizedUser = await attachAvatarCacheBust(normalizedUser);
-        console.log('✅ [checkAuth] Normalized cached user data:', {
-          fullname: normalizedUser.fullname,
-          jobTitle: normalizedUser.jobTitle,
-          department: normalizedUser.department,
-          role: normalizedUser.role,
+        // KHÔNG normalize lại vì data từ AsyncStorage đã được normalize khi login
+        // Chỉ cần thêm avatar cache bust
+        let cachedUser = await attachAvatarCacheBust(userData);
+        console.log('✅ [checkAuth] Cached user data:', {
+          fullname: cachedUser.fullname,
+          jobTitle: cachedUser.jobTitle,
+          department: cachedUser.department,
+          role: cachedUser.role,
         });
 
-        setUser(normalizedUser);
+        setUser(cachedUser);
 
         // Initialize push notifications for cached user
         try {
@@ -640,7 +640,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // Lưu TẤT CẢ thông tin vào AsyncStorage - CHUẨN HÓA giống như login() thường
       await AsyncStorage.setItem('user', JSON.stringify(normalizedUser));
       await AsyncStorage.setItem('userId', normalizedUser._id || normalizedUser.email);
-      await AsyncStorage.setItem('userFullname', normalizedUser.fullname || normalizedUser.full_name || '');
+      await AsyncStorage.setItem(
+        'userFullname',
+        normalizedUser.fullname || normalizedUser.full_name || ''
+      );
       await AsyncStorage.setItem('userJobTitle', normalizedUser.jobTitle || '');
       await AsyncStorage.setItem('userDepartment', normalizedUser.department || '');
       await AsyncStorage.setItem('userRole', normalizedUser.role || 'user');

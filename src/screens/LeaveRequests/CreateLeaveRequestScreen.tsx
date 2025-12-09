@@ -10,6 +10,7 @@ import {
   Platform,
   Modal,
   TouchableWithoutFeedback,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TouchableOpacity } from '../../components/Common';
@@ -60,18 +61,11 @@ const DateField = ({
   <TouchableOpacity
     onPress={onPress}
     disabled={disabled}
-    className={`flex-1 rounded-lg border border-gray-200 bg-white px-3 py-3 ${
-      disabled ? 'opacity-50' : ''
-    }`}>
-    <Text className="text-xs font-medium text-gray-500">
-      {label} <Text className="text-red-500">*</Text>
+    className={`flex-1 border-b border-gray-200 py-4 ${disabled ? 'opacity-50' : ''}`}>
+    <Text className="text-xs uppercase tracking-wide text-gray-400">{label}</Text>
+    <Text className="mt-1 text-base font-medium text-black">
+      {format(date, 'dd/MM/yyyy', { locale: vi })}
     </Text>
-    <View className="mt-1 flex-row items-center">
-      <Ionicons name="calendar-outline" size={18} color="#6B7280" />
-      <Text className="ml-2 text-sm font-semibold text-[#0A2240]">
-        {format(date, 'dd/MM/yyyy', { locale: vi })}
-      </Text>
-    </View>
   </TouchableOpacity>
 );
 
@@ -100,11 +94,13 @@ const CreateLeaveRequestScreen = () => {
   const [description, setDescription] = useState('');
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [endDate, setEndDate] = useState<Date>(new Date());
-  const [pickerTarget, setPickerTarget] = useState<'start' | 'end' | null>(null);
+  const [showDateModal, setShowDateModal] = useState(false);
+  const [tempStartDate, setTempStartDate] = useState<Date>(new Date());
+  const [tempEndDate, setTempEndDate] = useState<Date>(new Date());
 
   // File states
   const [selectedFiles, setSelectedFiles] = useState<
-    Array<{ uri: string; name: string; type: string; size: number }>
+    { uri: string; name: string; type: string; size: number }[]
   >([]);
   const [existingAttachments, setExistingAttachments] = useState<LeaveAttachment[]>([]);
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
@@ -119,6 +115,9 @@ const CreateLeaveRequestScreen = () => {
   const [previewFileUrl, setPreviewFileUrl] = useState('');
   const [previewFileName, setPreviewFileName] = useState('');
   const [authToken, setAuthToken] = useState('');
+
+  // File picker modal state
+  const [showFilePickerModal, setShowFilePickerModal] = useState(false);
 
   // Load data
   useEffect(() => {
@@ -199,7 +198,12 @@ const CreateLeaveRequestScreen = () => {
   const handlePickDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['image/*', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        type: [
+          'image/*',
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ],
         multiple: true,
       });
 
@@ -231,7 +235,7 @@ const CreateLeaveRequestScreen = () => {
   const handlePickImage = async () => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
+
       if (!permissionResult.granted) {
         Alert.alert('Lỗi', 'Cần quyền truy cập thư viện ảnh');
         return;
@@ -351,9 +355,15 @@ const CreateLeaveRequestScreen = () => {
         if (response.success) {
           // Upload new files if any
           if (selectedFiles.length > 0) {
-            const uploadResponse = await leaveService.uploadLeaveAttachments(leaveId, selectedFiles);
+            const uploadResponse = await leaveService.uploadLeaveAttachments(
+              leaveId,
+              selectedFiles
+            );
             if (!uploadResponse.success) {
-              Alert.alert('Cảnh báo', `Đơn đã cập nhật nhưng upload file thất bại: ${uploadResponse.message}`);
+              Alert.alert(
+                'Cảnh báo',
+                `Đơn đã cập nhật nhưng upload file thất bại: ${uploadResponse.message}`
+              );
             }
           }
 
@@ -388,7 +398,10 @@ const CreateLeaveRequestScreen = () => {
               selectedFiles
             );
             if (!uploadResponse.success) {
-              Alert.alert('Cảnh báo', `Đơn đã tạo nhưng upload file thất bại: ${uploadResponse.message}`);
+              Alert.alert(
+                'Cảnh báo',
+                `Đơn đã tạo nhưng upload file thất bại: ${uploadResponse.message}`
+              );
             }
           }
 
@@ -441,26 +454,27 @@ const CreateLeaveRequestScreen = () => {
     );
   };
 
-  const handleDateChange = (_: any, date?: Date) => {
-    if (!date) {
-      if (Platform.OS === 'android') {
-        setPickerTarget(null);
-      }
+  const handleOpenDateModal = () => {
+    if (!canEdit) return;
+    setTempStartDate(startDate);
+    setTempEndDate(endDate);
+    setShowDateModal(true);
+  };
+
+  const handleConfirmDates = () => {
+    // Validate: end date must be >= start date
+    if (tempEndDate < tempStartDate) {
+      Alert.alert('Lỗi', 'Ngày kết thúc phải sau hoặc bằng ngày bắt đầu');
       return;
     }
 
-    if (pickerTarget === 'start') {
-      setStartDate(date);
-      if (endDate < date) {
-        setEndDate(date);
-      }
-    } else if (pickerTarget === 'end') {
-      setEndDate(date);
-    }
+    setStartDate(tempStartDate);
+    setEndDate(tempEndDate);
+    setShowDateModal(false);
+  };
 
-    if (Platform.OS === 'android') {
-      setPickerTarget(null);
-    }
+  const handleCancelDates = () => {
+    setShowDateModal(false);
   };
 
   const getRemainingTime = () => {
@@ -477,8 +491,8 @@ const CreateLeaveRequestScreen = () => {
     return (
       <SafeAreaView className="flex-1 bg-white">
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#F05023" />
-          <Text className="mt-4 text-gray-500">Đang tải dữ liệu...</Text>
+          <ActivityIndicator size="small" color="#000" />
+          <Text className="mt-3 text-sm text-gray-400">Đang tải...</Text>
         </View>
       </SafeAreaView>
     );
@@ -487,351 +501,429 @@ const CreateLeaveRequestScreen = () => {
   return (
     <SafeAreaView className="flex-1 bg-white">
       {/* Header */}
-      <View className="px-4 pt-4">
-        <View className="mb-4 flex-row items-center">
+      <View className="border-b border-gray-100 px-4 pb-4 pt-4">
+        <View className="flex-row items-center">
           <TouchableOpacity
             onPress={() => navigation.goBack()}
-            style={{
-              width: 44,
-              height: 44,
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginLeft: -8,
-            }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="chevron-back" size={26} color="#0A2240" />
+            activeOpacity={0.7}
+            className="-ml-2 p-2">
+            <Ionicons name="arrow-back" size={22} color="#000" />
           </TouchableOpacity>
-          <Text className="flex-1 text-center text-2xl font-bold text-[#0A2240]">
+          <Text className="ml-2 text-xl font-bold text-black">
             {isEditMode ? 'Chỉnh sửa đơn nghỉ phép' : 'Tạo đơn nghỉ phép'}
           </Text>
-          <View style={{ width: 44 }} />
         </View>
       </View>
 
-      <ScrollView className="flex-1 px-4">
-        {/* 24h Edit Rule Hint */}
-        <View className="mb-4 flex-row rounded-r bg-gray-50 border-l-4 border-gray-400 p-3">
-          <Ionicons name="bulb" size={20} color="#EAB308" style={{ marginTop: 2, marginRight: 12 }} />
-          <View className="flex-1">
-            <Text className="text-sm text-gray-700">
-              <Text className="font-semibold">Lưu ý:</Text> Đơn nghỉ phép chỉ có thể chỉnh sửa trong vòng{' '}
-              <Text className="font-semibold">24 giờ</Text> sau khi tạo.
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
+        <ScrollView
+          className="flex-1 px-4"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
+          {/* 24h Edit Rule Hint */}
+          <View className="mb-6 mt-4 border-l-2 border-gray-300 py-1 pl-3">
+            <Text className="text-sm text-gray-500">
+              Có thể chỉnh sửa trong 24 giờ sau khi tạo
               {isEditMode && remainingHours && (
-                <Text>
-                  {' '}Còn lại: <Text className="font-semibold">{remainingHours} giờ</Text> để chỉnh sửa.
-                </Text>
+                <Text className="font-medium text-black"> • Còn {remainingHours}h</Text>
               )}
             </Text>
           </View>
-        </View>
 
-        {/* Cannot Edit Alert */}
-        {isEditMode && !canEdit && (
-          <View className="mb-4 rounded-lg bg-red-50 border border-red-200 p-3">
-            <View className="flex-row">
-              <Ionicons name="alert-circle" size={20} color="#DC2626" style={{ marginRight: 8 }} />
-              <Text className="flex-1 text-sm text-red-800">
-                Đơn nghỉ phép này đã quá 24 giờ, không thể chỉnh sửa. Bạn chỉ có thể xem thông tin.
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Parent Created Alert */}
-        {isEditMode && isCreatedByParent && (
-          <View className="mb-4 rounded-lg bg-yellow-50 border border-yellow-200 p-3">
-            <View className="flex-row">
-              <Ionicons name="information-circle" size={20} color="#D97706" style={{ marginRight: 8 }} />
-              <Text className="flex-1 text-sm text-yellow-800">
-                Đơn này được tạo bởi <Text className="font-semibold">Phụ huynh</Text>. Bạn có thể xem và thêm tài liệu đính kèm.
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Class Info */}
-        {classTitle && (
-          <View className="mb-4 rounded-lg bg-gray-50 p-3">
-            <Text className="text-sm text-gray-500">Lớp</Text>
-            <Text className="text-base font-semibold text-[#0A2240]">{classTitle}</Text>
-          </View>
-        )}
-
-        {/* Student Selection */}
-        <View className="mb-4">
-          <Text className="mb-2 text-base font-medium text-[#0A2240]">
-            Học sinh <Text className="text-red-500">*</Text>
-          </Text>
-          <TouchableOpacity
-            onPress={() => !isEditMode && setShowStudentPicker(!showStudentPicker)}
-            disabled={isEditMode || submitting}
-            className={`flex-row items-center justify-between rounded-lg border border-gray-300 bg-white p-4 ${
-              isEditMode ? 'opacity-50' : ''
-            }`}>
-            <Text
-              className={selectedStudent ? 'text-base text-[#0A2240]' : 'text-base text-gray-400'}>
-              {selectedStudent
-                ? `${selectedStudent.student_name} (${selectedStudent.student_code})`
-                : 'Chọn học sinh'}
-            </Text>
-            {!isEditMode && (
-              <Ionicons
-                name={showStudentPicker ? 'chevron-up' : 'chevron-down'}
-                size={20}
-                color="#6B7280"
-              />
-            )}
-          </TouchableOpacity>
-
-          {/* Student Picker Dropdown */}
-          {showStudentPicker && !isEditMode && (
-            <View className="mt-2 max-h-60 rounded-lg border border-gray-200 bg-white shadow-sm">
-              <ScrollView nestedScrollEnabled>
-                {students.map((student) => (
-                  <TouchableOpacity
-                    key={student.student_id}
-                    onPress={() => {
-                      setSelectedStudent(student);
-                      setShowStudentPicker(false);
-                    }}
-                    className={`border-b border-gray-100 p-4 ${
-                      selectedStudent?.student_id === student.student_id ? 'bg-blue-50' : ''
-                    }`}>
-                    <Text className="text-base font-medium text-[#0A2240]">
-                      {student.student_name}
-                    </Text>
-                    <Text className="text-sm text-gray-500">{student.student_code}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+          {/* Cannot Edit Alert */}
+          {isEditMode && !canEdit && (
+            <View className="mb-6 border-l-2 border-black bg-gray-50 py-3 pl-3">
+              <Text className="text-sm text-gray-700">Đã quá 24 giờ, không thể chỉnh sửa</Text>
             </View>
           )}
-        </View>
 
-        {/* Reason Selection */}
-        <View className="mb-4">
-          <Text className="mb-2 text-base font-medium text-[#0A2240]">
-            Lý do nghỉ <Text className="text-red-500">*</Text>
-          </Text>
-          <View className="space-y-2">
-            {REASONS.map((r) => (
-              <TouchableOpacity
-                key={r.value}
-                onPress={() => canEdit && setReason(r.value)}
-                disabled={!canEdit || submitting}
-                className="flex-row items-center py-2">
-                <View
-                  className={`mr-3 h-5 w-5 items-center justify-center rounded-full border-2 ${
-                    reason === r.value ? 'border-[#F05023]' : 'border-gray-300'
-                  } ${!canEdit ? 'opacity-50' : ''}`}>
-                  {reason === r.value && <View className="h-2.5 w-2.5 rounded-full bg-[#F05023]" />}
-                </View>
-                <Text className="text-base text-[#0A2240]">{r.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+          {/* Parent Created Alert */}
+          {isEditMode && isCreatedByParent && (
+            <View className="mb-6 border-l-2 border-gray-400 bg-gray-50 py-3 pl-3">
+              <Text className="text-sm text-gray-600">Đơn được tạo bởi Phụ huynh</Text>
+            </View>
+          )}
 
-        {/* Other Reason Input */}
-        {reason === 'other' && (
-          <View className="mb-4">
-            <Text className="mb-2 text-base font-medium text-[#0A2240]">
-              Lý do khác <Text className="text-red-500">*</Text>
+          {/* Class Info */}
+          {classTitle && (
+            <View className="mb-6 border-b border-gray-100 pb-4">
+              <Text className="text-xs uppercase tracking-wide text-gray-400">Lớp</Text>
+              <Text className="mt-1 text-lg font-semibold text-black">{classTitle}</Text>
+            </View>
+          )}
+
+          {/* Student Selection */}
+          <View className="mb-6">
+            <Text className="mb-3 text-base font-medium text-black">
+              Học sinh <Text className="text-red-500">*</Text>
             </Text>
+            <TouchableOpacity
+              onPress={() => !isEditMode && setShowStudentPicker(!showStudentPicker)}
+              disabled={isEditMode || submitting}
+              activeOpacity={0.7}
+              className={`flex-row items-center justify-between border-b border-gray-200 pb-3 ${
+                isEditMode ? 'opacity-50' : ''
+              }`}>
+              <Text
+                className={selectedStudent ? 'text-base text-black' : 'text-base text-gray-400'}>
+                {selectedStudent
+                  ? `${selectedStudent.student_name} (${selectedStudent.student_code})`
+                  : 'Chọn học sinh'}
+              </Text>
+              {!isEditMode && (
+                <Ionicons
+                  name={showStudentPicker ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color="#000"
+                />
+              )}
+            </TouchableOpacity>
+
+            {/* Student Picker Dropdown */}
+            {showStudentPicker && !isEditMode && (
+              <View className="mt-3 max-h-60 border border-gray-200 bg-white">
+                <ScrollView nestedScrollEnabled>
+                  {students.map((student, index) => (
+                    <TouchableOpacity
+                      key={student.student_id}
+                      onPress={() => {
+                        setSelectedStudent(student);
+                        setShowStudentPicker(false);
+                      }}
+                      activeOpacity={0.7}
+                      className={`px-4 py-3 ${
+                        index < students.length - 1 ? 'border-b border-gray-100' : ''
+                      } ${selectedStudent?.student_id === student.student_id ? 'bg-gray-50' : ''}`}>
+                      <Text
+                        className={`text-base ${
+                          selectedStudent?.student_id === student.student_id
+                            ? 'font-medium text-black'
+                            : 'text-gray-700'
+                        }`}>
+                        {student.student_name}
+                      </Text>
+                      <Text className="mt-0.5 text-xs text-gray-400">{student.student_code}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </View>
+
+          {/* Reason Selection */}
+          <View className="mb-6">
+            <Text className="mb-3 text-base font-medium text-black">
+              Lý do nghỉ <Text className="text-red-500">*</Text>
+            </Text>
+            <View>
+              {REASONS.map((r, index) => (
+                <TouchableOpacity
+                  key={r.value}
+                  onPress={() => canEdit && setReason(r.value)}
+                  disabled={!canEdit || submitting}
+                  activeOpacity={0.7}
+                  className={`flex-row items-center py-3.5 ${
+                    index < REASONS.length - 1 ? 'border-b border-gray-100' : ''
+                  } ${!canEdit ? 'opacity-50' : ''}`}>
+                  <View
+                    className={`mr-3 h-5 w-5 items-center justify-center rounded-sm ${
+                      reason === r.value ? 'bg-black' : 'border border-gray-300 bg-white'
+                    }`}>
+                    {reason === r.value && <Ionicons name="checkmark" size={14} color="#fff" />}
+                  </View>
+                  <Text
+                    className={`text-base ${reason === r.value ? 'font-medium text-black' : 'text-gray-600'}`}>
+                    {r.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Other Reason Input */}
+          {reason === 'other' && (
+            <View className="mb-6">
+              <Text className="mb-3 text-base font-medium text-black">
+                Lý do cụ thể <Text className="text-red-500">*</Text>
+              </Text>
+              <TextInput
+                value={otherReason}
+                onChangeText={setOtherReason}
+                placeholder="Nhập lý do..."
+                placeholderTextColor="#9CA3AF"
+                multiline
+                numberOfLines={3}
+                className="border-b border-gray-200 bg-transparent pb-3 text-base text-black"
+                style={{ textAlignVertical: 'top', minHeight: 60 }}
+                editable={canEdit && !submitting}
+              />
+            </View>
+          )}
+
+          {/* Date Selection */}
+          <View className="mb-6">
+            <Text className="mb-3 text-base font-medium text-black">
+              Thời gian nghỉ <Text className="text-red-500">*</Text>
+            </Text>
+            <TouchableOpacity
+              onPress={handleOpenDateModal}
+              disabled={!canEdit || submitting}
+              activeOpacity={0.7}
+              className={`${!canEdit || submitting ? 'opacity-50' : ''}`}>
+              <View className="flex-row items-center">
+                {/* Start Date */}
+                <View className="flex-1 border-b border-gray-200 py-3">
+                  <Text className="text-xs uppercase tracking-wide text-gray-400">Từ ngày</Text>
+                  <Text className="mt-1 text-lg font-semibold text-black">
+                    {format(startDate, 'dd/MM/yyyy', { locale: vi })}
+                  </Text>
+                </View>
+
+                {/* Arrow */}
+                <View className="px-4">
+                  <Ionicons name="arrow-forward" size={18} color="#9CA3AF" />
+                </View>
+
+                {/* End Date */}
+                <View className="flex-1 border-b border-gray-200 py-3">
+                  <Text className="text-xs uppercase tracking-wide text-gray-400">Đến ngày</Text>
+                  <Text className="mt-1 text-lg font-semibold text-black">
+                    {format(endDate, 'dd/MM/yyyy', { locale: vi })}
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {/* Description */}
+          <View className="mb-6">
+            <Text className="mb-3 text-base font-medium text-black">Ghi chú</Text>
             <TextInput
-              value={otherReason}
-              onChangeText={setOtherReason}
-              placeholder="Nhập lý do nghỉ cụ thể"
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Thêm ghi chú..."
               placeholderTextColor="#9CA3AF"
               multiline
               numberOfLines={3}
-              className="rounded-lg border border-gray-300 bg-white p-4 text-base text-[#0A2240]"
-              style={{ textAlignVertical: 'top', minHeight: 80 }}
+              className="border-b border-gray-200 bg-transparent pb-3 text-base text-black"
+              style={{ textAlignVertical: 'top', minHeight: 60 }}
               editable={canEdit && !submitting}
             />
           </View>
-        )}
 
-        {/* Date Selection */}
-        <View className="mb-4 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
-          <View className="mb-2 flex-row items-center justify-between">
-            <Text className="text-base font-semibold text-[#0A2240]">Thời gian nghỉ</Text>
-            <Text className="text-xs text-gray-500">Chọn khoảng ngày</Text>
-          </View>
-          <View className="flex-row gap-3">
-            <DateField
-              label="Ngày bắt đầu"
-              date={startDate}
-              onPress={() => canEdit && setPickerTarget((prev) => (prev === 'start' ? null : 'start'))}
-              disabled={!canEdit || submitting}
-            />
-            <DateField
-              label="Ngày kết thúc"
-              date={endDate}
-              onPress={() => canEdit && setPickerTarget((prev) => (prev === 'end' ? null : 'end'))}
-              disabled={!canEdit || submitting}
-            />
-          </View>
-        </View>
+          {/* File Attachments */}
+          <View className="mb-6">
+            <Text className="mb-4 text-base font-medium text-black">Tài liệu đính kèm</Text>
 
-        {/* Description */}
-        <View className="mb-4">
-          <Text className="mb-2 text-base font-medium text-[#0A2240]">Ghi chú thêm</Text>
-          <TextInput
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Nhập ghi chú thêm (không bắt buộc)"
-            placeholderTextColor="#9CA3AF"
-            multiline
-            numberOfLines={3}
-            className="rounded-lg border border-gray-300 bg-white p-4 text-base text-[#0A2240]"
-            style={{ textAlignVertical: 'top', minHeight: 80 }}
-            editable={canEdit && !submitting}
-          />
-        </View>
+            {/* Upload Area */}
+            {!submitting && (
+              <TouchableOpacity
+                onPress={() => setShowFilePickerModal(true)}
+                activeOpacity={0.7}
+                className="mb-4 items-center border border-dashed border-gray-300 bg-gray-50 py-8">
+                <Ionicons name="add" size={28} color="#9CA3AF" />
+                <Text className="mt-2 text-sm font-medium text-gray-500">Thêm tài liệu</Text>
+                <Text className="mt-1 text-xs text-gray-400">PDF, Word, Ảnh • Tối đa 10MB</Text>
+              </TouchableOpacity>
+            )}
 
-        {/* File Attachments */}
-        <View className="mb-4">
-          <Text className="mb-2 text-base font-medium text-[#0A2240]">Tài liệu đính kèm</Text>
-
-          {/* Existing Attachments */}
-          {existingAttachments.length > 0 && (
-            <View className="mb-3">
-              <Text className="mb-2 text-sm text-gray-600">File hiện có:</Text>
-              {existingAttachments.map((file) => (
-                <View
-                  key={file.name}
-                  className="mb-2 flex-row items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <View className="flex-1 flex-row items-center">
-                    <Ionicons name="document" size={20} color="#6B7280" />
-                    <View className="ml-2 flex-1">
-                      <Text className="text-sm font-medium text-[#0A2240]" numberOfLines={1}>
+            {/* Existing Attachments */}
+            {existingAttachments.length > 0 && (
+              <View className="mb-2">
+                <Text className="mb-2 text-xs uppercase tracking-wide text-gray-400">
+                  Đã tải lên
+                </Text>
+                {existingAttachments.map((file, index) => (
+                  <View
+                    key={file.name}
+                    className={`flex-row items-center py-3 ${
+                      index < existingAttachments.length - 1 ? 'border-b border-gray-100' : ''
+                    }`}>
+                    <View className="h-9 w-9 items-center justify-center bg-gray-100">
+                      <Ionicons
+                        name={
+                          file.file_name?.toLowerCase().endsWith('.pdf')
+                            ? 'document-text-outline'
+                            : file.file_name?.toLowerCase().match(/\.(jpg|jpeg|png|gif)$/)
+                              ? 'image-outline'
+                              : 'document-outline'
+                        }
+                        size={18}
+                        color="#000"
+                      />
+                    </View>
+                    <View className="ml-3 flex-1">
+                      <Text className="text-sm font-medium text-black" numberOfLines={1}>
                         {file.file_name}
                       </Text>
-                      <Text className="text-xs text-gray-500">{formatFileSize(file.file_size)}</Text>
+                      <Text className="text-xs text-gray-400">
+                        {formatFileSize(file.file_size)}
+                      </Text>
                     </View>
-                  </View>
-                  <View className="flex-row items-center gap-2">
-                    {/* View Button */}
                     <TouchableOpacity
                       onPress={() => handleViewFile(file.file_url, file.file_name)}
-                      className="p-2">
-                      <Ionicons name="eye-outline" size={20} color="#3B82F6" />
+                      className="px-3 py-2">
+                      <Ionicons name="eye-outline" size={18} color="#000" />
                     </TouchableOpacity>
-                    {/* Delete Button */}
                     <TouchableOpacity
                       onPress={() => handleDeleteExistingFile(file.name)}
                       disabled={deletingFile === file.name}
-                      className="p-2">
+                      className="py-2 pl-2">
                       {deletingFile === file.name ? (
-                        <ActivityIndicator size="small" color="#EF4444" />
+                        <ActivityIndicator size="small" color="#000" />
                       ) : (
-                        <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                        <Ionicons name="trash-outline" size={18} color="#000" />
                       )}
                     </TouchableOpacity>
                   </View>
-                </View>
-              ))}
-            </View>
-          )}
+                ))}
+              </View>
+            )}
 
-          {/* New Files */}
-          {selectedFiles.length > 0 && (
-            <View className="mb-3">
-              <Text className="mb-2 text-sm text-gray-600">File mới thêm:</Text>
-              {selectedFiles.map((file, index) => (
-                <View
-                  key={index}
-                  className="mb-2 flex-row items-center justify-between rounded-lg border border-blue-200 bg-blue-50 p-3">
-                  <View className="flex-1 flex-row items-center">
-                    <Ionicons name="document" size={20} color="#3B82F6" />
-                    <View className="ml-2 flex-1">
-                      <Text className="text-sm font-medium text-[#0A2240]" numberOfLines={1}>
+            {/* New Files */}
+            {selectedFiles.length > 0 && (
+              <View>
+                <Text className="mb-2 text-xs uppercase tracking-wide text-gray-400">
+                  Chờ tải lên
+                </Text>
+                {selectedFiles.map((file, index) => (
+                  <View
+                    key={index}
+                    className={`flex-row items-center py-3 ${
+                      index < selectedFiles.length - 1 ? 'border-b border-gray-100' : ''
+                    }`}>
+                    <View className="h-9 w-9 items-center justify-center bg-black">
+                      <Ionicons
+                        name={
+                          file.type?.includes('pdf')
+                            ? 'document-text-outline'
+                            : file.type?.includes('image')
+                              ? 'image-outline'
+                              : 'document-outline'
+                        }
+                        size={18}
+                        color="#fff"
+                      />
+                    </View>
+                    <View className="ml-3 flex-1">
+                      <Text className="text-sm font-medium text-black" numberOfLines={1}>
                         {file.name}
                       </Text>
-                      <Text className="text-xs text-gray-500">{formatFileSize(file.size)}</Text>
+                      <Text className="text-xs text-gray-400">{formatFileSize(file.size)}</Text>
                     </View>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => handleRemoveFile(index)}
-                    className="ml-2 p-2">
-                    <Ionicons name="close-circle" size={20} color="#EF4444" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {/* Upload Buttons */}
-          {!submitting && (
-            <View className="flex-row gap-3">
-              <TouchableOpacity
-                onPress={handlePickDocument}
-                className="flex-1 flex-row items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white py-4">
-                <Ionicons name="document-attach" size={20} color="#6B7280" />
-                <Text className="ml-2 text-sm font-medium text-gray-600">Chọn file</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handlePickImage}
-                className="flex-1 flex-row items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white py-4">
-                <Ionicons name="image" size={20} color="#6B7280" />
-                <Text className="ml-2 text-sm font-medium text-gray-600">Chọn ảnh</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          <Text className="mt-2 text-xs text-gray-400 text-center">
-            Hỗ trợ: Ảnh, PDF, Word (tối đa 10MB)
-          </Text>
-        </View>
-
-        {/* Date Picker Modal */}
-        <Modal
-          transparent
-          animationType="fade"
-          visible={!!pickerTarget}
-          onRequestClose={() => setPickerTarget(null)}>
-          <TouchableWithoutFeedback onPress={() => setPickerTarget(null)}>
-            <View className="flex-1 items-center justify-center bg-black/30 px-6">
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View className="w-full rounded-2xl bg-white p-4 shadow-lg">
-                  <View className="mb-3 flex-row items-center justify-between">
-                    <Text className="text-base font-semibold text-[#0A2240]">
-                      {pickerTarget === 'start' ? 'Chọn ngày bắt đầu' : 'Chọn ngày kết thúc'}
-                    </Text>
-                    <TouchableOpacity onPress={() => setPickerTarget(null)}>
-                      <Ionicons name="close" size={20} color="#6B7280" />
+                    <TouchableOpacity onPress={() => handleRemoveFile(index)} className="py-2 pl-3">
+                      <Ionicons name="close" size={18} color="#000" />
                     </TouchableOpacity>
                   </View>
-                  {pickerTarget && (
-                    <DateTimePicker
-                      value={pickerTarget === 'start' ? startDate : endDate}
-                      mode="date"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={handleDateChange}
-                      minimumDate={pickerTarget === 'end' ? startDate : undefined}
-                      locale="vi"
-                    />
-                  )}
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
+                ))}
+              </View>
+            )}
+          </View>
 
-        {/* Action Buttons */}
-        <View className="mt-5 pb-6">
-          <View className="flex-row gap-3">
+          {/* Date Picker Modal */}
+          <Modal
+            transparent
+            animationType="slide"
+            visible={showDateModal}
+            onRequestClose={handleCancelDates}>
+            <TouchableWithoutFeedback onPress={handleCancelDates}>
+              <View className="flex-1 justify-end bg-black/40">
+                <TouchableWithoutFeedback onPress={() => {}}>
+                  <View className="rounded-t-2xl bg-white">
+                    {/* Handle bar */}
+                    <View className="items-center py-3">
+                      <View className="h-1 w-10 rounded-full bg-gray-300" />
+                    </View>
+
+                    {/* Header */}
+                    <View className="px-6 pb-4">
+                      <Text className="text-xl font-bold text-black">Chọn ngày</Text>
+                    </View>
+
+                    {/* Content */}
+                    <View className="px-6">
+                      {/* Start Date */}
+                      <View className="mb-6 border-b border-gray-100 pb-4">
+                        <Text className="mb-2 text-xs uppercase tracking-wide text-gray-400">
+                          Từ ngày
+                        </Text>
+                        <DateTimePicker
+                          value={tempStartDate}
+                          mode="date"
+                          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                          onChange={(_, date) => date && setTempStartDate(date)}
+                          locale="vi"
+                          style={{ width: '100%', height: 120 }}
+                          textColor="#000000"
+                        />
+                      </View>
+
+                      {/* End Date */}
+                      <View className="mb-4">
+                        <Text className="mb-2 text-xs uppercase tracking-wide text-gray-400">
+                          Đến ngày
+                        </Text>
+                        <DateTimePicker
+                          value={tempEndDate}
+                          mode="date"
+                          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                          onChange={(_, date) => date && setTempEndDate(date)}
+                          minimumDate={tempStartDate}
+                          locale="vi"
+                          style={{ width: '100%', height: 120 }}
+                          textColor="#000000"
+                        />
+                      </View>
+
+                      {/* Error */}
+                      {tempEndDate < tempStartDate && (
+                        <View className="mb-4 border-l-2 border-gray-800 bg-gray-50 py-2 pl-3">
+                          <Text className="text-sm text-gray-700">
+                            Ngày kết thúc phải sau hoặc bằng ngày bắt đầu
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Actions */}
+                    <View className="flex-row border-t border-gray-100 px-6 py-5">
+                      <TouchableOpacity
+                        onPress={handleCancelDates}
+                        className="flex-1 items-center py-3">
+                        <Text className="text-base font-medium text-gray-500">Hủy</Text>
+                      </TouchableOpacity>
+                      <View className="w-px bg-gray-200" />
+                      <TouchableOpacity
+                        onPress={handleConfirmDates}
+                        className="flex-1 items-center py-3">
+                        <Text className="text-base font-semibold text-black">Xác nhận</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+
+          {/* Action Buttons */}
+          <View className="border-t border-gray-100 pb-8 pt-6">
             {canEdit && (
               <TouchableOpacity
                 onPress={handleSubmit}
                 disabled={submitting || deleting}
-                className={`flex-1 items-center rounded-lg py-3 ${
-                  submitting || deleting ? 'bg-gray-300' : 'bg-[#3F4246]'
+                activeOpacity={0.8}
+                className={`items-center py-4 ${
+                  submitting || deleting ? 'bg-gray-200' : 'bg-black'
                 }`}>
                 {submitting ? (
                   <ActivityIndicator color="white" />
                 ) : (
-                  <Text className="text-base font-semibold text-white">Lưu</Text>
+                  <Text className="text-base font-semibold text-white">
+                    {isEditMode ? 'Cập nhật' : 'Tạo đơn'}
+                  </Text>
                 )}
               </TouchableOpacity>
             )}
@@ -839,38 +931,103 @@ const CreateLeaveRequestScreen = () => {
             <TouchableOpacity
               onPress={() => navigation.goBack()}
               disabled={submitting || deleting}
-              className={`${
-                canEdit ? 'flex-1' : 'flex-1'
-              } items-center rounded-lg border border-gray-300 bg-white py-3`}>
-              <Text className="text-base font-semibold text-[#0A2240]">
-                {canEdit ? 'Hủy bỏ' : 'Quay lại'}
-              </Text>
+              activeOpacity={0.7}
+              className="mt-3 items-center py-3">
+              <Text className="text-base text-gray-500">{canEdit ? 'Hủy' : 'Quay lại'}</Text>
             </TouchableOpacity>
-          </View>
 
-          {/* Delete Button - only in edit mode, within 24h, and NOT created by parent */}
-          {isEditMode && canEdit && !isCreatedByParent && (
-            <TouchableOpacity
-              onPress={handleDelete}
-              disabled={submitting || deleting}
-              className={`mt-3 items-center rounded-lg py-3 ${
-                submitting || deleting ? 'bg-gray-300' : 'bg-red-600'
-              }`}>
-              {deleting ? (
-                <View className="flex-row items-center">
-                  <ActivityIndicator color="white" size="small" />
-                  <Text className="ml-2 text-base font-semibold text-white">Đang xóa...</Text>
+            {/* Delete Button */}
+            {isEditMode && canEdit && !isCreatedByParent && (
+              <TouchableOpacity
+                onPress={handleDelete}
+                disabled={submitting || deleting}
+                activeOpacity={0.7}
+                className="mt-4 flex-row items-center justify-center border-t border-gray-100 pt-4">
+                {deleting ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : (
+                  <>
+                    <Ionicons name="trash-outline" size={16} color="#000" />
+                    <Text className="ml-1.5 text-sm text-black">Xóa đơn</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* File Picker Modal */}
+      <Modal
+        transparent
+        animationType="fade"
+        visible={showFilePickerModal}
+        onRequestClose={() => setShowFilePickerModal(false)}>
+        <TouchableWithoutFeedback onPress={() => setShowFilePickerModal(false)}>
+          <View className="flex-1 justify-end bg-black/40">
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View className="bg-white pb-8">
+                {/* Handle bar */}
+                <View className="items-center py-3">
+                  <View className="h-1 w-10 rounded-full bg-gray-300" />
                 </View>
-              ) : (
-                <View className="flex-row items-center">
-                  <Ionicons name="trash" size={18} color="white" />
-                  <Text className="ml-2 text-base font-semibold text-white">Xóa đơn nghỉ phép</Text>
+
+                {/* Title */}
+                <View className="px-6 pb-4">
+                  <Text className="text-lg font-bold text-black">Chọn loại tài liệu</Text>
                 </View>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
-      </ScrollView>
+
+                {/* Options */}
+                <View className="px-6">
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowFilePickerModal(false);
+                      setTimeout(() => handlePickDocument(), 400);
+                    }}
+                    activeOpacity={0.7}
+                    className="flex-row items-center border-b border-gray-100 py-4">
+                    <View className="h-10 w-10 items-center justify-center bg-gray-100">
+                      <Ionicons name="document-text-outline" size={20} color="#000" />
+                    </View>
+                    <View className="ml-4 flex-1">
+                      <Text className="text-base font-medium text-black">Tài liệu</Text>
+                      <Text className="mt-0.5 text-xs text-gray-400">PDF, Word, Excel...</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowFilePickerModal(false);
+                      setTimeout(() => handlePickImage(), 400);
+                    }}
+                    activeOpacity={0.7}
+                    className="flex-row items-center py-4">
+                    <View className="h-10 w-10 items-center justify-center bg-gray-100">
+                      <Ionicons name="image-outline" size={20} color="#000" />
+                    </View>
+                    <View className="ml-4 flex-1">
+                      <Text className="text-base font-medium text-black">Hình ảnh</Text>
+                      <Text className="mt-0.5 text-xs text-gray-400">JPG, PNG, GIF...</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Cancel */}
+                <View className="mt-4 px-6">
+                  <TouchableOpacity
+                    onPress={() => setShowFilePickerModal(false)}
+                    activeOpacity={0.7}
+                    className="items-center py-3">
+                    <Text className="text-base text-gray-500">Hủy</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       {/* File Preview Modal */}
       <FilePreviewModal

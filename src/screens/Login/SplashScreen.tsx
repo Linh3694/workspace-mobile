@@ -10,6 +10,7 @@ import Reanimated, {
   withDelay,
   runOnJS,
 } from 'react-native-reanimated';
+import Constants from 'expo-constants';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -22,28 +23,33 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   const logoOpacity = useSharedValue(0);
   const textOpacity = useSharedValue(0);
   const subtitleOpacity = useSharedValue(0);
+  const versionOpacity = useSharedValue(0);
   const containerOpacity = useSharedValue(1);
   const circleScale1 = useSharedValue(0);
   const circleScale2 = useSharedValue(0);
 
   useEffect(() => {
     console.log('🎬 SplashScreen useEffect starting animations...');
-    
+
     // Phase 1: Circles expand
     circleScale1.value = withTiming(1, { duration: 600 });
     circleScale2.value = withDelay(200, withTiming(1, { duration: 600 }));
-    
+
     // Phase 2: Logo fade in (no scale animation)
     logoOpacity.value = withDelay(200, withTiming(1, { duration: 500 }));
-    
+
     // Phase 3: Text appears (after 600ms)
     textOpacity.value = withDelay(600, withTiming(1, { duration: 350 }));
-    
+
     // Phase 4: Subtitle appears (after 900ms)
     subtitleOpacity.value = withDelay(900, withTiming(1, { duration: 300 }));
-    
-    // Phase 5: Fade out and finish (after 2500ms)
-    containerOpacity.value = withDelay(2500, 
+
+    // Phase 5: Version appears (after 1100ms)
+    versionOpacity.value = withDelay(1100, withTiming(1, { duration: 300 }));
+
+    // Phase 6: Fade out and finish (after 2500ms)
+    containerOpacity.value = withDelay(
+      2500,
       withTiming(0, { duration: 400 }, (finished) => {
         if (finished) {
           console.log('🎬 Animation finished, calling onFinish');
@@ -74,6 +80,10 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
     opacity: subtitleOpacity.value,
   }));
 
+  const versionStyle = useAnimatedStyle(() => ({
+    opacity: versionOpacity.value,
+  }));
+
   const containerStyle = useAnimatedStyle(() => ({
     opacity: containerOpacity.value,
   }));
@@ -81,18 +91,18 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   return (
     <Reanimated.View style={[styles.container, containerStyle]}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      
+
       <LinearGradient
         colors={['#FEFEFE', '#FFF9F0', '#FFF5E6']}
         style={styles.gradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
-      
+
       {/* Decorative circles */}
       <Reanimated.View style={[styles.decorCircle, styles.circle1, circle1Style]} />
       <Reanimated.View style={[styles.decorCircle, styles.circle2, circle2Style]} />
-      
+
       {/* Main content */}
       <View style={styles.content}>
         {/* Logo with 3D effect */}
@@ -112,7 +122,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
             </View>
           </View>
         </Reanimated.View>
-        
+
         {/* App name with gradient */}
         {/* <Reanimated.View style={[styles.textContainer, textStyle]}>
           <MaskedView
@@ -129,15 +139,20 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
             </LinearGradient>
           </MaskedView>
         </Reanimated.View> */}
-        
+
         {/* Subtitle */}
         <Reanimated.View style={[styles.subtitleContainer, subtitleStyle]}>
           <Text style={styles.subtitle}>Wellspring Innovation Spaces</Text>
         </Reanimated.View>
       </View>
-      
+
       {/* Bottom accent line */}
       <Reanimated.View style={[styles.accentLine, subtitleStyle]} />
+
+      {/* Version text */}
+      <Reanimated.View style={[styles.versionContainer, versionStyle]}>
+        <Text style={styles.versionText}>v{Constants.expoConfig?.version || '1.0.0'}</Text>
+      </Reanimated.View>
     </Reanimated.View>
   );
 };
@@ -258,6 +273,17 @@ const styles = StyleSheet.create({
     height: 3,
     backgroundColor: '#F5AA1E',
     borderRadius: 2,
+  },
+  versionContainer: {
+    position: 'absolute',
+    bottom: 80,
+    alignItems: 'center',
+  },
+  versionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#F5AA1E',
+    letterSpacing: 1,
   },
 });
 

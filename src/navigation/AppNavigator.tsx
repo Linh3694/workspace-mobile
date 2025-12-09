@@ -18,6 +18,7 @@ import { useAuth } from '../context/AuthContext';
 import AttendanceHome from '../screens/Attendance/AttendanceHome';
 import AttendanceDetail from '../screens/Attendance/AttendanceDetail';
 import LeaveRequestsScreen from '../screens/LeaveRequests/LeaveRequestsScreen';
+import LeaveRequestsDetailScreen from '../screens/LeaveRequests/LeaveRequestsDetailScreen';
 import CreateLeaveRequestScreen from '../screens/LeaveRequests/CreateLeaveRequestScreen';
 import NotificationsScreen from '../screens/Notifications/NotificationsScreen';
 import {
@@ -77,9 +78,10 @@ export type RootStackParamList = {
   };
   [ROUTES.SCREENS.ATTENDANCE_HOME]: undefined;
   [ROUTES.SCREENS.ATTENDANCE_DETAIL]: { classId: string; date: string };
-  [ROUTES.SCREENS.LEAVE_REQUESTS]: {
-    classId?: string;
-    studentId?: string;
+  [ROUTES.SCREENS.LEAVE_REQUESTS]: undefined;
+  [ROUTES.SCREENS.LEAVE_REQUESTS_DETAIL]: {
+    classId: string;
+    classTitle?: string;
     leaveRequestId?: string;
     fromNotification?: boolean;
   };
@@ -264,6 +266,11 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.LEAVE_REQUESTS}
             component={LeaveRequestsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.LEAVE_REQUESTS_DETAIL}
+            component={LeaveRequestsDetailScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen
