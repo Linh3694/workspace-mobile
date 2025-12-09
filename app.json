@@ -16,9 +16,7 @@
         {
           "icon": "./src/assets/notifications/notification-icon.png",
           "color": "#ffffff",
-          "sounds": [
-            "./src/assets/sound/ticket_create.wav"
-          ]
+          "sounds": ["./src/assets/sound/ticket_create.wav"]
         }
       ],
       [
@@ -55,18 +53,14 @@
     "orientation": "portrait",
     "icon": "./src/assets/icon.png",
     "userInterfaceStyle": "light",
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.wellspring.workspace",
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": [
-          "remote-notification"
-        ],
+        "UIBackgroundModes": ["remote-notification"],
         "NSCameraUsageDescription": "Ứng dụng cần quyền truy cập camera để chụp ảnh và gửi trong tin nhắn",
         "NSPhotoLibraryUsageDescription": "Ứng dụng cần quyền truy cập thư viện ảnh và video để gửi media trong tin nhắn",
         "NSMicrophoneUsageDescription": "Ứng dụng cần quyền truy cập microphone để ghi âm",
@@ -81,18 +75,10 @@
       },
       "googleServicesFile": "./google-services.json",
       "package": "com.hailinh.n23.workspace",
-      "permissions": [
-        "NOTIFICATIONS",
-        "VIBRATE",
-        "CAMERA"
-      ]
+      "permissions": ["NOTIFICATIONS", "VIBRATE", "CAMERA"]
     },
     "scheme": "staffportal",
-    "platforms": [
-      "ios",
-      "android",
-      "web"
-    ],
+    "platforms": ["ios", "android", "web"],
     "extra": {
       "azureClientId": "78145f50-d9b3-4b45-9b0c-4cd1510941bf",
       "azureTenantId": "653b7f37-392c-416b-b3f0-34859ed6d6eb",
@@ -101,9 +87,7 @@
         "projectId": "f6365a6d-3c57-4b54-aaa8-119f05e3698e"
       }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.5.1",
     "updates": {
       "url": "https://u.expo.dev/f6365a6d-3c57-4b54-aaa8-119f05e3698e"
     }
