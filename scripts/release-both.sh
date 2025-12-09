@@ -64,11 +64,20 @@ if [ -f "./ios/Wis/Info.plist" ]; then
     echo -e "${GREEN}✅ Updated ios/Wis/Info.plist (CFBundleShortVersionString)${NC}"
 fi
 
+# Update version in android/app/build.gradle (bare workflow)
+if [ -f "./android/app/build.gradle" ]; then
+    sed -i '' "s/versionName \".*\"/versionName \"${NEW_VERSION}\"/" "./android/app/build.gradle"
+    echo -e "${GREEN}✅ Updated android/app/build.gradle (versionName)${NC}"
+fi
+
 # Git commit version bump
 echo -e "${BLUE}📝 Committing version bump...${NC}"
 git add app.json package.json
 if [ -f "./ios/Wis/Info.plist" ]; then
     git add ./ios/Wis/Info.plist
+fi
+if [ -f "./android/app/build.gradle" ]; then
+    git add ./android/app/build.gradle
 fi
 git commit -m "chore: bump version to ${NEW_VERSION} [ios + android]" || echo -e "${YELLOW}No changes to commit${NC}"
 
@@ -97,11 +106,19 @@ rollback_version() {
     if [ -f "./ios/Wis/Info.plist" ]; then
         /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${OLD_VERSION}" "./ios/Wis/Info.plist"
     fi
+
+    # Revert version in android/app/build.gradle (bare workflow)
+    if [ -f "./android/app/build.gradle" ]; then
+        sed -i '' "s/versionName \".*\"/versionName \"${OLD_VERSION}\"/" "./android/app/build.gradle"
+    fi
     
     # Amend the last commit or create revert commit
     git add app.json package.json
     if [ -f "./ios/Wis/Info.plist" ]; then
         git add ./ios/Wis/Info.plist
+    fi
+    if [ -f "./android/app/build.gradle" ]; then
+        git add ./android/app/build.gradle
     fi
     git commit --amend -m "chore: bump version to ${OLD_VERSION} [ios + android] (reverted due to build failure)" --no-edit 2>/dev/null || \
     git commit -m "revert: rollback version to ${OLD_VERSION} due to build failure" 2>/dev/null || true
