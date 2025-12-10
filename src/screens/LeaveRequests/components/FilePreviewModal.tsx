@@ -1,10 +1,47 @@
-import React, { useState } from 'react';
-import { View, Text, Modal, ActivityIndicator, Alert, Platform, Linking } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, Modal, ActivityIndicator, Alert, Platform } from 'react-native';
 import { TouchableOpacity } from '../../../components/Common';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import * as IntentLauncher from 'expo-intent-launcher';
+
+// Get MIME type from file name (moved outside component)
+const getMimeType = (name: string): string => {
+  const ext = name.toLowerCase().split('.').pop();
+  const mimeTypes: Record<string, string> = {
+    pdf: 'application/pdf',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+  };
+  return mimeTypes[ext || ''] || 'application/octet-stream';
+};
+
+// Open file with Android IntentLauncher
+const openWithAndroidIntent = async (fileUri: string, fileName: string): Promise<boolean> => {
+  try {
+    const mimeType = getMimeType(fileName);
+    // Convert file:// URI to content:// URI for Android 7+
+    const contentUri = await FileSystem.getContentUriAsync(fileUri);
+    console.log('Opening with IntentLauncher:', contentUri, mimeType);
+
+    await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+      data: contentUri,
+      flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+      type: mimeType,
+    });
+    return true;
+  } catch (error) {
+    console.error('Error opening file with IntentLauncher:', error);
+    return false;
+  }
+};
 
 interface FilePreviewModalProps {
   visible: boolean;
@@ -24,8 +61,13 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   fileName,
 }) => {
   const [downloading, setDownloading] = useState(false);
+  const [localFileUri, setLocalFileUri] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(true);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
-  if (!visible) return null;
+  // Use ref to store onClose to avoid dependency issues in useEffect
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   // Extract file name from URL if not provided
   const getFileName = () => {
@@ -59,13 +101,91 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   const displayFileName = getFileName();
   const fileType = getFileType();
 
-  // For PDF and DOCX on Android, use Google Docs Viewer
-  const getViewerUrl = () => {
-    if (Platform.OS === 'android' && (fileType === 'pdf' || fileType === 'document')) {
-      return `https://docs.google.com/viewer?url=${encodeURIComponent(fileUrl)}&embedded=true`;
-    }
-    return fileUrl;
-  };
+  // Download file and handle based on type
+  useEffect(() => {
+    let isMounted = true;
+
+    const downloadAndHandleFile = async () => {
+      if (!visible) return;
+
+      try {
+        setLoadingPreview(true);
+        setPreviewError(null);
+        setLocalFileUri(null);
+
+        // Generate cache file path
+        const cacheDir = FileSystem.cacheDirectory;
+        const localUri = `${cacheDir}preview_${Date.now()}_${displayFileName}`;
+
+        console.log('Downloading file:', fileUrl, '-> ', localUri);
+
+        // Download file with auth header
+        const downloadResult = await FileSystem.downloadAsync(fileUrl, localUri, {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
+
+        if (!isMounted) return;
+
+        if (downloadResult.status === 200) {
+          console.log('File downloaded successfully:', downloadResult.uri);
+
+          if (Platform.OS === 'android' && (fileType === 'pdf' || fileType === 'document')) {
+            // Android: Use IntentLauncher to open PDF/DOCX with external app
+            const opened = await openWithAndroidIntent(downloadResult.uri, displayFileName);
+            if (opened) {
+              // Close modal after opening on Android
+              setTimeout(() => onCloseRef.current(), 300);
+            } else {
+              setPreviewError('Không thể mở file. Vui lòng cài đặt ứng dụng đọc PDF/Word.');
+            }
+          } else if (Platform.OS === 'ios' && fileType === 'pdf') {
+            // iOS: Show PDF directly in WebView (iOS WebView supports PDF natively)
+            setLocalFileUri(downloadResult.uri);
+          } else if (Platform.OS === 'ios' && fileType === 'document') {
+            // iOS + DOCX: Use Sharing since WebView can't render DOCX
+            const isAvailable = await Sharing.isAvailableAsync();
+            if (isAvailable) {
+              await Sharing.shareAsync(downloadResult.uri, {
+                mimeType: getMimeType(displayFileName),
+                dialogTitle: 'Mở file bằng...',
+                UTI: 'org.openxmlformats.wordprocessingml.document',
+              });
+            } else {
+              setPreviewError('Không thể mở file. Vui lòng cài đặt ứng dụng đọc Word.');
+            }
+          } else {
+            // For images, show in WebView
+            setLocalFileUri(downloadResult.uri);
+          }
+        } else {
+          console.error('Download failed with status:', downloadResult.status);
+          setPreviewError('Không thể tải file. Vui lòng thử lại.');
+        }
+      } catch (error) {
+        if (!isMounted) return;
+        console.error('Error downloading file:', error);
+        setPreviewError('Có lỗi xảy ra khi tải file');
+      } finally {
+        if (isMounted) {
+          setLoadingPreview(false);
+        }
+      }
+    };
+
+    downloadAndHandleFile();
+
+    return () => {
+      isMounted = false;
+      // Clean up cached file when modal closes
+      if (localFileUri) {
+        FileSystem.deleteAsync(localFileUri, { idempotent: true }).catch((err) =>
+          console.log('Error cleaning up cache:', err)
+        );
+      }
+    };
+  }, [visible, fileUrl, authToken, displayFileName, fileType]);
 
   // Download and share file
   const handleDownload = async () => {
@@ -81,16 +201,23 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
       });
 
       if (downloadResult.status === 200) {
-        // Check if sharing is available
-        const isAvailable = await Sharing.isAvailableAsync();
-
-        if (isAvailable) {
-          await Sharing.shareAsync(downloadResult.uri, {
-            mimeType: getMimeType(displayFileName),
-            dialogTitle: 'Mở file bằng...',
-          });
+        // For PDF and DOCX on Android, use IntentLauncher
+        if (Platform.OS === 'android' && (fileType === 'pdf' || fileType === 'document')) {
+          const opened = await openWithAndroidIntent(downloadResult.uri, displayFileName);
+          if (!opened) {
+            Alert.alert('Lỗi', 'Không thể mở file. Vui lòng cài đặt ứng dụng đọc PDF/Word.');
+          }
         } else {
-          Alert.alert('Thành công', `File đã được tải về: ${displayFileName}`);
+          // For iOS or images, use Sharing (iOS shows Quick Look preview)
+          const isAvailable = await Sharing.isAvailableAsync();
+          if (isAvailable) {
+            await Sharing.shareAsync(downloadResult.uri, {
+              mimeType: getMimeType(displayFileName),
+              dialogTitle: 'Mở file bằng...',
+            });
+          } else {
+            Alert.alert('Thành công', `File đã được tải về: ${displayFileName}`);
+          }
         }
       } else {
         Alert.alert('Lỗi', 'Không thể tải file');
@@ -103,21 +230,8 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
     }
   };
 
-  // Get MIME type from file name
-  const getMimeType = (name: string): string => {
-    const ext = name.toLowerCase().split('.').pop();
-    const mimeTypes: Record<string, string> = {
-      pdf: 'application/pdf',
-      doc: 'application/msword',
-      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      png: 'image/png',
-      gif: 'image/gif',
-      webp: 'image/webp',
-    };
-    return mimeTypes[ext || ''] || 'application/octet-stream';
-  };
+  // Return null if not visible (after all hooks)
+  if (!visible) return null;
 
   return (
     <Modal visible={visible} transparent={true} animationType="slide" onRequestClose={onClose}>
@@ -131,11 +245,6 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
             <Text className="text-center text-sm font-semibold text-white" numberOfLines={2}>
               {displayFileName}
             </Text>
-            {Platform.OS === 'android' && (fileType === 'pdf' || fileType === 'document') && (
-              <Text className="mt-1 text-center text-xs text-gray-400">
-                Xem qua Google Docs Viewer
-              </Text>
-            )}
           </View>
           <TouchableOpacity onPress={handleDownload} disabled={downloading} className="p-2">
             {downloading ? (
@@ -148,62 +257,67 @@ const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
 
         {/* Content */}
         <View className="flex-1">
-          <WebView
-            source={{
-              uri: getViewerUrl(),
-              headers:
-                Platform.OS === 'android' && (fileType === 'pdf' || fileType === 'document')
-                  ? {} // Google Docs Viewer doesn't support custom headers
-                  : authToken
-                    ? {
-                        Authorization: `Bearer ${authToken}`,
-                      }
-                    : {},
-            }}
-            style={{ flex: 1 }}
-            onError={(syntheticEvent) => {
-              const { nativeEvent } = syntheticEvent;
-              console.error('WebView error:', nativeEvent);
-              Alert.alert('Lỗi', 'Không thể tải file. Vui lòng thử tải về để xem.', [
-                { text: 'Đóng', style: 'cancel' },
-                { text: 'Tải về', onPress: handleDownload },
-              ]);
-            }}
-            onHttpError={(syntheticEvent) => {
-              const { nativeEvent } = syntheticEvent;
-              console.error('WebView HTTP error:', nativeEvent);
-              if (nativeEvent.statusCode === 401) {
-                Alert.alert('Lỗi', 'Không có quyền truy cập file này.');
-              } else if (nativeEvent.statusCode === 404) {
-                Alert.alert('Lỗi', 'Không tìm thấy file.');
-              } else {
-                Alert.alert('Lỗi', `Lỗi tải file: ${nativeEvent.statusCode}`);
-              }
-            }}
-            onLoadStart={() => {
-              console.log('WebView started loading file:', getViewerUrl());
-            }}
-            onLoadEnd={() => {
-              console.log('WebView finished loading file');
-            }}
-            startInLoadingState={true}
-            renderLoading={() => (
-              <View className="flex-1 items-center justify-center bg-black">
-                <ActivityIndicator size="large" color="white" />
-                <Text className="mt-2 text-white">Đang tải file...</Text>
-                {Platform.OS === 'android' && (fileType === 'pdf' || fileType === 'document') && (
-                  <Text className="mt-2 px-8 text-center text-xs text-gray-400">
-                    Đang tải qua Google Docs Viewer...
+          {loadingPreview ? (
+            <View className="flex-1 items-center justify-center bg-black">
+              <ActivityIndicator size="large" color="white" />
+              <Text className="mt-2 text-white">Đang tải file...</Text>
+              {Platform.OS === 'android' && (fileType === 'pdf' || fileType === 'document') && (
+                <Text className="mt-2 px-8 text-center text-xs text-gray-400">
+                  Chọn ứng dụng để mở file
+                </Text>
+              )}
+              {Platform.OS === 'ios' && fileType === 'document' && (
+                <Text className="mt-2 px-8 text-center text-xs text-gray-400">
+                  Chọn ứng dụng để mở file Word
+                </Text>
+              )}
+            </View>
+          ) : previewError ? (
+            <View className="flex-1 items-center justify-center bg-black px-8">
+              <Ionicons name="alert-circle-outline" size={48} color="white" />
+              <Text className="mt-4 text-center text-white">{previewError}</Text>
+              <TouchableOpacity
+                onPress={handleDownload}
+                className="mt-6 bg-white px-8 py-3"
+                activeOpacity={0.8}>
+                <Text className="font-medium text-black">Tải về</Text>
+              </TouchableOpacity>
+            </View>
+          ) : localFileUri &&
+            (fileType === 'image' || (Platform.OS === 'ios' && fileType === 'pdf')) ? (
+            // Show images and PDF (iOS only) in WebView
+            <WebView
+              source={{ uri: localFileUri }}
+              style={{ flex: 1, backgroundColor: fileType === 'pdf' ? '#525659' : '#000' }}
+              onError={(syntheticEvent) => {
+                const { nativeEvent } = syntheticEvent;
+                console.error('WebView error:', nativeEvent);
+                setPreviewError(
+                  fileType === 'pdf' ? 'Không thể hiển thị PDF.' : 'Không thể hiển thị hình ảnh.'
+                );
+              }}
+              onLoadStart={() => {
+                console.log('WebView started loading:', localFileUri);
+              }}
+              onLoadEnd={() => {
+                console.log('WebView finished loading');
+              }}
+              startInLoadingState={true}
+              renderLoading={() => (
+                <View className="flex-1 items-center justify-center bg-black">
+                  <ActivityIndicator size="large" color="white" />
+                  <Text className="mt-2 text-white">
+                    {fileType === 'pdf' ? 'Đang hiển thị PDF...' : 'Đang hiển thị hình ảnh...'}
                   </Text>
-                )}
-              </View>
-            )}
-            allowFileAccess={true}
-            allowFileAccessFromFileURLs={true}
-            allowUniversalAccessFromFileURLs={true}
-            javaScriptEnabled={true}
-            domStorageEnabled={true}
-          />
+                </View>
+              )}
+              allowFileAccess={true}
+              allowFileAccessFromFileURLs={true}
+              allowUniversalAccessFromFileURLs={true}
+              originWhitelist={['*']}
+              scalesPageToFit={true}
+            />
+          ) : null}
         </View>
       </View>
     </Modal>

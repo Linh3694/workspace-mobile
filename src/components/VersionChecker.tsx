@@ -13,15 +13,9 @@ interface VersionCheckerProps {
 export const VersionChecker: React.FC<VersionCheckerProps> = ({ children }) => {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [hasCheckedSkip, setHasCheckedSkip] = useState(false);
-  
-  const {
-    currentVersion,
-    latestVersion,
-    needsUpdate,
-    forceUpdate,
-    isChecking,
-    openStore,
-  } = useVersionCheck();
+
+  const { currentVersion, latestVersion, needsUpdate, forceUpdate, isChecking, openStore } =
+    useVersionCheck();
 
   // Kiểm tra xem người dùng đã skip update này chưa
   useEffect(() => {
@@ -41,7 +35,7 @@ export const VersionChecker: React.FC<VersionCheckerProps> = ({ children }) => {
         if (skipData) {
           const { version, timestamp } = JSON.parse(skipData);
           const now = Date.now();
-          
+
           // Nếu đã skip version này trong vòng 24h, không hiển thị modal
           if (version === latestVersion && now - timestamp < SKIP_UPDATE_DURATION) {
             console.log('📱 Skip update modal - user skipped recently');
@@ -52,9 +46,9 @@ export const VersionChecker: React.FC<VersionCheckerProps> = ({ children }) => {
       } catch (error) {
         console.error('Error checking skipped version:', error);
       }
-      
+
       setHasCheckedSkip(true);
-      
+
       // Hiển thị modal nếu cần update
       if (needsUpdate && latestVersion) {
         console.log('📱 Showing update modal');
@@ -72,7 +66,7 @@ export const VersionChecker: React.FC<VersionCheckerProps> = ({ children }) => {
   const handleLater = async () => {
     // Không cho phép skip nếu là force update
     if (forceUpdate) return;
-    
+
     try {
       // Lưu lại version đã skip và thời gian
       await AsyncStorage.setItem(
@@ -106,4 +100,3 @@ export const VersionChecker: React.FC<VersionCheckerProps> = ({ children }) => {
 };
 
 export default VersionChecker;
-

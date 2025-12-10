@@ -276,16 +276,16 @@ const LeaveRequestsDetailScreen = () => {
               </Text>
             </View>
           ) : (
-            <View className="space-y-6">
+            <View className="gap-8 ">
               {getGroupedRequestsByDate().map((group) => (
-                <View key={group.date} className="space-y-3">
+                <View key={group.date} className="space-y-4">
                   {/* Date Header */}
-                  <View className="flex-row items-center">
+                  <View className="mb-2 flex-row items-center">
                     <Text className="text-lg font-bold text-[#002855]">{group.date}</Text>
                   </View>
 
                   {/* Cards for this date */}
-                  <View className="space-y-4">
+                  <View className="gap-4">
                     {group.requests.map((request) => (
                       <TouchableOpacity
                         key={request.name}

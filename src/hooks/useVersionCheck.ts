@@ -20,13 +20,6 @@ export interface VersionInfo {
 const IOS_STORE_URL = 'https://apps.apple.com/app/id6746143732';
 const ANDROID_STORE_URL = 'https://play.google.com/store/apps/details?id=com.hailinh.n23.workspace';
 
-// Kiểm tra có phải production build không
-const isProductionBuild = (): boolean => {
-  const isExpoGo = Constants.appOwnership === 'expo';
-  const isStandalone = Constants.executionEnvironment === 'standalone';
-  return !isExpoGo && isStandalone;
-};
-
 export const useVersionCheck = () => {
   const [versionInfo, setVersionInfo] = useState<VersionInfo>({
     currentVersion: '',
@@ -37,33 +30,16 @@ export const useVersionCheck = () => {
     forceUpdate: false,
     isChecking: true,
     error: null,
-    isProduction: isProductionBuild(),
+    isProduction: true,
   });
 
   const checkVersion = useCallback(async () => {
-    // Chỉ check version trên production build
-    if (!isProductionBuild()) {
-      const devVersion = Constants.expoConfig?.version || Application.nativeApplicationVersion || '0.0.0';
-      console.log('📱 Version Check: Skipped (not production build)', {
-        appOwnership: Constants.appOwnership,
-        executionEnvironment: Constants.executionEnvironment,
-        currentVersion: devVersion,
-      });
-      setVersionInfo(prev => ({
-        ...prev,
-        isChecking: false,
-        needsUpdate: false,
-        forceUpdate: false,
-        currentVersion: devVersion,
-      }));
-      return;
-    }
-
     try {
-      setVersionInfo(prev => ({ ...prev, isChecking: true, error: null }));
+      setVersionInfo((prev) => ({ ...prev, isChecking: true, error: null }));
 
       // Lấy version hiện tại từ native app
-      const currentVersion = Application.nativeApplicationVersion || Constants.expoConfig?.version || '0.0.0';
+      const currentVersion =
+        Application.nativeApplicationVersion || Constants.expoConfig?.version || '0.0.0';
       const platform = Platform.OS;
 
       // Gọi API backend để check version
@@ -108,7 +84,7 @@ export const useVersionCheck = () => {
       } else {
         // API failed, skip update check
         console.warn('📱 Version Check API failed:', result?.error);
-        setVersionInfo(prev => ({
+        setVersionInfo((prev) => ({
           ...prev,
           currentVersion,
           isChecking: false,
@@ -121,7 +97,7 @@ export const useVersionCheck = () => {
       console.error('❌ Error checking version:', error);
       // Network error - skip update check, don't block user
       const currentVersion = Application.nativeApplicationVersion || '0.0.0';
-      setVersionInfo(prev => ({
+      setVersionInfo((prev) => ({
         ...prev,
         currentVersion,
         isChecking: false,
@@ -135,7 +111,7 @@ export const useVersionCheck = () => {
   const openStore = useCallback(async () => {
     try {
       let url = versionInfo.storeUrl;
-      
+
       if (!url) {
         url = Platform.OS === 'ios' ? IOS_STORE_URL : ANDROID_STORE_URL;
       }

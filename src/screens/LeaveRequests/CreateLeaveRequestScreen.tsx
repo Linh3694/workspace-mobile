@@ -26,13 +26,13 @@ import {
   type LeaveAttachment,
 } from '../../services/leaveService';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { format, differenceInHours } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import FilePreviewModal from './components/FilePreviewModal';
+import CustomDatePicker from '../../components/CustomDatePicker';
 
 type CreateLeaveRequestNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -832,7 +832,7 @@ const CreateLeaveRequestScreen = () => {
             <TouchableWithoutFeedback onPress={handleCancelDates}>
               <View className="flex-1 justify-end bg-black/40">
                 <TouchableWithoutFeedback onPress={() => {}}>
-                  <View className="rounded-t-2xl bg-white">
+                  <View className="pb-safe rounded-t-2xl bg-white">
                     {/* Handle bar */}
                     <View className="items-center py-3">
                       <View className="h-1 w-10 rounded-full bg-gray-300" />
@@ -846,41 +846,27 @@ const CreateLeaveRequestScreen = () => {
                     {/* Content */}
                     <View className="px-6">
                       {/* Start Date */}
-                      <View className="mb-6 border-b border-gray-100 pb-4">
-                        <Text className="mb-2 text-xs uppercase tracking-wide text-gray-400">
-                          Từ ngày
-                        </Text>
-                        <DateTimePicker
+                      <View className="mb-6">
+                        <Text className="mb-3 text-sm font-medium text-gray-600">Từ ngày</Text>
+                        <CustomDatePicker
                           value={tempStartDate}
-                          mode="date"
-                          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                          onChange={(_, date) => date && setTempStartDate(date)}
-                          locale="vi"
-                          style={{ width: '100%', height: 120 }}
-                          textColor="#000000"
+                          onChange={(date) => setTempStartDate(date)}
                         />
                       </View>
 
                       {/* End Date */}
                       <View className="mb-4">
-                        <Text className="mb-2 text-xs uppercase tracking-wide text-gray-400">
-                          Đến ngày
-                        </Text>
-                        <DateTimePicker
+                        <Text className="mb-3 text-sm font-medium text-gray-600">Đến ngày</Text>
+                        <CustomDatePicker
                           value={tempEndDate}
-                          mode="date"
-                          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                          onChange={(_, date) => date && setTempEndDate(date)}
+                          onChange={(date) => setTempEndDate(date)}
                           minimumDate={tempStartDate}
-                          locale="vi"
-                          style={{ width: '100%', height: 120 }}
-                          textColor="#000000"
                         />
                       </View>
 
                       {/* Error */}
                       {tempEndDate < tempStartDate && (
-                        <View className="mb-4 border-l-2 border-gray-800 bg-gray-50 py-2 pl-3">
+                        <View className="mb-4 border-l-2 border-black bg-gray-50 py-2 pl-3">
                           <Text className="text-sm text-gray-700">
                             Ngày kết thúc phải sau hoặc bằng ngày bắt đầu
                           </Text>
