@@ -39,6 +39,7 @@ import BusIcon from '../../assets/bus-icon.svg';
 import FeedbackIcon from '../../assets/feedback-icon.svg';
 import MenuIcon from '../../assets/menu-icon.svg';
 import TimetableIcon from '../../assets/timetable-icon.svg';
+import CalendarIcon from '../../assets/calendar-icon.svg';
 import attendanceService from '../../services/attendanceService';
 import pushNotificationService from '../../services/pushNotificationService';
 import notificationCenterService from '../../services/notificationCenterService';
@@ -276,6 +277,10 @@ const HomeScreen = () => {
     navigation.navigate(ROUTES.SCREENS.TIMETABLE);
   };
 
+  const navigateToCalendar = () => {
+    navigation.navigate(ROUTES.SCREENS.CALENDAR);
+  };
+
   // Role-based menu configuration
   const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
   const hasMobileTeacher = roles.includes('Mobile Teacher');
@@ -349,29 +354,39 @@ const HomeScreen = () => {
       onPress: navigateToTimetable,
       key: 'timetable',
     },
+    {
+      id: 9,
+      title: 'Lịch năm học',
+      component: CalendarIcon,
+      description: 'Xem lịch sự kiện năm học',
+      onPress: navigateToCalendar,
+      key: 'calendar',
+    },
   ];
 
   let menuItems = allItems.filter(() => false);
   if (hasMobileBOD) {
-    // Mobile BOD: tất cả (bao gồm Bus, Feedback và Menu)
+    // Mobile BOD: tất cả (bao gồm Bus, Feedback, Menu, Calendar)
     menuItems = allItems;
   } else if (hasMobileMonitor) {
-    // Mobile Monitor: chỉ Bus
-    menuItems = allItems.filter((i) => ['bus'].includes(i.key));
+    // Mobile Monitor: Bus + Calendar
+    menuItems = allItems.filter((i) => ['bus', 'calendar'].includes(i.key));
   } else if (hasMobileIT) {
-    // Mobile IT: Ticket Admin + Devices + Feedback
-    menuItems = allItems.filter((i) => ['tickets', 'devices', 'feedback'].includes(i.key));
-  } else if (hasMobileTeacher) {
-    // Mobile Teacher: Ticket Guest + Attendance + Leaves + Menu + Timetable
+    // Mobile IT: Ticket Admin + Devices + Feedback + Calendar
     menuItems = allItems.filter((i) =>
-      ['tickets', 'attendance', 'documents', 'menu', 'timetable'].includes(i.key)
+      ['tickets', 'devices', 'feedback', 'calendar'].includes(i.key)
+    );
+  } else if (hasMobileTeacher) {
+    // Mobile Teacher: Ticket Guest + Attendance + Leaves + Menu + Timetable + Calendar
+    menuItems = allItems.filter((i) =>
+      ['tickets', 'attendance', 'documents', 'menu', 'timetable', 'calendar'].includes(i.key)
     );
   } else if (hasMobileUser) {
-    // Mobile User: chỉ Ticket Guest
-    menuItems = allItems.filter((i) => ['tickets'].includes(i.key));
+    // Mobile User: Ticket Guest + Calendar
+    menuItems = allItems.filter((i) => ['tickets', 'calendar'].includes(i.key));
   } else {
-    // Default minimal access (Mobile User)
-    menuItems = allItems.filter((i) => i.key === 'tickets');
+    // Default minimal access (Mobile User) + Calendar
+    menuItems = allItems.filter((i) => ['tickets', 'calendar'].includes(i.key));
   }
 
   const [searchQuery, setSearchQuery] = useState('');

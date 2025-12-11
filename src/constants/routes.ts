@@ -28,6 +28,8 @@ export const ROUTES = {
     MENU: 'Menu',
     // Timetable screens
     TIMETABLE: 'Timetable',
+    // Calendar screens
+    CALENDAR: 'Calendar',
   },
   // Tab names trong bottom navigation
   TABS: {

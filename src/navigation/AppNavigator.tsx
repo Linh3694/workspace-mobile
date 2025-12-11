@@ -30,6 +30,7 @@ import {
 import { FeedbackScreen, FeedbackDetailScreen } from '../screens/Feedback';
 import { MenuScreen } from '../screens/Menu';
 import { TimetableScreen } from '../screens/Timetable';
+import { CalendarScreen } from '../screens/Calendar';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -99,6 +100,8 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.MENU]: undefined;
   // Timetable Module Routes
   [ROUTES.SCREENS.TIMETABLE]: undefined;
+  // Calendar Module Routes
+  [ROUTES.SCREENS.CALENDAR]: undefined;
 };
 
 const MainTabWrapper = ({ route }: { route: any }) => <BottomTabNavigator route={route} />;
@@ -321,6 +324,12 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.TIMETABLE}
             component={TimetableScreen}
+            options={{ headerShown: false }}
+          />
+          {/* Calendar Module Screen */}
+          <Stack.Screen
+            name={ROUTES.SCREENS.CALENDAR}
+            component={CalendarScreen}
             options={{ headerShown: false }}
           />
         </>
