@@ -160,3 +160,4 @@ echo -e "${CYAN}   Version: ${NEW_VERSION}${NC}"
 echo -e "${CYAN}========================================${NC}"
 echo ""
 echo -e "${YELLOW}💡 Don't forget to push: git push${NC}"
+
