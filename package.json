@@ -1,6 +1,6 @@
 {
   "name": "wis-mobile",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "scripts": {
     "android": "npm run copy-firebase && expo run:android",
     "ios": "expo run:ios",
