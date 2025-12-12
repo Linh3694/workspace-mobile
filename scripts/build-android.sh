@@ -60,6 +60,18 @@ OLD_VERSION=$CURRENT_VERSION
 if [ "$NO_BUMP" = true ]; then
     NEW_VERSION=$CURRENT_VERSION
     echo -e "${YELLOW}Version bump skipped (--no-bump flag)${NC}"
+    
+    # Sync version to android/app/build.gradle even when not bumping
+    # This ensures build.gradle matches app.json version
+    if [ -f "./android/app/build.gradle" ]; then
+        GRADLE_VERSION=$(grep -o 'versionName "[^"]*"' ./android/app/build.gradle | grep -o '"[^"]*"' | tr -d '"')
+        if [ "$GRADLE_VERSION" != "$CURRENT_VERSION" ]; then
+            sed -i '' "s/versionName \".*\"/versionName \"${CURRENT_VERSION}\"/" "./android/app/build.gradle"
+            echo -e "${GREEN}✅ Synced android/app/build.gradle versionName: ${GRADLE_VERSION} → ${CURRENT_VERSION}${NC}"
+            git add ./android/app/build.gradle
+            git commit -m "chore: sync android versionName to ${CURRENT_VERSION}" || echo -e "${YELLOW}No changes to commit${NC}"
+        fi
+    fi
 else
     # Increment patch version (1.2.7 -> 1.2.8)
     IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
