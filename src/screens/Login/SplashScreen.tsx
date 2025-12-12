@@ -11,8 +11,11 @@ import Reanimated, {
   runOnJS,
 } from 'react-native-reanimated';
 import Constants from 'expo-constants';
+import { getActiveTheme } from '../../theme/themeConfig';
+import { Snowfall } from '../../components/Snowfall';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const theme = getActiveTheme();
 
 interface SplashScreenProps {
   onFinish: () => void;
@@ -88,70 +91,102 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
     opacity: containerOpacity.value,
   }));
 
-  return (
-    <Reanimated.View style={[styles.container, containerStyle]}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+  // Kiểm tra xem có phải theme winter không để đổi màu
+  const isWinterTheme = theme.id === 'winter';
+  const backgroundColor = theme.colors.splashBackground || '#FEFEFE';
+  const textColor = theme.colors.splashText || '#666';
+  const subtitleColor = theme.colors.splashSubtitle || '#666';
+  const accentColor = theme.colors.splashAccent || '#F5AA1E';
 
-      <LinearGradient
-        colors={['#FEFEFE', '#FFF9F0', '#FFF5E6']}
-        style={styles.gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+  return (
+    <Reanimated.View
+      style={[styles.container, containerStyle, { backgroundColor: backgroundColor }]}>
+      <StatusBar
+        barStyle={isWinterTheme ? 'light-content' : 'dark-content'}
+        backgroundColor="transparent"
+        translucent
       />
 
-      {/* Decorative circles */}
-      <Reanimated.View style={[styles.decorCircle, styles.circle1, circle1Style]} />
-      <Reanimated.View style={[styles.decorCircle, styles.circle2, circle2Style]} />
+      {/* Gradient hoặc màu nền solid cho winter */}
+      {isWinterTheme ? (
+        <View style={[styles.gradient, { backgroundColor: backgroundColor }]} />
+      ) : (
+        <LinearGradient
+          colors={['#FEFEFE', '#FFF9F0', '#FFF5E6']}
+          style={styles.gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+      )}
+
+      {/* Animation tuyết rơi cho theme mùa đông */}
+      {theme.hasSnowfall && <Snowfall count={40} />}
+
+      {/* Decorative circles - ẩn khi theme winter vì đã có icon đẹp */}
+      {!isWinterTheme && (
+        <>
+          <Reanimated.View style={[styles.decorCircle, styles.circle1, circle1Style]} />
+          <Reanimated.View style={[styles.decorCircle, styles.circle2, circle2Style]} />
+        </>
+      )}
 
       {/* Main content */}
       <View style={styles.content}>
-        {/* Logo with 3D effect */}
+        {/* Logo - Dùng icon Giáng sinh cho theme winter */}
         <Reanimated.View style={logoStyle}>
-          <View style={styles.logoStack}>
-            {/* Background layer 1 - Bottom most */}
-            <View style={[styles.logoLayer, styles.logoLayer1]} />
-            {/* Background layer 2 - Middle */}
-            <View style={[styles.logoLayer, styles.logoLayer2]} />
-            {/* Main image - Top layer */}
-            <View style={[styles.logoLayer, styles.logoLayerMain]}>
+          {isWinterTheme ? (
+            // Icon Giáng sinh đẹp - không cần các layer 3D
+            <View style={styles.christmasLogoContainer}>
               <Image
-                source={require('../../assets/icon.png')}
-                style={styles.logo}
+                source={require('../../assets/theme/christmas/icon.png')}
+                style={styles.christmasLogo}
                 resizeMode="contain"
               />
             </View>
-          </View>
+          ) : (
+            // Logo mặc định với hiệu ứng 3D
+            <View style={styles.logoStack}>
+              {/* Background layer 1 - Bottom most */}
+              <View style={[styles.logoLayer, styles.logoLayer1]} />
+              {/* Background layer 2 - Middle */}
+              <View style={[styles.logoLayer, styles.logoLayer2]} />
+              {/* Main image - Top layer */}
+              <View style={[styles.logoLayer, styles.logoLayerMain]}>
+                <Image
+                  source={require('../../assets/icon.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+              </View>
+            </View>
+          )}
         </Reanimated.View>
 
-        {/* App name with gradient */}
-        {/* <Reanimated.View style={[styles.textContainer, textStyle]}>
-          <MaskedView
-            maskElement={
-              <Text style={[styles.appName, { backgroundColor: 'transparent' }]}>
-                WIS
-              </Text>
-            }>
-            <LinearGradient
-              colors={['#F5AA1E', '#F05023']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}>
-              <Text style={[styles.appName, { opacity: 0 }]}>WIS</Text>
-            </LinearGradient>
-          </MaskedView>
-        </Reanimated.View> */}
+        {/* Merry Christmas text - chỉ hiển thị khi theme winter */}
+        {isWinterTheme && (
+          <Reanimated.View style={[styles.merryChristmasContainer, textStyle]}>
+            <Text style={styles.merryChristmasText}>🎄 Merry Christmas 🎄</Text>
+          </Reanimated.View>
+        )}
 
-        {/* Subtitle */}
+        {/* Subtitle - Wellspring Innovation Spaces */}
         <Reanimated.View style={[styles.subtitleContainer, subtitleStyle]}>
-          <Text style={styles.subtitle}>Wellspring Innovation Spaces</Text>
+          <Text style={[styles.subtitle, { color: subtitleColor }]}>
+            Wellspring Innovation Spaces
+          </Text>
         </Reanimated.View>
       </View>
 
       {/* Bottom accent line */}
-      <Reanimated.View style={[styles.accentLine, subtitleStyle]} />
+      <Reanimated.View
+        style={[styles.accentLine, subtitleStyle, { backgroundColor: accentColor }]}
+      />
 
       {/* Version text */}
       <Reanimated.View style={[styles.versionContainer, versionStyle]}>
-        <Text style={styles.versionText}>v{Constants.expoConfig?.version || '1.0.0'}</Text>
+        <Text style={[styles.versionText, { color: accentColor }]}>
+          v{Constants.expoConfig?.version || '1.0.0'}
+        </Text>
       </Reanimated.View>
     </Reanimated.View>
   );
@@ -199,6 +234,38 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Style cho icon Giáng sinh
+  christmasLogoContainer: {
+    width: 240,
+    height: 240,
+    marginBottom: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 40, // Bo góc như icon cũ
+    overflow: 'hidden', // Đảm bảo ảnh được cắt theo borderRadius
+    // Thêm shadow cho đẹp
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  christmasLogo: {
+    width: 240,
+    height: 240,
+  },
+  // Style cho Merry Christmas text
+  merryChristmasContainer: {
+    marginBottom: 8,
+    alignItems: 'center',
+  },
+  merryChristmasText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#F5D17A', // Màu vàng như chữ W trong icon
+    letterSpacing: 1,
+    textAlign: 'center',
   },
   logoLayer: {
     position: 'absolute',

@@ -15,6 +15,7 @@ import {
   Platform,
   PanResponder,
   Animated,
+  Image,
 } from 'react-native';
 import { TouchableOpacity } from '../../components/Common';
 
@@ -28,6 +29,7 @@ import { Ionicons, MaterialIcons, FontAwesome, Feather } from '@expo/vector-icon
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../hooks/useLanguage';
+import { useTheme } from '../../context/ThemeContext';
 import TicketIcon from '../../assets/ticket-icon.svg';
 import DevicesIcon from '../../assets/devices-icon.svg';
 import DocumentIcon from '../../assets/document-icon.svg';
@@ -40,6 +42,7 @@ import FeedbackIcon from '../../assets/feedback-icon.svg';
 import MenuIcon from '../../assets/menu-icon.svg';
 import TimetableIcon from '../../assets/timetable-icon.svg';
 import CalendarIcon from '../../assets/calendar-icon.svg';
+import { Snowfall } from '../../components/Snowfall';
 import attendanceService from '../../services/attendanceService';
 import pushNotificationService from '../../services/pushNotificationService';
 import notificationCenterService from '../../services/notificationCenterService';
@@ -56,6 +59,7 @@ const HomeScreen = () => {
   const isFocused = useIsFocused();
   const { user } = useAuth();
   const { t } = useLanguage();
+  const { theme } = useTheme();
   const [checkInTime, setCheckInTime] = useState('--:--');
   const [checkOutTime, setCheckOutTime] = useState('--:--');
   const [isRefreshingAttendance, setIsRefreshingAttendance] = useState(false);
@@ -364,30 +368,44 @@ const HomeScreen = () => {
     },
   ];
 
-  let menuItems = allItems.filter(() => false);
+  // Thu thập tất cả các keys được phép dựa trên tất cả roles của user
+  const allowedKeys = new Set<string>();
+
   if (hasMobileBOD) {
-    // Mobile BOD: tất cả (bao gồm Bus, Feedback, Menu, Calendar)
-    menuItems = allItems;
-  } else if (hasMobileMonitor) {
-    // Mobile Monitor: Bus + Calendar
-    menuItems = allItems.filter((i) => ['bus', 'calendar'].includes(i.key));
-  } else if (hasMobileIT) {
-    // Mobile IT: Ticket Admin + Devices + Feedback + Calendar
-    menuItems = allItems.filter((i) =>
-      ['tickets', 'devices', 'feedback', 'calendar'].includes(i.key)
-    );
-  } else if (hasMobileTeacher) {
-    // Mobile Teacher: Ticket Guest + Attendance + Leaves + Menu + Timetable + Calendar
-    menuItems = allItems.filter((i) =>
-      ['tickets', 'attendance', 'documents', 'menu', 'timetable', 'calendar'].includes(i.key)
-    );
-  } else if (hasMobileUser) {
-    // Mobile User: Ticket Guest + Calendar
-    menuItems = allItems.filter((i) => ['tickets', 'calendar'].includes(i.key));
-  } else {
-    // Default minimal access (Mobile User) + Calendar
-    menuItems = allItems.filter((i) => ['tickets', 'calendar'].includes(i.key));
+    // Mobile BOD: tất cả
+    allItems.forEach((item) => allowedKeys.add(item.key));
   }
+
+  if (hasMobileMonitor) {
+    // Mobile Monitor: Bus + Calendar
+    ['bus', 'calendar'].forEach((key) => allowedKeys.add(key));
+  }
+
+  if (hasMobileIT) {
+    // Mobile IT: Ticket Admin + Devices + Feedback + Menu + Calendar
+    ['tickets', 'devices', 'feedback', 'menu', 'calendar'].forEach((key) => allowedKeys.add(key));
+  }
+
+  if (hasMobileTeacher) {
+    // Mobile Teacher: Ticket Guest + Attendance + Leaves + Menu + Timetable + Calendar
+    ['tickets', 'attendance', 'documents', 'menu', 'timetable', 'calendar'].forEach((key) =>
+      allowedKeys.add(key)
+    );
+  }
+
+  if (hasMobileUser) {
+    // Mobile User: Ticket Guest + Menu + Calendar
+    ['tickets', 'menu', 'calendar'].forEach((key) => allowedKeys.add(key));
+  }
+
+  // Nếu không có role nào hoặc chỉ có default role
+  if (allowedKeys.size === 0) {
+    // Default minimal access (Mobile User) + Menu + Calendar
+    ['tickets', 'menu', 'calendar'].forEach((key) => allowedKeys.add(key));
+  }
+
+  // Filter menu items dựa trên tất cả các keys được phép
+  const menuItems = allItems.filter((item) => allowedKeys.has(item.key));
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
@@ -516,18 +534,34 @@ const HomeScreen = () => {
     };
   }, []);
 
-  // Gradient border container
+  // Gradient border container - glass effect cho theme winter
+  const isWinterTheme = theme.id === 'winter';
   const GradientBorderContainer = React.forwardRef<any, { children: React.ReactNode }>(
     ({ children }, ref) => {
       return (
         <View ref={ref} style={styles.gradientBorderContainer}>
           <LinearGradient
-            colors={['#FFCE02', '#BED232']}
+            colors={theme.colors.borderGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.gradientBorder}
           />
-          <View style={styles.innerContainer}>{children}</View>
+          {/* Winter: chặn gradient ở phần lòng để nền menu trắng trong suốt, không bị ám vàng */}
+          {isWinterTheme && (
+            <View
+              pointerEvents="none"
+              style={[
+                styles.borderMask,
+                {
+                  backgroundColor:
+                    theme.colors.background || theme.colors.homeGradient?.[0] || '#1E3A5F',
+                },
+              ]}
+            />
+          )}
+          <View style={[styles.innerContainer, isWinterTheme && styles.glassContainer]}>
+            {children}
+          </View>
         </View>
       );
     }
@@ -535,27 +569,26 @@ const HomeScreen = () => {
 
   return (
     <LinearGradient
-      colors={[
-        'rgba(240, 80, 35, 0.03)', // #F05023 at 5% opacity
-        'rgba(255, 206, 2, 0.06)', // #FFCE02 at 5% opacity
-        'rgba(190, 210, 50, 0.04)', // #BED232 at 4% opacity
-        'rgba(0, 148, 131, 0.07)', // #009483 at 7% opacity
-      ]}
-      locations={[0, 0.22, 0.85, 1]}
+      colors={theme.colors.homeGradient}
+      locations={theme.colors.homeGradientLocations}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={{ flex: 1 }}>
+      {/* Animation tuyết rơi cho theme mùa đông */}
+      {theme.hasSnowfall && <Snowfall count={35} />}
       <ScrollView
         keyboardShouldPersistTaps="always"
         contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}>
         <View className="relative mt-[20%] w-full items-center">
-          <Text className="mb-2 text-center text-2xl font-medium text-primary">
+          <Text
+            className="mb-2 text-center text-2xl font-medium"
+            style={{ color: theme.colors.textPrimary }}>
             {t('home.welcome')} WISer
           </Text>
           <TouchableOpacity
             className="absolute right-8 top-1"
             onPress={() => navigation.navigate(ROUTES.MAIN.NOTIFICATIONS)}>
-            <Ionicons name="notifications-outline" size={20} color="#0A2240" />
+            <Ionicons name="notifications-outline" size={20} color={theme.colors.textPrimary} />
             {unreadNotificationCount > 0 && (
               <Animated.View
                 style={{
@@ -580,7 +613,7 @@ const HomeScreen = () => {
               </Text>
             }>
             <LinearGradient
-              colors={['#F05023', '#F5AA1E']}
+              colors={theme.colors.usernameGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}>
               <Text
@@ -596,19 +629,23 @@ const HomeScreen = () => {
             {/* Time labels with detail button */}
             <View className="flex-row items-center justify-between">
               <View className="left-[5%] flex-row items-center">
-                <Text className="text-base font-medium text-teal-700">{checkInTime}</Text>
+                <Text className="text-base font-medium" style={{ color: theme.colors.textPrimary }}>
+                  {checkInTime}
+                </Text>
                 {isRefreshingAttendance && (
                   <View className="ml-2">
-                    <Ionicons name="sync" size={14} color="#0d9488" />
+                    <Ionicons name="sync" size={14} color={theme.colors.textPrimary} />
                   </View>
                 )}
               </View>
 
               <View className="right-[3%] flex-row items-center">
-                <Text className="text-base font-medium text-teal-700">{checkOutTime}</Text>
+                <Text className="text-base font-medium" style={{ color: theme.colors.textPrimary }}>
+                  {checkOutTime}
+                </Text>
                 {isRefreshingAttendance && (
                   <View className="ml-2">
-                    <Ionicons name="sync" size={14} color="#0d9488" />
+                    <Ionicons name="sync" size={14} color={theme.colors.textPrimary} />
                   </View>
                 )}
               </View>
@@ -632,55 +669,95 @@ const HomeScreen = () => {
               {/* Entry arrow */}
               <View style={{ position: 'absolute', left: '3%', top: -7, alignItems: 'center' }}>
                 <PolygonIcon width={18} height={18} />
-                <Text className="text-start text-base text-teal-700">
+                <Text className="text-start text-base" style={{ color: theme.colors.textPrimary }}>
                   {t('home.check_in_time')}
                 </Text>
               </View>
               {/* Exit arrow */}
               <View style={{ position: 'absolute', right: '3%', top: -7, alignItems: 'center' }}>
                 <PolygonIcon width={18} height={18} />
-                <Text className="text-start text-base text-teal-700">
+                <Text className="text-start text-base" style={{ color: theme.colors.textPrimary }}>
                   {t('home.check_out_time')}
                 </Text>
               </View>
             </View>
           </View>
 
-          <View className="mt-[10%] w-full px-5">
-            <GradientBorderContainer>
-              <LinearGradient
-                colors={[
-                  'rgba(255, 206, 2, 0.05)', // #FFCE02 at 5% opacity
-                  'rgba(190, 210, 50, 0.05)', // #BED232 at 4% opacity
-                ]}
-                start={{ x: 1, y: 0 }}
-                end={{ x: 0, y: 1 }}>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 16 }}>
-                  {menuItems.map((item, index) => (
-                    <TouchableOpacity
-                      key={item.id}
-                      style={{
-                        width: 72,
-                        alignItems: 'center',
-                        marginHorizontal: 4,
-                      }}
-                      onPress={item.onPress}>
-                      <item.component width={64} height={64} />
-                      <Text className="mt-1 text-center text-sm font-medium" numberOfLines={2}>
-                        {item.title}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </LinearGradient>
-            </GradientBorderContainer>
+          <View className={`${isWinterTheme ? 'mt-[20%]' : 'mt-[10%]'} w-full px-5`}>
+            {/* Container với hình trang trí Giáng sinh cho theme winter */}
+            <View style={{ position: 'relative' }}>
+              {/* Hình trang trí ở trên border menu - chỉ hiển thị với theme winter */}
+              {isWinterTheme && (
+                <Image
+                  source={require('../../assets/theme/christmas/menu-border.png')}
+                  style={styles.menuBorderDecoration}
+                  resizeMode="contain"
+                />
+              )}
+              <GradientBorderContainer>
+                {/* Winter theme: nền trong suốt không gradient, các theme khác: dùng gradient */}
+                {isWinterTheme ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 16 }}>
+                    {menuItems.map((item, index) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={{
+                          width: 72,
+                          alignItems: 'center',
+                          marginHorizontal: 4,
+                        }}
+                        onPress={item.onPress}>
+                        <item.component width={64} height={64} />
+                        <Text
+                          className="mt-1 text-center text-sm font-medium"
+                          style={{ color: theme.colors.textPrimary }}
+                          numberOfLines={2}>
+                          {item.title}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                ) : (
+                  <LinearGradient
+                    colors={theme.colors.menuGradient}
+                    start={{ x: 1, y: 0 }}
+                    end={{ x: 0, y: 1 }}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 16 }}>
+                      {menuItems.map((item, index) => (
+                        <TouchableOpacity
+                          key={item.id}
+                          style={{
+                            width: 72,
+                            alignItems: 'center',
+                            marginHorizontal: 4,
+                          }}
+                          onPress={item.onPress}>
+                          <item.component width={64} height={64} />
+                          <Text
+                            className="mt-1 text-center text-sm font-medium"
+                            style={{ color: theme.colors.textPrimary }}
+                            numberOfLines={2}>
+                            {item.title}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </LinearGradient>
+                )}
+              </GradientBorderContainer>
+            </View>
           </View>
         </View>
         <View className="mt-[10%] w-full px-5">
-          <Text className="mb-5 text-center text-xl font-medium text-primary">
+          <Text
+            className="mb-5 text-center text-xl font-medium"
+            style={{ color: theme.colors.textPrimary }}>
             {t('common.search')}?
           </Text>
           {/* iOS-style Search Bar */}
@@ -715,6 +792,15 @@ const HomeScreen = () => {
         </View>
       </ScrollView>
 
+      {/* Trang trí Giáng sinh ở dưới cùng màn hình, phía sau bottom nav bar */}
+      {isWinterTheme && (
+        <Image
+          source={require('../../assets/theme/christmas/searchborder.png')}
+          style={styles.bottomDecoration}
+          resizeMode="cover"
+        />
+      )}
+
       {/* iOS-style Search Modal */}
       <Modal
         visible={showSearchModal}
@@ -722,13 +808,8 @@ const HomeScreen = () => {
         transparent={false}
         statusBarTranslucent={true}>
         <LinearGradient
-          colors={[
-            'rgba(240, 80, 35, 0.03)', // #F05023 at 5% opacity
-            'rgba(255, 206, 2, 0.06)', // #FFCE02 at 5% opacity
-            'rgba(190, 210, 50, 0.04)', // #BED232 at 4% opacity
-            'rgba(0, 148, 131, 0.07)', // #009483 at 7% opacity
-          ]}
-          locations={[0, 0.22, 0.85, 1]}
+          colors={theme.colors.homeGradient}
+          locations={theme.colors.homeGradientLocations}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{ flex: 1 }}>
@@ -772,10 +853,7 @@ const HomeScreen = () => {
                         </Text>
                         <GradientBorderContainer>
                           <LinearGradient
-                            colors={[
-                              'rgba(255, 206, 2, 0.05)', // #FFCE02 at 5% opacity
-                              'rgba(190, 210, 50, 0.05)', // #BED232 at 4% opacity
-                            ]}
+                            colors={theme.colors.menuGradient}
                             start={{ x: 1, y: 0 }}
                             end={{ x: 0, y: 1 }}>
                             <View>
@@ -851,10 +929,7 @@ const HomeScreen = () => {
                         <Text className="mb-3 text-lg font-semibold text-gray-900">Gợi ý</Text>
                         <GradientBorderContainer>
                           <LinearGradient
-                            colors={[
-                              'rgba(255, 206, 2, 0.05)', // #FFCE02 at 5% opacity
-                              'rgba(190, 210, 50, 0.05)', // #BED232 at 4% opacity
-                            ]}
+                            colors={theme.colors.menuGradient}
                             start={{ x: 1, y: 0 }}
                             end={{ x: 0, y: 1 }}>
                             <ScrollView
@@ -972,6 +1047,49 @@ const styles = StyleSheet.create({
     borderRadius: 15, // Slightly smaller to show gradient border
     width: '100%',
     overflow: 'hidden',
+  },
+  // Mask để chỉ giữ gradient ở viền, không phủ xuống phần lòng
+  borderMask: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    right: 2,
+    bottom: 2,
+    borderRadius: 15,
+  },
+  // Glass effect như quả cầu tuyết cho theme winter
+  glassContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.18)', // Trắng trong hơn (ít bị ngả màu)
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)', // Viền trắng mờ
+    // Hiệu ứng glow nhẹ
+    shadowColor: '#FFFFFF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  // Hình trang trí Giáng sinh trên border menu
+  menuBorderDecoration: {
+    position: 'absolute',
+    top: -70, // Đặt lên trên border
+    left: 0,
+    right: 0,
+    height: 80,
+    width: '100%',
+    zIndex: 10,
+  },
+  // Hình trang trí Giáng sinh ở dưới cùng màn hình, phía sau bottom nav bar
+  bottomDecoration: {
+    position: 'absolute',
+    bottom: 0, // Kịch đáy màn hình
+    left: 0,
+    right: 0,
+    height: 160, // Tăng chiều cao cho phù hợp
+    width: '100%',
+    zIndex: 0, // Đặt ở phía sau để bottom nav bar hiển thị phía trước
+    marginHorizontal: 0,
+    paddingHorizontal: 0,
   },
 });
 

@@ -24,6 +24,7 @@ import * as Font from 'expo-font';
 import './global.css';
 import './src/config/i18n';
 import { AuthProvider } from './src/context/AuthContext';
+import { ThemeProvider } from './src/context/ThemeContext';
 import VersionChecker from './src/components/VersionChecker';
 
 // Cấu hình linking cho deep links
@@ -419,17 +420,19 @@ export default function App() {
     // @ts-ignore - GestureHandlerRootView types issue
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ToastProvider>
-          <ToastInitializer />
-          <AuthProvider>
-            <VersionChecker>
-              <NavigationContainer linking={linking} ref={navigationRef}>
-                <AppNavigator />
-              </NavigationContainer>
-            </VersionChecker>
-          </AuthProvider>
-          <StatusBar style="auto" />
-        </ToastProvider>
+        <ThemeProvider>
+          <ToastProvider>
+            <ToastInitializer />
+            <AuthProvider>
+              <VersionChecker>
+                <NavigationContainer linking={linking} ref={navigationRef}>
+                  <AppNavigator />
+                </NavigationContainer>
+              </VersionChecker>
+            </AuthProvider>
+            <StatusBar style="auto" />
+          </ToastProvider>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
