@@ -301,6 +301,27 @@ const NotificationsScreen = () => {
         return;
       }
 
+      // === WISLIFE NOTIFICATIONS ===
+      const wislifeTypes = [
+        'wislife_new_post',
+        'wislife_post_reaction',
+        'wislife_post_comment',
+        'wislife_comment_reply',
+        'wislife_comment_reaction',
+        'wislife_mention',
+      ];
+
+      if (wislifeTypes.includes(data?.type)) {
+        if (data?.postId) {
+          // Navigate to Main with Wislife tab
+          (navigation as any).navigate(ROUTES.SCREENS.MAIN, {
+            screen: 'Wislife',
+            params: { postId: data.postId, commentId: data.commentId },
+          });
+          return;
+        }
+      }
+
       // === DEFAULT: Không xử lý đặc biệt ===
       console.log(
         '📝 Unhandled notification type in NotificationsScreen:',

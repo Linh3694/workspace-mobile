@@ -8,9 +8,9 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  TextInput,
 } from 'react-native';
 import { TouchableOpacity } from '../../components/Common';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PostCard from '../../components/Wislife/PostCard';
 import CreatePostModal from '../../components/Wislife/CreatePostModal';
@@ -21,6 +21,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Post } from '../../types/post';
 import WislifeIcon from '../../assets/wislife-banner.svg';
 import { getAvatar } from '../../utils/avatar';
+import { normalizeVietnameseName } from '../../utils/nameFormatter';
 import StandardHeader from '../../components/Common/StandardHeader';
 
 const WislifeScreen = () => {
@@ -32,6 +33,7 @@ const WislifeScreen = () => {
   const [hasNextPage, setHasNextPage] = useState(true);
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [isCommentsModalVisible, setIsCommentsModalVisible] = useState(false);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
 
@@ -126,27 +128,64 @@ const WislifeScreen = () => {
   }, []);
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <View className="flex-1 bg-white">
       <StandardHeader
         logo={<WislifeIcon width={130} height={50} />}
         rightButton={
-          <TouchableOpacity onPress={() => setIsCreateModalVisible(true)} className="ml-3">
-            <Ionicons name="search" size={24} color="#6B7280" />
+          <TouchableOpacity 
+            onPress={() => {
+              setIsSearchVisible(!isSearchVisible);
+              if (isSearchVisible && searchQuery) {
+                // Nếu đang đóng search bar và có search query, reset về tất cả bài viết
+                setSearchQuery('');
+                fetchPosts(1);
+              }
+            }}
+            className="ml-3">
+            <Ionicons name={isSearchVisible ? "close" : "search"} size={24} color="#6B7280" />
           </TouchableOpacity>
         }
       />
 
+      {/* Search Bar - hiển thị khi isSearchVisible = true */}
+      {isSearchVisible && (
+        <View className="border-b border-gray-200 bg-white px-4 py-3">
+          <View className="flex-row items-center rounded-lg bg-gray-100 px-3">
+            <Ionicons name="search" size={20} color="#9CA3AF" />
+            <TextInput
+              className="ml-2 flex-1 py-2 text-base text-gray-900"
+              placeholder="Tìm kiếm bài viết..."
+              placeholderTextColor="#9CA3AF"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onSubmitEditing={handleSearch}
+              returnKeyType="search"
+              autoFocus
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => {
+                  setSearchQuery('');
+                  fetchPosts(1);
+                }}>
+                <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* Create Post Section */}
       <TouchableOpacity
         onPress={() => setIsCreateModalVisible(true)}
-        className="mx-4 mt-5 border-b border-gray-300 pb-5">
+        className="mx-4 mt-2 border-b border-gray-300 pb-3">
         <View className="flex-row items-center">
           <View className="flex-1 flex-row items-center">
             <View className="h-10 w-10 overflow-hidden rounded-full bg-gray-300">
               <Image source={{ uri: getAvatar(user) }} className="h-full w-full" />
             </View>
             <View className="ml-3 flex-1">
-              <Text className="font-semibold text-gray-900">{user?.fullname}</Text>
+              <Text className="font-semibold text-gray-900">{user?.fullname || ''}</Text>
               <Text className="text-sm text-gray-500">Có gì mới?</Text>
             </View>
           </View>
@@ -173,7 +212,7 @@ const WislifeScreen = () => {
         }}
         scrollEventThrottle={400}>
         {loading && page === 1 ? (
-          <View className="pb-4">
+          <View className="pb-24">
             {[...Array(3)].map((_, index) => (
               <PostSkeleton key={index} />
             ))}
@@ -187,7 +226,7 @@ const WislifeScreen = () => {
             </Text>
           </View>
         ) : (
-          <View className="pb-4">
+          <View className="pb-[30%]">
             {posts.map((post) => (
               <PostCard
                 key={post._id}
@@ -223,7 +262,7 @@ const WislifeScreen = () => {
           onUpdate={handlePostUpdate}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 

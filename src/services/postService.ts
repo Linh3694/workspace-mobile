@@ -233,6 +233,24 @@ class PostService {
     return data.data;
   }
 
+  /**
+   * Lấy chi tiết một bài post theo ID
+   * @param postId - ID của bài post
+   */
+  async getPostById(postId: string): Promise<Post> {
+    const headers = await this.getAuthHeaders();
+    const response = await fetch(`${BASE_URL}/api/social/${postId}`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch post');
+    }
+
+    const data: CreatePostResponse = await response.json();
+    return data.data;
+  }
+
   // ========== CÁC METHODS MỚI CHO COMMENT FEATURES ==========
 
   // Thêm reaction cho comment

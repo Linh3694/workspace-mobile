@@ -1,17 +1,20 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ROUTES } from '../constants/routes';
 import HomeScreen from '../screens/Home/HomeScreen';
 import NotificationsScreen from '../screens/Notifications/NotificationsScreen';
 import ProfileScreen from '../screens/Profile/ProfileScreen';
+import WislifeScreen from '../screens/Wislife/WislifeScreen';
 // @ts-ignore
 import { Text, View, StyleSheet, Platform, Pressable } from 'react-native';
 import MenuIcon from '../assets/menu.svg';
+import WislifeIcon from '../assets/wislife.svg';
 import NotificationIcon from '../assets/notification.svg';
 import ProfileIcon from '../assets/profile.svg';
 // @ts-ignore
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { notificationCenterService } from '../services/notificationCenterService';
 // @ts-ignore
 import Animated, {
   useAnimatedStyle,
@@ -44,11 +47,29 @@ if (__DEV__) {
 // Custom Glass Tab Bar Component
 const GlassTabBar = ({ state, descriptors, navigation }: any) => {
   const insets = useSafeAreaInsets();
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     if (__DEV__) {
       console.log('🔮 Tab Bar - isLiquidGlassSupported:', isLiquidGlassSupported);
     }
+
+    // Lấy unread notification count
+    const fetchUnreadCount = async () => {
+      try {
+        const count = await notificationCenterService.getUnreadCount();
+        setUnreadCount(count);
+      } catch (error) {
+        console.error('Error fetching unread count:', error);
+      }
+    };
+
+    fetchUnreadCount();
+
+    // Poll every 30 seconds để update count
+    const interval = setInterval(fetchUnreadCount, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const renderBackground = () => {
@@ -108,6 +129,7 @@ const GlassTabBar = ({ state, descriptors, navigation }: any) => {
                 isFocused={isFocused}
                 onPress={onPress}
                 options={options}
+                badgeCount={route.name === ROUTES.MAIN.NOTIFICATIONS ? unreadCount : undefined}
               />
             );
           })}
@@ -118,7 +140,7 @@ const GlassTabBar = ({ state, descriptors, navigation }: any) => {
 };
 
 // Animated Tab Button
-const TabBarButton = ({ route, isFocused, onPress }: any) => {
+const TabBarButton = ({ route, isFocused, onPress, badgeCount }: any) => {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -142,6 +164,8 @@ const TabBarButton = ({ route, isFocused, onPress }: any) => {
     switch (route.name) {
       case ROUTES.MAIN.HOME:
         return <MenuIcon width={iconSize} height={iconSize} color={iconColor} />;
+      case ROUTES.MAIN.WISLIFE:
+        return <WislifeIcon width={iconSize} height={iconSize} color={iconColor} />;
       case ROUTES.MAIN.NOTIFICATIONS:
         return <NotificationIcon width={iconSize} height={iconSize} color={iconColor} />;
       case ROUTES.MAIN.PROFILE:
@@ -155,6 +179,8 @@ const TabBarButton = ({ route, isFocused, onPress }: any) => {
     switch (route.name) {
       case ROUTES.MAIN.HOME:
         return 'Home';
+      case ROUTES.MAIN.WISLIFE:
+        return 'Wislife';
       case ROUTES.MAIN.NOTIFICATIONS:
         return 'Notifications';
       case ROUTES.MAIN.PROFILE:
@@ -178,6 +204,14 @@ const TabBarButton = ({ route, isFocused, onPress }: any) => {
         
         <View style={styles.iconContainer}>
           {getIcon()}
+          {/* Notification badge */}
+          {badgeCount !== undefined && badgeCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>
+                {badgeCount > 99 ? '99+' : badgeCount}
+              </Text>
+            </View>
+          )}
         </View>
         
         <Text
@@ -209,6 +243,10 @@ const BottomTabNavigator = ({ route }: { route: any }) => {
       <Tab.Screen
         name={ROUTES.MAIN.HOME}
         component={HomeScreen}
+      />
+      <Tab.Screen
+        name={ROUTES.MAIN.WISLIFE}
+        component={WislifeScreen}
       />
       <Tab.Screen
         name={ROUTES.MAIN.NOTIFICATIONS}
@@ -272,7 +310,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tabButtonInner: {
-    width: 90,
+    width: 75, // Giảm từ 90 xuống 75 để vừa 4 tabs
     height: 56,
     alignItems: 'center',
     justifyContent: 'center',
@@ -285,11 +323,32 @@ const styles = StyleSheet.create({
   },
   iconContainer: {
     marginBottom: 2,
+    position: 'relative',
   },
   tabLabel: {
     fontSize: 10,
     fontFamily: 'Mulish-SemiBold',
     letterSpacing: 0.2,
+  },
+  badge: {
+    position: 'absolute',
+    top: -6,
+    right: -10,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontFamily: 'Mulish-Bold',
+    fontWeight: '700',
   },
 });
 

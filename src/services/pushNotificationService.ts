@@ -41,6 +41,9 @@ interface PushNotificationData {
   start_date?: string;
   endDate?: string;
   end_date?: string;
+  // Wislife related
+  postId?: string;
+  commentId?: string;
 }
 
 interface NotificationResponse {
@@ -323,6 +326,15 @@ class PushNotificationService {
         sound: 'default',
       });
 
+      await Notifications.setNotificationChannelAsync('wislife', {
+        name: 'Wislife - Mạng xã hội nội bộ',
+        description: 'Thông báo về bài viết, bình luận, và tương tác trên Wislife',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#8B5CF6',
+        sound: 'default',
+      });
+
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Mặc định',
         description: 'Thông báo chung',
@@ -369,6 +381,15 @@ class PushNotificationService {
       // Leave notification (from teacher to parent - already handled in mobile_push_notification)
       case 'leave':
         this.handleLeaveNotification(data, wasOpened);
+        break;
+      // Wislife notifications
+      case 'wislife_new_post':
+      case 'wislife_post_reaction':
+      case 'wislife_post_comment':
+      case 'wislife_comment_reply':
+      case 'wislife_comment_reaction':
+      case 'wislife_mention':
+        this.handleWislifeNotification(data, wasOpened);
         break;
       default:
         // Handle action-based notifications (from ticket-service)
@@ -571,6 +592,19 @@ class PushNotificationService {
     if (wasOpened) {
       // Navigate to leave requests screen
       this.navigateToLeaveRequests(data);
+    }
+  }
+
+  // Wislife notification handler
+  private handleWislifeNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('📱 Wislife notification:', data);
+
+    if (wasOpened && data.postId) {
+      // Navigate to Wislife tab with postId to open post detail
+      this.navigateToScreen('Main', {
+        screen: 'Wislife',
+        params: { postId: data.postId, commentId: data.commentId },
+      });
     }
   }
 

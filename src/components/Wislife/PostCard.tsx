@@ -9,10 +9,16 @@ import {
   Dimensions,
   Modal,
   ScrollView,
+  GestureResponderEvent,
+  StatusBar,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TouchableOpacity } from '../Common';
 import { Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
+import LottieView from 'lottie-react-native';
 import { Post, Reaction } from '../../types/post';
 import { postService } from '../../services/postService';
 import { useAuth } from '../../context/AuthContext';
@@ -20,6 +26,9 @@ import { API_BASE_URL } from '../../config/constants';
 import { formatRelativeTime } from '../../utils/dateUtils';
 import LikeSkeletonSvg from '../../assets/like-skeleton.svg';
 import { getAvatar } from '../../utils/avatar';
+import { getEmojiByCode, isFallbackEmoji, hasLottieAnimation } from '../../utils/emojiUtils';
+import { normalizeVietnameseName } from '../../utils/nameFormatter';
+import ReactionPicker from './ReactionPicker';
 
 interface PostCardProps {
   post: Post;
@@ -39,8 +48,26 @@ const GradientText: React.FC<{ children: string; style?: any }> = ({ children, s
 
 const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onCommentPress }) => {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  // State cho Reaction Picker modal
+  const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
+  const [reactionPickerPosition, setReactionPickerPosition] = useState<{ x: number; y: number } | undefined>();
+
+  // Xử lý scroll để cập nhật index ảnh hiện tại
+  const handleImageScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const slideIndex = Math.round(event.nativeEvent.contentOffset.x / width);
+    setCurrentImageIndex(slideIndex);
+  };
+
+  // Mở modal và scroll tới ảnh được click
+  const openImageModal = (index: number) => {
+    setSelectedImageIndex(index);
+    setCurrentImageIndex(index);
+    setImageModalVisible(true);
+  };
 
   const getUserReaction = (): Reaction | null => {
     const myIds = [user?._id, (user as any)?.id, user?.email, (user as any)?.username]
@@ -81,7 +108,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
 
   const handleReaction = async (emojiCode: string) => {
     // Đóng modal ngay lập tức khi chọn emoji
-    setEmojiModalVisible(false);
+    setReactionPickerVisible(false);
 
     try {
       const userReaction = getUserReaction();
@@ -129,24 +156,23 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   const reactionCounts = getReactionCounts();
   const userReaction = getUserReaction();
   const totalReactions = post.reactions.length;
-  const isAuthor = !!post.author && post.author._id === user?._id;
+  
+  // Kiểm tra xem user có quyền xóa bài viết không (Mobile BOD hoặc Mobile IT)
+  const userRoles = (user as any)?.roles || [];
+  const canDeletePost = userRoles.some((role: string) => 
+    role === 'Mobile BOD' || role === 'Mobile IT'
+  );
 
-  const handleLikeButtonPress = async () => {
-    // Toggle like/unlike
-    const hasLiked = !!userReaction;
-    try {
-      if (hasLiked) {
-        await postService.removeReaction(post._id);
-      } else {
-        await postService.addReaction(post._id, 'like');
-      }
-      // Refresh post data
-      const updatedPost = await postService.getPostById(post._id);
-      onUpdate(updatedPost);
-    } catch (error) {
-      console.error('Error toggling like:', error);
-      Alert.alert('Lỗi', 'Không thể thực hiện thao tác. Vui lòng thử lại.');
+  // Mở modal chọn reaction khi tap vào nút Thích
+  const handleLikeButtonPress = (event?: GestureResponderEvent) => {
+    // Lấy vị trí để hiển thị modal gần nút bấm
+    if (event?.nativeEvent) {
+      setReactionPickerPosition({
+        x: event.nativeEvent.pageX,
+        y: event.nativeEvent.pageY,
+      });
     }
+    setReactionPickerVisible(true);
   };
 
   return (
@@ -159,21 +185,19 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
           </View>
           <View className="ml-3 flex-1">
             <Text className="font-semibold text-gray-900">
-              {post.author ? post.author.fullname : 'Ẩn danh'}
+              {post.author ? normalizeVietnameseName(post.author.fullname) : 'Ẩn danh'}
             </Text>
             <View className="flex-row items-center">
               <Text className="text-sm text-gray-500">{formatRelativeTime(post.createdAt)}</Text>
-              {post.author?.jobTitle && (
-                <>
-                  <Text className="mx-1 text-sm text-gray-400">•</Text>
-                  <Text className="text-sm text-gray-500">{post.author.jobTitle}</Text>
-                </>
-              )}
+              <Text className="mx-1 text-sm text-gray-400">•</Text>
+              <Ionicons name="globe-outline" size={12} color="#6B7280" />
+              <Text className="ml-1 text-sm text-gray-500">Công khai</Text>
             </View>
           </View>
         </View>
 
-        {isAuthor && (
+        {/* Nút xóa bài viết - chỉ hiển thị cho Mobile BOD và Mobile IT */}
+        {canDeletePost && (
           <TouchableOpacity onPress={handleDeletePost} className="p-2">
             <Ionicons name="ellipsis-horizontal" size={20} color="#6B7280" />
           </TouchableOpacity>
@@ -194,10 +218,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
               {post.images.slice(0, 4).map((image, index) => (
                 <TouchableOpacity
                   key={index}
-                  onPress={() => {
-                    setSelectedImageIndex(index);
-                    setImageModalVisible(true);
-                  }}
+                  onPress={() => openImageModal(index)}
                   className={`relative ${
                     post.images.length === 1
                       ? 'w-full'
@@ -225,14 +246,19 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
 
           {/* Videos */}
           {post.videos.length > 0 && (
-            <View className="mt-2">
+            <View className="mt-2 px-4">
               {post.videos.slice(0, 1).map((video, index) => (
-                <View key={index} className="w-full rounded-lg" style={{ height: 200 }}>
+                <View 
+                  key={index} 
+                  className="w-full overflow-hidden rounded-lg bg-black" 
+                  style={{ aspectRatio: 16 / 9 }}>
                   <Video
                     source={{ uri: `${API_BASE_URL}${video}` }}
-                    className="h-full w-full rounded-lg"
+                    style={{ width: '100%', height: '100%' }}
                     useNativeControls
                     resizeMode={ResizeMode.CONTAIN}
+                    shouldPlay={false}
+                    isLooping={false}
                   />
                 </View>
               ))}
@@ -246,18 +272,21 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
         <View className="px-4 pb-2">
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center">
-              <View className="flex-row">
+              <View className="flex-row items-center">
                 {Object.entries(reactionCounts).map(([emojiCode, count]) => {
                   const emoji = getEmojiByCode(emojiCode);
                   if (!emoji || count === 0) return null;
                   return (
-                    <View key={emojiCode}>
-                      {emoji.url ? (
-                        <Image source={emoji.url} className="h-8 w-8" resizeMode="contain" />
-                      ) : isFallbackEmoji(emoji) ? (
-                        <Text className="text-lg">{emoji.fallbackText}</Text>
+                    <View key={emojiCode} style={{ marginRight: 2 }}>
+                      {hasLottieAnimation(emoji) ? (
+                        <LottieView
+                          source={emoji.lottieSource}
+                          autoPlay
+                          loop
+                          style={{ width: 24, height: 24 }}
+                        />
                       ) : (
-                        <Text className="text-lg">👍</Text>
+                        <Text style={{ fontSize: 18 }}>{emoji.fallbackText}</Text>
                       )}
                     </View>
                   );
@@ -278,13 +307,35 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
       <View className="border-t border-gray-100 px-4 py-1">
         <View className="flex-row items-center justify-around">
           <TouchableOpacity
-            onPress={handleLikeButtonPress}
+            onPress={(e) => handleLikeButtonPress(e)}
             className="flex-row items-center rounded-full px-4 py-2">
             <View style={{ marginRight: 8 }}>
-              <LikeSkeletonSvg width={28} height={28} />
+              {userReaction ? (
+                // Hiển thị emoji đã chọn
+                (() => {
+                  const emoji = getEmojiByCode(userReaction.type);
+                  if (emoji && hasLottieAnimation(emoji)) {
+                    return (
+                      <LottieView
+                        source={emoji.lottieSource}
+                        autoPlay
+                        loop
+                        style={{ width: 28, height: 28 }}
+                      />
+                    );
+                  } else if (emoji) {
+                    return <Text style={{ fontSize: 24 }}>{emoji.fallbackText}</Text>;
+                  }
+                  return <LikeSkeletonSvg width={28} height={28} />;
+                })()
+              ) : (
+                <LikeSkeletonSvg width={28} height={28} />
+              )}
             </View>
-            <Text className={`font-medium ${userReaction ? 'text-red-600' : 'text-gray-600'}`}>
-              {userReaction ? 'Đã thích' : 'Thích'}
+            <Text 
+              className="font-medium"
+              style={{ color: userReaction ? (getEmojiByCode(userReaction.type)?.color || '#F05023') : '#6B7280' }}>
+              {userReaction ? (getEmojiByCode(userReaction.type)?.name || 'Đã thích') : 'Thích'}
             </Text>
           </TouchableOpacity>
 
@@ -297,22 +348,49 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
         </View>
       </View>
 
-      {/* Image Modal */}
+      {/* Image Modal - Style mạng xã hội */}
       <Modal
         visible={imageModalVisible}
-        transparent={true}
+        animationType="fade"
+        presentationStyle="fullScreen"
         onRequestClose={() => setImageModalVisible(false)}>
+        <StatusBar barStyle="light-content" backgroundColor="#000" />
         <View className="flex-1 bg-black">
-          <TouchableOpacity
-            onPress={() => setImageModalVisible(false)}
-            className="absolute right-4 top-12 z-10 p-3">
-            <Ionicons name="close" size={24} color="white" />
-          </TouchableOpacity>
+          {/* Header */}
+          <View 
+            className="absolute left-0 right-0 z-10 flex-row items-center justify-between px-4"
+            style={{ top: insets.top + 8 }}>
+            {/* Thông tin người đăng */}
+            <View className="flex-row items-center flex-1">
+              <View className="h-10 w-10 overflow-hidden rounded-full border-2 border-white/30">
+                <Image source={{ uri: getAvatar(post.author) }} className="h-full w-full" />
+              </View>
+              <View className="ml-3">
+                <Text className="font-semibold text-white">
+                  {post.author ? normalizeVietnameseName(post.author.fullname) : 'Ẩn danh'}
+                </Text>
+                <Text className="text-xs text-white/70">
+                  {formatRelativeTime(post.createdAt)}
+                </Text>
+              </View>
+            </View>
 
+            {/* Nút đóng */}
+            <TouchableOpacity
+              onPress={() => setImageModalVisible(false)}
+              className="h-10 w-10 items-center justify-center rounded-full bg-black/50">
+              <Ionicons name="close" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Ảnh */}
           <ScrollView
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
+            onScroll={handleImageScroll}
+            scrollEventThrottle={16}
+            contentOffset={{ x: selectedImageIndex * width, y: 0 }}
             className="flex-1">
             {post.images.map((image, index) => (
               <View key={index} className="items-center justify-center" style={{ width }}>
@@ -324,8 +402,45 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
               </View>
             ))}
           </ScrollView>
+
+          {/* Page Indicator - Hiển thị khi có nhiều hơn 1 ảnh */}
+          {post.images.length > 1 && (
+            <View 
+              className="absolute left-0 right-0 items-center"
+              style={{ bottom: insets.bottom + 24 }}>
+              {/* Số trang */}
+              <View className="mb-3 rounded-full bg-black/60 px-4 py-1.5">
+                <Text className="font-medium text-sm text-white">
+                  {currentImageIndex + 1} / {post.images.length}
+                </Text>
+              </View>
+              
+              {/* Dots indicator */}
+              <View className="flex-row items-center justify-center">
+                {post.images.map((_, index) => (
+                  <View
+                    key={index}
+                    className={`mx-1 rounded-full ${
+                      index === currentImageIndex 
+                        ? 'h-2 w-2 bg-white' 
+                        : 'h-1.5 w-1.5 bg-white/40'
+                    }`}
+                  />
+                ))}
+              </View>
+            </View>
+          )}
         </View>
       </Modal>
+
+      {/* Reaction Picker Modal */}
+      <ReactionPicker
+        visible={reactionPickerVisible}
+        onClose={() => setReactionPickerVisible(false)}
+        onSelect={handleReaction}
+        currentReaction={userReaction?.type}
+        anchorPosition={reactionPickerPosition}
+      />
     </View>
   );
 };
