@@ -40,6 +40,11 @@ interface NotificationData {
   read: boolean;
   createdAt: string;
   eventTimestamp?: string;
+  // Fields cho grouped notifications
+  isGrouped?: boolean;
+  groupedCount?: number;
+  groupedNotifications?: NotificationData[];
+  actorName?: string; // Tên người đầu tiên trong nhóm
 }
 
 interface PaginationState {
@@ -49,6 +54,146 @@ interface PaginationState {
   limit: number;
   pages: number;
 }
+
+/**
+ * Hàm trích xuất tên actor từ notification message
+ * Ví dụ: "Nguyễn Văn A vừa bày tỏ cảm xúc..." -> "Nguyễn Văn A"
+ */
+const extractActorName = (notification: NotificationData): string => {
+  const message =
+    typeof notification.message === 'string'
+      ? notification.message
+      : notification.message.vi || notification.message.en;
+
+  // Extract name from patterns like "Nguyễn Văn A vừa..."
+  const match = message.match(/^([^vừa]+)\s+vừa/);
+  if (match) {
+    return match[1].trim();
+  }
+
+  return 'Ai đó';
+};
+
+/**
+ * Hàm gộp notifications Wislife theo kiểu Facebook
+ * 
+ * Logic gộp:
+ * - Các notifications về cùng 1 post/comment và cùng action type sẽ được gộp lại
+ * - Hiển thị tên người đầu tiên + số người khác
+ * - Ví dụ: "Nguyễn Văn A và 2 người khác vừa bày tỏ cảm xúc về bài viết của bạn"
+ * 
+ * Các notification types được gộp:
+ * - wislife_post_reaction: Reaction về post
+ * - wislife_post_comment: Comment về post
+ * - wislife_comment_reply: Reply về comment
+ * - wislife_comment_reaction: Reaction về comment
+ * 
+ * Trạng thái read:
+ * - Nếu TẤT CẢ notifications trong nhóm đã đọc -> nhóm được đánh dấu đã đọc
+ * - Nếu CÓ ÍT NHẤT 1 chưa đọc -> nhóm được đánh dấu chưa đọc
+ */
+const groupWislifeNotifications = (notifications: NotificationData[]): NotificationData[] => {
+  const wislifeTypes = [
+    'wislife_post_reaction',
+    'wislife_post_comment',
+    'wislife_comment_reply',
+    'wislife_comment_reaction',
+  ];
+
+  const grouped: { [key: string]: NotificationData[] } = {};
+  const nonWislife: NotificationData[] = [];
+
+  // Phân loại notifications
+  notifications.forEach((notif) => {
+    const type = notif.data?.type;
+    if (wislifeTypes.includes(type)) {
+      // Tạo key để group: type + postId + commentId (nếu có)
+      const postId = notif.data?.postId || '';
+      const commentId = notif.data?.commentId || '';
+      const key = `${type}_${postId}_${commentId}`;
+
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(notif);
+    } else {
+      nonWislife.push(notif);
+    }
+  });
+
+  // Tạo grouped notifications
+  const groupedNotifications: NotificationData[] = Object.values(grouped).map((group) => {
+    // Sắp xếp group theo thời gian (mới nhất trước)
+    const sortedGroup = group.sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      return dateB - dateA;
+    });
+
+    if (sortedGroup.length === 1) {
+      // Chỉ có 1 notification, không cần gộp
+      return sortedGroup[0];
+    }
+
+    // Có nhiều notifications, gộp lại
+    const first = sortedGroup[0];
+    const type = first.data?.type;
+    const actorName = extractActorName(first);
+    const othersCount = sortedGroup.length - 1;
+
+    // Tạo message mới
+    let newMessage = '';
+    if (type === 'wislife_post_reaction') {
+      if (othersCount === 1) {
+        newMessage = `${actorName} và 1 người khác vừa bày tỏ cảm xúc về bài viết của bạn`;
+      } else {
+        newMessage = `${actorName} và ${othersCount} người khác vừa bày tỏ cảm xúc về bài viết của bạn`;
+      }
+    } else if (type === 'wislife_post_comment') {
+      if (othersCount === 1) {
+        newMessage = `${actorName} và 1 người khác vừa bình luận về bài viết của bạn`;
+      } else {
+        newMessage = `${actorName} và ${othersCount} người khác vừa bình luận về bài viết của bạn`;
+      }
+    } else if (type === 'wislife_comment_reply') {
+      if (othersCount === 1) {
+        newMessage = `${actorName} và 1 người khác vừa trả lời bình luận của bạn`;
+      } else {
+        newMessage = `${actorName} và ${othersCount} người khác vừa trả lời bình luận của bạn`;
+      }
+    } else if (type === 'wislife_comment_reaction') {
+      if (othersCount === 1) {
+        newMessage = `${actorName} và 1 người khác vừa bày tỏ cảm xúc về bình luận của bạn`;
+      } else {
+        newMessage = `${actorName} và ${othersCount} người khác vừa bày tỏ cảm xúc về bình luận của bạn`;
+      }
+    }
+
+    // Tính trạng thái read: nếu TẤT CẢ đã đọc thì mới đánh dấu là đã đọc
+    const allRead = sortedGroup.every((n) => n.read);
+
+    return {
+      ...first,
+      message: newMessage,
+      isGrouped: true,
+      groupedCount: sortedGroup.length,
+      groupedNotifications: sortedGroup,
+      actorName,
+      read: allRead,
+      // Sử dụng thời gian của notification mới nhất (đầu tiên sau khi sort)
+      createdAt: first.createdAt,
+    };
+  });
+
+  // Kết hợp và sắp xếp lại theo thời gian
+  const result = [...groupedNotifications, ...nonWislife].sort((a, b) => {
+    const dateA = new Date(a.createdAt).getTime();
+    const dateB = new Date(b.createdAt).getTime();
+    return dateB - dateA;
+  });
+
+  return result;
+};
 
 const NotificationsScreen = () => {
   const navigation = useNavigation();
@@ -94,9 +239,28 @@ const NotificationsScreen = () => {
           }));
 
           if (page === 1) {
-            setNotifications(notificationsData);
+            // Trang đầu tiên: gộp notifications
+            const groupedNotifications = groupWislifeNotifications(notificationsData);
+            setNotifications(groupedNotifications);
           } else {
-            setNotifications((prev) => [...prev, ...notificationsData]);
+            // Load more: thêm notifications mới vào và gộp toàn bộ để consistency
+            setNotifications((prev) => {
+              // Unflatten các grouped notifications trước đó để có danh sách đầy đủ
+              const prevUnflattened: NotificationData[] = [];
+              prev.forEach((notif) => {
+                if (notif.isGrouped && notif.groupedNotifications) {
+                  prevUnflattened.push(...notif.groupedNotifications);
+                } else {
+                  prevUnflattened.push(notif);
+                }
+              });
+              
+              // Kết hợp với notifications mới
+              const combined = [...prevUnflattened, ...notificationsData];
+              
+              // Gộp lại toàn bộ
+              return groupWislifeNotifications(combined);
+            });
           }
 
           setPagination({
@@ -141,6 +305,57 @@ const NotificationsScreen = () => {
     }
   }, []);
 
+  // Mark grouped notification as read (đánh dấu tất cả notifications trong nhóm)
+  const markGroupedAsRead = useCallback(
+    async (groupedNotification: NotificationData) => {
+      if (!groupedNotification.isGrouped || !groupedNotification.groupedNotifications) {
+        // Nếu không phải grouped notification, chỉ mark một cái
+        const notificationId = groupedNotification._id || groupedNotification.id;
+        if (notificationId) {
+          await markAsRead(notificationId);
+        }
+        return;
+      }
+
+      try {
+        // Mark tất cả notifications trong nhóm
+        const markPromises = groupedNotification.groupedNotifications.map((notif) => {
+          const notificationId = notif._id || notif.id;
+          if (notificationId && !notif.read) {
+            return notificationCenterService.markAsRead(notificationId);
+          }
+          return Promise.resolve({ success: true });
+        });
+
+        await Promise.all(markPromises);
+
+        // Update UI
+        setNotifications((prev) =>
+          prev.map((item) => {
+            if (item.isGrouped && item._id === groupedNotification._id) {
+              return {
+                ...item,
+                read: true,
+                groupedNotifications: item.groupedNotifications?.map((n) => ({ ...n, read: true })),
+              };
+            }
+            return item;
+          })
+        );
+
+        // Update unread count
+        const unreadCount = groupedNotification.groupedNotifications.filter((n) => !n.read).length;
+        setPagination((prev) => ({
+          ...prev,
+          unreadCount: Math.max(0, prev.unreadCount - unreadCount),
+        }));
+      } catch (error) {
+        console.error('Error marking grouped notification as read:', error);
+      }
+    },
+    [markAsRead]
+  );
+
   // Mark all notifications as read
   const markAllAsRead = useCallback(async () => {
     try {
@@ -166,10 +381,7 @@ const NotificationsScreen = () => {
     async (notification: NotificationData) => {
       // Mark as read if not already read
       if (!notification.read) {
-        const notificationId = notification._id || notification.id;
-        if (notificationId) {
-          await markAsRead(notificationId);
-        }
+        await markGroupedAsRead(notification);
       }
 
       // Handle navigation based on notification type
@@ -329,7 +541,7 @@ const NotificationsScreen = () => {
         data?.action
       );
     },
-    [navigation, markAsRead]
+    [navigation, markGroupedAsRead]
   );
 
   // Refresh notifications
@@ -384,53 +596,62 @@ const NotificationsScreen = () => {
         <View className="flex-row items-start">
           {!item.read && <View className="mr-3 mt-2 h-2 w-2 rounded-full bg-red-500" />}
           <View className="flex-1">
-            <Text
-              className={`text-base font-semibold ${!item.read ? 'text-red-900' : 'text-gray-900'}`}>
-              {title}
-            </Text>
+            <View className="flex-row items-center justify-between">
+              <Text
+                className={`flex-1 text-base font-semibold ${!item.read ? 'text-red-900' : 'text-gray-900'}`}>
+                {title}
+              </Text>
+              {item.isGrouped && item.groupedCount && item.groupedCount > 1 && (
+                <View className="ml-2 rounded-full bg-blue-100 px-2 py-1">
+                  <Text className="text-xs font-semibold text-blue-600">{item.groupedCount}</Text>
+                </View>
+              )}
+            </View>
             <Text className={`mt-1 text-sm ${!item.read ? 'text-red-700' : 'text-gray-600'}`}>
               {message}
             </Text>
-            <Text className="mt-2 text-xs text-gray-400">
-              {(() => {
-                try {
-                  const dateString = item.createdAt || item.eventTimestamp;
-                  if (!dateString) {
-                    console.warn(
-                      'Missing createdAt and eventTimestamp for notification:',
-                      item._id || item.id
-                    );
-                    return 'Không xác định';
-                  }
-                  const date = new Date(dateString);
-                  if (isNaN(date.getTime())) {
-                    console.warn(
-                      'Invalid date format:',
-                      dateString,
-                      'for notification:',
-                      item._id || item.id
+            <View className="mt-2 flex-row items-center">
+              <Text className="text-xs text-gray-400">
+                {(() => {
+                  try {
+                    const dateString = item.createdAt || item.eventTimestamp;
+                    if (!dateString) {
+                      console.warn(
+                        'Missing createdAt and eventTimestamp for notification:',
+                        item._id || item.id
+                      );
+                      return 'Không xác định';
+                    }
+                    const date = new Date(dateString);
+                    if (isNaN(date.getTime())) {
+                      console.warn(
+                        'Invalid date format:',
+                        dateString,
+                        'for notification:',
+                        item._id || item.id
+                      );
+                      return 'Ngày không hợp lệ';
+                    }
+                    return formatDistanceToNow(date, {
+                      addSuffix: true,
+                      locale: vi,
+                    });
+                  } catch (error) {
+                    console.error(
+                      'Date formatting error for notification:',
+                      item._id || item.id,
+                      'createdAt:',
+                      item.createdAt,
+                      'eventTimestamp:',
+                      item.eventTimestamp,
+                      'error:',
+                      error
                     );
                     return 'Ngày không hợp lệ';
                   }
-                  return formatDistanceToNow(date, {
-                    addSuffix: true,
-                    locale: vi,
-                  });
-                } catch (error) {
-                  console.error(
-                    'Date formatting error for notification:',
-                    item._id || item.id,
-                    'createdAt:',
-                    item.createdAt,
-                    'eventTimestamp:',
-                    item.eventTimestamp,
-                    'error:',
-                    error
-                  );
-                  return 'Ngày không hợp lệ';
-                }
-              })()}
-            </Text>
+                })()}
+              </Text>
+            </View>
           </View>
         </View>
       </TouchableOpacity>

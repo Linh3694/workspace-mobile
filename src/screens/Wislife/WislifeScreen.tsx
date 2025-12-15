@@ -47,10 +47,27 @@ const WislifeScreen = () => {
 
       const response = await postService.getNewsfeed(pageNum, 10);
 
+      // Sắp xếp: bài viết đã ghim lên đầu, sau đó theo thời gian
+      const sortedPosts = response.posts.sort((a, b) => {
+        // Bài ghim lên trước
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        // Nếu cả 2 cùng trạng thái pin, sắp xếp theo thời gian
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+
       if (pageNum === 1 || isRefresh) {
-        setPosts(response.posts);
+        setPosts(sortedPosts);
       } else {
-        setPosts((prev) => [...prev, ...response.posts]);
+        setPosts((prev) => {
+          // Kết hợp và sắp xếp lại
+          const combined = [...prev, ...sortedPosts];
+          return combined.sort((a, b) => {
+            if (a.isPinned && !b.isPinned) return -1;
+            if (!a.isPinned && b.isPinned) return 1;
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          });
+        });
       }
 
       setHasNextPage(response.pagination.hasNext);
@@ -83,7 +100,15 @@ const WislifeScreen = () => {
     try {
       setLoading(true);
       const response = await postService.searchPosts(searchQuery, 1, 10);
-      setPosts(response.posts);
+
+      // Sắp xếp: bài viết đã ghim lên đầu
+      const sortedPosts = response.posts.sort((a, b) => {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+
+      setPosts(sortedPosts);
       setHasNextPage(response.pagination.hasNext);
       setPage(1);
     } catch (error) {
@@ -132,7 +157,7 @@ const WislifeScreen = () => {
       <StandardHeader
         logo={<WislifeIcon width={130} height={50} />}
         rightButton={
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => {
               setIsSearchVisible(!isSearchVisible);
               if (isSearchVisible && searchQuery) {
@@ -142,7 +167,7 @@ const WislifeScreen = () => {
               }
             }}
             className="ml-3">
-            <Ionicons name={isSearchVisible ? "close" : "search"} size={24} color="#6B7280" />
+            <Ionicons name={isSearchVisible ? 'close' : 'search'} size={24} color="#6B7280" />
           </TouchableOpacity>
         }
       />
@@ -220,7 +245,7 @@ const WislifeScreen = () => {
         ) : posts.length === 0 ? (
           <View className="flex-1 items-center justify-center py-20">
             <Ionicons name="document-text-outline" size={64} color="#D1D5DB" />
-            <Text className="mt-4 font-medium text-lg text-gray-500">Chưa có bài viết nào</Text>
+            <Text className="mt-4 text-lg font-medium text-gray-500">Chưa có bài viết nào</Text>
             <Text className="mt-2 px-8 text-center text-gray-400">
               Hãy là người đầu tiên chia sẻ những khoảnh khắc đặc biệt
             </Text>

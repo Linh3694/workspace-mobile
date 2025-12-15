@@ -16,11 +16,7 @@ import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { notificationCenterService } from '../services/notificationCenterService';
 // @ts-ignore
-import Animated, {
-  useAnimatedStyle,
-  withSpring,
-  useSharedValue,
-} from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, withSpring, useSharedValue } from 'react-native-reanimated';
 // Liquid Glass - chỉ hoạt động khi đã prebuild, không dùng được trong Expo Go
 let LiquidGlassView: any = null;
 let isLiquidGlassSupported = false;
@@ -54,22 +50,22 @@ const GlassTabBar = ({ state, descriptors, navigation }: any) => {
       console.log('🔮 Tab Bar - isLiquidGlassSupported:', isLiquidGlassSupported);
     }
 
-    // Lấy unread notification count
-    const fetchUnreadCount = async () => {
-      try {
-        const count = await notificationCenterService.getUnreadCount();
-        setUnreadCount(count);
-      } catch (error) {
-        console.error('Error fetching unread count:', error);
-      }
-    };
+    // Lấy unread notification count - DISABLED (không cần nữa vì đã bỏ badge)
+    // const fetchUnreadCount = async () => {
+    //   try {
+    //     const count = await notificationCenterService.getUnreadCount();
+    //     setUnreadCount(count);
+    //   } catch (error) {
+    //     console.error('Error fetching unread count:', error);
+    //   }
+    // };
 
-    fetchUnreadCount();
+    // fetchUnreadCount();
 
     // Poll every 30 seconds để update count
-    const interval = setInterval(fetchUnreadCount, 30000);
+    // const interval = setInterval(fetchUnreadCount, 30000);
 
-    return () => clearInterval(interval);
+    // return () => clearInterval(interval);
   }, []);
 
   const renderBackground = () => {
@@ -78,7 +74,7 @@ const GlassTabBar = ({ state, descriptors, navigation }: any) => {
       return (
         <LiquidGlassView
           // eslint-disable-next-line
-          {...{ style: StyleSheet.absoluteFill, cornerRadius: 999 } as any}
+          {...({ style: StyleSheet.absoluteFill, cornerRadius: 999 } as any)}
         />
       );
     }
@@ -90,7 +86,7 @@ const GlassTabBar = ({ state, descriptors, navigation }: any) => {
           intensity={80}
           tint="light"
           // eslint-disable-next-line
-          {...{ style: StyleSheet.absoluteFill } as any}
+          {...({ style: StyleSheet.absoluteFill } as any)}
         />
         <View style={styles.glassOverlay} />
       </>
@@ -99,11 +95,12 @@ const GlassTabBar = ({ state, descriptors, navigation }: any) => {
 
   return (
     <View style={[styles.tabBarWrapper, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-      <View style={[
-        styles.tabBarContainer,
-        // Nếu dùng LiquidGlass thì không cần border và background
-        isLiquidGlassSupported && styles.liquidGlassContainer
-      ]}>
+      <View
+        style={[
+          styles.tabBarContainer,
+          // Nếu dùng LiquidGlass thì không cần border và background
+          isLiquidGlassSupported && styles.liquidGlassContainer,
+        ]}>
         {renderBackground()}
         <View style={styles.tabBarContent}>
           {state.routes.map((route: any, index: number) => {
@@ -195,32 +192,27 @@ const TabBarButton = ({ route, isFocused, onPress, badgeCount }: any) => {
       onPress={onPress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
-      style={styles.tabButton}
-    >
+      style={styles.tabButton}>
       {/* @ts-ignore - Animated.View types issue */}
       <Animated.View style={[styles.tabButtonInner, animatedStyle]}>
         {/* Glass highlight for focused tab */}
         {isFocused && !isLiquidGlassSupported && <View style={styles.focusedBackground} />}
-        
+
         <View style={styles.iconContainer}>
           {getIcon()}
-          {/* Notification badge */}
-          {badgeCount !== undefined && badgeCount > 0 && (
+          {/* Notification badge - DISABLED */}
+          {/* {badgeCount !== undefined && badgeCount > 0 && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>
                 {badgeCount > 99 ? '99+' : badgeCount}
               </Text>
             </View>
-          )}
+          )} */}
         </View>
-        
+
         <Text
-          style={[
-            styles.tabLabel,
-            { color: isFocused ? '#0A2240' : '#9CA3AF' },
-          ]}
-          numberOfLines={1}
-        >
+          style={[styles.tabLabel, { color: isFocused ? '#0A2240' : '#9CA3AF' }]}
+          numberOfLines={1}>
           {getLabel()}
         </Text>
       </Animated.View>
@@ -238,24 +230,11 @@ const BottomTabNavigator = ({ route }: { route: any }) => {
       screenOptions={{
         headerShown: false,
       }}
-      initialRouteName={initialRouteName}
-    >
-      <Tab.Screen
-        name={ROUTES.MAIN.HOME}
-        component={HomeScreen}
-      />
-      <Tab.Screen
-        name={ROUTES.MAIN.WISLIFE}
-        component={WislifeScreen}
-      />
-      <Tab.Screen
-        name={ROUTES.MAIN.NOTIFICATIONS}
-        component={NotificationsScreen}
-      />
-      <Tab.Screen
-        name={ROUTES.MAIN.PROFILE}
-        component={ProfileScreen}
-      />
+      initialRouteName={initialRouteName}>
+      <Tab.Screen name={ROUTES.MAIN.HOME} component={HomeScreen} />
+      <Tab.Screen name={ROUTES.MAIN.WISLIFE} component={WislifeScreen} />
+      <Tab.Screen name={ROUTES.MAIN.NOTIFICATIONS} component={NotificationsScreen} />
+      <Tab.Screen name={ROUTES.MAIN.PROFILE} component={ProfileScreen} />
     </Tab.Navigator>
   );
 };

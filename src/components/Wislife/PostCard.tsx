@@ -54,7 +54,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   // State cho Reaction Picker modal
   const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
-  const [reactionPickerPosition, setReactionPickerPosition] = useState<{ x: number; y: number } | undefined>();
+  const [reactionPickerPosition, setReactionPickerPosition] = useState<
+    { x: number; y: number } | undefined
+  >();
 
   // Xử lý scroll để cập nhật index ảnh hiện tại
   const handleImageScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -153,15 +155,51 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
     ]);
   };
 
+  const handlePinPost = async () => {
+    try {
+      let updatedPost: Post;
+      if (post.isPinned) {
+        // Unpin
+        updatedPost = await postService.unpinPost(post._id);
+        Alert.alert('Thành công', 'Đã bỏ ghim bài viết');
+      } else {
+        // Pin
+        updatedPost = await postService.pinPost(post._id);
+        Alert.alert('Thành công', 'Đã ghim bài viết lên đầu');
+      }
+      onUpdate(updatedPost);
+    } catch (error) {
+      console.error('Error pinning post:', error);
+      Alert.alert('Lỗi', post.isPinned ? 'Không thể bỏ ghim bài viết' : 'Không thể ghim bài viết');
+    }
+  };
+
+  const handlePostOptions = () => {
+    Alert.alert('Tùy chọn bài viết', '', [
+      {
+        text: post.isPinned ? 'Bỏ ghim' : 'Ghim bài viết',
+        onPress: handlePinPost,
+      },
+      {
+        text: 'Xóa bài viết',
+        style: 'destructive',
+        onPress: handleDeletePost,
+      },
+      {
+        text: 'Hủy',
+        style: 'cancel',
+      },
+    ]);
+  };
+
   const reactionCounts = getReactionCounts();
   const userReaction = getUserReaction();
   const totalReactions = post.reactions.length;
-  
-  // Kiểm tra xem user có quyền xóa bài viết không (Mobile BOD hoặc Mobile IT)
+
+  // Kiểm tra xem user có quyền xóa bài viết không - CHỈ Mobile BOD
+  // Mobile BOD có thể xóa mọi bài viết, kể cả bài của người khác
   const userRoles = (user as any)?.roles || [];
-  const canDeletePost = userRoles.some((role: string) => 
-    role === 'Mobile BOD' || role === 'Mobile IT'
-  );
+  const canDeletePost = userRoles.some((role: string) => role === 'Mobile BOD');
 
   // Mở modal chọn reaction khi tap vào nút Thích
   const handleLikeButtonPress = (event?: GestureResponderEvent) => {
@@ -177,6 +215,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
 
   return (
     <View className="mb-2 border-b border-gray-100 bg-white">
+      {/* Pinned Badge - hiển thị nếu bài viết được ghim */}
+      {post.isPinned && (
+        <View className="flex-row items-center bg-blue-50 px-4 py-2">
+          <Ionicons name="pin" size={14} color="#2563EB" />
+          <Text className="ml-1.5 text-xs font-medium text-blue-600">Bài viết đã được ghim</Text>
+        </View>
+      )}
+
       {/* Header */}
       <View className="flex-row items-center justify-between p-4">
         <View className="flex-1 flex-row items-center">
@@ -196,9 +242,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
           </View>
         </View>
 
-        {/* Nút xóa bài viết - chỉ hiển thị cho Mobile BOD và Mobile IT */}
+        {/* Nút tùy chọn (PIN/DELETE) - chỉ hiển thị cho Mobile BOD */}
         {canDeletePost && (
-          <TouchableOpacity onPress={handleDeletePost} className="p-2">
+          <TouchableOpacity onPress={handlePostOptions} className="p-2">
             <Ionicons name="ellipsis-horizontal" size={20} color="#6B7280" />
           </TouchableOpacity>
         )}
@@ -234,7 +280,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
                   />
                   {index === 3 && post.images.length > 4 && (
                     <View className="absolute inset-0 items-center justify-center rounded-lg bg-black bg-opacity-50">
-                      <Text className="font-bold text-lg text-white">
+                      <Text className="text-lg font-bold text-white">
                         +{post.images.length - 4}
                       </Text>
                     </View>
@@ -248,9 +294,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
           {post.videos.length > 0 && (
             <View className="mt-2 px-4">
               {post.videos.slice(0, 1).map((video, index) => (
-                <View 
-                  key={index} 
-                  className="w-full overflow-hidden rounded-lg bg-black" 
+                <View
+                  key={index}
+                  className="w-full overflow-hidden rounded-lg bg-black"
                   style={{ aspectRatio: 16 / 9 }}>
                   <Video
                     source={{ uri: `${API_BASE_URL}${video}` }}
@@ -332,10 +378,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
                 <LikeSkeletonSvg width={28} height={28} />
               )}
             </View>
-            <Text 
+            <Text
               className="font-medium"
-              style={{ color: userReaction ? (getEmojiByCode(userReaction.type)?.color || '#F05023') : '#6B7280' }}>
-              {userReaction ? (getEmojiByCode(userReaction.type)?.name || 'Đã thích') : 'Thích'}
+              style={{
+                color: userReaction
+                  ? getEmojiByCode(userReaction.type)?.color || '#F05023'
+                  : '#6B7280',
+              }}>
+              {userReaction ? getEmojiByCode(userReaction.type)?.name || 'Đã thích' : 'Thích'}
             </Text>
           </TouchableOpacity>
 
@@ -343,7 +393,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
             onPress={() => (onCommentPress ? onCommentPress(post) : undefined)}
             className="flex-row items-center rounded-full px-4 py-2">
             <Ionicons name="chatbubble-outline" size={24} color="#6B7280" />
-            <Text className="ml-2 font-medium text-base text-gray-600">Bình luận</Text>
+            <Text className="ml-2 text-base font-medium text-gray-600">Bình luận</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -357,11 +407,11 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
         <StatusBar barStyle="light-content" backgroundColor="#000" />
         <View className="flex-1 bg-black">
           {/* Header */}
-          <View 
+          <View
             className="absolute left-0 right-0 z-10 flex-row items-center justify-between px-4"
             style={{ top: insets.top + 8 }}>
             {/* Thông tin người đăng */}
-            <View className="flex-row items-center flex-1">
+            <View className="flex-1 flex-row items-center">
               <View className="h-10 w-10 overflow-hidden rounded-full border-2 border-white/30">
                 <Image source={{ uri: getAvatar(post.author) }} className="h-full w-full" />
               </View>
@@ -369,9 +419,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
                 <Text className="font-semibold text-white">
                   {post.author ? normalizeVietnameseName(post.author.fullname) : 'Ẩn danh'}
                 </Text>
-                <Text className="text-xs text-white/70">
-                  {formatRelativeTime(post.createdAt)}
-                </Text>
+                <Text className="text-xs text-white/70">{formatRelativeTime(post.createdAt)}</Text>
               </View>
             </View>
 
@@ -405,25 +453,23 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
 
           {/* Page Indicator - Hiển thị khi có nhiều hơn 1 ảnh */}
           {post.images.length > 1 && (
-            <View 
+            <View
               className="absolute left-0 right-0 items-center"
               style={{ bottom: insets.bottom + 24 }}>
               {/* Số trang */}
               <View className="mb-3 rounded-full bg-black/60 px-4 py-1.5">
-                <Text className="font-medium text-sm text-white">
+                <Text className="text-sm font-medium text-white">
                   {currentImageIndex + 1} / {post.images.length}
                 </Text>
               </View>
-              
+
               {/* Dots indicator */}
               <View className="flex-row items-center justify-center">
                 {post.images.map((_, index) => (
                   <View
                     key={index}
                     className={`mx-1 rounded-full ${
-                      index === currentImageIndex 
-                        ? 'h-2 w-2 bg-white' 
-                        : 'h-1.5 w-1.5 bg-white/40'
+                      index === currentImageIndex ? 'h-2 w-2 bg-white' : 'h-1.5 w-1.5 bg-white/40'
                     }`}
                   />
                 ))}

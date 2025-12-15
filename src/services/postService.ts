@@ -308,6 +308,47 @@ class PostService {
     const data: CreatePostResponse = await response.json();
     return data.data;
   }
+
+  // ========== PIN POST FEATURE (CHỈ MOBILE BOD) ==========
+
+  /**
+   * Pin một bài viết (chỉ Mobile BOD)
+   * Bài viết được pin sẽ hiển thị ở đầu danh sách cho tất cả mọi người
+   */
+  async pinPost(postId: string): Promise<Post> {
+    const headers = await this.getAuthHeaders();
+    const response = await fetch(`${BASE_URL}/api/social/${postId}/pin`, {
+      method: 'POST',
+      headers,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Failed to pin post: ${response.status} ${errorText}`);
+    }
+
+    const data: CreatePostResponse = await response.json();
+    return data.data;
+  }
+
+  /**
+   * Unpin một bài viết (chỉ Mobile BOD)
+   */
+  async unpinPost(postId: string): Promise<Post> {
+    const headers = await this.getAuthHeaders();
+    const response = await fetch(`${BASE_URL}/api/social/${postId}/pin`, {
+      method: 'DELETE',
+      headers,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Failed to unpin post: ${response.status} ${errorText}`);
+    }
+
+    const data: CreatePostResponse = await response.json();
+    return data.data;
+  }
 }
 
 export const postService = new PostService();
