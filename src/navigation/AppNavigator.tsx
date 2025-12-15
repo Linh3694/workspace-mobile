@@ -31,6 +31,8 @@ import { FeedbackScreen, FeedbackDetailScreen } from '../screens/Feedback';
 import { MenuScreen } from '../screens/Menu';
 import { TimetableScreen } from '../screens/Timetable';
 import { CalendarScreen } from '../screens/Calendar';
+import PostDetailScreen from '../screens/Wislife/PostDetailScreen';
+import { Post } from '../types/post';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -102,6 +104,8 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.TIMETABLE]: undefined;
   // Calendar Module Routes
   [ROUTES.SCREENS.CALENDAR]: undefined;
+  // Wislife Module Routes
+  PostDetail: { post: Post; onUpdate?: (post: Post) => void };
 };
 
 const MainTabWrapper = ({ route }: { route: any }) => <BottomTabNavigator route={route} />;
@@ -330,6 +334,12 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.CALENDAR}
             component={CalendarScreen}
+            options={{ headerShown: false }}
+          />
+          {/* Wislife Module Screen */}
+          <Stack.Screen
+            name="PostDetail"
+            component={PostDetailScreen}
             options={{ headerShown: false }}
           />
         </>

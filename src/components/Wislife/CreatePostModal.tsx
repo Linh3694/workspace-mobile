@@ -190,7 +190,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
     >
       <SafeAreaView className="flex-1 bg-white">
         {/* Header */}
-        <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200">
+        <View className="flex-row items-center justify-between px-6 py-4 border-b border-gray-200">
           <TouchableOpacity onPress={handleClose}>
             <Text className="text-lg text-gray-600">Hủy</Text>
           </TouchableOpacity>

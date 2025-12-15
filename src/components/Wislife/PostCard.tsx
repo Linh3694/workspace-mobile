@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 // @ts-ignore
 import {
   View,
@@ -13,6 +13,7 @@ import {
   StatusBar,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TouchableOpacity } from '../Common';
@@ -29,6 +30,7 @@ import { getAvatar } from '../../utils/avatar';
 import { getEmojiByCode, isFallbackEmoji, hasLottieAnimation } from '../../utils/emojiUtils';
 import { normalizeVietnameseName } from '../../utils/nameFormatter';
 import ReactionPicker from './ReactionPicker';
+import { useNavigation } from '@react-navigation/native';
 
 interface PostCardProps {
   post: Post;
@@ -49,6 +51,12 @@ const GradientText: React.FC<{ children: string; style?: any }> = ({ children, s
 const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onCommentPress }) => {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
+
+  // Mở trang chi tiết bài viết
+  const openPostDetail = () => {
+    navigation.navigate('PostDetail', { post, onUpdate });
+  };
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -57,6 +65,49 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   const [reactionPickerPosition, setReactionPickerPosition] = useState<
     { x: number; y: number } | undefined
   >();
+  // State cho danh sách người thích
+  const [reactionsListVisible, setReactionsListVisible] = useState(false);
+  const [selectedReactionFilter, setSelectedReactionFilter] = useState<string | null>(null); // null = Tất cả
+  
+  // Animation cho Reactions List Modal
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheetTranslateY = useRef(new Animated.Value(500)).current;
+
+  // Animation khi mở/đóng modal
+  useEffect(() => {
+    if (reactionsListVisible) {
+      // Mở modal: fade backdrop + slide sheet
+      Animated.parallel([
+        Animated.timing(backdropOpacity, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.spring(sheetTranslateY, {
+          toValue: 0,
+          tension: 65,
+          friction: 11,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      // Đóng modal: fade out + slide down
+      Animated.parallel([
+        Animated.timing(backdropOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(sheetTranslateY, {
+          toValue: 500,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      // Reset filter khi đóng modal
+      setSelectedReactionFilter(null);
+    }
+  }, [reactionsListVisible]);
 
   // Xử lý scroll để cập nhật index ảnh hiện tại
   const handleImageScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -214,22 +265,73 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   };
 
   return (
-    <View className="mb-2 border-b border-gray-100 bg-white">
-      {/* Pinned Badge - hiển thị nếu bài viết được ghim */}
+    <View 
+      className="mb-2 border-b border-gray-100 bg-white"
+      style={post.isPinned ? {
+        backgroundColor: '#',
+        borderLeftWidth: 0,
+      } : {}}>
+      
+      {/* Pinned indicator - Gradient top bar + Corner badge */}
       {post.isPinned && (
-        <View className="flex-row items-center bg-blue-50 px-4 py-2">
-          <Ionicons name="pin" size={14} color="#2563EB" />
-          <Text className="ml-1.5 text-xs font-medium text-blue-600">Bài viết đã được ghim</Text>
-        </View>
+        <>
+          {/* Top bar màu navy */}
+          {/* <View 
+            className="h-1 w-full"
+            style={{ 
+              backgroundColor: '#FF7A00',
+            }}
+          /> */}
+          {/* Corner ribbon badge */}
+          <View 
+            className="absolute right-0 top-0 z-10"
+            style={{
+              width: 70,
+              height: 70,
+              overflow: 'hidden',
+            }}>
+            <View
+              style={{
+                position: 'absolute',
+                right: -35,
+                top: 8,
+                width: 100,
+                backgroundColor: '#FF7A00',
+                paddingVertical: 4,
+                transform: [{ rotate: '45deg' }],
+                alignItems: 'center',
+                shadowColor: '#FF7A00',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.3,
+                shadowRadius: 4,
+                elevation: 3,
+              }}>
+              <View className="flex-row items-center">
+                <Ionicons name="pin" size={10} color="#FFF" />
+                <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '700', marginLeft: 2 }}>
+                  GHIM
+                </Text>
+              </View>
+            </View>
+          </View>
+        </>
       )}
 
       {/* Header */}
       <View className="flex-row items-center justify-between p-4">
         <View className="flex-1 flex-row items-center">
-          <View className="h-10 w-10 overflow-hidden rounded-full bg-gray-300">
+          <View 
+            className="h-10 w-10 overflow-hidden rounded-full"
+            style={post.isPinned ? {
+              borderWidth: 2,
+              borderColor: '#FF7A00',
+            } : {
+              backgroundColor: '#F0F7FF',
+            }}>
             <Image source={{ uri: getAvatar(post.author) }} className="h-full w-full" />
           </View>
           <View className="ml-3 flex-1">
+            {/* Tên */}
             <Text className="font-semibold text-gray-900">
               {post.author ? normalizeVietnameseName(post.author.fullname) : 'Ẩn danh'}
             </Text>
@@ -250,10 +352,12 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
         )}
       </View>
 
-      {/* Content */}
-      <View className="px-4 pb-3">
-        <Text className="text-base leading-5 text-gray-900">{post.content}</Text>
-      </View>
+      {/* Content - Ấn để xem chi tiết */}
+      <TouchableOpacity onPress={openPostDetail} activeOpacity={0.8}>
+        <View className="px-4 pb-3">
+          <Text className="text-base leading-5 text-gray-900">{post.content}</Text>
+        </View>
+      </TouchableOpacity>
 
       {/* Media */}
       {(post.images.length > 0 || post.videos.length > 0) && (
@@ -317,7 +421,11 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
       {totalReactions > 0 && (
         <View className="px-4 pb-2">
           <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center">
+            {/* Ấn vào để xem danh sách người thích */}
+            <TouchableOpacity 
+              className="flex-row items-center"
+              onPress={() => setReactionsListVisible(true)}
+              activeOpacity={0.7}>
               <View className="flex-row items-center">
                 {Object.entries(reactionCounts).map(([emojiCode, count]) => {
                   const emoji = getEmojiByCode(emojiCode);
@@ -341,7 +449,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
               <Text className="ml-2 text-sm text-gray-600">
                 {totalReactions} {totalReactions === 1 ? 'lượt thích' : 'lượt thích'}
               </Text>
-            </View>
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => (onCommentPress ? onCommentPress(post) : undefined)}>
               <Text className="text-sm text-gray-600">{post.comments.length} bình luận</Text>
             </TouchableOpacity>
@@ -487,6 +595,163 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
         currentReaction={userReaction?.type}
         anchorPosition={reactionPickerPosition}
       />
+
+      {/* Reactions List Modal - ActionSheet style với animation riêng biệt */}
+      <Modal
+        visible={reactionsListVisible}
+        animationType="none"
+        transparent={true}
+        onRequestClose={() => setReactionsListVisible(false)}>
+        <View className="flex-1 justify-end">
+          {/* Backdrop - Fade animation riêng */}
+          <Animated.View 
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              opacity: backdropOpacity,
+            }}
+          />
+          <TouchableOpacity 
+            className="flex-1" 
+            activeOpacity={1}
+            onPress={() => setReactionsListVisible(false)}
+          />
+          
+          {/* ActionSheet Content - Slide animation riêng, chiều cao cố định 50% màn hình */}
+          <Animated.View 
+            className="rounded-t-3xl bg-white"
+            style={{ 
+              height: '50%',
+              paddingBottom: insets.bottom + 16,
+              transform: [{ translateY: sheetTranslateY }],
+            }}>
+            {/* Handle bar */}
+            <View className="items-center py-3">
+              <View className="h-1 w-10 rounded-full bg-gray-300" />
+            </View>
+            
+            {/* Header */}
+            <View className="flex-row items-center justify-between border-b border-gray-100 px-4 pb-3">
+              <Text className="text-lg font-semibold text-gray-900">Lượt thích</Text>
+              <TouchableOpacity 
+                onPress={() => setReactionsListVisible(false)}
+                className="h-8 w-8 items-center justify-center rounded-full bg-gray-100">
+                <Ionicons name="close" size={18} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Reaction Type Tabs - Có thể ấn để filter */}
+            <View className="flex-row border-b border-gray-100 px-4">
+              {/* Tab Tất cả */}
+              <TouchableOpacity 
+                onPress={() => setSelectedReactionFilter(null)}
+                className={`mr-4 py-3 ${selectedReactionFilter === null ? 'border-b-2 border-gray-900' : ''}`}
+                activeOpacity={0.7}>
+                <Text className={`font-medium ${selectedReactionFilter === null ? 'text-gray-900' : 'text-gray-500'}`}>
+                  Tất cả {totalReactions}
+                </Text>
+              </TouchableOpacity>
+              
+              {/* Tabs cho từng loại reaction */}
+              {Object.entries(reactionCounts).map(([emojiCode, count]) => {
+                const emoji = getEmojiByCode(emojiCode);
+                if (!emoji || count === 0) return null;
+                const isSelected = selectedReactionFilter === emojiCode;
+                return (
+                  <TouchableOpacity 
+                    key={emojiCode} 
+                    onPress={() => setSelectedReactionFilter(emojiCode)}
+                    className={`mr-4 flex-row items-center py-3 ${isSelected ? 'border-b-2 border-gray-900' : ''}`}
+                    activeOpacity={0.7}>
+                    {hasLottieAnimation(emoji) ? (
+                      <LottieView
+                        source={emoji.lottieSource}
+                        autoPlay
+                        loop
+                        style={{ width: 20, height: 20 }}
+                      />
+                    ) : (
+                      <Text style={{ fontSize: 16 }}>{emoji.fallbackText}</Text>
+                    )}
+                    <Text className={`ml-1 text-sm ${isSelected ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                      {count}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            
+            {/* Reactions List - Filter theo tab đang chọn, flex-1 để scroll */}
+            <ScrollView 
+              className="flex-1 px-4"
+              showsVerticalScrollIndicator={true}>
+              {post.reactions
+                .filter(reaction => selectedReactionFilter === null || reaction.type === selectedReactionFilter)
+                .map((reaction, index) => {
+                  const emoji = getEmojiByCode(reaction.type);
+                  const reactionUser = reaction.user;
+                  return (
+                    <View 
+                      key={reaction._id || index}
+                      className="flex-row items-center border-b border-gray-50 py-4">
+                      {/* Avatar với emoji overlay */}
+                      <View className="relative">
+                        <View className="h-14 w-14 overflow-hidden rounded-full bg-gray-200">
+                          <Image 
+                            source={{ uri: getAvatar(reactionUser) }} 
+                            className="h-full w-full" 
+                          />
+                        </View>
+                        {/* Emoji badge */}
+                        <View 
+                          className="absolute -bottom-1 -right-1 h-7 w-7 items-center justify-center rounded-full bg-white"
+                          style={{ 
+                            shadowColor: '#000',
+                            shadowOffset: { width: 0, height: 1 },
+                            shadowOpacity: 0.1,
+                            shadowRadius: 2,
+                            elevation: 2,
+                          }}>
+                          {emoji && hasLottieAnimation(emoji) ? (
+                            <LottieView
+                              source={emoji.lottieSource}
+                              autoPlay
+                              loop
+                              style={{ width: 20, height: 20 }}
+                            />
+                          ) : emoji ? (
+                            <Text style={{ fontSize: 16 }}>{emoji.fallbackText}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                      
+                      {/* User info */}
+                      <View className="ml-4 flex-1">
+                        <Text className="text-base font-semibold text-gray-900">
+                          {reactionUser ? normalizeVietnameseName(reactionUser.fullname) : 'Người dùng'}
+                        </Text>
+                        {reactionUser?.jobTitle && (
+                          <Text className="mt-0.5 text-sm text-gray-500">{reactionUser.jobTitle}</Text>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+              
+              {/* Empty state */}
+              {post.reactions.filter(r => selectedReactionFilter === null || r.type === selectedReactionFilter).length === 0 && (
+                <View className="items-center py-8">
+                  <Text className="text-gray-400">Chưa có lượt thích nào</Text>
+                </View>
+              )}
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 };

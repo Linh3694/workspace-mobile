@@ -200,18 +200,30 @@ const WislifeScreen = () => {
         </View>
       )}
 
-      {/* Create Post Section */}
+      {/* Create Post Section - Thiết kế tối giản */}
       <TouchableOpacity
         onPress={() => setIsCreateModalVisible(true)}
-        className="mx-4 mt-2 border-b border-gray-300 pb-3">
-        <View className="flex-row items-center">
-          <View className="flex-1 flex-row items-center">
-            <View className="h-10 w-10 overflow-hidden rounded-full bg-gray-300">
-              <Image source={{ uri: getAvatar(user) }} className="h-full w-full" />
-            </View>
-            <View className="ml-3 flex-1">
-              <Text className="font-semibold text-gray-900">{user?.fullname || ''}</Text>
-              <Text className="text-sm text-gray-500">Có gì mới?</Text>
+        className="mx-4 my-3"
+        activeOpacity={0.7}>
+        <View 
+          className="flex-row items-center rounded-2xl bg-gray-50 px-4 py-3"
+          style={{ borderWidth: 1, borderColor: '#F3F4F6' }}>
+          {/* Avatar */}
+          <View 
+            className="h-11 w-11 overflow-hidden rounded-full"
+            style={{ borderWidth: 2, borderColor: '#FF7A00' }}>
+            <Image source={{ uri: getAvatar(user) }} className="h-full w-full" />
+          </View>
+          
+          {/* Input placeholder */}
+          <View className="ml-3 flex-1">
+            <Text className="text-base text-gray-400">Có gì mới, {user?.fullname?.split(' ').pop() || ''}?</Text>
+          </View>
+          
+          {/* Icons */}
+          <View className="flex-row items-center space-x-2">
+            <View className="h-9 w-9 items-center justify-center rounded-full bg-orange-50">
+              <Ionicons name="image-outline" size={18} color="#002855" />
             </View>
           </View>
         </View>
