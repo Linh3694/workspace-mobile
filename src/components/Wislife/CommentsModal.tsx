@@ -27,6 +27,7 @@ import LikeSkeletonSvg from '../../assets/like-skeleton.svg';
 import { getEmojiByCode, isFallbackEmoji, hasLottieAnimation } from '../../utils/emojiUtils';
 import { normalizeVietnameseName } from '../../utils/nameFormatter';
 import ReactionPicker from './ReactionPicker';
+import ReactionsListModal from './ReactionsListModal';
 
 interface CommentsModalProps {
   visible: boolean;
@@ -54,11 +55,20 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
   // State cho Reaction Picker modals
   const [postReactionPickerVisible, setPostReactionPickerVisible] = useState(false);
   const [commentReactionModalVisible, setCommentReactionModalVisible] = useState(false);
-  const [reactionButtonPosition, setReactionButtonPosition] = useState<{ x: number; y: number } | undefined>();
+  const [reactionButtonPosition, setReactionButtonPosition] = useState<
+    { x: number; y: number } | undefined
+  >();
   // State để track comments nào đang mở replies (giống TikTok)
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   // Ref để focus input khi click Trả lời
   const inputRef = useRef<TextInput>(null);
+
+  // Lấy MongoDB ObjectId của user hiện tại
+  const [userMongoId, setUserMongoId] = React.useState<string | null>(null);
+
+  // State cho Reactions List Modal
+  const [reactionsListVisible, setReactionsListVisible] = useState(false);
+  const [selectedReactions, setSelectedReactions] = useState<Reaction[]>([]);
 
   // Sắp xếp comments từ mới nhất đến cũ nhất và nhóm replies
   const organizeComments = () => {
@@ -81,6 +91,45 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
   };
 
   const organizedComments = organizeComments();
+
+  // Tìm MongoDB ObjectId của user hiện tại từ post author hoặc comments
+  React.useEffect(() => {
+    if (userMongoId) return; // Đã có rồi
+
+    const myEmail = user?.email?.toLowerCase();
+    const myUsername = (user as any)?.username?.toLowerCase();
+
+    // Kiểm tra post author
+    if (post.author) {
+      const authorEmail = post.author.email?.toLowerCase();
+      const authorUsername = (post.author as any).username?.toLowerCase();
+      if ((myEmail && authorEmail === myEmail) || (myUsername && authorUsername === myUsername)) {
+        if (post.author._id) {
+          console.log('[CommentsModal] Found user MongoDB ID from post author:', post.author._id);
+          setUserMongoId(post.author._id);
+          return;
+        }
+      }
+    }
+
+    // Kiểm tra trong comments
+    for (const comment of post.comments) {
+      if (comment.user) {
+        const commentEmail = comment.user.email?.toLowerCase();
+        const commentUsername = (comment.user as any).username?.toLowerCase();
+        if (
+          (myEmail && commentEmail === myEmail) ||
+          (myUsername && commentUsername === myUsername)
+        ) {
+          if (comment.user._id) {
+            console.log('[CommentsModal] Found user MongoDB ID from comment:', comment.user._id);
+            setUserMongoId(comment.user._id);
+            return;
+          }
+        }
+      }
+    }
+  }, [post, user, userMongoId]);
 
   const getUserReaction = (): Reaction | null => {
     const myIds = [user?._id, (user as any)?.id, user?.email, (user as any)?.username]
@@ -121,9 +170,16 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
 
   // Helper function để tìm reaction của user trong một comment/reply
   const getCommentUserReaction = (reactions: Reaction[]): Reaction | null => {
-    const myIds = [user?._id, (user as any)?.id, user?.email, (user as any)?.username]
+    const myIds = [
+      user?._id,
+      (user as any)?.id,
+      user?.email,
+      (user as any)?.username,
+      userMongoId, // Thêm MongoDB ObjectId
+    ]
       .filter(Boolean)
       .map((v) => String(v).toLowerCase());
+
     if (myIds.length === 0) return null;
 
     const resolveOwnerIds = (r: any): string[] => {
@@ -144,6 +200,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
       const ownerIds = resolveOwnerIds(r);
       return ownerIds.some((oid) => myIds.includes(oid));
     });
+
     return (found as unknown as Reaction) || null;
   };
 
@@ -164,7 +221,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
     try {
       const userReaction = getUserReaction();
       let updatedPost: Post;
-      
+
       if (userReaction && userReaction.type === emojiCode) {
         // Remove reaction if same type
         updatedPost = await postService.removeReaction(post._id);
@@ -243,7 +300,11 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
   };
 
   // parentCommentId: nếu reply một reply, đây là main comment id
-  const handleReplyComment = (commentId: string, commentAuthor: string, parentCommentId?: string) => {
+  const handleReplyComment = (
+    commentId: string,
+    commentAuthor: string,
+    parentCommentId?: string
+  ) => {
     setReplyingTo(commentId);
     // Nếu có parentCommentId, tức là đang reply một reply -> gửi API đến parent
     setReplyingToParent(parentCommentId || null);
@@ -350,7 +411,15 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
         <View className="border-b border-gray-100 px-10 py-3">
           <View className="flex-row items-center justify-between">
             {/* Bên trái: Hiển thị các loại emoji + số lượng reactions */}
-            <View className="flex-1 flex-row items-center">
+            <TouchableOpacity
+              className="flex-1 flex-row items-center"
+              onPress={() => {
+                if (totalReactions > 0) {
+                  setSelectedReactions(post.reactions);
+                  setReactionsListVisible(true);
+                }
+              }}
+              activeOpacity={totalReactions > 0 ? 0.7 : 1}>
               {totalReactions > 0 ? (
                 <>
                   {/* Hiển thị tối đa 3 loại emoji phổ biến nhất */}
@@ -362,9 +431,9 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                         const emoji = getEmojiByCode(type);
                         if (!emoji) return null;
                         return (
-                          <View 
-                            key={type} 
-                            style={{ 
+                          <View
+                            key={type}
+                            style={{
                               marginLeft: index > 0 ? -6 : 0,
                               zIndex: 10 - index,
                             }}>
@@ -393,7 +462,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
               ) : (
                 <Text className="text-sm text-gray-400">Chưa có lượt thích nào</Text>
               )}
-            </View>
+            </TouchableOpacity>
 
             {/* Bên phải: Nút Thích */}
             <TouchableOpacity
@@ -421,8 +490,12 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
               )}
               <Text
                 className="ml-1.5 text-sm font-semibold"
-                style={{ color: userReaction ? (getEmojiByCode(userReaction.type)?.color || '#F05023') : '#6B7280' }}>
-                {userReaction ? (getEmojiByCode(userReaction.type)?.name || 'Đã thích') : 'Thích'}
+                style={{
+                  color: userReaction
+                    ? getEmojiByCode(userReaction.type)?.color || '#F05023'
+                    : '#6B7280',
+                }}>
+                {userReaction ? getEmojiByCode(userReaction.type)?.name || 'Đã thích' : 'Thích'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -437,7 +510,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
             {post.comments.length === 0 ? (
               <View className="flex-1 items-center justify-center py-10">
                 <Ionicons name="chatbubble-outline" size={64} color="#D1D5DB" />
-                <Text className="mt-4 font-medium text-lg text-gray-500">
+                <Text className="mt-4 text-lg font-medium text-gray-500">
                   Chưa có bình luận nào
                 </Text>
                 <Text className="mt-2 px-8 text-center text-gray-400">
@@ -458,8 +531,10 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                       <View className="flex-1">
                         <View className="rounded-2xl px-4">
                           <View className="flex-row items-center justify-start gap-2">
-                            <Text className="mb-1 font-semibold text-base text-gray-900">
-                              {comment.user ? normalizeVietnameseName(comment.user.fullname) : 'Ẩn danh'}
+                            <Text className="mb-1 text-base font-semibold text-gray-900">
+                              {comment.user
+                                ? normalizeVietnameseName(comment.user.fullname)
+                                : 'Ẩn danh'}
                             </Text>
                             <Text className="mb-1 text-sm text-gray-500">
                               {formatRelativeTime(comment.createdAt)}
@@ -473,41 +548,22 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                               className="ml-4"
                               onPress={(e) => handleCommentReaction(comment._id, e)}
                               disabled={likingComment === comment._id}>
-                              <View className="flex-row items-center">
-                                {(() => {
-                                  const myReaction = getCommentUserReaction(comment.reactions);
-                                  const emoji = myReaction ? getEmojiByCode(myReaction.type) : null;
-                                  const label = likingComment === comment._id
+                              {(() => {
+                                const myReaction = getCommentUserReaction(comment.reactions);
+                                const emoji = myReaction ? getEmojiByCode(myReaction.type) : null;
+                                const label =
+                                  likingComment === comment._id
                                     ? 'Đang xử lý...'
                                     : myReaction
-                                      ? (emoji?.name || 'Đã thích')
+                                      ? emoji?.name || 'Đã thích'
                                       : 'Thích';
-                                  const color = myReaction 
-                                    ? (emoji?.color || '#F05023') 
-                                    : '#6B7280';
-                                  return (
-                                    <>
-                                      {myReaction && emoji && (
-                                        hasLottieAnimation(emoji) ? (
-                                          <LottieView
-                                            source={emoji.lottieSource}
-                                            autoPlay
-                                            loop
-                                            style={{ width: 18, height: 18, marginRight: 4 }}
-                                          />
-                                        ) : (
-                                          <Text className="mr-1 text-base">{emoji.fallbackText}</Text>
-                                        )
-                                      )}
-                                      <Text
-                                        className="font-bold text-sm"
-                                        style={{ color }}>
-                                        {label}
-                                      </Text>
-                                    </>
-                                  );
-                                })()}
-                              </View>
+                                const color = myReaction ? emoji?.color || '#F05023' : '#6B7280';
+                                return (
+                                  <Text className="text-sm font-bold" style={{ color }}>
+                                    {label}
+                                  </Text>
+                                );
+                              })()}
                             </TouchableOpacity>
 
                             <TouchableOpacity
@@ -515,14 +571,22 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                               onPress={() =>
                                 handleReplyComment(
                                   comment._id,
-                                  comment.user ? normalizeVietnameseName(comment.user.fullname) : 'Ẩn danh'
+                                  comment.user
+                                    ? normalizeVietnameseName(comment.user.fullname)
+                                    : 'Ẩn danh'
                                 )
                               }>
-                              <Text className="font-bold text-sm text-gray-600">Trả lời</Text>
+                              <Text className="text-sm font-bold text-gray-600">Trả lời</Text>
                             </TouchableOpacity>
                           </View>
                           {comment.reactions.length > 0 && (
-                            <View className="flex-row items-center">
+                            <TouchableOpacity
+                              className="flex-row items-center"
+                              onPress={() => {
+                                setSelectedReactions(comment.reactions);
+                                setReactionsListVisible(true);
+                              }}
+                              activeOpacity={0.7}>
                               <View className="flex-row items-center px-2 py-1">
                                 <Text className="mr-1 text-sm text-gray-600">
                                   {comment.reactions.length}
@@ -546,7 +610,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                                   );
                                 })}
                               </View>
-                            </View>
+                            </TouchableOpacity>
                           )}
                         </View>
 
@@ -556,8 +620,8 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                             {/* Nút mở/đóng replies */}
                             <TouchableOpacity
                               onPress={() => toggleReplies(comment._id)}
-                              className="flex-row items-center py-2 mb-2">
-                              <View className="h-px w-8 bg-gray-300 mr-2" />
+                              className="mb-2 flex-row items-center py-2">
+                              <View className="mr-2 h-px w-8 bg-gray-300" />
                               <Text className="text-sm font-medium text-gray-500">
                                 {expandedComments.has(comment._id)
                                   ? 'Ẩn bình luận'
@@ -566,118 +630,123 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                             </TouchableOpacity>
 
                             {/* Chỉ hiển thị replies khi được mở */}
-                            {expandedComments.has(comment._id) && comment.replies.map((reply) => (
-                              <View key={reply._id} className="mb-4">
-                                <View className="flex-row">
-                                  <View className="mr-3 h-8 w-8 overflow-hidden rounded-full bg-gray-300">
-                                    <Image
-                                      source={{ uri: getAvatar(reply.user) }}
-                                      className="h-full w-full"
-                                    />
-                                  </View>
-                                  <View className="flex-1">
-                                    <View>
-                                      <View className="flex-row items-center justify-start gap-2">
-                                        <Text className="mb-1 font-semibold text-sm text-gray-900">
-                                          {reply.user ? normalizeVietnameseName(reply.user.fullname) : 'Ẩn danh'}
-                                        </Text>
-                                        <Text className="mb-1 font-medium text-xs text-gray-500">
-                                          {formatRelativeTime(reply.createdAt)}
-                                        </Text>
-                                      </View>
-                                      {renderCommentContent(reply.content)}
+                            {expandedComments.has(comment._id) &&
+                              comment.replies.map((reply) => (
+                                <View key={reply._id} className="mb-4">
+                                  <View className="flex-row">
+                                    <View className="mr-3 h-8 w-8 overflow-hidden rounded-full bg-gray-300">
+                                      <Image
+                                        source={{ uri: getAvatar(reply.user) }}
+                                        className="h-full w-full"
+                                      />
                                     </View>
+                                    <View className="flex-1">
+                                      <View>
+                                        <View className="flex-row items-center justify-start gap-2">
+                                          <Text className="mb-1 text-sm font-semibold text-gray-900">
+                                            {reply.user
+                                              ? normalizeVietnameseName(reply.user.fullname)
+                                              : 'Ẩn danh'}
+                                          </Text>
+                                          <Text className="mb-1 text-xs font-medium text-gray-500">
+                                            {formatRelativeTime(reply.createdAt)}
+                                          </Text>
+                                        </View>
+                                        {renderCommentContent(reply.content)}
+                                      </View>
 
-                                    {/* Actions và Reactions cho reply trên cùng một hàng */}
-                                    <View className="mt-1 flex-row items-center justify-between">
-                                      {/* Bên trái: Time và Action buttons */}
-                                      <View className="flex-1 flex-row items-center">
-                                        <TouchableOpacity
-                                          className="ml-1"
-                                          onPress={(e) => handleCommentReaction(reply._id, e)}>
-                                          <View className="flex-row items-center">
+                                      {/* Actions và Reactions cho reply trên cùng một hàng */}
+                                      <View className="mt-1 flex-row items-center justify-between">
+                                        {/* Bên trái: Time và Action buttons */}
+                                        <View className="flex-1 flex-row items-center">
+                                          <TouchableOpacity
+                                            className="ml-1"
+                                            onPress={(e) => handleCommentReaction(reply._id, e)}>
                                             {(() => {
-                                              const myReaction = getCommentUserReaction(reply.reactions);
-                                              const emoji = myReaction ? getEmojiByCode(myReaction.type) : null;
-                                              const label = myReaction ? (emoji?.name || 'Đã thích') : 'Thích';
-                                              const color = myReaction ? (emoji?.color || '#F05023') : '#6B7280';
+                                              const myReaction = getCommentUserReaction(
+                                                reply.reactions
+                                              );
+                                              const emoji = myReaction
+                                                ? getEmojiByCode(myReaction.type)
+                                                : null;
+                                              const label = myReaction
+                                                ? emoji?.name || 'Đã thích'
+                                                : 'Thích';
+                                              const color = myReaction
+                                                ? emoji?.color || '#F05023'
+                                                : '#6B7280';
                                               return (
-                                                <>
-                                                  {myReaction && emoji && (
-                                                    hasLottieAnimation(emoji) ? (
-                                                      <LottieView
-                                                        source={emoji.lottieSource}
-                                                        autoPlay
-                                                        loop
-                                                        style={{ width: 16, height: 16, marginRight: 4 }}
-                                                      />
-                                                    ) : (
-                                                      <Text className="mr-1 text-xs">{emoji.fallbackText}</Text>
-                                                    )
-                                                  )}
-                                                  <Text
-                                                    className="font-medium text-xs"
-                                                    style={{ color }}>
-                                                    {label}
-                                                  </Text>
-                                                </>
+                                                <Text
+                                                  className="text-xs font-medium"
+                                                  style={{ color }}>
+                                                  {label}
+                                                </Text>
                                               );
                                             })()}
-                                          </View>
-                                        </TouchableOpacity>
+                                          </TouchableOpacity>
 
-                                        <TouchableOpacity
-                                          className="ml-3"
-                                          onPress={() =>
-                                            handleReplyComment(
-                                              reply._id,
-                                              reply.user ? normalizeVietnameseName(reply.user.fullname) : 'Ẩn danh',
-                                              comment._id // Parent comment ID để reply về đúng thread
-                                            )
-                                          }>
-                                          <Text className="font-medium text-xs text-gray-600">
-                                            Trả lời
-                                          </Text>
-                                        </TouchableOpacity>
-                                      </View>
-
-                                      {/* Bên phải: Reply Reactions */}
-                                      {reply.reactions.length > 0 && (
-                                        <View className="flex-row items-center">
-                                          <View className="flex-row items-center ">
-                                            <Text className="mr-1 text-sm text-gray-600">
-                                              {reply.reactions.length}
+                                          <TouchableOpacity
+                                            className="ml-3"
+                                            onPress={() =>
+                                              handleReplyComment(
+                                                reply._id,
+                                                reply.user
+                                                  ? normalizeVietnameseName(reply.user.fullname)
+                                                  : 'Ẩn danh',
+                                                comment._id // Parent comment ID để reply về đúng thread
+                                              )
+                                            }>
+                                            <Text className="text-xs font-medium text-gray-600">
+                                              Trả lời
                                             </Text>
-                                            {getUniqueReactionTypes(reply.reactions).map(
-                                              (reactionType) => {
-                                                const emoji = getEmojiByCode(reactionType);
-                                                if (!emoji) return null;
-                                                return (
-                                                  <View key={reactionType} style={{ marginRight: 2 }}>
-                                                    {hasLottieAnimation(emoji) ? (
-                                                      <LottieView
-                                                        source={emoji.lottieSource}
-                                                        autoPlay
-                                                        loop
-                                                        style={{ width: 18, height: 18 }}
-                                                      />
-                                                    ) : (
-                                                      <Text style={{ fontSize: 14 }}>
-                                                        {emoji.fallbackText}
-                                                      </Text>
-                                                    )}
-                                                  </View>
-                                                );
-                                              }
-                                            )}
-                                          </View>
+                                          </TouchableOpacity>
                                         </View>
-                                      )}
+
+                                        {/* Bên phải: Reply Reactions */}
+                                        {reply.reactions.length > 0 && (
+                                          <TouchableOpacity
+                                            className="flex-row items-center"
+                                            onPress={() => {
+                                              setSelectedReactions(reply.reactions);
+                                              setReactionsListVisible(true);
+                                            }}
+                                            activeOpacity={0.7}>
+                                            <View className="flex-row items-center ">
+                                              <Text className="mr-1 text-sm text-gray-600">
+                                                {reply.reactions.length}
+                                              </Text>
+                                              {getUniqueReactionTypes(reply.reactions).map(
+                                                (reactionType) => {
+                                                  const emoji = getEmojiByCode(reactionType);
+                                                  if (!emoji) return null;
+                                                  return (
+                                                    <View
+                                                      key={reactionType}
+                                                      style={{ marginRight: 2 }}>
+                                                      {hasLottieAnimation(emoji) ? (
+                                                        <LottieView
+                                                          source={emoji.lottieSource}
+                                                          autoPlay
+                                                          loop
+                                                          style={{ width: 18, height: 18 }}
+                                                        />
+                                                      ) : (
+                                                        <Text style={{ fontSize: 14 }}>
+                                                          {emoji.fallbackText}
+                                                        </Text>
+                                                      )}
+                                                    </View>
+                                                  );
+                                                }
+                                              )}
+                                            </View>
+                                          </TouchableOpacity>
+                                        )}
+                                      </View>
                                     </View>
                                   </View>
                                 </View>
-                              </View>
-                            ))}
+                              ))}
                           </View>
                         )}
                       </View>
@@ -700,12 +769,17 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                       {(() => {
                         const replyTarget = organizedComments.find((c) => c._id === replyingTo);
                         if (replyTarget)
-                          return replyTarget.user ? normalizeVietnameseName(replyTarget.user.fullname) : 'Ẩn danh';
+                          return replyTarget.user
+                            ? normalizeVietnameseName(replyTarget.user.fullname)
+                            : 'Ẩn danh';
 
                         // Tìm trong replies nếu không tìm thấy trong main comments
                         for (const comment of organizedComments) {
                           const reply = comment.replies?.find((r) => r._id === replyingTo);
-                          if (reply) return reply.user ? normalizeVietnameseName(reply.user.fullname) : 'Ẩn danh';
+                          if (reply)
+                            return reply.user
+                              ? normalizeVietnameseName(reply.user.fullname)
+                              : 'Ẩn danh';
                         }
                         return 'comment';
                       })()}
@@ -787,6 +861,16 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
           return myReaction?.type || null;
         })()}
         anchorPosition={reactionButtonPosition}
+      />
+
+      {/* Reactions List Modal */}
+      <ReactionsListModal
+        visible={reactionsListVisible}
+        onClose={() => {
+          setReactionsListVisible(false);
+          setSelectedReactions([]);
+        }}
+        reactions={selectedReactions}
       />
     </Modal>
   );
