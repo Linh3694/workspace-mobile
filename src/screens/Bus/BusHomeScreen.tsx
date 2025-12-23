@@ -12,6 +12,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -33,6 +34,8 @@ const BusHomeScreen: React.FC = () => {
   const [tripsByDate, setTripsByDate] = useState<TripsByDate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isStartingTrip, setIsStartingTrip] = useState(false);
+  const [isCompletingTrip, setIsCompletingTrip] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedDateIndex, setSelectedDateIndex] = useState(0);
   const [selectedTripIndex, setSelectedTripIndex] = useState(0);
@@ -41,46 +44,49 @@ const BusHomeScreen: React.FC = () => {
   const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
   const hasMobileMonitor = roles.includes('Mobile Monitor');
 
-  const loadTrips = useCallback(async (showRefresh = false) => {
-    // Don't load if user is not a Monitor
-    if (!hasMobileMonitor) {
-      setIsLoading(false);
-      return;
-    }
-
-    if (showRefresh) {
-      setIsRefreshing(true);
-    } else {
-      setIsLoading(true);
-    }
-    setError(null);
-
-    try {
-      // Get trips for next 7 days
-      const today = new Date();
-      const endDate = new Date(today);
-      endDate.setDate(endDate.getDate() + 7);
-
-      const startDateStr = today.toISOString().split('T')[0];
-      const endDateStr = endDate.toISOString().split('T')[0];
-
-      const response = await busService.getDailyTripsByDateRange(startDateStr, endDateStr);
-
-      if (response.success && response.data) {
-        setTripsByDate(response.data);
-        // Reset to first date (today) and first trip when data loads
-        setSelectedDateIndex(0);
-        setSelectedTripIndex(0);
-      } else {
-        setError(response.message || 'Không thể tải danh sách chuyến xe');
+  const loadTrips = useCallback(
+    async (showRefresh = false) => {
+      // Don't load if user is not a Monitor
+      if (!hasMobileMonitor) {
+        setIsLoading(false);
+        return;
       }
-    } catch {
-      setError('Có lỗi xảy ra khi tải dữ liệu');
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [hasMobileMonitor]);
+
+      if (showRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setError(null);
+
+      try {
+        // Get trips for next 7 days
+        const today = new Date();
+        const endDate = new Date(today);
+        endDate.setDate(endDate.getDate() + 7);
+
+        const startDateStr = today.toISOString().split('T')[0];
+        const endDateStr = endDate.toISOString().split('T')[0];
+
+        const response = await busService.getDailyTripsByDateRange(startDateStr, endDateStr);
+
+        if (response.success && response.data) {
+          setTripsByDate(response.data);
+          // Reset to first date (today) and first trip when data loads
+          setSelectedDateIndex(0);
+          setSelectedTripIndex(0);
+        } else {
+          setError(response.message || 'Không thể tải danh sách chuyến xe');
+        }
+      } catch {
+        setError('Có lỗi xảy ra khi tải dữ liệu');
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [hasMobileMonitor]
+  );
 
   useEffect(() => {
     loadTrips();
@@ -118,13 +124,70 @@ const BusHomeScreen: React.FC = () => {
     }
   };
 
-  const handleStartTrip = () => {
-    if (selectedTrip) {
-      navigation.navigate('BusAttendance', {
-        tripId: selectedTrip.name,
-        tripType: selectedTrip.trip_type,
-      });
+  const handleStartTrip = async () => {
+    if (!selectedTrip) return;
+
+    // Nếu trip chưa bắt đầu, gọi API để bắt đầu trước
+    if (selectedTrip.trip_status === 'Not Started') {
+      setIsStartingTrip(true);
+      try {
+        const response = await busService.startTrip(selectedTrip.name);
+        if (response.success) {
+          // Refresh data để cập nhật trạng thái
+          loadTrips(true);
+        } else {
+          // Nếu lỗi, vẫn cho phép navigate (có thể đã bắt đầu từ trước)
+          console.warn('Start trip warning:', response.message);
+        }
+      } catch (error) {
+        console.error('Error starting trip:', error);
+      } finally {
+        setIsStartingTrip(false);
+      }
     }
+
+    // Navigate đến màn hình điểm danh
+    navigation.navigate('BusAttendance', {
+      tripId: selectedTrip.name,
+      tripType: selectedTrip.trip_type,
+    });
+  };
+
+  // Kiểm tra xem có thể kết thúc chuyến không (tất cả học sinh đã có trạng thái)
+  const canCompleteTrip = useCallback(() => {
+    if (!selectedTrip) return false;
+    if (selectedTrip.trip_status !== 'In Progress') return false;
+    // Nếu không còn học sinh chưa lên xe/xuống xe thì có thể kết thúc
+    return selectedTrip.not_boarded_count === 0;
+  }, [selectedTrip]);
+
+  const handleCompleteTrip = () => {
+    if (!selectedTrip) return;
+
+    Alert.alert('Kết thúc chuyến xe', 'Bạn có chắc chắn muốn kết thúc chuyến xe này?', [
+      { text: 'Hủy', style: 'cancel' },
+      {
+        text: 'Kết thúc',
+        style: 'destructive',
+        onPress: async () => {
+          setIsCompletingTrip(true);
+          try {
+            const response = await busService.completeTrip(selectedTrip.name);
+            if (response.success) {
+              Alert.alert('Thành công', 'Chuyến xe đã được kết thúc');
+              loadTrips(true);
+            } else {
+              Alert.alert('Lỗi', response.message || 'Không thể kết thúc chuyến xe');
+            }
+          } catch (error) {
+            console.error('Error completing trip:', error);
+            Alert.alert('Lỗi', 'Có lỗi xảy ra khi kết thúc chuyến xe');
+          } finally {
+            setIsCompletingTrip(false);
+          }
+        },
+      },
+    ]);
   };
 
   // Show access denied message for non-Monitor users
@@ -245,16 +308,80 @@ const BusHomeScreen: React.FC = () => {
                   </View>
                 </View>
 
-                {/* Action Button */}
-                <TouchableOpacity style={styles.actionButton} onPress={handleStartTrip}>
-                  <Text style={styles.actionButtonText}>
-                    {selectedTrip.trip_status === 'Not Started'
-                      ? 'Bắt đầu'
-                      : selectedTrip.trip_status === 'In Progress'
-                        ? 'Tiếp tục'
-                        : 'Xem chi tiết'}
-                  </Text>
-                </TouchableOpacity>
+                {/* Action Buttons */}
+                {selectedTrip.trip_status === 'Not Started' && (
+                  <TouchableOpacity
+                    style={[styles.actionButton, isStartingTrip && { opacity: 0.7 }]}
+                    onPress={handleStartTrip}
+                    disabled={isStartingTrip}>
+                    {isStartingTrip ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.actionButtonText}>Bắt đầu</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+
+                {selectedTrip.trip_status === 'In Progress' && (
+                  <>
+                    {/* Thông báo số học sinh còn lại */}
+                    {selectedTrip.not_boarded_count > 0 && (
+                      <View style={styles.remainingStudentsContainer}>
+                        <Ionicons name="alert-circle" size={18} color="#FCD34D" />
+                        <Text style={styles.remainingStudentsText}>
+                          Còn {selectedTrip.not_boarded_count} học sinh chưa{' '}
+                          {selectedTrip.trip_type === 'Đón' ? 'lên xe' : 'xuống xe'}
+                        </Text>
+                      </View>
+                    )}
+
+                    <View style={styles.actionButtonsRow}>
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.continueButton]}
+                        onPress={handleStartTrip}>
+                        <Ionicons
+                          name="camera"
+                          size={18}
+                          color="#FFFFFF"
+                          style={{ marginRight: 6 }}
+                        />
+                        <Text style={styles.actionButtonText}>Điểm danh</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.actionButton,
+                          styles.completeButton,
+                          (!canCompleteTrip() || isCompletingTrip) && { opacity: 0.5 },
+                        ]}
+                        onPress={handleCompleteTrip}
+                        disabled={!canCompleteTrip() || isCompletingTrip}>
+                        {isCompletingTrip ? (
+                          <ActivityIndicator color="#FFFFFF" />
+                        ) : (
+                          <>
+                            <Ionicons
+                              name="checkmark-circle"
+                              size={18}
+                              color="#FFFFFF"
+                              style={{ marginRight: 6 }}
+                            />
+                            <Text style={styles.actionButtonText}>Kết thúc</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+
+                {selectedTrip.trip_status === 'Completed' && (
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.viewDetailButton]}
+                    onPress={handleStartTrip}>
+                    <Ionicons name="eye" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.actionButtonText}>Xem chi tiết</Text>
+                  </TouchableOpacity>
+                )}
               </LinearGradient>
             )}
 
@@ -554,12 +681,60 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     paddingVertical: 10,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
     marginTop: 20,
     marginBottom: 25,
     marginHorizontal: 25,
   },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 20,
+    marginBottom: 25,
+    marginHorizontal: 15,
+  },
+  continueButton: {
+    flex: 1,
+    backgroundColor: '#7C3AED',
+    marginTop: 0,
+    marginBottom: 0,
+    marginHorizontal: 0,
+    paddingVertical: 12,
+  },
+  completeButton: {
+    flex: 1,
+    backgroundColor: '#10B981',
+    marginTop: 0,
+    marginBottom: 0,
+    marginHorizontal: 0,
+    paddingVertical: 12,
+  },
+  viewDetailButton: {
+    backgroundColor: '#6B7280',
+  },
+  remainingStudentsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 15,
+    marginHorizontal: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(251, 191, 36, 0.25)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(251, 191, 36, 0.5)',
+  },
+  remainingStudentsText: {
+    fontSize: 14,
+    color: '#FCD34D',
+    fontWeight: '700',
+    fontFamily: 'Mulish',
+  },
   actionButtonText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
     fontFamily: 'Mulish',

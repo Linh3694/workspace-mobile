@@ -37,9 +37,10 @@ export const useVersionCheck = () => {
     try {
       setVersionInfo((prev) => ({ ...prev, isChecking: true, error: null }));
 
-      // Lấy version hiện tại từ native app
+      // Lấy version hiện tại - ưu tiên từ app.json config, fallback sang native version
+      // Lưu ý: Khi chạy trong Expo Go, nativeApplicationVersion sẽ trả về version của Expo Go
       const currentVersion =
-        Application.nativeApplicationVersion || Constants.expoConfig?.version || '0.0.0';
+        Constants.expoConfig?.version || Application.nativeApplicationVersion || '0.0.0';
       const platform = Platform.OS;
 
       // Gọi API backend để check version
@@ -96,7 +97,8 @@ export const useVersionCheck = () => {
     } catch (error) {
       console.error('❌ Error checking version:', error);
       // Network error - skip update check, don't block user
-      const currentVersion = Application.nativeApplicationVersion || '0.0.0';
+      const currentVersion =
+        Constants.expoConfig?.version || Application.nativeApplicationVersion || '0.0.0';
       setVersionInfo((prev) => ({
         ...prev,
         currentVersion,
