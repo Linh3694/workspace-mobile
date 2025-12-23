@@ -349,6 +349,88 @@ class PostService {
     const data: CreatePostResponse = await response.json();
     return data.data;
   }
+
+  // ========== MENTION FEATURE ==========
+
+  /**
+   * Search users cho mention (@)
+   * @param query - Search query (tên người dùng sau @)
+   * @param limit - Số kết quả tối đa (default: 10)
+   * @returns Array of user suggestions
+   */
+  async searchUsersForMention(
+    query: string,
+    limit = 10
+  ): Promise<{ _id: string; fullname: string; email: string; avatarUrl?: string; department?: string; jobTitle?: string }[]> {
+    try {
+      const headers = await this.getAuthHeaders();
+      const response = await fetch(
+        `${BASE_URL}/api/social/user/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+        { headers }
+      );
+
+      if (!response.ok) {
+        console.error('[PostService] Search users failed:', response.status);
+        return [];
+      }
+
+      const data = await response.json();
+      return data.data || [];
+    } catch (error) {
+      console.error('[PostService] Search users error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Add comment với mentions
+   * @param postId - ID bài viết
+   * @param content - Nội dung comment
+   * @param mentions - Array of user IDs được mention
+   */
+  async addCommentWithMentions(postId: string, content: string, mentions: string[]): Promise<Post> {
+    const headers = await this.getAuthHeaders();
+    const response = await fetch(`${BASE_URL}/api/social/${postId}/comments`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ content, mentions }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to add comment');
+    }
+
+    const data: CreatePostResponse = await response.json();
+    return data.data;
+  }
+
+  /**
+   * Reply comment với mentions
+   * @param postId - ID bài viết
+   * @param commentId - ID comment
+   * @param content - Nội dung reply
+   * @param mentions - Array of user IDs được mention
+   */
+  async replyCommentWithMentions(
+    postId: string,
+    commentId: string,
+    content: string,
+    mentions: string[]
+  ): Promise<Post> {
+    const headers = await this.getAuthHeaders();
+    const response = await fetch(`${BASE_URL}/api/social/${postId}/comments/${commentId}/replies`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ content, mentions }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to reply comment');
+    }
+
+    const data: CreatePostResponse = await response.json();
+    return data.data;
+  }
 }
 
 export const postService = new PostService();

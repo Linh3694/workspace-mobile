@@ -120,7 +120,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
       )}
 
       {/* Animation tuyết rơi cho theme mùa đông */}
-      {theme.hasSnowfall && <Snowfall count={40} />}
+      {theme.hasSnowfall && <Snowfall count={80} />}
 
       {/* Decorative circles - ẩn khi theme winter vì đã có icon đẹp */}
       {!isWinterTheme && (
@@ -165,7 +165,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
         {/* Merry Christmas text - chỉ hiển thị khi theme winter */}
         {isWinterTheme && (
           <Reanimated.View style={[styles.merryChristmasContainer, textStyle]}>
-            <Text style={styles.merryChristmasText}>🎄 Merry Christmas 🎄</Text>
+            <Text style={styles.merryChristmasText}>🎄 Well Christmas 🎄</Text>
           </Reanimated.View>
         )}
 

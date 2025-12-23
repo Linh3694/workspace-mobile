@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 // @ts-ignore
 import {
   View,
@@ -13,6 +13,8 @@ import {
   StatusBar,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TouchableOpacity } from '../Common';
@@ -30,6 +32,7 @@ import { getEmojiByCode, isFallbackEmoji, hasLottieAnimation } from '../../utils
 import { normalizeVietnameseName } from '../../utils/nameFormatter';
 import ReactionPicker from './ReactionPicker';
 import ReactionsListModal from './ReactionsListModal';
+import ImageGallery from './ImageGallery';
 import { useNavigation } from '@react-navigation/native';
 
 interface PostCardProps {
@@ -60,6 +63,65 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  
+  // Animation cho swipe to close image modal
+  const imageModalTranslateY = useRef(new Animated.Value(0)).current;
+  const imageModalOpacity = useRef(new Animated.Value(1)).current;
+  
+  // Đóng modal với animation
+  const closeImageModalWithAnimation = () => {
+    Animated.parallel([
+      Animated.timing(imageModalTranslateY, {
+        toValue: 500,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(imageModalOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setImageModalVisible(false);
+      imageModalTranslateY.setValue(0);
+      imageModalOpacity.setValue(1);
+    });
+  };
+  
+  // Pan responder cho thanh kéo ở trên - dễ dùng hơn
+  const dragHandlePanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderMove: (_, gestureState) => {
+      // Cho phép kéo cả lên và xuống nhưng chỉ có effect khi kéo xuống
+      if (gestureState.dy > 0) {
+        imageModalTranslateY.setValue(gestureState.dy);
+        const opacity = Math.max(0.3, 1 - gestureState.dy / 300);
+        imageModalOpacity.setValue(opacity);
+      }
+    },
+    onPanResponderRelease: (_, gestureState) => {
+      // Giảm threshold xuống 60px để dễ đóng hơn
+      if (gestureState.dy > 60 || gestureState.vy > 0.3) {
+        closeImageModalWithAnimation();
+      } else {
+        // Bounce back
+        Animated.parallel([
+          Animated.spring(imageModalTranslateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 100,
+            friction: 10,
+          }),
+          Animated.timing(imageModalOpacity, {
+            toValue: 1,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }
+    },
+  }), []);
   // State cho Reaction Picker modal
   const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
   const [reactionPickerPosition, setReactionPickerPosition] = useState<
@@ -244,9 +306,10 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
               backgroundColor: '#FF7A00',
             }}
           /> */}
-          {/* Corner ribbon badge */}
+          {/* Corner ribbon badge - pointerEvents="none" để không chặn nút ... */}
           <View
             className="absolute right-0 top-0 z-10"
+            pointerEvents="none"
             style={{
               width: 70,
               height: 70,
@@ -312,7 +375,11 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
 
         {/* Nút tùy chọn (PIN/DELETE) - chỉ hiển thị cho Mobile BOD */}
         {canDeletePost && (
-          <TouchableOpacity onPress={handlePostOptions} className="p-2">
+          <TouchableOpacity 
+            onPress={handlePostOptions} 
+            className="p-2"
+            style={{ zIndex: 20 }}  
+          >
             <Ionicons name="ellipsis-horizontal" size={20} color="#6B7280" />
           </TouchableOpacity>
         )}
@@ -325,48 +392,25 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
         </View>
       </TouchableOpacity>
 
-      {/* Media */}
+      {/* Media - Facebook/Instagram Style */}
       {(post.images.length > 0 || post.videos.length > 0) && (
-        <View className=" pb-3">
-          {/* Images */}
+        <View className="pb-3">
+          {/* Images - Sử dụng ImageGallery component */}
           {post.images.length > 0 && (
-            <View className="flex-row flex-wrap">
-              {post.images.slice(0, 4).map((image, index) => (
-                <TouchableOpacity
-                  key={index}
-                  onPress={() => openImageModal(index)}
-                  className={`relative ${
-                    post.images.length === 1
-                      ? 'w-full'
-                      : post.images.length === 2
-                        ? 'w-1/2'
-                        : 'w-1/2'
-                  } ${index > 0 ? 'pl-1' : ''} ${index > 1 ? 'pt-1' : ''}`}
-                  style={{ aspectRatio: post.images.length === 1 ? 16 / 9 : 1 }}>
-                  <Image
-                    source={{ uri: `${API_BASE_URL}${image}` }}
-                    className="h-full w-full "
-                    resizeMode="cover"
-                  />
-                  {index === 3 && post.images.length > 4 && (
-                    <View className="absolute inset-0 items-center justify-center rounded-lg bg-black bg-opacity-50">
-                      <Text className="text-lg font-bold text-white">
-                        +{post.images.length - 4}
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
+            <ImageGallery
+              images={post.images}
+              baseUrl={API_BASE_URL}
+              onImagePress={openImageModal}
+            />
           )}
 
           {/* Videos */}
           {post.videos.length > 0 && (
-            <View className="mt-2 px-4">
+            <View className={post.images.length > 0 ? 'mt-2' : ''}>
               {post.videos.slice(0, 1).map((video, index) => (
                 <View
                   key={index}
-                  className="w-full overflow-hidden rounded-lg bg-black"
+                  className="w-full overflow-hidden bg-black"
                   style={{ aspectRatio: 16 / 9 }}>
                   <Video
                     source={{ uri: `${API_BASE_URL}${video}` }}
@@ -383,42 +427,48 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
         </View>
       )}
 
-      {/* Reactions Summary */}
-      {totalReactions > 0 && (
+      {/* Reactions & Comments Summary - Hiển thị khi có reaction HOẶC comment */}
+      {(totalReactions > 0 || post.comments.length > 0) && (
         <View className="px-4 pb-2">
           <View className="flex-row items-center justify-between">
             {/* Ấn vào để xem danh sách người thích */}
-            <TouchableOpacity
-              className="flex-row items-center"
-              onPress={() => setReactionsListVisible(true)}
-              activeOpacity={0.7}>
-              <View className="flex-row items-center">
-                {Object.entries(reactionCounts).map(([emojiCode, count]) => {
-                  const emoji = getEmojiByCode(emojiCode);
-                  if (!emoji || count === 0) return null;
-                  return (
-                    <View key={emojiCode} style={{ marginRight: 2 }}>
-                      {hasLottieAnimation(emoji) ? (
-                        <LottieView
-                          source={emoji.lottieSource}
-                          autoPlay
-                          loop
-                          style={{ width: 24, height: 24 }}
-                        />
-                      ) : (
-                        <Text style={{ fontSize: 18 }}>{emoji.fallbackText}</Text>
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
-              <Text className="ml-2 text-sm text-gray-600">
-                {totalReactions} {totalReactions === 1 ? 'lượt thích' : 'lượt thích'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => (onCommentPress ? onCommentPress(post) : undefined)}>
-              <Text className="text-sm text-gray-600">{post.comments.length} bình luận</Text>
-            </TouchableOpacity>
+            {totalReactions > 0 ? (
+              <TouchableOpacity
+                className="flex-row items-center"
+                onPress={() => setReactionsListVisible(true)}
+                activeOpacity={0.7}>
+                <View className="flex-row items-center">
+                  {Object.entries(reactionCounts).map(([emojiCode, count]) => {
+                    const emoji = getEmojiByCode(emojiCode);
+                    if (!emoji || count === 0) return null;
+                    return (
+                      <View key={emojiCode} style={{ marginRight: 2 }}>
+                        {hasLottieAnimation(emoji) ? (
+                          <LottieView
+                            source={emoji.lottieSource}
+                            autoPlay
+                            loop
+                            style={{ width: 24, height: 24 }}
+                          />
+                        ) : (
+                          <Text style={{ fontSize: 18 }}>{emoji.fallbackText}</Text>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+                <Text className="ml-2 text-sm text-gray-600">
+                  {totalReactions} {totalReactions === 1 ? 'lượt thích' : 'lượt thích'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View />
+            )}
+            {post.comments.length > 0 && (
+              <TouchableOpacity onPress={() => (onCommentPress ? onCommentPress(post) : undefined)}>
+                <Text className="text-sm text-gray-600">{post.comments.length} bình luận</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       )}
@@ -472,85 +522,116 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
         </View>
       </View>
 
-      {/* Image Modal - Style mạng xã hội */}
+      {/* Image Modal - Style mạng xã hội với swipe to close */}
       <Modal
         visible={imageModalVisible}
         animationType="fade"
-        presentationStyle="fullScreen"
         onRequestClose={() => setImageModalVisible(false)}>
         <StatusBar barStyle="light-content" backgroundColor="#000" />
-        <View className="flex-1 bg-black">
-          {/* Header */}
-          <View
-            className="absolute left-0 right-0 z-10 flex-row items-center justify-between px-4"
-            style={{ top: insets.top + 8 }}>
-            {/* Thông tin người đăng */}
-            <View className="flex-1 flex-row items-center">
-              <View className="h-10 w-10 overflow-hidden rounded-full border-2 border-white/30">
-                <Image source={{ uri: getAvatar(post.author) }} className="h-full w-full" />
+        <Animated.View 
+          style={{ 
+            flex: 1, 
+            backgroundColor: 'black',
+            opacity: imageModalOpacity,
+          }}
+        >
+          <Animated.View 
+            style={{ 
+              flex: 1,
+              transform: [{ translateY: imageModalTranslateY }],
+            }}
+          >
+            {/* Thanh kéo để vuốt đóng - Vùng touch lớn ở trên */}
+            <View 
+              {...dragHandlePanResponder.panHandlers}
+              style={{ 
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: insets.top + 120,
+                zIndex: 20,
+              }}
+            >
+              {/* Header */}
+              <View
+                className="flex-row items-center justify-between px-4"
+                style={{ marginTop: insets.top + 8 }}>
+                {/* Thông tin người đăng */}
+                <View className="flex-1 flex-row items-center">
+                  <View className="h-10 w-10 overflow-hidden rounded-full border-2 border-white/30">
+                    <Image source={{ uri: getAvatar(post.author) }} className="h-full w-full" />
+                  </View>
+                  <View className="ml-3">
+                    <Text className="font-semibold text-white">
+                      {post.author ? normalizeVietnameseName(post.author.fullname) : 'Ẩn danh'}
+                    </Text>
+                    <Text className="text-xs text-white/70">{formatRelativeTime(post.createdAt)}</Text>
+                  </View>
+                </View>
+
+                {/* Nút đóng */}
+                <TouchableOpacity
+                  onPress={() => setImageModalVisible(false)}
+                  className="h-10 w-10 items-center justify-center rounded-full bg-black/50">
+                  <Ionicons name="close" size={24} color="white" />
+                </TouchableOpacity>
               </View>
-              <View className="ml-3">
-                <Text className="font-semibold text-white">
-                  {post.author ? normalizeVietnameseName(post.author.fullname) : 'Ẩn danh'}
-                </Text>
-                <Text className="text-xs text-white/70">{formatRelativeTime(post.createdAt)}</Text>
+
+              {/* Thanh kéo indicator */}
+              <View className="items-center mt-4">
+                <View className="w-10 h-1 rounded-full bg-white/50" />
+                <Text className="text-xs text-white/50 mt-2">Kéo xuống để đóng</Text>
               </View>
             </View>
 
-            {/* Nút đóng */}
-            <TouchableOpacity
-              onPress={() => setImageModalVisible(false)}
-              className="h-10 w-10 items-center justify-center rounded-full bg-black/50">
-              <Ionicons name="close" size={24} color="white" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Ảnh */}
-          <ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onScroll={handleImageScroll}
-            scrollEventThrottle={16}
-            contentOffset={{ x: selectedImageIndex * width, y: 0 }}
-            className="flex-1">
-            {post.images.map((image, index) => (
-              <View key={index} className="items-center justify-center" style={{ width }}>
-                <Image
-                  source={{ uri: `${API_BASE_URL}${image}` }}
-                  className="h-full w-full"
-                  resizeMode="contain"
-                />
-              </View>
-            ))}
-          </ScrollView>
-
-          {/* Page Indicator - Hiển thị khi có nhiều hơn 1 ảnh */}
-          {post.images.length > 1 && (
-            <View
-              className="absolute left-0 right-0 items-center"
-              style={{ bottom: insets.bottom + 24 }}>
-              {/* Số trang */}
-              <View className="mb-3 rounded-full bg-black/60 px-4 py-1.5">
-                <Text className="text-sm font-medium text-white">
-                  {currentImageIndex + 1} / {post.images.length}
-                </Text>
-              </View>
-
-              {/* Dots indicator */}
-              <View className="flex-row items-center justify-center">
-                {post.images.map((_, index) => (
-                  <View
-                    key={index}
-                    className={`mx-1 rounded-full ${
-                      index === currentImageIndex ? 'h-2 w-2 bg-white' : 'h-1.5 w-1.5 bg-white/40'
-                    }`}
+            {/* Ảnh */}
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={handleImageScroll}
+              scrollEventThrottle={16}
+              contentOffset={{ x: selectedImageIndex * width, y: 0 }}
+              className="flex-1">
+              {post.images.map((image, index) => (
+                <View key={index} className="items-center justify-center" style={{ width }}>
+                  <Image
+                    source={{ uri: `${API_BASE_URL}${image}` }}
+                    className="h-full w-full"
+                    resizeMode="contain"
                   />
-                ))}
+                </View>
+              ))}
+            </ScrollView>
+
+            {/* Page Indicator - Hiển thị khi có nhiều hơn 1 ảnh */}
+            {post.images.length > 1 && (
+              <View
+                className="absolute left-0 right-0 items-center"
+                style={{ bottom: insets.bottom + 24 }}>
+                {/* Số trang */}
+                <View className="mb-3 rounded-full bg-black/60 px-4 py-1.5">
+                  <Text className="text-sm font-medium text-white">
+                    {currentImageIndex + 1} / {post.images.length}
+                  </Text>
+                </View>
+
+                {/* Dots indicator */}
+                <View className="flex-row items-center justify-center">
+                  {post.images.map((_, index) => (
+                    <View
+                      key={index}
+                      className={`mx-1 rounded-full ${
+                        index === currentImageIndex ? 'h-2 w-2 bg-white' : 'h-1.5 w-1.5 bg-white/40'
+                      }`}
+                    />
+                  ))}
+                </View>
               </View>
-            </View>
-          )}
-        </View>
+            )}
+          </Animated.View>
+        </Animated.View>
       </Modal>
 
       {/* Reaction Picker Modal */}

@@ -14,11 +14,57 @@ import { TouchableOpacity } from '../Common';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { Video, ResizeMode } from 'expo-av';
 import { postService } from '../../services/postService';
 import { useAuth } from '../../context/AuthContext';
 import { Post, MediaFile } from '../../types/post';
 import { getAvatar } from '../../utils/avatar';
+import MentionInput, { MentionUser, extractMentionIds, getMentionPlainText } from './MentionInput';
+
+// Config cho image compression
+const IMAGE_CONFIG = {
+  maxWidth: 1200,      // Max width để upload nhanh
+  maxHeight: 1200,     // Max height
+  quality: 0.7,        // 70% quality - cân bằng giữa chất lượng và kích thước
+};
+
+/**
+ * Compress và resize ảnh để upload nhanh hơn
+ * Giảm từ ~5MB xuống ~200-500KB
+ */
+const compressImage = async (uri: string): Promise<{ uri: string; width: number; height: number }> => {
+  try {
+    // Lấy kích thước ảnh gốc
+    const imageInfo = await new Promise<{ width: number; height: number }>((resolve) => {
+      Image.getSize(uri, (width, height) => resolve({ width, height }), () => resolve({ width: 1200, height: 1200 }));
+    });
+
+    // Tính toán kích thước mới giữ tỉ lệ
+    let { width, height } = imageInfo;
+    const ratio = Math.min(IMAGE_CONFIG.maxWidth / width, IMAGE_CONFIG.maxHeight / height);
+    
+    if (ratio < 1) {
+      width = Math.round(width * ratio);
+      height = Math.round(height * ratio);
+    }
+
+    // Compress ảnh
+    const manipulated = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width, height } }],
+      { 
+        compress: IMAGE_CONFIG.quality, 
+        format: ImageManipulator.SaveFormat.JPEG 
+      }
+    );
+
+    return { uri: manipulated.uri, width, height };
+  } catch (error) {
+    console.warn('[Compress] Failed, using original:', error);
+    return { uri, width: 0, height: 0 };
+  }
+};
 
 interface CreatePostModalProps {
   visible: boolean;
@@ -37,10 +83,13 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const [content, setContent] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(false);
+  const [mentionedUsers, setMentionedUsers] = useState<MentionUser[]>([]);
+  const [uploadProgress, setUploadProgress] = useState(''); // Hiển thị tiến trình
 
   const resetForm = () => {
     setContent('');
     setSelectedFiles([]);
+    setMentionedUsers([]);
   };
 
   const handleClose = () => {
@@ -160,13 +209,47 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
     try {
       setLoading(true);
+      
+      // Bước 1: Compress ảnh để upload nhanh hơn
+      const compressedFiles: MediaFile[] = [];
+      const imageFiles = selectedFiles.filter(f => f.type.startsWith('image/'));
+      const videoFiles = selectedFiles.filter(f => f.type.startsWith('video/'));
+      
+      if (imageFiles.length > 0) {
+        setUploadProgress(`Đang nén ${imageFiles.length} ảnh...`);
+        
+        for (let i = 0; i < imageFiles.length; i++) {
+          setUploadProgress(`Đang nén ảnh ${i + 1}/${imageFiles.length}...`);
+          const file = imageFiles[i];
+          const compressed = await compressImage(file.uri);
+          compressedFiles.push({
+            ...file,
+            uri: compressed.uri,
+          });
+        }
+      }
+      
+      // Video giữ nguyên (không compress)
+      compressedFiles.push(...videoFiles);
+      
+      // Bước 2: Upload
+      setUploadProgress('Đang đăng bài...');
+      
+      // Convert mention format @[name](id) sang plain text @name
+      const plainContent = getMentionPlainText(content);
+      
+      // Lấy danh sách mention IDs (tags) từ text
+      const mentionIds = extractMentionIds(content, mentionedUsers);
+      
       const newPost = await postService.createPost({
-        content: content.trim(),
+        content: plainContent.trim(),
         type: 'Chia sẻ',
         visibility: 'public',
-        files: selectedFiles,
+        files: compressedFiles,
+        tags: mentionIds,
       });
 
+      setUploadProgress('');
       onPostCreated(newPost);
       handleClose();
     } catch (error) {
@@ -174,6 +257,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
       Alert.alert('Lỗi', 'Không thể tạo bài viết. Vui lòng thử lại.');
     } finally {
       setLoading(false);
+      setUploadProgress('');
     }
   };
 
@@ -215,6 +299,16 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
             )}
           </TouchableOpacity>
         </View>
+        
+        {/* Upload Progress Bar */}
+        {loading && uploadProgress && (
+          <View className="px-6 py-2 bg-orange-50 border-b border-orange-100">
+            <View className="flex-row items-center">
+              <ActivityIndicator size="small" color="#FF7A00" />
+              <Text className="ml-2 text-sm text-orange-700">{uploadProgress}</Text>
+            </View>
+          </View>
+        )}
 
         <ScrollView className="flex-1 px-4">
           {/* User Info */}
@@ -245,16 +339,19 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
             </View>
           </View>
 
-          {/* Content Input */}
-          <TextInput
+          {/* Content Input với Mention */}
+          <MentionInput
             className="text-lg text-gray-900 min-h-[100px]"
-            placeholder="Có gì mới?"
+            placeholder="Có gì mới? (gõ @ để mention)"
             placeholderTextColor="#9CA3AF"
             value={content}
             onChangeText={setContent}
+            onMentionsChange={setMentionedUsers}
             multiline
             textAlignVertical="top"
             autoFocus
+            suggestionsAbove={false}
+            containerStyle={{ zIndex: 10 }}
           />
 
           {/* Selected Media */}

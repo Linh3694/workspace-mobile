@@ -32,6 +32,7 @@ interface SnowflakeProps {
   duration: number;
   opacity: number;
   shapeType: ShapeType;
+  initialProgress: number; // Vị trí ban đầu của animation (0-1) để tuyết có sẵn trên màn hình
 }
 
 // Component cho mỗi bông tuyết/ngôi sao
@@ -44,23 +45,39 @@ const Snowflake: React.FC<SnowflakeProps> = ({
   duration,
   opacity,
   shapeType,
+  initialProgress,
 }) => {
-  const progress = useSharedValue(0);
-  const swayProgress = useSharedValue(0);
+  // Bắt đầu từ vị trí initialProgress để tuyết đã có sẵn trên màn hình
+  const progress = useSharedValue(initialProgress);
+  const swayProgress = useSharedValue(Math.random()); // Random vị trí lắc lư ban đầu
 
   useEffect(() => {
-    // Animation rơi xuống
+    // Tính thời gian còn lại dựa trên initialProgress
+    const remainingDuration = duration * (1 - initialProgress);
+
+    // Animation rơi xuống - bắt đầu từ vị trí hiện tại đến cuối
     progress.value = withDelay(
       delay,
-      withRepeat(
+      withTiming(1, {
+        duration: remainingDuration,
+        easing: Easing.linear,
+      })
+    );
+
+    // Sau khi hoàn thành lần đầu, reset về 0 và lặp lại vô hạn
+    const timeout = setTimeout(() => {
+      // Reset về 0 trước khi bắt đầu loop
+      progress.value = 0;
+      // Sau đó bắt đầu animation loop vô hạn
+      progress.value = withRepeat(
         withTiming(1, {
           duration: duration,
           easing: Easing.linear,
         }),
-        -1, // Lặp vô hạn
+        -1,
         false
-      )
-    );
+      );
+    }, remainingDuration + delay + 50); // +50ms để đảm bảo animation đầu tiên hoàn thành
 
     // Animation lắc lư
     swayProgress.value = withDelay(
@@ -74,6 +91,8 @@ const Snowflake: React.FC<SnowflakeProps> = ({
         true // Đảo ngược để tạo hiệu ứng lắc qua lại
       )
     );
+
+    return () => clearTimeout(timeout);
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -139,7 +158,7 @@ interface SnowfallProps {
   color?: string; // Màu tuyết (chỉ dùng cho circle)
 }
 
-const Snowfall: React.FC<SnowfallProps> = ({ count = 35, color = '#FFFFFF' }) => {
+const Snowfall: React.FC<SnowfallProps> = ({ count = 50, color = '#FFFFFF' }) => {
   // Tạo mảng các bông tuyết với thuộc tính random
   const snowflakes = useMemo(() => {
     const shapes: ShapeType[] = [
@@ -175,35 +194,32 @@ const Snowfall: React.FC<SnowfallProps> = ({ count = 35, color = '#FFFFFF' }) =>
           break;
       }
 
-      // Tính toán duration trước
-      const duration = 12000 + Math.random() * 8000; // Thời gian rơi 12-20s
+      // Tính toán duration - thời gian rơi
+      const duration = 8000 + Math.random() * 6000; // Thời gian rơi 8-14s
 
-      // 60% bông tuyết bắt đầu ngay (delay = 0) và đã ở trên màn hình
-      // 40% còn lại có delay để tạo hiệu ứng liên tục
-      const isImmediate = Math.random() < 0.6;
+      // startY luôn từ trên cao
+      const startY = -size;
 
-      let startY: number;
-      let delay: number;
-
-      if (isImmediate) {
-        // Bắt đầu ngay, vị trí đã ở trên màn hình
-        startY = -size - Math.random() * SCREEN_HEIGHT;
-        delay = 0;
-      } else {
-        // Có delay, bắt đầu từ trên cao
-        startY = -size - Math.random() * SCREEN_HEIGHT * 0.3;
-        delay = Math.random() * duration * 0.5; // Delay tối đa 50% duration
-      }
+      // 85% bông tuyết có initialProgress > 0 (đã ở sẵn trên màn hình)
+      // 15% còn lại bắt đầu từ trên
+      const hasInitialProgress = Math.random() < 0.85;
+      
+      // initialProgress random từ 0-0.9 để tuyết phân bố khắp màn hình
+      const initialProgress = hasInitialProgress ? Math.random() * 0.9 : 0;
+      
+      // delay = 0 cho tuyết có sẵn, có delay nhỏ cho tuyết mới
+      const delay = hasInitialProgress ? 0 : Math.random() * 2000;
 
       return {
         index,
         size,
         startX: Math.random() * SCREEN_WIDTH, // Vị trí X random
-        startY: startY, // Vị trí Y bắt đầu
+        startY: startY,
         delay: delay,
         duration: duration,
         opacity: 0.4 + Math.random() * 0.5, // Độ trong suốt 0.4-0.9
         shapeType,
+        initialProgress, // Vị trí ban đầu để tuyết có sẵn trên màn hình
       };
     });
   }, [count]);

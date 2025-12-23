@@ -575,7 +575,7 @@ const HomeScreen = () => {
       end={{ x: 1, y: 1 }}
       style={{ flex: 1 }}>
       {/* Animation tuyết rơi cho theme mùa đông */}
-      {theme.hasSnowfall && <Snowfall count={35} />}
+      {theme.hasSnowfall && <Snowfall count={70} />}
       <ScrollView
         keyboardShouldPersistTaps="always"
         contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}>

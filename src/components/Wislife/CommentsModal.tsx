@@ -28,6 +28,7 @@ import { getEmojiByCode, isFallbackEmoji, hasLottieAnimation } from '../../utils
 import { normalizeVietnameseName } from '../../utils/nameFormatter';
 import ReactionPicker from './ReactionPicker';
 import ReactionsListModal from './ReactionsListModal';
+import MentionInput, { MentionUser, extractMentionIds, getMentionPlainText } from './MentionInput';
 
 interface CommentsModalProps {
   visible: boolean;
@@ -62,6 +63,9 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   // Ref để focus input khi click Trả lời
   const inputRef = useRef<TextInput>(null);
+  
+  // State để track users được mention trong comment hiện tại
+  const [currentMentions, setCurrentMentions] = useState<MentionUser[]>([]);
 
   // Lấy MongoDB ObjectId của user hiện tại
   const [userMongoId, setUserMongoId] = React.useState<string | null>(null);
@@ -69,6 +73,8 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
   // State cho Reactions List Modal
   const [reactionsListVisible, setReactionsListVisible] = useState(false);
   const [selectedReactions, setSelectedReactions] = useState<Reaction[]>([]);
+  // State cho việc xóa comment
+  const [deletingComment, setDeletingComment] = useState<string | null>(null);
 
   // Sắp xếp comments từ mới nhất đến cũ nhất và nhóm replies
   const organizeComments = () => {
@@ -303,12 +309,27 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
   const handleReplyComment = (
     commentId: string,
     commentAuthor: string,
+    authorId?: string, // MongoDB ID của người được reply
     parentCommentId?: string
   ) => {
     setReplyingTo(commentId);
     // Nếu có parentCommentId, tức là đang reply một reply -> gửi API đến parent
     setReplyingToParent(parentCommentId || null);
+    
+    // Thư viện react-native-controlled-mentions không hỗ trợ set initial mention value
+    // Nên chỉ set plain text @name, không có highlight màu cam cho auto-reply mention
+    // Màu cam sẽ hiển thị sau khi gửi comment
     setCommentText(`@${commentAuthor} `);
+    
+    // Vẫn track mention để gửi notification
+    if (authorId) {
+      setCurrentMentions([{
+        _id: authorId,
+        fullname: commentAuthor,
+        email: '',
+      }]);
+    }
+    
     // Focus input ngay lập tức
     setTimeout(() => {
       inputRef.current?.focus();
@@ -319,6 +340,67 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
     setReplyingTo(null);
     setReplyingToParent(null);
     setCommentText('');
+  };
+
+  /**
+   * Kiểm tra user có quyền xóa comment/reply không
+   * Quyền xóa:
+   * - Người viết comment/reply
+   * - Chủ bài viết
+   * - Mobile BOD
+   */
+  const canDeleteComment = (comment: Comment): boolean => {
+    if (!user) return false;
+    
+    const userRoles = (user as any)?.roles || [];
+    const isMobileBOD = userRoles.some((role: string) => role === 'Mobile BOD');
+    
+    // Comment author
+    const commentUserId = comment.user?._id || comment.user;
+    const isCommentAuthor = 
+      commentUserId === user._id || 
+      commentUserId === (user as any)?.id ||
+      comment.user?.email === user.email;
+    
+    // Post author
+    const postAuthorId = post.author?._id || post.author;
+    const isPostAuthor = 
+      postAuthorId === user._id || 
+      postAuthorId === (user as any)?.id ||
+      post.author?.email === user.email;
+    
+    return isCommentAuthor || isPostAuthor || isMobileBOD;
+  };
+
+  /**
+   * Xóa comment hoặc reply
+   */
+  const handleDeleteComment = async (commentId: string, isReply: boolean = false) => {
+    Alert.alert(
+      isReply ? 'Xóa trả lời' : 'Xóa bình luận',
+      isReply 
+        ? 'Bạn có chắc chắn muốn xóa trả lời này?' 
+        : 'Bạn có chắc chắn muốn xóa bình luận này? Tất cả các trả lời cũng sẽ bị xóa.',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeletingComment(commentId);
+              const updatedPost = await postService.deleteComment(post._id, commentId);
+              onUpdate(updatedPost);
+            } catch (error) {
+              console.error('Error deleting comment:', error);
+              Alert.alert('Lỗi', 'Không thể xóa bình luận. Vui lòng thử lại.');
+            } finally {
+              setDeletingComment(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Toggle hiển thị replies của một comment (giống TikTok)
@@ -339,22 +421,39 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
 
     try {
       setLoading(true);
+      
+      // Convert mention format @[name](id) sang plain text @name
+      const plainText = getMentionPlainText(commentText);
+      
+      // Lấy danh sách mention IDs từ text
+      const mentionIds = extractMentionIds(commentText, currentMentions);
+      
       if (replyingTo) {
         // Xử lý reply comment
-        const cleanContent = commentText.trim();
+        const cleanContent = plainText.trim();
         // Nếu đang reply một reply, gửi đến parent comment
         // Nếu reply main comment, gửi đến chính comment đó
         const targetCommentId = replyingToParent || replyingTo;
-        const updatedPost = await postService.replyComment(post._id, targetCommentId, cleanContent);
+        const updatedPost = await postService.replyCommentWithMentions(
+          post._id,
+          targetCommentId,
+          cleanContent,
+          mentionIds
+        );
         onUpdate(updatedPost);
       } else {
-        // Xử lý comment thông thường
-        const updatedPost = await postService.addComment(post._id, commentText.trim());
+        // Xử lý comment thông thường với mentions
+        const updatedPost = await postService.addCommentWithMentions(
+          post._id,
+          plainText.trim(),
+          mentionIds
+        );
         onUpdate(updatedPost);
       }
       setCommentText('');
       setReplyingTo(null);
       setReplyingToParent(null);
+      setCurrentMentions([]); // Reset mentions sau khi gửi
     } catch (error) {
       console.error('Error adding comment:', error);
       Alert.alert('Lỗi', 'Không thể thêm bình luận. Vui lòng thử lại.');
@@ -573,11 +672,24 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                                   comment._id,
                                   comment.user
                                     ? normalizeVietnameseName(comment.user.fullname)
-                                    : 'Ẩn danh'
+                                    : 'Ẩn danh',
+                                  comment.user?._id // Truyền userId để hiển thị mention màu cam
                                 )
                               }>
                               <Text className="text-sm font-bold text-gray-600">Trả lời</Text>
                             </TouchableOpacity>
+
+                            {/* Nút xóa comment - chỉ hiển thị nếu có quyền */}
+                            {canDeleteComment(comment) && (
+                              <TouchableOpacity
+                                className="ml-4"
+                                onPress={() => handleDeleteComment(comment._id, false)}
+                                disabled={deletingComment === comment._id}>
+                                <Text className="text-sm font-bold text-red-500">
+                                  {deletingComment === comment._id ? 'Đang xóa...' : 'Xóa'}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
                           </View>
                           {comment.reactions.length > 0 && (
                             <TouchableOpacity
@@ -693,6 +805,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                                                 reply.user
                                                   ? normalizeVietnameseName(reply.user.fullname)
                                                   : 'Ẩn danh',
+                                                reply.user?._id, // Truyền userId để hiển thị mention màu cam
                                                 comment._id // Parent comment ID để reply về đúng thread
                                               )
                                             }>
@@ -700,6 +813,18 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                                               Trả lời
                                             </Text>
                                           </TouchableOpacity>
+
+                                          {/* Nút xóa reply */}
+                                          {canDeleteComment(reply) && (
+                                            <TouchableOpacity
+                                              className="ml-3"
+                                              onPress={() => handleDeleteComment(reply._id, true)}
+                                              disabled={deletingComment === reply._id}>
+                                              <Text className="text-xs font-medium text-red-500">
+                                                {deletingComment === reply._id ? 'Đang xóa...' : 'Xóa'}
+                                              </Text>
+                                            </TouchableOpacity>
+                                          )}
                                         </View>
 
                                         {/* Bên phải: Reply Reactions */}
@@ -797,15 +922,18 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                 <Image source={{ uri: getAvatar(user) }} className="h-full w-full" />
               </View>
               <View className="flex-1 flex-row items-center rounded-full bg-gray-100 px-4 py-3">
-                <TextInput
-                  ref={inputRef}
+                <MentionInput
+                  inputRef={inputRef}
                   className="flex-1 text-base"
-                  placeholder="Nhập tin nhắn..."
+                  placeholder="Nhập tin nhắn... (gõ @ để mention)"
                   placeholderTextColor="#9CA3AF"
                   value={commentText}
                   onChangeText={setCommentText}
+                  onMentionsChange={setCurrentMentions}
                   multiline
                   textAlignVertical="center"
+                  suggestionsAbove={true}
+                  containerStyle={{ flex: 1 }}
                   style={{
                     minHeight: 24,
                     maxHeight: 100,
