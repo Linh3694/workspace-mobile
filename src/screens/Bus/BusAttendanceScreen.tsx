@@ -14,6 +14,7 @@ import {
   StyleSheet,
   Modal,
   Image,
+  TextInput,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -49,6 +50,7 @@ const BusAttendanceScreen: React.FC = () => {
   const [isUpdating, setIsUpdating] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showAbsentReasonModal, setShowAbsentReasonModal] = useState(false);
+  const [absentReasonText, setAbsentReasonText] = useState('');
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -135,9 +137,10 @@ const BusAttendanceScreen: React.FC = () => {
     }
   };
 
-  const handleMarkAbsent = async (reason: 'Nghỉ học' | 'Nghỉ ốm' | 'Nghỉ phép' | 'Lý do khác') => {
+  const handleMarkAbsent = async () => {
     if (!selectedStudent) return;
 
+    const reason = absentReasonText.trim() || 'Không có lý do';
     const studentName = selectedStudent.student_name;
     setIsUpdating(true);
     setShowAbsentReasonModal(false);
@@ -146,7 +149,7 @@ const BusAttendanceScreen: React.FC = () => {
       const response = await busService.updateStudentStatus(selectedStudent.name, 'Absent', reason);
 
       if (response.success) {
-        toast.success(`${studentName} - ${reason}`);
+        toast.success(`${studentName} - Vắng`);
         loadTripDetail(false);
       } else {
         toast.error(response.message || 'Không thể đánh dấu vắng');
@@ -156,6 +159,7 @@ const BusAttendanceScreen: React.FC = () => {
     } finally {
       setIsUpdating(false);
       setSelectedStudent(null);
+      setAbsentReasonText('');
     }
   };
 
@@ -294,8 +298,13 @@ const BusAttendanceScreen: React.FC = () => {
     );
   }
 
+  // Sort students theo pickup_order trước khi filter
+  const sortedStudents = [...tripDetail.students].sort(
+    (a, b) => (a.pickup_order || 0) - (b.pickup_order || 0)
+  );
+
   // Filter students based on trip type
-  const pendingStudents = tripDetail.students.filter((s) => {
+  const pendingStudents = sortedStudents.filter((s) => {
     if (tripType === 'Đón') {
       return s.student_status === 'Not Boarded';
     } else {
@@ -303,7 +312,7 @@ const BusAttendanceScreen: React.FC = () => {
     }
   });
 
-  const completedStudents = tripDetail.students.filter((s) => {
+  const completedStudents = sortedStudents.filter((s) => {
     if (tripType === 'Đón') {
       return s.student_status === 'Boarded';
     } else {
@@ -311,7 +320,7 @@ const BusAttendanceScreen: React.FC = () => {
     }
   });
 
-  const absentStudents = tripDetail.students.filter((s) => s.student_status === 'Absent');
+  const absentStudents = sortedStudents.filter((s) => s.student_status === 'Absent');
 
   return (
     <LinearGradient
@@ -482,7 +491,7 @@ const BusAttendanceScreen: React.FC = () => {
         </TouchableOpacity>
       </Modal>
 
-      {/* Absent Reason Modal */}
+      {/* Absent Reason Modal - Nhập lý do tự do */}
       <Modal
         visible={showAbsentReasonModal}
         transparent
@@ -490,26 +499,32 @@ const BusAttendanceScreen: React.FC = () => {
         onRequestClose={() => setShowAbsentReasonModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Chọn lý do vắng</Text>
+            <Text style={styles.modalTitle}>Nhập lý do vắng</Text>
             <Text style={styles.modalSubtitle}>{selectedStudent?.student_name}</Text>
 
-            {['Nghỉ học', 'Nghỉ ốm', 'Nghỉ phép', 'Lý do khác'].map((reason) => (
-              <TouchableOpacity
-                key={reason}
-                style={styles.reasonOption}
-                onPress={() =>
-                  handleMarkAbsent(reason as 'Nghỉ học' | 'Nghỉ ốm' | 'Nghỉ phép' | 'Lý do khác')
-                }>
-                <Text style={styles.reasonText}>{reason}</Text>
-                <Ionicons name="chevron-forward" size={20} color="#6B7280" />
-              </TouchableOpacity>
-            ))}
+            <TextInput
+              style={styles.reasonTextInput}
+              placeholder="Nhập lý do vắng (không bắt buộc)..."
+              placeholderTextColor="#9CA3AF"
+              value={absentReasonText}
+              onChangeText={setAbsentReasonText}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+
+            <TouchableOpacity
+              style={styles.confirmAbsentButton}
+              onPress={handleMarkAbsent}>
+              <Text style={styles.confirmAbsentButtonText}>Xác nhận vắng</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={() => {
                 setShowAbsentReasonModal(false);
                 setSelectedStudent(null);
+                setAbsentReasonText('');
               }}>
               <Text style={styles.cancelButtonText}>Hủy</Text>
             </TouchableOpacity>
@@ -888,21 +903,32 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     fontFamily: 'Mulish',
   },
-  reasonOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  reasonText: {
+  reasonTextInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 12,
     fontSize: 16,
     color: '#111827',
     fontFamily: 'Mulish',
+    minHeight: 100,
+    backgroundColor: '#F9FAFB',
+    marginBottom: 16,
+  },
+  confirmAbsentButton: {
+    backgroundColor: '#EF4444',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  confirmAbsentButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    fontFamily: 'Mulish',
   },
   cancelButton: {
-    marginTop: 16,
+    marginTop: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },

@@ -472,7 +472,10 @@ const BusTripDetailScreen: React.FC = () => {
           <Text style={styles.sectionCount}>{tripDetail.statistics.total_students} học sinh</Text>
         </View>
 
-        {tripDetail.students.map((student) => renderStudentCard(student))}
+        {/* Sort theo pickup_order để hiển thị đúng thứ tự đón/trả */}
+        {[...tripDetail.students]
+          .sort((a, b) => (a.pickup_order || 0) - (b.pickup_order || 0))
+          .map((student) => renderStudentCard(student))}
       </ScrollView>
 
       {/* Status Selection Modal */}
