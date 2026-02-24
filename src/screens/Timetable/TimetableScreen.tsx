@@ -174,6 +174,19 @@ const TimetableScreen: React.FC = () => {
       const entries = await timetableService.getClassTimetable(selectedClassId, startDate, endDate);
 
       console.log('📅 Got', entries.length, 'entries');
+      
+      // ⚡ Debug: Log period info để verify schedule data
+      if (entries.length > 0) {
+        const sampleEntry = entries[0];
+        console.log('📊 Sample entry period info:', {
+          period_name: sampleEntry.period_name,
+          period_priority: sampleEntry.period_priority,
+          timetable_column_id: sampleEntry.timetable_column_id,
+          start_time: sampleEntry.start_time,
+          end_time: sampleEntry.end_time
+        });
+      }
+      
       setTimetableEntries(entries);
 
       // Get unique teacher IDs and fetch their info
@@ -499,7 +512,7 @@ const TimetableScreen: React.FC = () => {
                   <View className="flex-row items-center justify-between mb-2 px-1">
                     {!isNonStudy ? (
                       <Text className="text-lg font-bold text-[#002855]">
-                        {entry.period_name || `Tiết ${index + 1}`}
+                        {entry.period_name || `Tiết ${entry.period_priority || index + 1}`}
                       </Text>
                     ) : (
                       <View />

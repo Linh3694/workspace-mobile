@@ -19,6 +19,7 @@ import { normalizeVietnameseName } from '../../../utils/nameFormatter';
 import { getStatusLabel, getStatusColor } from '../../../config/feedbackConstants';
 import { useFeedbackData, useFeedbackActions } from '../../../hooks/useFeedbackStore';
 import { toast } from '../../../utils/toast';
+import { getApiBaseUrl } from '../../../config/constants';
 
 interface FeedbackProcessingProps {
   feedbackId: string;
@@ -241,7 +242,7 @@ const FeedbackProcessing: React.FC<FeedbackProcessingProps> = ({
                               {attachmentUrls.map((url, fileIndex) => {
                                 const fullUrl = url.startsWith('http')
                                   ? url
-                                  : `https://admin.sis.wellspring.edu.vn${url}`;
+                                  : `${getApiBaseUrl()}${url}`;
                                 const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
                                 const isVideo = /\.(mp4|mov|avi|webm)$/i.test(url);
 

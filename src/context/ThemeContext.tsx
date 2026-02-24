@@ -23,10 +23,13 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
 };
 
 // Hook để sử dụng theme
+// Trả về theme mặc định nếu không có ThemeProvider (fallback an toàn)
 export const useTheme = (): ThemeContextType => {
   const context = useContext(ThemeContext);
   if (!context) {
-    throw new Error('useTheme must be used within ThemeProvider');
+    // Fallback về theme mặc định thay vì throw error
+    // Đảm bảo app không bị crash nếu component không nằm trong ThemeProvider
+    return { theme: getActiveTheme() };
   }
   return context;
 };

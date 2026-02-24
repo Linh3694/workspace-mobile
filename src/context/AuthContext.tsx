@@ -362,7 +362,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // Check token type and proceed with validation
         if (isJWT && decoded) {
           // Handle JWT tokens
-          if (decoded.iss && decoded.iss.includes('admin.sis.wellspring.edu.vn')) {
+          if (decoded.iss && decoded.iss.includes('prod.sis.wellspring.edu.vn')) {
             console.log('🔍 [checkAuth] Backend JWT token detected');
           } else if (
             decoded.iss &&

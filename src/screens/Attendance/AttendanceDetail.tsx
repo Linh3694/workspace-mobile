@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Alert, TextInput } from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +24,151 @@ const cardBgByStatus: Record<AttendanceStatus, string> = {
   late: '#FFFCF2',
   excused: '#f6f6f6',
 };
+
+// Props type cho StudentCard
+interface StudentCardProps {
+  student: any;
+  finalStatus: AttendanceStatus;
+  hasOverride: boolean;
+  hasEventOverride: boolean;
+  badge: string | null;
+  checkInTime?: string;
+  checkOutTime?: string;
+  onSetStatus: (studentId: string, status: AttendanceStatus) => void;
+}
+
+// Extract StudentCard ra ngoài và wrap React.memo để tối ưu render
+const StudentCard = React.memo(
+  ({
+    student,
+    finalStatus,
+    hasOverride,
+    hasEventOverride,
+    badge,
+    checkInTime,
+    checkOutTime,
+    onSetStatus,
+  }: StudentCardProps) => {
+    const studentId = student.name;
+    const dimmed = finalStatus === 'excused' ? 0.6 : 1;
+
+    return (
+      <View
+        className="mx-auto mb-3 w-full rounded-2xl"
+        style={{ backgroundColor: cardBgByStatus[finalStatus], opacity: dimmed }}>
+        <View className="mb-2 flex-row items-start gap-4 p-4">
+          <View className="shrink-0">
+            <StudentAvatar
+              name={student.student_name}
+              avatarUrl={student.user_image || student.avatar_url || student.photo}
+              size={100}
+            />
+          </View>
+          <View className="flex-1">
+            <View className="mb-2">
+              <Text className="text-xl font-semibold text-[#000]">{student.student_name}</Text>
+            </View>
+            <View className="mb-6 flex-row items-center gap-2">
+              <Text className="text-base text-[#757575]">{statusLabel[finalStatus]}</Text>
+              {badge && (
+                <View className="rounded bg-white/60 px-2 py-0.5">
+                  <Text className="text-xs text-[#757575]">{badge}</Text>
+                </View>
+              )}
+            </View>
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center gap-2">
+                <Ionicons name="log-in-outline" size={24} color="#757575" />
+                <Text className="text-base font-medium text-[#757575]">
+                  {checkInTime || '--:--'}
+                </Text>
+              </View>
+              <View className="flex-row items-center gap-2">
+                <Ionicons name="log-out-outline" size={24} color="#757575" />
+                <Text className="text-base font-medium text-[#757575]">
+                  {checkOutTime || '--:--'}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+        {/* Attendance buttons */}
+        <View className="flex-row justify-center">
+          <TouchableOpacity
+            onPress={() => onSetStatus(studentId, 'present')}
+            disabled={hasEventOverride}
+            style={{
+              flex: 1,
+              height: 44,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: finalStatus === 'present' ? '#3DB838' : '#EBEBEB',
+              borderBottomLeftRadius: 12,
+              opacity: hasEventOverride ? 0.5 : 1,
+            }}>
+            <Ionicons
+              name="checkmark"
+              size={20}
+              color={finalStatus === 'present' ? '#fff' : '#3F4246'}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => onSetStatus(studentId, 'absent')}
+            disabled={hasEventOverride}
+            style={{
+              flex: 1,
+              height: 44,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: finalStatus === 'absent' ? '#DC0909' : '#EBEBEB',
+              opacity: hasEventOverride ? 0.5 : 1,
+            }}>
+            <Ionicons
+              name="close"
+              size={20}
+              color={finalStatus === 'absent' ? '#fff' : '#3F4246'}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => onSetStatus(studentId, 'late')}
+            disabled={hasEventOverride}
+            style={{
+              flex: 1,
+              height: 44,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: finalStatus === 'late' ? '#F5AA1E' : '#EBEBEB',
+              opacity: hasEventOverride ? 0.5 : 1,
+            }}>
+            <Ionicons
+              name="time-outline"
+              size={16}
+              color={finalStatus === 'late' ? '#fff' : '#3F4246'}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => onSetStatus(studentId, 'excused')}
+            disabled={hasEventOverride}
+            style={{
+              flex: 1,
+              height: 44,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: finalStatus === 'excused' ? '#3F4246' : '#EBEBEB',
+              borderBottomRightRadius: 12,
+              opacity: hasEventOverride ? 0.5 : 1,
+            }}>
+            <Ionicons
+              name="close-circle-outline"
+              size={16}
+              color={finalStatus === 'excused' ? '#fff' : '#3F4246'}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+);
 
 // Sort Vietnamese names: first name, then last name, then middle name (aligned with web)
 const sortVietnameseName = (nameA: string, nameB: string): number => {
@@ -147,16 +292,13 @@ const AttendanceDetail = () => {
 
   const fetchStudents = useCallback(async () => {
     if (!classId) {
-      console.error('❌ [Mobile] No classId provided');
       setLoading(false);
       return;
     }
 
     setLoading(true);
     try {
-      console.log('🔄 [Mobile] AttendanceDetail: Loading data for class', classId, 'mode:', mode);
-
-      // Set class title from classData (include period/subject info for timetable entries)
+      // Set class title
       let title =
         classData.title ||
         classData.class_title ||
@@ -164,7 +306,6 @@ const AttendanceDetail = () => {
         classData.class_name ||
         String(classId);
 
-      // Add period and subject info for timetable entries
       if (routePeriodName && classData.subject_title) {
         title += ` - ${routePeriodName} (${classData.subject_title})`;
       } else if (routePeriod && classData.subject_title) {
@@ -172,33 +313,58 @@ const AttendanceDetail = () => {
       }
 
       setClassTitle(title);
-      console.log('✅ [Mobile] Using class title from classData:', title, 'period:', routePeriod);
 
-      // 1) Load class info to get education_stage_id
-      // Store locally to use in this function, also set state for other effects
-      let localEducationStageId: string | undefined = undefined;
-      try {
-        const classResult = await attendanceApiService.getClassInfo(String(classId));
-        if (classResult.success && classResult.data) {
-          const cls = classResult.data;
+      const p = period || '1';
 
-          // Get education_stage_id from education_grade
-          if (cls.education_grade) {
-            const gradeResult = await attendanceApiService.getEducationStage(cls.education_grade);
+      // === PHASE 1+2: Song song lấy education info và student list ===
+      // Phase 1: getClassInfo → getEducationStage (chained)
+      const fetchEducationInfo = async (): Promise<string | undefined> => {
+        try {
+          const classResult = await attendanceApiService.getClassInfo(String(classId));
+          if (classResult.success && classResult.data?.education_grade) {
+            const gradeResult = await attendanceApiService.getEducationStage(
+              classResult.data.education_grade
+            );
             if (gradeResult.success && gradeResult.data?.education_stage_id) {
-              localEducationStageId = gradeResult.data.education_stage_id;
-              setEducationStageId(localEducationStageId);
+              return gradeResult.data.education_stage_id;
             }
           }
+        } catch (err) {
+          console.error('Failed to fetch education info:', err);
         }
-      } catch (err) {
-        console.error('❌ [Mobile] Failed to fetch class info:', err);
+        return undefined;
+      };
+
+      // Phase 2: getClassStudents → getBatchStudents (chained)
+      const fetchStudentsList = async (): Promise<any[]> => {
+        const studentsResult = await attendanceApiService.getClassStudents(
+          String(classId),
+          1,
+          1000
+        );
+        if (!studentsResult.success || !studentsResult.data || studentsResult.data.length === 0) {
+          return [];
+        }
+        const studentIds = studentsResult.data;
+
+        const batchStudentsResult = await attendanceApiService.getBatchStudents(studentIds);
+        if (!batchStudentsResult.success || !batchStudentsResult.data) {
+          return [];
+        }
+        return batchStudentsResult.data;
+      };
+
+      // Chạy Phase 1 và Phase 2 song song
+      const [localEducationStageId, studentsData] = await Promise.all([
+        fetchEducationInfo(),
+        fetchStudentsList(),
+      ]);
+
+      if (localEducationStageId) {
+        setEducationStageId(localEducationStageId);
       }
 
-      // 2) Get student IDs from class
-      const studentsResult = await attendanceApiService.getClassStudents(String(classId), 1, 1000);
-      if (!studentsResult.success || !studentsResult.data) {
-        console.log('⚠️ [Mobile] No students in class');
+      if (studentsData.length === 0) {
         setStudents([]);
         setStatusMap({});
         setEventStatuses({});
@@ -206,199 +372,120 @@ const AttendanceDetail = () => {
         setCheckInOutTimes({});
         return;
       }
-      const studentIds = studentsResult.data;
 
-      if (studentIds.length === 0) {
-        console.log('⚠️ [Mobile] No students in class');
-        setStudents([]);
-        setStatusMap({});
-        setEventStatuses({});
-        setLeaveStatuses({});
-        setCheckInOutTimes({});
-        return;
-      }
+      setStudents(studentsData);
+      const studentCodes = studentsData.map((s) => s.student_code).filter(Boolean);
 
-      console.log('🔍 [Mobile] Using batch_get_students for', studentIds.length, 'students');
+      // === PHASE 3: Song song tất cả các API còn lại ===
+      const [attendanceResult, dayMapResult, eventData, leavesResult] = await Promise.all([
+        // Lấy attendance records
+        attendanceApiService.getClassAttendance(String(classId), today, p),
 
-      // 3) Batch fetch all students at once (aligned with web)
-      const batchStudentsResult = await attendanceApiService.getBatchStudents(studentIds);
-      if (!batchStudentsResult.success || !batchStudentsResult.data) {
-        console.error('❌ [Mobile] Failed to fetch student details');
-        setStudents([]);
-        setStatusMap({});
-        setEventStatuses({});
-        setLeaveStatuses({});
-        setCheckInOutTimes({});
-        return;
-      }
-      const students = batchStudentsResult.data;
+        // Lấy check-in/out times
+        studentCodes.length > 0
+          ? attendanceApiService.getStudentsDayMap(studentCodes, today)
+          : Promise.resolve({ success: true, data: {} }),
 
-      console.log('✅ [Mobile] Got', students.length, 'students from batch API');
-      setStudents(students);
+        // Lấy event statuses và events list
+        localEducationStageId
+          ? Promise.all([
+              attendanceApiService.getEventAttendanceStatuses(
+                String(classId),
+                today,
+                p,
+                localEducationStageId
+              ),
+              attendanceApiService.getEventsByClassPeriod(
+                String(classId),
+                today,
+                p,
+                localEducationStageId
+              ),
+            ])
+          : Promise.resolve([
+              { success: true, data: {} },
+              { success: true, data: [] },
+            ]),
 
-      // 4) Load saved attendance statuses - using class attendance API
-      const p = period || '1';
-      const attendanceResult = await attendanceApiService.getClassAttendance(
-        String(classId),
-        today,
-        p
-      );
-      console.log('🔍 [Mobile] getClassAttendance result:', {
-        success: attendanceResult.success,
-        dataLength: attendanceResult.data ? attendanceResult.data.length : 'no data',
-        error: attendanceResult.error,
-        sampleData: attendanceResult.data ? attendanceResult.data[0] : 'no sample',
-      });
+        // Lấy active leaves
+        attendanceApiService.getActiveLeaves(String(classId), today),
+      ]);
 
+      // Xử lý attendance result
       if (attendanceResult.success && attendanceResult.data) {
         const statusMapData: Record<string, AttendanceStatus> = {};
-
         attendanceResult.data.forEach((attendanceRecord: any) => {
           const studentId = attendanceRecord.student_id;
           const status = attendanceRecord.status;
-          console.log(`🔍 [Mobile] Student ${studentId} status:`, status);
-
           if (studentId && status) {
             statusMapData[studentId] = (status as AttendanceStatus) || 'present';
           }
         });
-
-        console.log('✅ [Mobile] Final statusMap:', statusMapData);
         setStatusMap(statusMapData);
       } else {
-        console.log('❌ [Mobile] getClassAttendance failed:', attendanceResult.error);
         setStatusMap({});
       }
 
-      // 5) Load check-in/check-out times using students day map API
-      if (students.length > 0) {
-        const studentCodes = students.map((s) => s.student_code).filter(Boolean);
-        console.log('🔍 [Mobile] Getting check-in/out times for student codes:', studentCodes);
+      // Xử lý check-in/out times
+      if (dayMapResult.success && dayMapResult.data) {
+        const checkInOutData: Record<string, { checkInTime?: string; checkOutTime?: string }> = {};
 
-        const dayMapResult = await attendanceApiService.getStudentsDayMap(studentCodes, today);
-        console.log('🔍 [Mobile] getStudentsDayMap result:', {
-          success: dayMapResult.success,
-          dataKeys: dayMapResult.data ? Object.keys(dayMapResult.data) : 'no data',
-          error: dayMapResult.error,
-          sampleData: dayMapResult.data ? Object.values(dayMapResult.data)[0] : 'no sample',
-        });
+        Object.entries(dayMapResult.data).forEach(
+          ([studentCode, attendanceData]: [string, any]) => {
+            const student = studentsData.find((s) => s.student_code === studentCode);
+            if (!student) return;
 
-        if (dayMapResult.success && dayMapResult.data) {
-          const checkInOutData: Record<string, { checkInTime?: string; checkOutTime?: string }> =
-            {};
+            const checkInTime = attendanceData?.checkInTime;
+            const checkOutTime = attendanceData?.checkOutTime;
 
-          Object.entries(dayMapResult.data).forEach(
-            ([studentCode, attendanceData]: [string, any]) => {
-              console.log(`🔍 [Mobile] Student ${studentCode} check-in/out data:`, attendanceData);
-
-              // Find student by code to get student ID
-              const student = students.find((s) => s.student_code === studentCode);
-              if (!student) {
-                console.log(`⚠️ [Mobile] No student found for code: ${studentCode}`);
-                return;
-              }
-
-              // Extract check-in/check-out times
-              const checkInTime = attendanceData?.checkInTime;
-              const checkOutTime = attendanceData?.checkOutTime;
-
-              console.log(`🔍 [Mobile] Student ${studentCode} (${student.name}) times:`, {
-                checkInTime,
-                checkOutTime,
-              });
-
-              if (checkInTime || checkOutTime) {
-                checkInOutData[student.name] = {
-                  checkInTime: checkInTime
-                    ? new Date(checkInTime).toLocaleTimeString('vi-VN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    : undefined,
-                  checkOutTime: checkOutTime
-                    ? new Date(checkOutTime).toLocaleTimeString('vi-VN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    : undefined,
-                };
-              }
+            if (checkInTime || checkOutTime) {
+              checkInOutData[student.name] = {
+                checkInTime: checkInTime
+                  ? new Date(checkInTime).toLocaleTimeString('vi-VN', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : undefined,
+                checkOutTime: checkOutTime
+                  ? new Date(checkOutTime).toLocaleTimeString('vi-VN', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : undefined,
+              };
             }
-          );
-
-          console.log('✅ [Mobile] Final checkInOutTimes:', checkInOutData);
-          setCheckInOutTimes(checkInOutData);
-        } else {
-          console.log('❌ [Mobile] getStudentsDayMap failed:', dayMapResult.error);
-          setCheckInOutTimes({});
-        }
+          }
+        );
+        setCheckInOutTimes(checkInOutData);
       } else {
         setCheckInOutTimes({});
       }
 
-      // 6) Load event attendance statuses (aligned with web)
-      // Use localEducationStageId instead of state variable to avoid race condition
-      if (localEducationStageId) {
-        try {
-          console.log('🔍 [Mobile] Loading event statuses with educationStageId:', localEducationStageId);
-          const eventStatusesResult = await attendanceApiService.getEventAttendanceStatuses(
-            String(classId),
-            today,
-            p,
-            localEducationStageId
-          );
-          if (eventStatusesResult.success && eventStatusesResult.data) {
-            console.log('✅ [Mobile] Event statuses loaded:', Object.keys(eventStatusesResult.data).length, 'students');
-            setEventStatuses(eventStatusesResult.data);
-          } else {
-            setEventStatuses({});
-          }
-
-          // Also load event list for remarks
-          const eventsResult = await attendanceApiService.getEventsByClassPeriod(
-            String(classId),
-            today,
-            p,
-            localEducationStageId
-          );
-          if (eventsResult.success && eventsResult.data) {
-            console.log('✅ [Mobile] Events loaded:', eventsResult.data.length, 'events');
-            setEvents(eventsResult.data);
-          } else {
-            setEvents([]);
-          }
-        } catch (e) {
-          console.warn('⚠️ [Mobile] Failed to load event statuses:', e);
-          setEventStatuses({});
-          setEvents([]);
-        }
+      // Xử lý event statuses
+      const [eventStatusesResult, eventsResult] = eventData;
+      if (eventStatusesResult.success && eventStatusesResult.data) {
+        setEventStatuses(eventStatusesResult.data);
       } else {
-        console.log('⚠️ [Mobile] No educationStageId available, skipping event statuses');
         setEventStatuses({});
+      }
+      if (eventsResult.success && eventsResult.data) {
+        setEvents(eventsResult.data);
+      } else {
         setEvents([]);
       }
 
-      // 7) Load active leaves
-      try {
-        const leavesResult = await attendanceApiService.getActiveLeaves(String(classId), today);
-        if (leavesResult.success && leavesResult.data) {
-          // Convert leaves to attendance statuses (excused)
-          const leaveMap: Record<string, AttendanceStatus> = {};
-          Object.keys(leavesResult.data).forEach((studentId) => {
-            leaveMap[studentId] = 'excused';
-          });
-          setLeaveStatuses(leaveMap);
-        } else {
-          setLeaveStatuses({});
-        }
-      } catch (e) {
-        console.warn('⚠️ [Mobile] Failed to load leaves:', e);
+      // Xử lý leaves
+      if (leavesResult.success && leavesResult.data) {
+        const leaveMap: Record<string, AttendanceStatus> = {};
+        Object.keys(leavesResult.data).forEach((studentId) => {
+          leaveMap[studentId] = 'excused';
+        });
+        setLeaveStatuses(leaveMap);
+      } else {
         setLeaveStatuses({});
       }
-
-      console.log('✅ [Mobile] AttendanceDetail: All data loaded');
     } catch (e) {
-      console.error('❌ [Mobile] AttendanceDetail error:', e);
+      console.error('AttendanceDetail error:', e);
       setStudents([]);
       setStatusMap({});
       setEventStatuses({});
@@ -436,39 +523,51 @@ const AttendanceDetail = () => {
     });
   }, [sortedStudents, searchQuery]);
 
-  // Compute final status: Priority = Event > Leave > Manual > Default
+  // Compute final status: Priority = Event > Manual > Leave > Default
+  // Cho phép manual override leave, nhưng không cho override event
   const getFinalStatus = (studentId: string): AttendanceStatus => {
-    return (
-      eventStatuses[studentId] || leaveStatuses[studentId] || statusMap[studentId] || 'present'
-    );
+    // Event có priority cao nhất, không cho override
+    if (eventStatuses[studentId]) return eventStatuses[studentId];
+    // Nếu có manual override thì dùng manual (ưu tiên hơn leave)
+    if (statusMap[studentId]) return statusMap[studentId];
+    // Nếu có leave thì dùng leave
+    if (leaveStatuses[studentId]) return leaveStatuses[studentId];
+    return 'present';
   };
 
+  // Chỉ block khi có event status (không block leave)
+  const hasEventOverrideStatus = (studentId: string): boolean => {
+    return !!eventStatuses[studentId];
+  };
+
+  // Vẫn giữ hàm này để check có override nào không (dùng cho UI badge)
   const hasOverrideStatus = (studentId: string): boolean => {
     return !!(eventStatuses[studentId] || leaveStatuses[studentId]);
   };
 
   const getOverrideBadge = (studentId: string): string | null => {
     if (eventStatuses[studentId]) return 'Sự kiện';
-    if (leaveStatuses[studentId]) return 'Nghỉ phép';
+    // Nếu có leave nhưng đã manual override thì hiện badge đặc biệt
+    if (leaveStatuses[studentId]) {
+      if (statusMap[studentId]) return 'Nghỉ phép (đã thay đổi)';
+      return 'Nghỉ phép';
+    }
     return null;
   };
 
   const setStatus = (id: string, status: AttendanceStatus) => {
-    // Don't allow manual override if event/leave status exists
-    if (hasOverrideStatus(id)) return;
+    // Chỉ block event, cho phép override leave
+    if (hasEventOverrideStatus(id)) return;
     setStatusMap((prev) => ({ ...prev, [id]: status }));
   };
 
   const handleSave = async () => {
-    console.log('🔄 [Mobile] handleSave: Starting save process');
     setSaving(true);
     try {
-      // Always save ALL students, not just filtered ones
       const items = sortedStudents.map((s) => {
         const studentId = s.name;
         const finalStatus = getFinalStatus(studentId);
 
-        // Generate remarks based on status source (aligned with web)
         let remarks = undefined;
         const eventStatus = eventStatuses[studentId];
         const leaveStatus = leaveStatuses[studentId];
@@ -484,7 +583,7 @@ const AttendanceDetail = () => {
               remarks = `Sự kiện: ${eventInfo.eventTitle}`;
             }
           }
-        } else if (leaveStatus) {
+        } else if (leaveStatus && !statusMap[studentId]) {
           remarks = `Nghỉ phép`;
         }
 
@@ -500,22 +599,16 @@ const AttendanceDetail = () => {
         };
       });
 
-      console.log('📤 [Mobile] handleSave: Prepared', items.length, 'items to save');
-      console.log('📤 [Mobile] handleSave: Sample item:', items[0]);
-
       const saveResult = await attendanceApiService.saveClassAttendance(items, true);
-      console.log('📥 [Mobile] handleSave: Save result:', saveResult);
 
       if (saveResult.success) {
-        console.log('✅ [Mobile] handleSave: Save successful');
         Alert.alert('Thành công', 'Đã lưu điểm danh');
         nav.goBack();
       } else {
-        console.log('❌ [Mobile] handleSave: Save failed:', saveResult.error);
         Alert.alert('Lỗi', saveResult.error || 'Không thể lưu điểm danh');
       }
     } catch (error) {
-      console.error('❌ [Mobile] handleSave: Exception:', error);
+      console.error('handleSave error:', error);
       Alert.alert('Lỗi', 'Không thể lưu điểm danh');
     } finally {
       setSaving(false);
@@ -546,183 +639,76 @@ const AttendanceDetail = () => {
           <ActivityIndicator size="large" color="#009483" />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16 }}>
-          <View className="mb-4">
-            <Text className="text-xl font-bold text-[#0A2240]">
-              {classTitle || String(classId)}
-            </Text>
-          </View>
+        <FlatList
+          data={filteredStudents}
+          keyExtractor={(item, index) => `${item.name}-${item.student_code || 'no-code'}-${index}`}
+          contentContainerStyle={{ padding: 16 }}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={true}
+          ListHeaderComponent={
+            <>
+              <View className="mb-4">
+                <Text className="text-xl font-bold text-[#0A2240]">
+                  {classTitle || String(classId)}
+                </Text>
+              </View>
 
-          {/* Search Bar */}
-          <View className="mb-4 flex-row items-center rounded-2xl border border-[#E5E7EB] px-5 py-2">
-            <Ionicons name="search" size={20} color="#9CA3AF" style={{ marginRight: 8 }} />
-            <TextInput
-              className="flex-1 text-base text-[#0A2240]"
-              placeholder="Tìm học sinh theo tên hoặc mã..."
-              placeholderTextColor="#9CA3AF"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoCorrect={false}
-              autoCapitalize="none"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Ionicons name="close-circle" size={20} color="#9CA3AF" />
-              </TouchableOpacity>
-            )}
-          </View>
+              {/* Search Bar */}
+              <View className="mb-4 flex-row items-center rounded-2xl border border-[#E5E7EB] px-5 py-2">
+                <Ionicons name="search" size={20} color="#9CA3AF" style={{ marginRight: 8 }} />
+                <TextInput
+                  className="flex-1 text-base text-[#0A2240]"
+                  placeholder="Tìm học sinh theo tên hoặc mã..."
+                  placeholderTextColor="#9CA3AF"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')}>
+                    <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+                  </TouchableOpacity>
+                )}
+              </View>
 
-          {/* Student count */}
-          {searchQuery && (
-            <Text className="mb-3 text-sm text-gray-600">
-              Hiển thị {filteredStudents.length}/{sortedStudents.length} học sinh
-            </Text>
-          )}
+              {/* Student count */}
+              {searchQuery ? (
+                <Text className="mb-3 text-sm text-gray-600">
+                  Hiển thị {filteredStudents.length}/{sortedStudents.length} học sinh
+                </Text>
+              ) : null}
+            </>
+          }
+          renderItem={({ item: s }) => {
+            const studentId = s.name;
+            const finalStatus = getFinalStatus(studentId);
+            const hasOverride = hasOverrideStatus(studentId);
+            const hasEventOverride = !!eventStatuses[studentId];
+            const badge = getOverrideBadge(studentId);
+            const checkInOut = checkInOutTimes[studentId];
 
-          <View className="flex justify-between">
-            {filteredStudents.map((s, index) => {
-              const studentId = s.name;
-              const finalStatus = getFinalStatus(studentId);
-              const hasOverride = hasOverrideStatus(studentId);
-              const badge = getOverrideBadge(studentId);
-              const dimmed = finalStatus === 'excused' ? 0.6 : 1;
-
-              return (
-                <View
-                  key={`${studentId}-${s.student_code || 'no-code'}-${index}`}
-                  className="mx-auto mb-3 w-full rounded-2xl"
-                  style={{ backgroundColor: cardBgByStatus[finalStatus], opacity: dimmed }}>
-                  <View className="mb-2 flex-row items-start gap-4 p-4">
-                    <View className="shrink-0">
-                      <StudentAvatar
-                        name={s.student_name}
-                        avatarUrl={
-                          (s as any).user_image || (s as any).avatar_url || (s as any).photo
-                        }
-                        size={100}
-                      />
-                    </View>
-                    <View className="flex-1">
-                      <View className="mb-2">
-                        <Text className="text-xl font-semibold text-[#000]">{s.student_name}</Text>
-                      </View>
-                      <View className="mb-6 flex-row items-center gap-2">
-                        <Text className="text-base text-[#757575]">{statusLabel[finalStatus]}</Text>
-                        {badge && (
-                          <View className="rounded bg-white/60 px-2 py-0.5">
-                            <Text className="text-xs text-[#757575]">{badge}</Text>
-                          </View>
-                        )}
-                      </View>
-                      {/* Check-in/Check-out times */}
-                      <View className="flex-row items-center justify-between">
-                        <View className="flex-row items-center gap-2">
-                          <Ionicons name="log-in-outline" size={24} color="#757575" />
-                          <Text className="text-base font-medium text-[#757575]">
-                            {checkInOutTimes[studentId]?.checkInTime || '--:--'}
-                          </Text>
-                        </View>
-                        <View className="flex-row items-center gap-2">
-                          <Ionicons name="log-in-outline" size={24} color="#757575" />
-                          <Text className="text-base font-medium text-[#757575]">
-                            {checkInOutTimes[studentId]?.checkOutTime || '--:--'}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                  {/* Attendance buttons at the bottom */}
-                  <View className="flex-row justify-center">
-                    <TouchableOpacity
-                      onPress={() => setStatus(studentId, 'present')}
-                      disabled={hasOverride && eventStatuses[studentId] !== 'present'}
-                      style={{
-                        flex: 1,
-                        height: 44,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: finalStatus === 'present' ? '#3DB838' : '#EBEBEB',
-                        borderTopLeftRadius: 0,
-                        borderTopRightRadius: 0,
-                        borderBottomLeftRadius: 12,
-                        borderBottomRightRadius: 0,
-                        opacity: hasOverride && eventStatuses[studentId] !== 'present' ? 0.5 : 1,
-                      }}>
-                      <Ionicons
-                        name="checkmark"
-                        size={20}
-                        color={finalStatus === 'present' ? '#fff' : '#3F4246'}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setStatus(studentId, 'absent')}
-                      disabled={hasOverride && eventStatuses[studentId] !== 'absent'}
-                      style={{
-                        flex: 1,
-                        height: 44,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: finalStatus === 'absent' ? '#DC0909' : '#EBEBEB',
-                        borderTopLeftRadius: 0,
-                        borderTopRightRadius: 0,
-                        borderBottomLeftRadius: 0,
-                        borderBottomRightRadius: 0,
-                        opacity: hasOverride && eventStatuses[studentId] !== 'absent' ? 0.5 : 1,
-                      }}>
-                      <Ionicons
-                        name="close"
-                        size={20}
-                        color={finalStatus === 'absent' ? '#fff' : '#3F4246'}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setStatus(studentId, 'late')}
-                      disabled={hasOverride && eventStatuses[studentId] !== 'late'}
-                      style={{
-                        flex: 1,
-                        height: 44,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: finalStatus === 'late' ? '#F5AA1E' : '#EBEBEB',
-                        borderTopLeftRadius: 0,
-                        borderTopRightRadius: 0,
-                        borderBottomLeftRadius: 0,
-                        borderBottomRightRadius: 0,
-                        opacity: hasOverride && eventStatuses[studentId] !== 'late' ? 0.5 : 1,
-                      }}>
-                      <Ionicons
-                        name="time-outline"
-                        size={16}
-                        color={finalStatus === 'late' ? '#fff' : '#3F4246'}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setStatus(studentId, 'excused')}
-                      disabled={hasOverride && eventStatuses[studentId] !== 'excused'}
-                      style={{
-                        flex: 1,
-                        height: 44,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: finalStatus === 'excused' ? '#3F4246' : '#EBEBEB',
-                        borderTopLeftRadius: 0,
-                        borderTopRightRadius: 0,
-                        borderBottomLeftRadius: 0,
-                        borderBottomRightRadius: 12,
-                        opacity: hasOverride && eventStatuses[studentId] !== 'excused' ? 0.5 : 1,
-                      }}>
-                      <Ionicons
-                        name="close-circle-outline"
-                        size={16}
-                        color={finalStatus === 'excused' ? '#fff' : '#3F4246'}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </ScrollView>
+            return (
+              <StudentCard
+                student={s}
+                finalStatus={finalStatus}
+                hasOverride={hasOverride}
+                hasEventOverride={hasEventOverride}
+                badge={badge}
+                checkInTime={checkInOut?.checkInTime}
+                checkOutTime={checkInOut?.checkOutTime}
+                onSetStatus={setStatus}
+              />
+            );
+          }}
+          ListEmptyComponent={
+            <View className="items-center py-10">
+              <Text className="text-gray-500">Không có học sinh</Text>
+            </View>
+          }
+        />
       )}
     </SafeAreaView>
   );

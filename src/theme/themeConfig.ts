@@ -8,7 +8,7 @@ export type ThemeType = 'default' | 'tet' | 'christmas' | 'halloween' | 'mid-aut
 
 // ⭐️ DEV: THAY ĐỔI THEME Ở ĐÂY TRƯỚC KHI BUILD ⭐️
 // Chỉ việc đổi giá trị này và build lại app
-export const ACTIVE_THEME: ThemeType = 'winter'; // Thay đổi thành 'tet', 'christmas', 'winter', v.v.
+export const ACTIVE_THEME: ThemeType = 'default'; // Thay đổi thành 'tet', 'christmas', 'winter', v.v.
 
 export interface ThemeColors {
   // Gradient colors cho home screen
@@ -31,6 +31,9 @@ export interface ThemeColors {
   // Text colors
   textPrimary: string;
   textSecondary: string;
+
+  // Màu cho attendance (check-in/check-out)
+  attendance?: string;
 
   // Màu nền solid (cho splash screen, etc.)
   background?: string;
@@ -89,6 +92,7 @@ const defaultTheme: Theme = {
     secondary: '#F05023',
     textPrimary: '#0A2240',
     textSecondary: '#757575',
+    attendance: '#009483', // Màu xanh cho check-in/check-out
   },
 };
 

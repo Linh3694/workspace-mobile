@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,13 +12,276 @@ import { TouchableOpacity } from '../../components/Common';
 // Helper function to format time from HH:MM:SS to HH:MM
 const formatTime = (time: string | undefined): string => {
   if (!time) return '';
-  // If time has seconds (HH:MM:SS), remove them
   const parts = time.split(':');
   if (parts.length >= 2) {
     return `${parts[0]}:${parts[1]}`;
   }
   return time;
 };
+
+// Props type cho ClassCard
+interface ClassCardProps {
+  classData: any;
+  stats?: {
+    checkInCount: number;
+    attendanceCount: number;
+    checkOutCount: number;
+    totalStudents: number;
+    hasAttendance: boolean;
+    presentCount: number;
+    absentCount: number;
+    lateCount: number;
+    excusedCount: number;
+  };
+  tab: 'GVCN' | 'GVBM';
+  currentDate: Date;
+  onNavigate: (classData: any, periodId: string | null, periodName: string | null) => void;
+}
+
+// Extract ClassCard ra ngoài và wrap React.memo để tránh re-render không cần thiết
+const ClassCard = React.memo(({ classData, stats, tab, currentDate, onNavigate }: ClassCardProps) => {
+  const isTimetableEntry = classData.timetable_column_id !== undefined;
+  const title =
+    classData.title ||
+    classData.class_title ||
+    classData.short_title ||
+    classData.name ||
+    'Unknown Class';
+  const periodId = isTimetableEntry ? classData.timetable_column_id : null;
+  const periodName = isTimetableEntry ? classData.period_name : null;
+  const subject = isTimetableEntry ? classData.subject_title : null;
+  const room = isTimetableEntry ? classData.room_name : null;
+  const hasAttendance = stats?.hasAttendance || false;
+
+  const presentCount = stats?.presentCount || 0;
+  const absentCount = stats?.absentCount || 0;
+  const lateCount = stats?.lateCount || 0;
+  const excusedCount = stats?.excusedCount || 0;
+
+  return (
+    <View
+      style={{
+        backgroundColor: '#F6F6F6',
+        padding: 16,
+        borderRadius: 16,
+      }}>
+      {/* Header với title và badge */}
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 12,
+        }}>
+        <Text style={{ fontSize: 18, fontWeight: '600', flex: 1, fontFamily: 'Mulish-Bold' }}>
+          {title}
+        </Text>
+        <View
+          style={{
+            backgroundColor: hasAttendance ? '#3DB838' : '#FFFFFF',
+            paddingHorizontal: 14,
+            paddingVertical: 8,
+            borderRadius: 20,
+            borderWidth: hasAttendance ? 0 : 1,
+            borderColor: '#E5E7EB',
+          }}>
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: '600',
+              color: hasAttendance ? '#FFFFFF' : '#6B7280',
+              fontFamily: 'Mulish-Bold',
+            }}>
+            {hasAttendance ? 'Đã điểm danh' : 'Chưa điểm danh'}
+          </Text>
+        </View>
+      </View>
+
+      {/* Môn học và phòng - chỉ cho tab GVBM */}
+      {isTimetableEntry && (
+        <View style={{ marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+            <Ionicons name="globe-outline" size={24} color="#666" />
+            <Text
+              style={{
+                fontSize: 14,
+                color: '#666',
+                marginLeft: 10,
+                fontFamily: 'Mulish-Medium',
+              }}>
+              {subject || 'Chưa có môn'}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons name="location-outline" size={24} color="#666" />
+            <Text
+              style={{
+                fontSize: 14,
+                color: '#666',
+                marginLeft: 10,
+                fontFamily: 'Mulish-Medium',
+              }}>
+              {room || title}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Check-in/Check-out stats - chỉ cho tab GVCN */}
+      {tab === 'GVCN' && (
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            marginVertical: 12,
+          }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons name="log-in-outline" size={20} color="#444" />
+            <Text
+              style={{
+                marginLeft: 6,
+                fontSize: 13,
+                color: '#444',
+                fontFamily: 'Mulish-Medium',
+              }}>
+              {stats?.checkInCount || 0}/{stats?.totalStudents || 0} học sinh
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons name="log-out-outline" size={20} color="#444" />
+            <Text
+              style={{
+                marginLeft: 6,
+                fontSize: 13,
+                color: '#444',
+                fontFamily: 'Mulish-Medium',
+              }}>
+              {stats?.checkOutCount || 0}/{stats?.totalStudents || 0} học sinh
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Attendance status icons */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-around',
+          marginHorizontal: 4,
+          marginTop: 12,
+          marginBottom: 24,
+        }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="checkmark" size={24} color="#22C55E" />
+          <Text
+            style={{
+              marginLeft: 4,
+              fontSize: 16,
+              color: '#22C55E',
+              fontWeight: '500',
+              fontFamily: 'Mulish-Medium',
+            }}>
+            {presentCount}
+          </Text>
+        </View>
+
+        <Text
+          style={{
+            color: '#757575',
+            fontSize: 16,
+            fontWeight: 'semibold',
+            fontFamily: 'Mulish-SemiBold',
+          }}>
+          |
+        </Text>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="close" size={24} color="#EF4444" />
+          <Text
+            style={{
+              marginLeft: 4,
+              fontSize: 16,
+              color: '#EF4444',
+              fontWeight: '500',
+              fontFamily: 'Mulish-Medium',
+            }}>
+            {absentCount}
+          </Text>
+        </View>
+
+        <Text
+          style={{
+            color: '#757575',
+            fontSize: 16,
+            fontWeight: 'semibold',
+            fontFamily: 'Mulish-SemiBold',
+          }}>
+          |
+        </Text>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="time-outline" size={24} color="#F5AA1E" />
+          <Text
+            style={{
+              marginLeft: 4,
+              fontSize: 16,
+              color: '#F5AA1E',
+              fontWeight: '500',
+              fontFamily: 'Mulish-Medium',
+            }}>
+            {lateCount}
+          </Text>
+        </View>
+
+        <Text
+          style={{
+            color: '#757575',
+            fontSize: 16,
+            fontWeight: 'semibold',
+            fontFamily: 'Mulish-SemiBold',
+          }}>
+          |
+        </Text>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="ban-outline" size={24} color="#6B7280" />
+          <Text
+            style={{
+              marginLeft: 4,
+              fontSize: 16,
+              color: '#6B7280',
+              fontWeight: '500',
+              fontFamily: 'Mulish-Medium',
+            }}>
+            {excusedCount}
+          </Text>
+        </View>
+      </View>
+
+      <TouchableOpacity
+        style={{
+          backgroundColor: hasAttendance ? '#FFFFFF' : '#333333',
+          borderWidth: hasAttendance ? 1 : 0,
+          borderColor: hasAttendance ? '#E5E7EB' : 'transparent',
+          paddingVertical: 10,
+          borderRadius: 30,
+        }}
+        onPress={() => onNavigate(classData, periodId, periodName)}>
+        <Text
+          style={{
+            color: hasAttendance ? '#333333' : 'white',
+            textAlign: 'center',
+            fontSize: 14,
+            fontWeight: '600',
+            fontFamily: 'Mulish-Bold',
+          }}>
+          {hasAttendance ? 'Chỉnh sửa' : 'Điểm danh'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+});
 
 const AttendanceHome = () => {
   const nav = useNavigation<any>();
@@ -27,6 +290,9 @@ const AttendanceHome = () => {
 
   // Get initial tab from route params (for deep link from notification)
   const initialTab = route.params?.initialTab as 'GVCN' | 'GVBM' | undefined;
+
+  // Ref để tránh double-fetch khi mount (useEffect + useFocusEffect đều chạy)
+  const isInitialMount = useRef(true);
 
   // Date state
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -116,172 +382,100 @@ const AttendanceHome = () => {
     }
   }, [user?.email, currentDate]);
 
+  /**
+   * Fetch stats cho tất cả classes trong 1 API call duy nhất (OPTIMIZED)
+   * Giảm từ N*4 calls xuống 1 call
+   */
   const fetchClassStats = useCallback(
     async (classes: any[], isTimetable: boolean = false) => {
       if (!classes || classes.length === 0) return;
 
       const currentDateStr = currentDate.toISOString().split('T')[0];
-      const newStats: Record<
-        string,
-        {
-          checkInCount: number;
-          attendanceCount: number;
-          checkOutCount: number;
-          totalStudents: number;
-          hasAttendance: boolean;
-          presentCount: number;
-          absentCount: number;
-          lateCount: number;
-          excusedCount: number;
-        }
-      > = {};
 
-      // Process each class/timetable entry concurrently for better performance
-      const promises = classes.map(async (classData) => {
-        // Handle both ClassData (homeroom) and TimetableEntry (teaching)
-        // For timetable entries, use class_id; for homeroom, use name
+      // Build items array cho batch API
+      const items: { class_id: string; date: string; period: string }[] = [];
+      const statsKeyMap: Record<string, string> = {}; // resultKey -> statsKey
+
+      classes.forEach((classData) => {
         const isTimetableEntry = classData.timetable_column_id !== undefined;
         const actualClassId = isTimetableEntry
           ? classData.class_id
           : classData.class_id || classData.name;
 
-        if (!actualClassId) {
-          return;
-        }
+        if (!actualClassId) return;
 
-        // Use unique key for stats: for timetable entries, combine class_id and timetable_column_id
         const statsKey = isTimetableEntry
           ? `${actualClassId}_${classData.timetable_column_id}`
           : actualClassId;
-
-        // Determine period for attendance query
         const period = isTimetableEntry ? classData.timetable_column_id : 'homeroom';
 
-        try {
-          console.log(
-            `🔍 [Home Stats] Fetching stats for class ${actualClassId}, period: ${period}, statsKey: ${statsKey}`
-          );
+        // resultKey từ API sẽ là: class_id cho homeroom, class_id_period cho timetable
+        const resultKey = period === 'homeroom' ? actualClassId : `${actualClassId}_${period}`;
+        statsKeyMap[resultKey] = statsKey;
 
-          // 1. Get students in class
-          const studentsResult = await attendanceApiService.getClassStudents(
-            actualClassId,
-            1,
-            1000
-          );
-
-          const studentIds =
-            studentsResult.success && studentsResult.data ? studentsResult.data : [];
-
-          // 2. Get detailed student info to get student_codes
-          let studentCodes: string[] = [];
-          if (studentIds.length > 0) {
-            const batchStudentsResult = await attendanceApiService.getBatchStudents(studentIds);
-            if (batchStudentsResult.success && batchStudentsResult.data) {
-              studentCodes = batchStudentsResult.data
-                .map((student: any) => student.student_code)
-                .filter(Boolean);
-            }
-          }
-
-          // 3. Get attendance data with correct period
-          const attendanceResult = await attendanceApiService.getClassAttendance(
-            actualClassId,
-            currentDateStr,
-            period
-          );
-          const attendanceRecords =
-            attendanceResult.success && attendanceResult.data ? attendanceResult.data : [];
-
-          console.log(
-            `🔍 [Home Stats] Attendance result for ${statsKey}: ${attendanceRecords.length} records, hasAttendance: ${attendanceRecords.length > 0}`
-          );
-
-          // 4. Get check-in/check-out data (only for homeroom)
-          let checkInOutData: Record<string, any> = {};
-          if (!isTimetableEntry && studentCodes.length > 0) {
-            const dayMapResult = await attendanceApiService.getStudentsDayMap(
-              studentCodes,
-              currentDateStr
-            );
-
-            if (dayMapResult.success && dayMapResult.data) {
-              checkInOutData = dayMapResult.data;
-            }
-          }
-
-          // 5. Calculate stats
-          const totalStudents = studentIds.length;
-          // Only count attendance records for students currently in class
-          // This prevents showing 21/17 when some students have left the class
-          const validAttendanceRecords = attendanceRecords.filter((record: any) =>
-            studentIds.includes(record.student_id)
-          );
-          const attendanceCount = validAttendanceRecords.length;
-          const hasAttendance = attendanceCount > 0;
-
-          let checkInCount = 0;
-          let checkOutCount = 0;
-
-          // Count check-ins and check-outs from physical attendance data
-          Object.entries(checkInOutData).forEach(([studentCode, data]: [string, any]) => {
-            if (data.checkInTime) checkInCount++;
-            if (data.checkOutTime) checkOutCount++;
-          });
-
-          // Count students by attendance status
-          let presentCount = 0;
-          let absentCount = 0;
-          let lateCount = 0;
-          let excusedCount = 0;
-
-          validAttendanceRecords.forEach((record: any) => {
-            const status = record.status?.toLowerCase();
-            switch (status) {
-              case 'present':
-                presentCount++;
-                break;
-              case 'absent':
-                absentCount++;
-                break;
-              case 'late':
-                lateCount++;
-                break;
-              case 'excused':
-                excusedCount++;
-                break;
-            }
-          });
-
-          newStats[statsKey] = {
-            checkInCount,
-            attendanceCount,
-            checkOutCount,
-            totalStudents,
-            hasAttendance,
-            presentCount,
-            absentCount,
-            lateCount,
-            excusedCount,
-          };
-        } catch (error) {
-          console.error(`Failed to fetch stats for class ${actualClassId}:`, error);
-          // Set default stats
-          newStats[statsKey] = {
-            checkInCount: 0,
-            attendanceCount: 0,
-            checkOutCount: 0,
-            totalStudents: 0,
-            hasAttendance: false,
-            presentCount: 0,
-            absentCount: 0,
-            lateCount: 0,
-            excusedCount: 0,
-          };
-        }
+        items.push({
+          class_id: actualClassId,
+          date: currentDateStr,
+          period: period,
+        });
       });
 
-      await Promise.all(promises);
-      setClassStats((prev) => ({ ...prev, ...newStats }));
+      if (items.length === 0) return;
+
+      console.log('📊 [Home] Fetching batch stats for', items.length, 'classes');
+      const startTime = Date.now();
+
+      // Gọi 1 API duy nhất để lấy tất cả stats
+      const result = await attendanceApiService.batchGetClassesAttendanceSummary(
+        items,
+        !isTimetable // include check-in/out chỉ cho GVCN (homeroom)
+      );
+
+      const elapsed = Date.now() - startTime;
+      console.log(`✅ [Home] Batch stats fetched in ${elapsed}ms`);
+
+      if (result.success && result.data) {
+        const newStats: Record<
+          string,
+          {
+            checkInCount: number;
+            attendanceCount: number;
+            checkOutCount: number;
+            totalStudents: number;
+            hasAttendance: boolean;
+            presentCount: number;
+            absentCount: number;
+            lateCount: number;
+            excusedCount: number;
+          }
+        > = {};
+
+        // Map result từ API về statsKey
+        Object.entries(result.data).forEach(([resultKey, data]) => {
+          const statsKey = statsKeyMap[resultKey] || resultKey;
+          const attendanceCount =
+            (data.present_count || 0) +
+            (data.absent_count || 0) +
+            (data.late_count || 0) +
+            (data.excused_count || 0);
+
+          newStats[statsKey] = {
+            checkInCount: data.check_in_count || 0,
+            attendanceCount: attendanceCount,
+            checkOutCount: data.check_out_count || 0,
+            totalStudents: data.total_students || 0,
+            hasAttendance: data.has_attendance || false,
+            presentCount: data.present_count || 0,
+            absentCount: data.absent_count || 0,
+            lateCount: data.late_count || 0,
+            excusedCount: data.excused_count || 0,
+          };
+        });
+
+        setClassStats((prev) => ({ ...prev, ...newStats }));
+      } else {
+        console.error('❌ [Home] Batch stats failed:', result.error);
+      }
     },
     [currentDate]
   );
@@ -329,10 +523,11 @@ const AttendanceHome = () => {
     }
   }, [classesData, timetableData, loading, fetchClassStats, currentDate]);
 
-  // Quick check hasAttendance using new API (no cache)
+  // Quick refresh stats khi quay lại màn hình - dùng batch API mới
   const refreshHasAttendanceFlags = useCallback(async () => {
     const currentDateStr = currentDate.toISOString().split('T')[0];
     const items: { class_id: string; date: string; period: string }[] = [];
+    const statsKeyMap: Record<string, string> = {};
 
     // Add homeroom classes
     if (classesData) {
@@ -344,6 +539,7 @@ const AttendanceHome = () => {
         const classId = cls.class_id || cls.name;
         if (classId) {
           items.push({ class_id: classId, date: currentDateStr, period: 'homeroom' });
+          statsKeyMap[classId] = classId;
         }
       });
     }
@@ -360,35 +556,39 @@ const AttendanceHome = () => {
           date: currentDateStr,
           period: entry.timetable_column_id,
         });
+        const resultKey = `${entry.class_id}_${entry.timetable_column_id}`;
+        statsKeyMap[resultKey] = resultKey;
       }
     });
 
     if (items.length === 0) return;
 
-    console.log('🔄 [Home] Checking hasAttendance for', items.length, 'items');
-    const result = await attendanceApiService.batchCheckHasAttendance(items);
+    console.log('🔄 [Home] Refreshing stats for', items.length, 'items');
+    const result = await attendanceApiService.batchGetClassesAttendanceSummary(items, true);
 
     if (result.success && result.data) {
-      console.log('✅ [Home] hasAttendance results:', result.data);
-      // Update classStats with hasAttendance flags
+      console.log('✅ [Home] Stats refreshed');
       setClassStats((prev) => {
         const updated = { ...prev };
-        Object.entries(result.data).forEach(([key, value]) => {
-          if (updated[key]) {
-            updated[key] = { ...updated[key], hasAttendance: value.has_attendance };
-          } else {
-            updated[key] = {
-              checkInCount: 0,
-              attendanceCount: value.count,
-              checkOutCount: 0,
-              totalStudents: 0,
-              hasAttendance: value.has_attendance,
-              presentCount: 0,
-              absentCount: 0,
-              lateCount: 0,
-              excusedCount: 0,
-            };
-          }
+        Object.entries(result.data).forEach(([resultKey, data]) => {
+          const statsKey = statsKeyMap[resultKey] || resultKey;
+          const attendanceCount =
+            (data.present_count || 0) +
+            (data.absent_count || 0) +
+            (data.late_count || 0) +
+            (data.excused_count || 0);
+
+          updated[statsKey] = {
+            checkInCount: data.check_in_count || 0,
+            attendanceCount: attendanceCount,
+            checkOutCount: data.check_out_count || 0,
+            totalStudents: data.total_students || 0,
+            hasAttendance: data.has_attendance || false,
+            presentCount: data.present_count || 0,
+            absentCount: data.absent_count || 0,
+            lateCount: data.late_count || 0,
+            excusedCount: data.excused_count || 0,
+          };
         });
         return updated;
       });
@@ -398,314 +598,40 @@ const AttendanceHome = () => {
   // Refresh stats when screen comes back into focus (after editing attendance)
   useFocusEffect(
     useCallback(() => {
-      console.log('🔄 [Home] useFocusEffect triggered, loading:', loading);
-
-      // Always refresh hasAttendance flags (quick check, no cache)
-      refreshHasAttendanceFlags();
-
-      if (!loading) {
-        // Refresh full stats for homeroom classes (for check-in/out counts)
-        if (classesData) {
-          const homeroomClasses = [
-            ...(classesData.homeroom_classes || []),
-            ...(classesData.teaching_classes || []),
-          ];
-          if (homeroomClasses.length > 0) {
-            fetchClassStats(homeroomClasses, false);
-          }
-        }
-        // Refresh full stats for timetable entries (GVBM)
-        const currentDateStr = currentDate.toISOString().split('T')[0];
-        const todayTimetable = attendanceApiService.getTimetableEntriesForDate(
-          timetableData,
-          currentDateStr
-        );
-        if (todayTimetable.length > 0) {
-          fetchClassStats(todayTimetable, true);
-        }
+      // Skip lần focus đầu tiên vì useEffect đã fetch rồi
+      if (isInitialMount.current) {
+        isInitialMount.current = false;
+        return;
       }
-    }, [
-      classesData,
-      timetableData,
-      loading,
-      fetchClassStats,
-      currentDate,
-      refreshHasAttendanceFlags,
-    ])
+
+      // Chỉ gọi 1 API để refresh tất cả stats
+      refreshHasAttendanceFlags();
+    }, [refreshHasAttendanceFlags])
   );
 
   // Filter classes based on selected tab
   const displayedClasses = useMemo(() => {
     if (tab === 'GVCN') {
-      // Show homeroom classes
       return classesData?.homeroom_classes || [];
     } else {
-      // Show timetable entries for current day (each entry represents a period)
       const currentDateStr = currentDate.toISOString().split('T')[0];
       return attendanceApiService.getTimetableEntriesForDate(timetableData, currentDateStr);
     }
   }, [tab, classesData, timetableData, currentDate]);
 
-  const ClassCard = ({ classData, stats }: { classData: any; stats?: any }) => {
-    // Handle both ClassData (homeroom) and TimetableEntry (teaching)
-    const isTimetableEntry = classData.timetable_column_id !== undefined;
-    const title =
-      classData.title ||
-      classData.class_title ||
-      classData.short_title ||
-      classData.name ||
-      'Unknown Class';
-    const periodId = isTimetableEntry ? classData.timetable_column_id : null;
-    const periodName = isTimetableEntry ? classData.period_name : null;
-    const subject = isTimetableEntry ? classData.subject_title : null;
-    const room = isTimetableEntry ? classData.room_name : null;
-    const hasAttendance = stats?.hasAttendance || false;
-
-    // Status counts
-    const presentCount = stats?.presentCount || 0;
-    const absentCount = stats?.absentCount || 0;
-    const lateCount = stats?.lateCount || 0;
-    const excusedCount = stats?.excusedCount || 0;
-
-    return (
-      <View
-        style={{
-          backgroundColor: '#F6F6F6',
-          padding: 16,
-          borderRadius: 16,
-        }}>
-        {/* Header với title và badge */}
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 12,
-          }}>
-          <Text style={{ fontSize: 18, fontWeight: '600', flex: 1, fontFamily: 'Mulish-Bold' }}>
-            {title}
-          </Text>
-          <View
-            style={{
-              backgroundColor: hasAttendance ? '#3DB838' : '#FFFFFF',
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              borderRadius: 20,
-              borderWidth: hasAttendance ? 0 : 1,
-              borderColor: '#E5E7EB',
-            }}>
-            <Text
-              style={{
-                fontSize: 13,
-                fontWeight: '600',
-                color: hasAttendance ? '#FFFFFF' : '#6B7280',
-                fontFamily: 'Mulish-Bold',
-              }}>
-              {hasAttendance ? 'Đã điểm danh' : 'Chưa điểm danh'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Môn học và phòng - chỉ cho tab GVBM */}
-        {isTimetableEntry && (
-          <View style={{ marginBottom: 16 }}>
-            {/* Môn học */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-              <Ionicons name="globe-outline" size={24} color="#666" />
-              <Text
-                style={{
-                  fontSize: 14,
-                  color: '#666',
-                  marginLeft: 10,
-                  fontFamily: 'Mulish-Medium',
-                }}>
-                {subject || 'Chưa có môn'}
-              </Text>
-            </View>
-            {/* Phòng học */}
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="location-outline" size={24} color="#666" />
-              <Text
-                style={{
-                  fontSize: 14,
-                  color: '#666',
-                  marginLeft: 10,
-                  fontFamily: 'Mulish-Medium',
-                }}>
-                {room || title}
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Check-in/Check-out stats - chỉ cho tab GVCN */}
-        {tab === 'GVCN' && (
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              marginVertical: 12,
-            }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="log-in-outline" size={20} color="#444" />
-              <Text
-                style={{
-                  marginLeft: 6,
-                  fontSize: 13,
-                  color: '#444',
-                  fontFamily: 'Mulish-Medium',
-                }}>
-                {stats?.checkInCount || 0}/{stats?.totalStudents || 0} học sinh
-              </Text>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="log-out-outline" size={20} color="#444" />
-              <Text
-                style={{
-                  marginLeft: 6,
-                  fontSize: 13,
-                  color: '#444',
-                  fontFamily: 'Mulish-Medium',
-                }}>
-                {stats?.checkOutCount || 0}/{stats?.totalStudents || 0} học sinh
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Attendance status icons */}
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-around',
-            marginHorizontal: 4,
-            marginTop: 12,
-            marginBottom: 24,
-          }}>
-          {/* Present - Green checkmark */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="checkmark" size={24} color="#22C55E" />
-            <Text
-              style={{
-                marginLeft: 4,
-                fontSize: 16,
-                color: '#22C55E',
-                fontWeight: '500',
-                fontFamily: 'Mulish-Medium',
-              }}>
-              {presentCount}
-            </Text>
-          </View>
-
-          <Text
-            style={{
-              color: '#757575',
-              fontSize: 16,
-              fontWeight: 'semibold',
-              fontFamily: 'Mulish-SemiBold',
-            }}>
-            |
-          </Text>
-
-          {/* Absent - Red X */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="close" size={24} color="#EF4444" />
-            <Text
-              style={{
-                marginLeft: 4,
-                fontSize: 16,
-                color: '#EF4444',
-                fontWeight: '500',
-                fontFamily: 'Mulish-Medium',
-              }}>
-              {absentCount}
-            </Text>
-          </View>
-
-          <Text
-            style={{
-              color: '#757575',
-              fontSize: 16,
-              fontWeight: 'semibold',
-              fontFamily: 'Mulish-SemiBold',
-            }}>
-            |
-          </Text>
-
-          {/* Late - Yellow clock */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="time-outline" size={24} color="#F5AA1E" />
-            <Text
-              style={{
-                marginLeft: 4,
-                fontSize: 16,
-                color: '#F5AA1E',
-                fontWeight: '500',
-                fontFamily: 'Mulish-Medium',
-              }}>
-              {lateCount}
-            </Text>
-          </View>
-
-          <Text
-            style={{
-              color: '#757575',
-              fontSize: 16,
-              fontWeight: 'semibold',
-              fontFamily: 'Mulish-SemiBold',
-            }}>
-            |
-          </Text>
-
-          {/* Excused - Gray ban */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="ban-outline" size={24} color="#6B7280" />
-            <Text
-              style={{
-                marginLeft: 4,
-                fontSize: 16,
-                color: '#6B7280',
-                fontWeight: '500',
-                fontFamily: 'Mulish-Medium',
-              }}>
-              {excusedCount}
-            </Text>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={{
-            backgroundColor: hasAttendance ? '#FFFFFF' : '#333333',
-            borderWidth: hasAttendance ? 1 : 0,
-            borderColor: hasAttendance ? '#E5E7EB' : 'transparent',
-            paddingVertical: 10,
-            borderRadius: 30,
-          }}
-          onPress={() =>
-            nav.navigate(ROUTES.SCREENS.ATTENDANCE_DETAIL, {
-              classData,
-              // Pass period info for timetable entries
-              period: isTimetableEntry ? periodId : undefined,
-              periodName: isTimetableEntry ? periodName : undefined,
-              // Pass selected date
-              selectedDate: currentDate.toISOString().split('T')[0],
-            })
-          }>
-          <Text
-            style={{
-              color: hasAttendance ? '#333333' : 'white',
-              textAlign: 'center',
-              fontSize: 14,
-              fontWeight: '600',
-              fontFamily: 'Mulish-Bold',
-            }}>
-            {hasAttendance ? 'Chỉnh sửa' : 'Điểm danh'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
+  // Handler để navigate đến màn hình detail
+  const handleNavigateToDetail = useCallback(
+    (classData: any, periodId: string | null, periodName: string | null) => {
+      const isTimetableEntry = classData.timetable_column_id !== undefined;
+      nav.navigate(ROUTES.SCREENS.ATTENDANCE_DETAIL, {
+        classData,
+        period: isTimetableEntry ? periodId : undefined,
+        periodName: isTimetableEntry ? periodName : undefined,
+        selectedDate: currentDate.toISOString().split('T')[0],
+      });
+    },
+    [nav, currentDate]
+  );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }}>
@@ -842,7 +768,13 @@ const AttendanceHome = () => {
                     )}
                   </View>
                 )}
-                <ClassCard classData={classData} stats={stats} />
+                <ClassCard
+                  classData={classData}
+                  stats={stats}
+                  tab={tab}
+                  currentDate={currentDate}
+                  onNavigate={handleNavigateToDetail}
+                />
               </View>
             );
           })

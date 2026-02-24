@@ -732,6 +732,71 @@ class AttendanceApiService {
   }
 
   /**
+   * Batch get attendance summary stats for multiple classes (OPTIMIZED)
+   * Giảm từ N*4 API calls xuống 1 call duy nhất
+   */
+  async batchGetClassesAttendanceSummary(
+    items: { class_id: string; date: string; period: string }[],
+    includeCheckinOut: boolean = true
+  ): Promise<{
+    success: boolean;
+    data?: Record<
+      string,
+      {
+        total_students: number;
+        has_attendance: boolean;
+        present_count: number;
+        absent_count: number;
+        late_count: number;
+        excused_count: number;
+        check_in_count?: number;
+        check_out_count?: number;
+      }
+    >;
+    error?: string;
+  }> {
+    try {
+      const headers = await this.getAuthHeaders();
+      const response = await fetch(
+        `${BASE_URL}/api/method/erp.api.erp_sis.attendance.batch_get_classes_attendance_summary`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            items,
+            include_checkin_out: includeCheckinOut,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `Failed to batch get attendance summary: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      if (data.message?.data || data.data) {
+        return {
+          success: true,
+          data: data.message?.data || data.data,
+        };
+      } else {
+        return {
+          success: false,
+          error: 'Invalid response format',
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: `Error batch getting attendance summary: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
+  }
+
+  /**
    * Batch check if attendance exists for multiple class/date/period combinations
    * No cache - always returns fresh data from DB
    */

@@ -53,10 +53,6 @@ export const StudentAvatar: React.FC<StudentAvatarProps> = ({
   const [failed, setFailed] = React.useState(false);
 
   if (uri && !failed) {
-    // Debug current uri (one-time)
-    try {
-      console.log('[StudentAvatar] uri:', uri);
-    } catch {}
     return (
       <Image
         source={{ uri }}

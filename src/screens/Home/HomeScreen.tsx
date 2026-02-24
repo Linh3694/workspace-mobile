@@ -15,7 +15,7 @@ import {
   Platform,
   PanResponder,
   Animated,
-  Image,
+  ImageBackground,
 } from 'react-native';
 import { TouchableOpacity } from '../../components/Common';
 
@@ -42,7 +42,6 @@ import FeedbackIcon from '../../assets/feedback-icon.svg';
 import MenuIcon from '../../assets/menu-icon.svg';
 import TimetableIcon from '../../assets/timetable-icon.svg';
 import CalendarIcon from '../../assets/calendar-icon.svg';
-import { Snowfall } from '../../components/Snowfall';
 import attendanceService from '../../services/attendanceService';
 import pushNotificationService from '../../services/pushNotificationService';
 import notificationCenterService from '../../services/notificationCenterService';
@@ -534,8 +533,7 @@ const HomeScreen = () => {
     };
   }, []);
 
-  // Gradient border container - glass effect cho theme winter
-  const isWinterTheme = theme.id === 'winter';
+  // Gradient border container cho theme Tết
   const GradientBorderContainer = React.forwardRef<any, { children: React.ReactNode }>(
     ({ children }, ref) => {
       return (
@@ -546,43 +544,45 @@ const HomeScreen = () => {
             end={{ x: 1, y: 0 }}
             style={styles.gradientBorder}
           />
-          {/* Winter: chặn gradient ở phần lòng để nền menu trắng trong suốt, không bị ám vàng */}
-          {isWinterTheme && (
-            <View
-              pointerEvents="none"
-              style={[
-                styles.borderMask,
-                {
-                  backgroundColor:
-                    theme.colors.background || theme.colors.homeGradient?.[0] || '#1E3A5F',
-                },
-              ]}
-            />
-          )}
-          <View style={[styles.innerContainer, isWinterTheme && styles.glassContainer]}>
-            {children}
-          </View>
+          <View style={styles.innerContainer}>{children}</View>
         </View>
       );
     }
   );
 
-  return (
-    <LinearGradient
-      colors={theme.colors.homeGradient}
-      locations={theme.colors.homeGradientLocations}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={{ flex: 1 }}>
-      {/* Animation tuyết rơi cho theme mùa đông */}
-      {theme.hasSnowfall && <Snowfall count={70} />}
+  // Render nền dựa theo theme (có background image hoặc gradient)
+  const renderBackground = (children: React.ReactNode) => {
+    // Theme default sử dụng gradient, các theme đặc biệt có thể dùng image
+    if (theme.id === 'default') {
+      return (
+        <LinearGradient
+          colors={theme.colors.homeGradient}
+          locations={theme.colors.homeGradientLocations}
+          style={{ flex: 1 }}>
+          {children}
+        </LinearGradient>
+      );
+    }
+    // Các theme đặc biệt có background image
+    return (
+      <ImageBackground
+        source={require('../../assets/theme/new-year/home-screen.png')}
+        style={{ flex: 1 }}
+        resizeMode="cover">
+        {children}
+      </ImageBackground>
+    );
+  };
+
+  return renderBackground(
+    <>
       <ScrollView
         keyboardShouldPersistTaps="always"
         contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}>
         <View className="relative mt-[20%] w-full items-center">
           <Text
-            className="mb-2 text-center text-2xl font-medium"
-            style={{ color: theme.colors.textPrimary }}>
+            className="mb-2 text-center text-2xl font-semibold"
+            style={{ color: theme.colors.primary }}>
             {t('home.welcome')} WISer
           </Text>
           <TouchableOpacity
@@ -608,13 +608,13 @@ const HomeScreen = () => {
             maskElement={
               <Text
                 className="text-center text-3xl"
-                style={{ backgroundColor: 'transparent', fontFamily: 'Mulish-ExtraBold' }}>
+                style={{ backgroundColor: 'transparent', fontFamily: 'Mulish-Bold' }}>
                 {user?.fullname || 'User'}
               </Text>
             }>
             <LinearGradient
               colors={theme.colors.usernameGradient}
-              start={{ x: 0, y: 0 }}
+              start={{ x: 0, y: 1 }}
               end={{ x: 1, y: 0 }}>
               <Text
                 className="text-center text-4xl opacity-0"
@@ -625,78 +625,76 @@ const HomeScreen = () => {
           </MaskedView>
 
           {/* Attendance Timeline */}
-          <View className="mt-6 w-full px-5">
-            {/* Time labels with detail button */}
-            <View className="flex-row items-center justify-between">
-              <View className="left-[5%] flex-row items-center">
-                <Text className="text-base font-medium" style={{ color: theme.colors.textPrimary }}>
-                  {checkInTime}
-                </Text>
-                {isRefreshingAttendance && (
-                  <View className="ml-2">
-                    <Ionicons name="sync" size={14} color={theme.colors.textPrimary} />
-                  </View>
-                )}
-              </View>
-
-              <View className="right-[3%] flex-row items-center">
-                <Text className="text-base font-medium" style={{ color: theme.colors.textPrimary }}>
-                  {checkOutTime}
-                </Text>
-                {isRefreshingAttendance && (
-                  <View className="ml-2">
-                    <Ionicons name="sync" size={14} color={theme.colors.textPrimary} />
-                  </View>
-                )}
-              </View>
+          <View className="mt-6 w-full px-10">
+            {/* Time row */}
+            <View className="mx-0 flex-row items-center justify-between">
+              <Text
+                className="text-base font-bold"
+                style={{ color: theme.colors.attendance || theme.colors.secondary }}>
+                {checkInTime}
+              </Text>
+              {isRefreshingAttendance && (
+                <Ionicons
+                  name="sync"
+                  size={14}
+                  color={theme.colors.attendance || theme.colors.textPrimary}
+                />
+              )}
+              <Text
+                className="text-base font-bold"
+                style={{ color: theme.colors.attendance || theme.colors.secondary }}>
+                {checkOutTime}
+              </Text>
             </View>
-            {/* Timeline bar with markers */}
-            <View className="relative my-2 h-1 rounded-full bg-gray-200">
-              {/* Highlighted segment */}
+
+            {/* Timeline bar - full width */}
+            <View className="relative my-3 h-1 w-full rounded-full">
               <LinearGradient
-                colors={['#F3F6DE', '#FFCE02']}
+                colors={theme.colors.borderGradient.slice(0, 2)}
                 locations={[0, 1]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
+                start={{ x: 1, y: 1 }}
+                end={{ x: 0, y: 0 }}
                 style={{
                   position: 'absolute',
-                  left: '5%',
-                  right: '5%',
+                  left: 0,
+                  right: 0,
                   height: 4,
                   borderRadius: 2,
                 }}
               />
-              {/* Entry arrow */}
-              <View style={{ position: 'absolute', left: '3%', top: -7, alignItems: 'center' }}>
+              {/* Check-in marker */}
+              <View style={{ position: 'absolute', left: 12, top: -7, alignItems: 'center' }}>
                 <PolygonIcon width={18} height={18} />
-                <Text className="text-start text-base" style={{ color: theme.colors.textPrimary }}>
-                  {t('home.check_in_time')}
-                </Text>
               </View>
-              {/* Exit arrow */}
-              <View style={{ position: 'absolute', right: '3%', top: -7, alignItems: 'center' }}>
+              {/* Check-out marker */}
+              <View style={{ position: 'absolute', right: 12, top: -7, alignItems: 'center' }}>
                 <PolygonIcon width={18} height={18} />
-                <Text className="text-start text-base" style={{ color: theme.colors.textPrimary }}>
-                  {t('home.check_out_time')}
-                </Text>
               </View>
+            </View>
+
+            {/* Label row */}
+            <View className="mx-0 flex-row items-center justify-between">
+              <Text
+                className="text-base"
+                style={{ color: theme.colors.attendance || theme.colors.secondary }}>
+                {t('home.check_in_time')}
+              </Text>
+              <Text
+                className="text-base"
+                style={{ color: theme.colors.attendance || theme.colors.secondary }}>
+                {t('home.check_out_time')}
+              </Text>
             </View>
           </View>
 
-          <View className={`${isWinterTheme ? 'mt-[20%]' : 'mt-[10%]'} w-full px-5`}>
-            {/* Container với hình trang trí Giáng sinh cho theme winter */}
+          <View className="mt-[10%] w-full px-5">
+            {/* Container menu */}
             <View style={{ position: 'relative' }}>
-              {/* Hình trang trí ở trên border menu - chỉ hiển thị với theme winter */}
-              {isWinterTheme && (
-                <Image
-                  source={require('../../assets/theme/christmas/menu-border.png')}
-                  style={styles.menuBorderDecoration}
-                  resizeMode="contain"
-                />
-              )}
               <GradientBorderContainer>
-                {/* Winter theme: nền trong suốt không gradient, các theme khác: dùng gradient */}
-                {isWinterTheme ? (
+                <LinearGradient
+                  colors={theme.colors.menuGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}>
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
@@ -720,36 +718,7 @@ const HomeScreen = () => {
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
-                ) : (
-                  <LinearGradient
-                    colors={theme.colors.menuGradient}
-                    start={{ x: 1, y: 0 }}
-                    end={{ x: 0, y: 1 }}>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 16 }}>
-                      {menuItems.map((item, index) => (
-                        <TouchableOpacity
-                          key={item.id}
-                          style={{
-                            width: 72,
-                            alignItems: 'center',
-                            marginHorizontal: 4,
-                          }}
-                          onPress={item.onPress}>
-                          <item.component width={64} height={64} />
-                          <Text
-                            className="mt-1 text-center text-sm font-medium"
-                            style={{ color: theme.colors.textPrimary }}
-                            numberOfLines={2}>
-                            {item.title}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </LinearGradient>
-                )}
+                </LinearGradient>
               </GradientBorderContainer>
             </View>
           </View>
@@ -757,7 +726,7 @@ const HomeScreen = () => {
         <View className="mt-[10%] w-full px-5">
           <Text
             className="mb-5 text-center text-xl font-medium"
-            style={{ color: theme.colors.textPrimary }}>
+            style={{ color: theme.colors.secondary }}>
             {t('common.search')}?
           </Text>
           {/* iOS-style Search Bar */}
@@ -765,7 +734,9 @@ const HomeScreen = () => {
             className="mb-3 flex-row items-center rounded-2xl border border-gray-300 bg-white px-4 py-3"
             onPress={openIOSSearch}>
             <FontAwesome name="search" size={18} color="#A1A1AA" />
-            <Text className="ml-3 flex-1 font-medium text-gray-400">{t('common.search')} Wis</Text>
+            <Text className="ml-3 flex-1 font-medium text-gray-400">
+              {t('common.search_placeholder')}{' '}
+            </Text>
           </TouchableOpacity>
 
           {/* Search History */}
@@ -792,40 +763,24 @@ const HomeScreen = () => {
         </View>
       </ScrollView>
 
-      {/* Trang trí Giáng sinh ở dưới cùng màn hình, phía sau bottom nav bar */}
-      {isWinterTheme && (
-        <Image
-          source={require('../../assets/theme/christmas/searchborder.png')}
-          style={styles.bottomDecoration}
-          resizeMode="cover"
-        />
-      )}
-
       {/* iOS-style Search Modal */}
       <Modal
         visible={showSearchModal}
         animationType="none"
         transparent={false}
         statusBarTranslucent={true}>
-        <LinearGradient
-          colors={theme.colors.homeGradient}
-          locations={theme.colors.homeGradientLocations}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{ flex: 1 }}>
+        {renderBackground(
           <View
             style={{
               flex: 1,
-              // paddingTop: Platform.OS === 'android' ? insets.top : 0
             }}>
-            <StatusBar barStyle="dark-content" />
+            <StatusBar barStyle={theme.id === 'default' ? 'dark-content' : 'light-content'} />
 
             {/* Content Layer */}
             <View style={{ flex: 1 }}>
               {/* Header with Cancel button */}
               <View className="flex-row items-center justify-between px-4 py-4">
                 <View style={{ width: 36 }} />
-                {/* <Text className="font-semibold text-lg text-gray-900">{t('common.search')}</Text> */}
                 <TouchableOpacity
                   onPress={closeIOSSearch}
                   className="rounded-full bg-gray-100 p-2"
@@ -848,14 +803,16 @@ const HomeScreen = () => {
                     <View className="px-1">
                       {/* Results in Suggestion Box */}
                       <View className="mx-2 rounded-xl px-4 py-4">
-                        <Text className="mb-3 text-lg font-semibold text-gray-900">
+                        <Text
+                          className="mb-3 text-lg font-semibold"
+                          style={{ color: theme.colors.textPrimary }}>
                           Kết quả phù hợp
                         </Text>
                         <GradientBorderContainer>
                           <LinearGradient
                             colors={theme.colors.menuGradient}
-                            start={{ x: 1, y: 0 }}
-                            end={{ x: 0, y: 1 }}>
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}>
                             <View>
                               {searchResults.length > 0 ? (
                                 <ScrollView
@@ -877,6 +834,7 @@ const HomeScreen = () => {
                                       <item.component width={64} height={64} />
                                       <Text
                                         className="mt-1 text-center text-sm font-medium"
+                                        style={{ color: theme.colors.textPrimary }}
                                         numberOfLines={2}>
                                         {item.title}
                                       </Text>
@@ -902,7 +860,9 @@ const HomeScreen = () => {
                       {/* Recent Searches Below */}
                       {searchHistory.length > 0 && (
                         <View className="mx-2 mb-4 rounded-xl px-4 py-4">
-                          <Text className="mb-3 text-lg font-semibold text-gray-900">
+                          <Text
+                            className="mb-3 text-lg font-semibold"
+                            style={{ color: theme.colors.textPrimary }}>
                             Tìm kiếm gần đây
                           </Text>
                           {searchHistory.map((title) => {
@@ -913,8 +873,16 @@ const HomeScreen = () => {
                                 key={title}
                                 className="flex-row items-center border-b border-gray-100 py-3 last:border-b-0"
                                 onPress={() => handleIOSSelectItem(title)}>
-                                <FontAwesome name="clock-o" size={16} color="#666" />
-                                <Text className="ml-3 flex-1 text-gray-700">{title}</Text>
+                                <FontAwesome
+                                  name="clock-o"
+                                  size={16}
+                                  color={theme.colors.textSecondary}
+                                />
+                                <Text
+                                  className="ml-3 flex-1"
+                                  style={{ color: theme.colors.textPrimary }}>
+                                  {title}
+                                </Text>
                               </TouchableOpacity>
                             );
                           })}
@@ -926,12 +894,16 @@ const HomeScreen = () => {
                     <View className="px-1">
                       {/* Suggestions */}
                       <View className="mx-2 rounded-xl px-4 py-4">
-                        <Text className="mb-3 text-lg font-semibold text-gray-900">Gợi ý</Text>
+                        <Text
+                          className="mb-3 text-lg font-semibold"
+                          style={{ color: theme.colors.textPrimary }}>
+                          Gợi ý
+                        </Text>
                         <GradientBorderContainer>
                           <LinearGradient
                             colors={theme.colors.menuGradient}
-                            start={{ x: 1, y: 0 }}
-                            end={{ x: 0, y: 1 }}>
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}>
                             <ScrollView
                               horizontal
                               showsHorizontalScrollIndicator={false}
@@ -948,6 +920,7 @@ const HomeScreen = () => {
                                   <item.component width={64} height={64} />
                                   <Text
                                     className="mt-1 text-center text-sm font-medium"
+                                    style={{ color: theme.colors.textPrimary }}
                                     numberOfLines={2}>
                                     {item.title}
                                   </Text>
@@ -961,7 +934,9 @@ const HomeScreen = () => {
                       {/* Recent Searches Below */}
                       {searchHistory.length > 0 && (
                         <View className="mx-2 mb-4 rounded-xl px-4 py-4">
-                          <Text className="mb-3 text-lg font-semibold text-gray-900">
+                          <Text
+                            className="mb-3 text-lg font-semibold"
+                            style={{ color: theme.colors.textPrimary }}>
                             Tìm kiếm gần đây
                           </Text>
                           {searchHistory.map((title) => {
@@ -972,8 +947,16 @@ const HomeScreen = () => {
                                 key={title}
                                 className="flex-row items-center border-b border-gray-100 py-3 last:border-b-0"
                                 onPress={() => handleIOSSelectItem(title)}>
-                                <FontAwesome name="clock-o" size={16} color="#666" />
-                                <Text className="ml-3 flex-1 text-gray-700">{title}</Text>
+                                <FontAwesome
+                                  name="clock-o"
+                                  size={16}
+                                  color={theme.colors.textSecondary}
+                                />
+                                <Text
+                                  className="ml-3 flex-1"
+                                  style={{ color: theme.colors.textPrimary }}>
+                                  {title}
+                                </Text>
                               </TouchableOpacity>
                             );
                           })}
@@ -988,7 +971,9 @@ const HomeScreen = () => {
                     onPress={closeIOSSearch}
                     style={{ minHeight: 300, flex: 1 }}>
                     <View className="flex-1 items-center justify-center pt-8">
-                      <Text className="text-center text-sm text-gray-400">
+                      <Text
+                        className="text-center text-sm"
+                        style={{ color: theme.colors.textSecondary }}>
                         Nhấn vào đây để quay lại
                       </Text>
                     </View>
@@ -1021,9 +1006,9 @@ const HomeScreen = () => {
               </View>
             </View>
           </View>
-        </LinearGradient>
+        )}
       </Modal>
-    </LinearGradient>
+    </>
   );
 };
 
