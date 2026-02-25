@@ -39,6 +39,10 @@ coverage/
 # ios
 # android
 
+# Backup files gốc trước khi nén
+src/assets/theme/new-year/backup/
+src/assets/theme/christmas/backup-*.png
+
 # macOS
 .DS_Store
 

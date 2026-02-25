@@ -777,17 +777,59 @@ class AttendanceApiService {
       }
 
       const data = await response.json();
-      if (data.message?.data || data.data) {
-        return {
-          success: true,
-          data: data.message?.data || data.data,
-        };
-      } else {
+      
+      // Xử lý response từ Frappe API: response được wrap trong message field
+      // Format: { message: { success: true/false, data: {...}, message: "..." } }
+      const messageObj = data.message;
+      
+      // Trường hợp 1: Backend trả về error response
+      if (messageObj && typeof messageObj === 'object' && messageObj.success === false) {
+        const errorMsg = messageObj.message || 'Unknown backend error';
+        const debugInfo = messageObj.errors?.debug_info;
+        console.error('❌ [API] batchGetClassesAttendanceSummary: Backend error:', errorMsg);
+        if (debugInfo?.traceback) {
+          console.error('❌ [API] Traceback:', debugInfo.traceback);
+        }
         return {
           success: false,
-          error: 'Invalid response format',
+          error: errorMsg,
         };
       }
+      
+      // Trường hợp 2: Frappe wrapped response với success field
+      if (messageObj && typeof messageObj === 'object' && messageObj.success === true) {
+        // Log debug info nếu có (để kiểm tra check-in/out data)
+        if (messageObj.debug_info) {
+          console.log('🔍 [API] batchGetClassesAttendanceSummary debug_info:', JSON.stringify(messageObj.debug_info, null, 2));
+        }
+        return {
+          success: true,
+          data: messageObj.data || {}, // Return empty object nếu không có data
+        };
+      }
+      
+      // Trường hợp 3: Response có data trực tiếp (fallback)
+      if (data.data) {
+        return {
+          success: true,
+          data: data.data,
+        };
+      }
+      
+      // Trường hợp 4: messageObj.data tồn tại (legacy format)
+      if (messageObj?.data) {
+        return {
+          success: true,
+          data: messageObj.data,
+        };
+      }
+      
+      // Log để debug khi format không đúng
+      console.error('❌ [API] batchGetClassesAttendanceSummary: Unexpected response format:', JSON.stringify(data).substring(0, 500));
+      return {
+        success: false,
+        error: messageObj?.message || 'Invalid response format',
+      };
     } catch (error) {
       return {
         success: false,
