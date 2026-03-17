@@ -1,6 +1,6 @@
 {
   "name": "wis-mobile",
-  "version": "1.5.13",
+  "version": "1.5.14",
   "scripts": {
     "android": "npm run copy-firebase && expo run:android",
     "ios": "expo run:ios",
@@ -89,6 +89,7 @@
     "react-native-image-viewing": "^0.2.2",
     "react-native-image-zoom-viewer": "^3.0.1",
     "react-native-linear-gradient": "^2.8.3",
+    "react-native-markdown-display": "^7.0.2",
     "react-native-modal": "^14.0.0-rc.1",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
