@@ -513,7 +513,9 @@ class AttendanceService {
       });
       if (!res.ok) return [];
       const data = await res.json();
-      const rows = data?.data || data || [];
+      // Frappe có thể trả về data trực tiếp hoặc data.message.data
+      const rows =
+        data?.message?.data ?? data?.data ?? (Array.isArray(data) ? data : []);
       return Array.isArray(rows) ? rows : [];
     } catch (e) {
       return [];

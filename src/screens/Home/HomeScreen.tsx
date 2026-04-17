@@ -45,6 +45,22 @@ import CalendarIcon from '../../assets/calendar-icon.svg';
 import attendanceService from '../../services/attendanceService';
 import pushNotificationService from '../../services/pushNotificationService';
 import notificationCenterService from '../../services/notificationCenterService';
+import DailyHealthIcon from '../../assets/daily_health.svg';
+import TeacherHealthIcon from '../../assets/teacher_health.svg';
+import ClassLogIcon from '../../assets/classlog.svg';
+import DisciplineIcon from '../../assets/discipline.svg';
+// Icon tile module Vấn đề (CRM)
+import IssueIcon from '../../assets/issue.svg';
+import { hasCrmAccess } from '../../utils/crmIssuePermissions';
+import {
+  applyMenuTap,
+  createEmptyHomeMenuUsage,
+  loadHomeMenuUsage,
+  saveHomeMenuUsage,
+  sortMenuItemsByUsage,
+  type HomeMenuUsageState,
+} from '../../utils/homeMenuUsage';
+
 // Define type cho navigation
 type HomeScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -252,6 +268,28 @@ const HomeScreen = () => {
     }
   };
 
+  /** Ticket Hành chính (Frappe) — staff: danh sách tất cả; còn lại: ticket của tôi */
+  const navigateToAdministrativeTicket = () => {
+    try {
+      if (user) {
+        const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
+        if (
+          roles.includes('Mobile Administrative') ||
+          roles.includes('SIS Administrative') ||
+          roles.includes('SIS BOD')
+        ) {
+          navigation.navigate(ROUTES.SCREENS.ADMINISTRATIVE_TICKET_ADMIN);
+        } else {
+          navigation.navigate(ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST);
+        }
+      } else {
+        navigation.navigate(ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST);
+      }
+    } catch {
+      navigation.navigate(ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST);
+    }
+  };
+
   const navigateToDevices = () => {
     navigation.navigate(ROUTES.SCREENS.DEVICES);
   };
@@ -284,6 +322,26 @@ const HomeScreen = () => {
     navigation.navigate(ROUTES.SCREENS.CALENDAR);
   };
 
+  const navigateToClassLog = () => {
+    navigation.navigate(ROUTES.SCREENS.CLASS_LOG);
+  };
+
+  const navigateToDailyHealth = () => {
+    navigation.navigate(ROUTES.SCREENS.DAILY_HEALTH);
+  };
+
+  const navigateToTeacherHealth = () => {
+    navigation.navigate(ROUTES.SCREENS.TEACHER_HEALTH);
+  };
+
+  const navigateToDiscipline = () => {
+    navigation.navigate(ROUTES.SCREENS.DISCIPLINE as any);
+  };
+
+  const navigateToCrmIssues = () => {
+    navigation.navigate(ROUTES.SCREENS.CRM_ISSUE_LIST);
+  };
+
   // Role-based menu configuration
   const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
   const hasMobileTeacher = roles.includes('Mobile Teacher');
@@ -291,6 +349,10 @@ const HomeScreen = () => {
   const hasMobileBOD = roles.includes('Mobile BOD');
   const hasMobileUser = roles.includes('Mobile User');
   const hasMobileMonitor = roles.includes('Mobile Monitor');
+  const hasMobileMedical = roles.includes('Mobile Medical');
+  const hasMobileSalesCare = roles.includes('Mobile Sales Care');
+  /** Kỷ luật trên mobile: chỉ hiện tile khi có role Mobile Supervisory (cấp trên Frappe) */
+  const hasMobileSupervisory = roles.includes('Mobile Supervisory');
 
   const allItems = [
     {
@@ -365,6 +427,54 @@ const HomeScreen = () => {
       onPress: navigateToCalendar,
       key: 'calendar',
     },
+    {
+      id: 10,
+      title: t('home.class_log') || 'Sổ đầu bài',
+      component: ClassLogIcon,
+      description: 'Sổ đầu bài giảng dạy',
+      onPress: navigateToClassLog,
+      key: 'class_log',
+    },
+    {
+      id: 11,
+      title: t('home.daily_health') || 'Y tế',
+      component: DailyHealthIcon,
+      description: 'Quản lý Y tế học sinh',
+      onPress: navigateToDailyHealth,
+      key: 'daily_health',
+    },
+    {
+      id: 12,
+      title: t('teacher_health.title') || 'Sức khoẻ',
+      component: TeacherHealthIcon,
+      description: 'Báo cháo và sức khoẻ học sinh',
+      onPress: navigateToTeacherHealth,
+      key: 'teacher_health',
+    },
+    {
+      id: 13,
+      title: 'Kỷ luật',
+      component: DisciplineIcon,
+      description: 'Ghi nhận lỗi kỷ luật',
+      onPress: navigateToDiscipline,
+      key: 'discipline',
+    },
+    {
+      id: 14,
+      title: t('crm_issue.title'),
+      component: IssueIcon,
+      description: 'Vấn đề CRM tuyển sinh',
+      onPress: navigateToCrmIssues,
+      key: 'crm_issue',
+    },
+    {
+      id: 15,
+      title: t('home.administrative_tickets'),
+      component: TicketIcon,
+      description: t('home.administrative_tickets_desc'),
+      onPress: navigateToAdministrativeTicket,
+      key: 'administrative_tickets',
+    },
   ];
 
   // Thu thập tất cả các keys được phép dựa trên tất cả roles của user
@@ -382,33 +492,113 @@ const HomeScreen = () => {
 
   if (hasMobileIT) {
     // Mobile IT: Ticket Admin + Devices + Feedback + Menu + Calendar
-    ['tickets', 'devices', 'feedback', 'menu', 'calendar'].forEach((key) => allowedKeys.add(key));
-  }
-
-  if (hasMobileTeacher) {
-    // Mobile Teacher: Ticket Guest + Attendance + Leaves + Menu + Timetable + Calendar
-    ['tickets', 'attendance', 'documents', 'menu', 'timetable', 'calendar'].forEach((key) =>
+    ['tickets', 'administrative_tickets', 'devices', 'feedback', 'menu', 'calendar'].forEach((key) =>
       allowedKeys.add(key)
     );
   }
 
+  if (hasMobileTeacher) {
+    // Mobile Teacher: Ticket Guest + Attendance + Leaves + Menu + Timetable + Calendar + Class Log + Teacher Health (Kỷ luật: thêm riêng khi có Mobile Supervisory)
+    [
+      'tickets',
+      'administrative_tickets',
+      'attendance',
+      'documents',
+      'menu',
+      'timetable',
+      'calendar',
+      'class_log',
+      'teacher_health',
+    ].forEach((key) => allowedKeys.add(key));
+  }
+
+  if (hasMobileMedical) {
+    // Mobile Medical: Daily Health + Tickets + Menu + Calendar
+    ['daily_health', 'tickets', 'administrative_tickets', 'menu', 'calendar'].forEach((key) =>
+      allowedKeys.add(key)
+    );
+  }
+
+  if (hasMobileSalesCare) {
+    // Mobile Sales Care: Feedback + Menu + Calendar
+    ['feedback', 'menu', 'calendar'].forEach((key) => allowedKeys.add(key));
+  }
+
   if (hasMobileUser) {
     // Mobile User: Ticket Guest + Menu + Calendar
-    ['tickets', 'menu', 'calendar'].forEach((key) => allowedKeys.add(key));
+    ['tickets', 'administrative_tickets', 'menu', 'calendar'].forEach((key) => allowedKeys.add(key));
+  }
+
+  // Kỷ luật: chỉ menu khi có Mobile Supervisory (kể cả Mobile BOD — không có role này thì ẩn)
+  if (hasMobileSupervisory) {
+    allowedKeys.add('discipline');
+  } else {
+    allowedKeys.delete('discipline');
+  }
+
+  // Vấn đề CRM: role Frappe SIS/CRM (khớp check_crm_permission)
+  if (hasCrmAccess(roles)) {
+    allowedKeys.add('crm_issue');
   }
 
   // Nếu không có role nào hoặc chỉ có default role
   if (allowedKeys.size === 0) {
     // Default minimal access (Mobile User) + Menu + Calendar
-    ['tickets', 'menu', 'calendar'].forEach((key) => allowedKeys.add(key));
+    ['tickets', 'administrative_tickets', 'menu', 'calendar'].forEach((key) => allowedKeys.add(key));
   }
 
   // Filter menu items dựa trên tất cả các keys được phép
   const menuItems = allItems.filter((item) => allowedKeys.has(item.key));
 
+  /** Theo user — tile hay mở được đưa lên đầu (AsyncStorage) */
+  const homeMenuUserId = React.useMemo(
+    () => String(user?._id || user?.email || user?.username || ''),
+    [user?._id, user?.email, user?.username]
+  );
+  const [menuUsage, setMenuUsage] = useState<HomeMenuUsageState>(() => createEmptyHomeMenuUsage());
+
+  useEffect(() => {
+    if (!homeMenuUserId) return;
+    let cancelled = false;
+    void loadHomeMenuUsage(homeMenuUserId).then((data) => {
+      if (!cancelled) setMenuUsage(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [homeMenuUserId]);
+
+  const sortedMenuItems = React.useMemo(
+    () => sortMenuItemsByUsage(menuItems, menuUsage),
+    [menuItems, menuUsage]
+  );
+
+  const recordMenuTap = React.useCallback(
+    (key: string) => {
+      if (!homeMenuUserId) return;
+      setMenuUsage((prev) => {
+        const next = applyMenuTap(prev, key);
+        void saveHomeMenuUsage(homeMenuUserId, next);
+        return next;
+      });
+    },
+    [homeMenuUserId]
+  );
+
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
-  const [searchResults, setSearchResults] = useState(menuItems);
+
+  /** Derive — không dùng useEffect+setState (menuItems đổi reference mỗi render → loop vô hạn) */
+  const searchResults = React.useMemo(() => {
+    const q = searchQuery.trim();
+    if (!q) return sortedMenuItems;
+    const lower = q.toLowerCase();
+    return sortedMenuItems.filter(
+      (item) =>
+        item.title.toLowerCase().includes(lower) ||
+        item.description.toLowerCase().includes(lower)
+    );
+  }, [sortedMenuItems, searchQuery]);
 
   // iOS-style search states
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -431,28 +621,23 @@ const HomeScreen = () => {
           setShowSearchModal(false);
           setIsSearchFocused(false);
           setSearchQuery('');
-          setSearchResults(menuItems);
           setKeyboardHeight(0);
         }
       };
-    }, [isFocused, menuItems])
+    }, [isFocused])
   );
 
   const handleSearch = (text: string) => {
     setSearchQuery(text);
-    const results = menuItems.filter((item) =>
-      item.title.toLowerCase().includes(text.toLowerCase())
-    );
-    setSearchResults(results);
   };
 
   const handleSelectItem = (title: string) => {
     const item = menuItems.find((i) => i.title === title);
     if (item) {
+      recordMenuTap(item.key);
       item.onPress();
       setSearchHistory((prev) => [title, ...prev.filter((t) => t !== title)]);
       setSearchQuery('');
-      setSearchResults(menuItems);
     }
   };
 
@@ -466,7 +651,6 @@ const HomeScreen = () => {
     setShowSearchModal(false);
     setIsSearchFocused(false);
     setSearchQuery('');
-    setSearchResults(menuItems);
     setKeyboardHeight(0);
 
     // Dismiss keyboard asynchronously
@@ -497,17 +681,12 @@ const HomeScreen = () => {
 
   const handleIOSSearch = (text: string) => {
     setSearchQuery(text);
-    const results = menuItems.filter(
-      (item) =>
-        item.title.toLowerCase().includes(text.toLowerCase()) ||
-        item.description.toLowerCase().includes(text.toLowerCase())
-    );
-    setSearchResults(results);
   };
 
   const handleIOSSelectItem = (title: string) => {
     const item = menuItems.find((i) => i.title === title);
     if (item) {
+      recordMenuTap(item.key);
       setSearchHistory((prev) => [title, ...prev.filter((t) => t !== title)]);
       closeIOSSearch();
 
@@ -585,6 +764,12 @@ const HomeScreen = () => {
             style={{ color: theme.colors.primary }}>
             {t('home.welcome')} WISer
           </Text>
+          {/* Icon AI Assistant - góc trên bên trái */}
+          <TouchableOpacity
+            className="absolute left-8 top-1"
+            onPress={() => navigation.navigate(ROUTES.SCREENS.AI_ASSISTANT as any)}>
+            <Ionicons name="sparkles" size={24} color={theme.colors.primary} />
+          </TouchableOpacity>
           <TouchableOpacity
             className="absolute right-8 top-1"
             onPress={() => navigation.navigate(ROUTES.MAIN.NOTIFICATIONS)}>
@@ -699,7 +884,7 @@ const HomeScreen = () => {
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 16 }}>
-                    {menuItems.map((item, index) => (
+                    {sortedMenuItems.map((item, index) => (
                       <TouchableOpacity
                         key={item.id}
                         style={{
@@ -707,7 +892,10 @@ const HomeScreen = () => {
                           alignItems: 'center',
                           marginHorizontal: 4,
                         }}
-                        onPress={item.onPress}>
+                        onPress={() => {
+                          recordMenuTap(item.key);
+                          item.onPress();
+                        }}>
                         <item.component width={64} height={64} />
                         <Text
                           className="mt-1 text-center text-sm font-medium"
@@ -746,7 +934,7 @@ const HomeScreen = () => {
                 {t('common.search')} gần đây
               </Text>
               {searchHistory.slice(0, 3).map((title) => {
-                const item = menuItems.find((i) => i.title === title);
+                const item = sortedMenuItems.find((i) => i.title === title);
                 if (!item) return null;
                 return (
                   <TouchableOpacity
@@ -908,7 +1096,7 @@ const HomeScreen = () => {
                               horizontal
                               showsHorizontalScrollIndicator={false}
                               contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 16 }}>
-                              {menuItems.map((item) => (
+                              {sortedMenuItems.map((item) => (
                                 <TouchableOpacity
                                   key={item.id}
                                   style={{

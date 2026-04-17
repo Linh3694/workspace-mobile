@@ -22,6 +22,8 @@ interface TimetableEntry {
   date: string;
   day_of_week: string;
   timetable_column_id: string;
+  /** Tên tiết — trùng khóa period lưu trong SIS Class Attendance (giống web LessonLog) */
+  period_name?: string;
   class_id: string;
   subject_id: string;
   room_id: string;
@@ -326,12 +328,13 @@ class AttendanceApiService {
         class_id: String(classId),
       });
 
-      const response = await fetch(
-        `${BASE_URL}/api/method/erp.api.erp_sis.class_student.get_all_class_students?${qs.toString()}`,
-        { headers }
-      );
+      const url = `${BASE_URL}/api/method/erp.api.erp_sis.class_student.get_all_class_students?${qs.toString()}`;
+      console.log('📚 getClassStudents - Calling URL:', url);
+
+      const response = await fetch(url, { headers });
 
       if (!response.ok) {
+        console.error('📚 getClassStudents - Response not OK:', response.status);
         return {
           success: false,
           error: `Failed to fetch class students: ${response.status}`,
@@ -339,15 +342,26 @@ class AttendanceApiService {
       }
 
       const data = await response.json();
-      const students = (data?.data?.data || data?.message?.data || [])
+      console.log('📚 getClassStudents - Raw response:', JSON.stringify(data).substring(0, 500));
+      
+      // Frappe trả về { message: { success, data, pagination } }
+      const responseData = data?.message || data;
+      const classStudents = responseData?.data || [];
+      
+      console.log('📚 getClassStudents - Class students count:', classStudents.length);
+      
+      const students = classStudents
         .map((r: any) => r.student_id)
         .filter(Boolean);
+
+      console.log('📚 getClassStudents - Extracted student IDs:', students.length);
 
       return {
         success: true,
         data: students,
       };
     } catch (error) {
+      console.error('📚 getClassStudents - Error:', error);
       return {
         success: false,
         error: `Error fetching class students: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -396,16 +410,19 @@ class AttendanceApiService {
 
   /**
    * Get class attendance data (single period)
+   * @param skipCache — true: bỏ qua Redis 5 phút (sau Y tế / revert điểm danh cần dữ liệu mới)
    */
   async getClassAttendance(
     classId: string,
     date: string,
-    period: string
+    period: string,
+    skipCache?: boolean
   ): Promise<{ success: boolean; data?: any[]; error?: string }> {
     try {
       const headers = await this.getAuthHeaders();
+      const skip = skipCache ? '&skip_cache=1' : '';
       const response = await fetch(
-        `${BASE_URL}/api/method/erp.api.erp_sis.attendance.get_class_attendance?class_id=${encodeURIComponent(classId)}&date=${date}&period=${encodeURIComponent(period)}`,
+        `${BASE_URL}/api/method/erp.api.erp_sis.attendance.get_class_attendance?class_id=${encodeURIComponent(classId)}&date=${date}&period=${encodeURIComponent(period)}${skip}`,
         { headers }
       );
 

@@ -11,6 +11,11 @@ import TicketCreate from '../screens/Ticket/TicketCreate';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import TicketAdminDetail from '../screens/Ticket/TicketAdminDetail';
 import TicketGuestDetail from '../screens/Ticket/TicketGuestDetail';
+import AdministrativeTicketGuestScreen from '../screens/AdministrativeTicket/TicketGuestScreen';
+import AdministrativeTicketAdminScreen from '../screens/AdministrativeTicket/TicketAdminScreen';
+import AdministrativeTicketCreate from '../screens/AdministrativeTicket/TicketCreate';
+import AdministrativeTicketAdminDetail from '../screens/AdministrativeTicket/TicketAdminDetail';
+import AdministrativeTicketGuestDetail from '../screens/AdministrativeTicket/TicketGuestDetail';
 import DevicesScreen from '../screens/Devices/DevicesScreen';
 import DevicesDetailScreen from '../screens/Devices/DevicesDetailScreen';
 import DeviceAssignmentHistoryScreen from '../screens/Devices/DeviceAssignmentHistoryScreen';
@@ -18,7 +23,6 @@ import { useAuth } from '../context/AuthContext';
 import AttendanceHome from '../screens/Attendance/AttendanceHome';
 import AttendanceDetail from '../screens/Attendance/AttendanceDetail';
 import LeaveRequestsScreen from '../screens/LeaveRequests/LeaveRequestsScreen';
-import LeaveRequestsDetailScreen from '../screens/LeaveRequests/LeaveRequestsDetailScreen';
 import CreateLeaveRequestScreen from '../screens/LeaveRequests/CreateLeaveRequestScreen';
 import NotificationsScreen from '../screens/Notifications/NotificationsScreen';
 import {
@@ -33,6 +37,29 @@ import { TimetableScreen } from '../screens/Timetable';
 import { CalendarScreen } from '../screens/Calendar';
 import PostDetailScreen from '../screens/Wislife/PostDetailScreen';
 import { Post } from '../types/post';
+import { ClassLogScreen, ClassLogDetailScreen } from '../screens/ClassLog';
+import StudentClassLogDetailScreen from '../screens/ClassLog/StudentClassLogDetailScreen';
+import { ClassLogStudent } from '../services/classLogService';
+import {
+  DailyHealthScreen,
+  HealthExamScreen,
+  CreateHealthVisitScreen,
+  HospitalDiagnosisScreen,
+  SupplementaryExamScreen,
+} from '../screens/DailyHealth';
+import { TeacherHealthScreen } from '../screens/TeacherHealth';
+import StudentHealthDetailScreen from '../screens/TeacherHealth/StudentHealthDetailScreen';
+import { DailyHealthVisit } from '../services/dailyHealthService';
+import { TimetableEntry } from '../services/timetableService';
+import DisciplineScreen from '../screens/Discipline/DisciplineScreen';
+import DisciplineDetailScreen from '../screens/Discipline/DisciplineDetailScreen';
+import DisciplineAddEditScreen from '../screens/Discipline/DisciplineAddEditScreen';
+import { AIAssistantScreen } from '../screens/AIAssistant';
+import {
+  CRMIssueListScreen,
+  CRMIssueDetailScreen,
+  CRMIssueAddEditScreen,
+} from '../screens/CRMIssue';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -69,6 +96,11 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.TICKET]: undefined;
   [ROUTES.SCREENS.TICKET_ADMIN]: undefined;
   [ROUTES.SCREENS.TICKET_GUEST]: undefined;
+  [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_CREATE]: undefined;
+  [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_ADMIN_DETAIL]: { ticketId: string };
+  [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST_DETAIL]: { ticketId: string };
+  [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_ADMIN]: undefined;
+  [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST]: undefined;
   [ROUTES.SCREENS.DEVICES]: { refresh?: boolean } | undefined;
   [ROUTES.SCREENS.DEVICE_DETAIL]: {
     deviceId: string;
@@ -81,13 +113,13 @@ export type RootStackParamList = {
   };
   [ROUTES.SCREENS.ATTENDANCE_HOME]: undefined;
   [ROUTES.SCREENS.ATTENDANCE_DETAIL]: { classId: string; date: string };
-  [ROUTES.SCREENS.LEAVE_REQUESTS]: undefined;
-  [ROUTES.SCREENS.LEAVE_REQUESTS_DETAIL]: {
-    classId: string;
-    classTitle?: string;
-    leaveRequestId?: string;
-    fromNotification?: boolean;
-  };
+  [ROUTES.SCREENS.LEAVE_REQUESTS]:
+    | {
+        classId?: string;
+        leaveRequestId?: string;
+        fromNotification?: boolean;
+      }
+    | undefined;
   [ROUTES.SCREENS.CREATE_LEAVE_REQUEST]: { classId: string; classTitle?: string };
   Notification: { notificationId?: string } | undefined;
   // Bus Module Routes
@@ -104,8 +136,66 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.TIMETABLE]: undefined;
   // Calendar Module Routes
   [ROUTES.SCREENS.CALENDAR]: undefined;
+  // Class Log Module Routes (Sổ đầu bài)
+  [ROUTES.SCREENS.CLASS_LOG]: undefined;
+  [ROUTES.SCREENS.CLASS_LOG_DETAIL]: {
+    classId: string;
+    date: string;
+    period: string;
+    periodName: string;
+    subjectTitle?: string;
+    timetableEntry?: TimetableEntry;
+  };
+  [ROUTES.SCREENS.STUDENT_CLASS_LOG_DETAIL]: {
+    student: {
+      name: string;
+      student_id?: string;
+      student_name: string;
+      student_code?: string;
+      user_image?: string;
+      avatar_url?: string;
+      photo?: string;
+    };
+    attendanceStatus: 'present' | 'absent' | 'late' | 'excused';
+    isAtClinic?: boolean;
+    healthVisitInfo?: {
+      visit_id: string;
+      status: string;
+      leave_class_time: string | null;
+      leave_clinic_time: string | null;
+    };
+    classId: string;
+    date: string;
+    period: string;
+    initialData?: ClassLogStudent;
+  };
+  // Daily Health Module Routes (Y tế)
+  [ROUTES.SCREENS.DAILY_HEALTH]: { visitId?: string } | undefined;
+  [ROUTES.SCREENS.HEALTH_EXAM]: { visitId: string; visitData?: DailyHealthVisit };
+  [ROUTES.SCREENS.CREATE_HEALTH_VISIT]: undefined;
+  [ROUTES.SCREENS.HEALTH_EXAM_HOSPITAL]: { visitId: string; examId: string };
+  [ROUTES.SCREENS.HEALTH_EXAM_SUPPLEMENTARY]: { visitId: string; examId: string };
+  // Teacher Health Module Routes (Sức khoẻ - Mobile Teacher)
+  [ROUTES.SCREENS.TEACHER_HEALTH]: undefined;
+  [ROUTES.SCREENS.STUDENT_HEALTH_DETAIL]: {
+    classId: string;
+    studentId: string;
+    date: string;
+  };
+  // Discipline Module Routes (Kỷ luật)
+  [ROUTES.SCREENS.DISCIPLINE]: undefined;
+  [ROUTES.SCREENS.DISCIPLINE_ADD]: undefined;
+  [ROUTES.SCREENS.DISCIPLINE_DETAIL]: { recordId: string; record?: any };
+  [ROUTES.SCREENS.DISCIPLINE_EDIT]: { recordId: string; record?: any };
   // Wislife Module Routes
   PostDetail: { post: Post; onUpdate?: (post: Post) => void };
+  // AI Assistant
+  [ROUTES.SCREENS.AI_ASSISTANT]: undefined;
+  // CRM Issue (Vấn đề)
+  [ROUTES.SCREENS.CRM_ISSUE_LIST]: undefined;
+  [ROUTES.SCREENS.CRM_ISSUE_DETAIL]: { issueId: string };
+  [ROUTES.SCREENS.CRM_ISSUE_ADD]: undefined;
+  [ROUTES.SCREENS.CRM_ISSUE_EDIT]: { issueId: string };
 };
 
 const MainTabWrapper = ({ route }: { route: any }) => <BottomTabNavigator route={route} />;
@@ -246,6 +336,31 @@ const AppNavigator = () => {
             options={{ headerShown: false }}
           />
           <Stack.Screen
+            name={ROUTES.SCREENS.ADMINISTRATIVE_TICKET_CREATE}
+            component={AdministrativeTicketCreate}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.ADMINISTRATIVE_TICKET_ADMIN_DETAIL}
+            component={AdministrativeTicketAdminDetail}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST_DETAIL}
+            component={AdministrativeTicketGuestDetail}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.ADMINISTRATIVE_TICKET_ADMIN}
+            component={AdministrativeTicketAdminScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST}
+            component={AdministrativeTicketGuestScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
             name={ROUTES.SCREENS.DEVICES}
             component={DevicesScreen}
             options={{ headerShown: false }}
@@ -273,11 +388,6 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.LEAVE_REQUESTS}
             component={LeaveRequestsScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name={ROUTES.SCREENS.LEAVE_REQUESTS_DETAIL}
-            component={LeaveRequestsDetailScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen
@@ -336,10 +446,111 @@ const AppNavigator = () => {
             component={CalendarScreen}
             options={{ headerShown: false }}
           />
+          {/* Class Log Module Screens (Sổ đầu bài) */}
+          <Stack.Screen
+            name={ROUTES.SCREENS.CLASS_LOG}
+            component={ClassLogScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.CLASS_LOG_DETAIL}
+            component={ClassLogDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.STUDENT_CLASS_LOG_DETAIL}
+            component={StudentClassLogDetailScreen}
+            options={{ headerShown: false }}
+          />
+          {/* Daily Health Module Screens (Y tế) */}
+          <Stack.Screen
+            name={ROUTES.SCREENS.DAILY_HEALTH}
+            component={DailyHealthScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.HEALTH_EXAM}
+            component={HealthExamScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.CREATE_HEALTH_VISIT}
+            component={CreateHealthVisitScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.HEALTH_EXAM_HOSPITAL}
+            component={HospitalDiagnosisScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.HEALTH_EXAM_SUPPLEMENTARY}
+            component={SupplementaryExamScreen}
+            options={{ headerShown: false }}
+          />
+          {/* Teacher Health Module Screens (Sức khoẻ - Mobile Teacher) */}
+          <Stack.Screen
+            name={ROUTES.SCREENS.TEACHER_HEALTH}
+            component={TeacherHealthScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.STUDENT_HEALTH_DETAIL}
+            component={StudentHealthDetailScreen}
+            options={{ headerShown: false }}
+          />
+          {/* Discipline Module Screens (Kỷ luật) */}
+          <Stack.Screen
+            name={ROUTES.SCREENS.DISCIPLINE}
+            component={DisciplineScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.DISCIPLINE_ADD}
+            component={DisciplineAddEditScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.DISCIPLINE_DETAIL}
+            component={DisciplineDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.DISCIPLINE_EDIT}
+            component={DisciplineAddEditScreen}
+            options={{ headerShown: false }}
+          />
           {/* Wislife Module Screen */}
           <Stack.Screen
             name="PostDetail"
             component={PostDetailScreen}
+            options={{ headerShown: false }}
+          />
+          {/* AI Assistant Screen */}
+          <Stack.Screen
+            name={ROUTES.SCREENS.AI_ASSISTANT}
+            component={AIAssistantScreen}
+            options={{ headerShown: false }}
+          />
+          {/* CRM Issue (Vấn đề) */}
+          <Stack.Screen
+            name={ROUTES.SCREENS.CRM_ISSUE_LIST}
+            component={CRMIssueListScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.CRM_ISSUE_DETAIL}
+            component={CRMIssueDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.CRM_ISSUE_ADD}
+            component={CRMIssueAddEditScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.CRM_ISSUE_EDIT}
+            component={CRMIssueAddEditScreen}
             options={{ headerShown: false }}
           />
         </>

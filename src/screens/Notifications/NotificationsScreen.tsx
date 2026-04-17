@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, FlatList, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { G, Path, Rect, Defs, ClipPath } from 'react-native-svg';
@@ -9,6 +9,7 @@ import * as Notifications from 'expo-notifications';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { notificationCenterService } from '../../services/notificationCenterService';
+import { postService } from '../../services/postService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ROUTES } from '../../constants/routes';
 
@@ -195,10 +196,35 @@ const groupWislifeNotifications = (notifications: NotificationData[]): Notificat
   return result;
 };
 
+/** Tìm dòng hiển thị (kể cả nhóm Wislife) theo id document notification */
+const findNotificationRowById = (
+  list: NotificationData[],
+  targetId: string
+): NotificationData | null => {
+  for (const row of list) {
+    const rowId = row._id || row.id;
+    if (rowId === targetId) {
+      return row;
+    }
+    if (row.isGrouped && row.groupedNotifications?.length) {
+      const inGroup = row.groupedNotifications.some((n) => (n._id || n.id) === targetId);
+      if (inGroup) {
+        return row;
+      }
+    }
+  }
+  return null;
+};
+
 const NotificationsScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
+  const routeNotificationId = (route.params as { notificationId?: string } | undefined)
+    ?.notificationId;
   const insets = useSafeAreaInsets();
+  /** Deep link: mở đúng hành động khi có route.params.notificationId (sau khi đã tải danh sách) */
+  const pendingNotificationIdRef = useRef<string | null>(null);
+  const deepLinkConsumedRef = useRef(false);
   const [notifications, setNotifications] = useState<NotificationData[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -387,25 +413,40 @@ const NotificationsScreen = () => {
       // Handle navigation based on notification type
       const data = notification.data;
 
-      // Helper function để navigate đến ticket detail dựa trên role
-      const navigateToTicketDetail = async (ticketId: string) => {
+      // Helper: Ticket IT vs Ticket Hành chính (pushNotificationNavigation)
+      const navigateToTicketDetail = async (ticketId: string, isAdministrative?: boolean) => {
         try {
-          // Kiểm tra role để navigate đến đúng màn hình
           const storedRolesStr = await AsyncStorage.getItem('userRoles');
           const storedRoles: string[] = storedRolesStr ? JSON.parse(storedRolesStr) : [];
-          const hasMobileIT = storedRoles.includes('Mobile IT');
 
+          if (isAdministrative) {
+            const staff =
+              storedRoles.includes('Mobile Administrative') ||
+              storedRoles.includes('SIS Administrative') ||
+              storedRoles.includes('SIS BOD');
+            (navigation as any).navigate(
+              staff
+                ? ROUTES.SCREENS.ADMINISTRATIVE_TICKET_ADMIN_DETAIL
+                : ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST_DETAIL,
+              { ticketId }
+            );
+            return;
+          }
+
+          const hasMobileIT = storedRoles.includes('Mobile IT');
           if (hasMobileIT) {
-            // Admin -> TicketAdminDetail
             (navigation as any).navigate(ROUTES.SCREENS.TICKET_ADMIN_DETAIL, { ticketId });
           } else {
-            // Guest -> TicketGuestDetail
             (navigation as any).navigate(ROUTES.SCREENS.TICKET_GUEST_DETAIL, { ticketId });
           }
         } catch (error) {
           console.error('Error navigating to ticket detail:', error);
-          // Fallback to guest detail
-          (navigation as any).navigate(ROUTES.SCREENS.TICKET_GUEST_DETAIL, { ticketId });
+          (navigation as any).navigate(
+            isAdministrative
+              ? ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST_DETAIL
+              : ROUTES.SCREENS.TICKET_GUEST_DETAIL,
+            { ticketId }
+          );
         }
       };
 
@@ -414,21 +455,16 @@ const NotificationsScreen = () => {
         (navigation as any).navigate(ROUTES.SCREENS.FEEDBACK_DETAIL, { feedbackId });
       };
 
-      // Helper function để navigate đến leave requests detail
+      // Helper function để navigate đến leave requests (màn hình chi tiết theo lớp)
       const navigateToLeaveRequests = (params: any) => {
         const classId = params?.class_id || params?.classId;
         const leaveRequestId = params?.leave_request_id || params?.leaveRequestId;
 
-        if (classId) {
-          (navigation as any).navigate(ROUTES.SCREENS.LEAVE_REQUESTS_DETAIL, {
-            classId,
-            leaveRequestId,
-            fromNotification: true,
-          });
-        } else {
-          // Fallback to class list if no classId
-          (navigation as any).navigate(ROUTES.SCREENS.LEAVE_REQUESTS);
-        }
+        (navigation as any).navigate(ROUTES.SCREENS.LEAVE_REQUESTS, {
+          classId: classId || undefined,
+          leaveRequestId: leaveRequestId || undefined,
+          fromNotification: true,
+        });
       };
 
       // Helper function để navigate đến attendance home
@@ -456,8 +492,10 @@ const NotificationsScreen = () => {
       ];
 
       if (ticketTypes.includes(data?.type) || ticketActions.includes(data?.action)) {
-        if (data?.ticketId) {
-          await navigateToTicketDetail(data.ticketId);
+        const tid = data?.ticketId || data?.ticket_id;
+        if (tid) {
+          const isHc = data?.ticket_kind === 'administrative' || data?.ticketKind === 'administrative';
+          await navigateToTicketDetail(tid, isHc);
           return;
         }
       }
@@ -478,8 +516,26 @@ const NotificationsScreen = () => {
       ];
 
       if (feedbackTypes.includes(data?.type) || feedbackActions.includes(data?.action)) {
-        if (data?.feedbackId) {
-          navigateToFeedbackDetail(data.feedbackId);
+        const feedbackId = data?.feedbackId || data?.feedback_id;
+        if (feedbackId) {
+          navigateToFeedbackDetail(feedbackId);
+          return;
+        }
+      }
+
+      // === CRM ISSUE — khớp pushNotificationNavigation (issueId / issue_id) ===
+      const crmIssueTypes = [
+        'crm_issue_created',
+        'crm_issue_approved',
+        'crm_issue_rejected',
+        'crm_issue_status_changed',
+        'crm_issue_pic_changed',
+        'crm_issue_log_added',
+      ];
+      if (crmIssueTypes.includes(data?.type || '')) {
+        const issueId = data?.issueId || data?.issue_id;
+        if (issueId) {
+          (navigation as any).navigate(ROUTES.SCREENS.CRM_ISSUE_DETAIL, { issueId });
           return;
         }
       }
@@ -498,22 +554,65 @@ const NotificationsScreen = () => {
         return;
       }
 
-      // attendance, staff_attendance: chỉ đánh dấu đã đọc, không điều hướng
+      // attendance, staff_attendance — đồng bộ push: mở màn Điểm danh (đã ở tab Thông báo thì không cần reset Main)
       if (data?.type === 'attendance' || data?.type === 'staff_attendance') {
-        return;
-      }
-
-      // === CHAT NOTIFICATIONS ===
-      if (data?.type === 'chat_message' && data?.chatId) {
-        // Navigate to Main with Chat tab
-        (navigation as any).navigate(ROUTES.SCREENS.MAIN, {
-          screen: 'Chat',
-          params: { chatId: data.chatId },
+        (navigation as any).navigate(ROUTES.SCREENS.ATTENDANCE_HOME, {
+          initialTab: data?.tab || 'GVCN',
         });
         return;
       }
 
-      // === WISLIFE NOTIFICATIONS ===
+      // === DAILY HEALTH — đồng bộ pushNotificationNavigation ===
+      const healthTypes = [
+        'daily_health',
+        'health_visit_created',
+        'health_visit_received',
+        'health_visit_completed',
+        'health_visit_escalation',
+        'health_visit_cancelled',
+        'health_visit_rejected',
+      ];
+      if (healthTypes.includes(data?.type || '')) {
+        const visitId = data?.visit_id || data?.visitId;
+        const notificationType = data?.type;
+
+        switch (notificationType) {
+          case 'health_visit_created':
+          case 'health_visit_escalation':
+            (navigation as any).navigate(ROUTES.SCREENS.DAILY_HEALTH, {});
+            return;
+          case 'health_visit_received':
+          case 'health_visit_completed':
+            if (visitId) {
+              (navigation as any).navigate(ROUTES.SCREENS.HEALTH_EXAM, { visitId });
+            } else {
+              (navigation as any).navigate(ROUTES.SCREENS.DAILY_HEALTH, {});
+            }
+            return;
+          case 'health_visit_cancelled':
+          case 'health_visit_rejected':
+            (navigation as any).navigate(ROUTES.SCREENS.DAILY_HEALTH, {});
+            return;
+          default:
+            if (visitId) {
+              (navigation as any).navigate(ROUTES.SCREENS.HEALTH_EXAM, { visitId });
+            } else {
+              (navigation as any).navigate(ROUTES.SCREENS.DAILY_HEALTH, {});
+            }
+            return;
+        }
+      }
+
+      // === CHAT — stack Chat chưa gắn vào Main: mở tab thông báo ===
+      if (data?.type === 'chat_message') {
+        (navigation as any).navigate(ROUTES.SCREENS.MAIN, {
+          screen: ROUTES.MAIN.NOTIFICATIONS,
+          params: data.notificationId ? { notificationId: data.notificationId } : undefined,
+        });
+        return;
+      }
+
+      // === WISLIFE — tab Social (ROUTES.MAIN.WISLIFE), mở PostDetail khi có postId ===
       const wislifeTypes = [
         'wislife_new_post',
         'wislife_post_reaction',
@@ -525,16 +624,26 @@ const NotificationsScreen = () => {
 
       if (wislifeTypes.includes(data?.type)) {
         if (data?.postId) {
-          // Navigate to Main with Wislife tab
-          (navigation as any).navigate(ROUTES.SCREENS.MAIN, {
-            screen: 'Wislife',
-            params: { postId: data.postId, commentId: data.commentId },
-          });
+          try {
+            const post = await postService.getPostById(data.postId);
+            (navigation as any).navigate('PostDetail', { post });
+          } catch (e) {
+            console.warn('[Notifications] Wislife: không tải post, mở tab Social:', e);
+            (navigation as any).navigate(ROUTES.SCREENS.MAIN, {
+              screen: ROUTES.MAIN.WISLIFE,
+              params: { postId: data.postId, commentId: data.commentId },
+            });
+          }
           return;
         }
+        (navigation as any).navigate(ROUTES.SCREENS.MAIN, {
+          screen: ROUTES.MAIN.WISLIFE,
+          params: {},
+        });
+        return;
       }
 
-      // === DEFAULT: Không xử lý đặc biệt ===
+      // === DEFAULT — giống push: về tab Thông báo (đang ở đây thì chỉ log, tránh flicker) ===
       console.log(
         '📝 Unhandled notification type in NotificationsScreen:',
         data?.type,
@@ -557,24 +666,64 @@ const NotificationsScreen = () => {
     }
   }, [loadingMore, pagination.page, pagination.pages, fetchNotifications]);
 
-  // Initial load
+  // Đồng bộ notificationId từ route (push / Main) → hàng đợi deep link
   useEffect(() => {
-    fetchNotifications();
-
-    // Clear badge count
-    Notifications.setBadgeCountAsync(0);
-
-    // Handle deep link if notificationId is provided
-    if ((route.params as any)?.notificationId) {
-      // Find and handle the notification
-      const notification = notifications.find(
-        (n) => n._id === (route.params as any).notificationId
-      );
-      if (notification) {
-        handleNotificationPress(notification);
-      }
+    if (typeof routeNotificationId === 'string' && routeNotificationId) {
+      pendingNotificationIdRef.current = routeNotificationId;
+      deepLinkConsumedRef.current = false;
     }
+  }, [routeNotificationId]);
+
+  useEffect(() => {
+    Notifications.setBadgeCountAsync(0);
   }, []);
+
+  // Deep link: tìm bản ghi sau khi tải xong; tự gọi load thêm trang nếu chưa có trong batch hiện tại
+  useEffect(() => {
+    const targetId = pendingNotificationIdRef.current;
+    if (!targetId || deepLinkConsumedRef.current) {
+      return;
+    }
+
+    if (loading) {
+      return;
+    }
+
+    const found = findNotificationRowById(notifications, targetId);
+    if (found) {
+      deepLinkConsumedRef.current = true;
+      pendingNotificationIdRef.current = null;
+      try {
+        (navigation as any).setParams?.({ notificationId: undefined });
+      } catch {
+        /* ignore */
+      }
+      void handleNotificationPress(found);
+      return;
+    }
+
+    if (loadingMore) {
+      return;
+    }
+
+    if (pagination.pages > 0 && pagination.page < pagination.pages) {
+      fetchNotifications(pagination.page + 1);
+      return;
+    }
+
+    deepLinkConsumedRef.current = true;
+    pendingNotificationIdRef.current = null;
+    console.warn('[Notifications] Deep link: không tìm thấy notification', targetId);
+  }, [
+    loading,
+    loadingMore,
+    notifications,
+    pagination.page,
+    pagination.pages,
+    fetchNotifications,
+    handleNotificationPress,
+    navigation,
+  ]);
 
   // Refresh notifications khi screen focus
   useFocusEffect(

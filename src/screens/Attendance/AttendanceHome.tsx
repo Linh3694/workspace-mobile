@@ -9,6 +9,13 @@ import { useAuth } from '../../context/AuthContext';
 import { attendanceApiService } from '../../services/attendanceApiService';
 import { TouchableOpacity } from '../../components/Common';
 
+// Khóa period gửi batch/get attendance: DB lưu theo tên tiết như web, không phải timetable_column_id
+const getGvbmAttendancePeriodKey = (entry: { period_name?: string; timetable_column_id?: string }) => {
+  const fromName = String(entry?.period_name || '').trim();
+  const fromCol = String(entry?.timetable_column_id || '').trim();
+  return fromName || fromCol;
+};
+
 // Helper function to format time from HH:MM:SS to HH:MM
 const formatTime = (time: string | undefined): string => {
   if (!time) return '';
@@ -39,249 +46,251 @@ interface ClassCardProps {
 }
 
 // Extract ClassCard ra ngoài và wrap React.memo để tránh re-render không cần thiết
-const ClassCard = React.memo(({ classData, stats, tab, currentDate, onNavigate }: ClassCardProps) => {
-  const isTimetableEntry = classData.timetable_column_id !== undefined;
-  const title =
-    classData.title ||
-    classData.class_title ||
-    classData.short_title ||
-    classData.name ||
-    'Unknown Class';
-  const periodId = isTimetableEntry ? classData.timetable_column_id : null;
-  const periodName = isTimetableEntry ? classData.period_name : null;
-  const subject = isTimetableEntry ? classData.subject_title : null;
-  const room = isTimetableEntry ? classData.room_name : null;
-  const hasAttendance = stats?.hasAttendance || false;
+const ClassCard = React.memo(
+  ({ classData, stats, tab, currentDate, onNavigate }: ClassCardProps) => {
+    const isTimetableEntry = classData.timetable_column_id !== undefined;
+    const title =
+      classData.title ||
+      classData.class_title ||
+      classData.short_title ||
+      classData.name ||
+      'Unknown Class';
+    const periodId = isTimetableEntry ? classData.timetable_column_id : null;
+    const periodName = isTimetableEntry ? classData.period_name : null;
+    const subject = isTimetableEntry ? classData.subject_title : null;
+    const room = isTimetableEntry ? classData.room_name : null;
+    const hasAttendance = stats?.hasAttendance || false;
 
-  const presentCount = stats?.presentCount || 0;
-  const absentCount = stats?.absentCount || 0;
-  const lateCount = stats?.lateCount || 0;
-  const excusedCount = stats?.excusedCount || 0;
+    const presentCount = stats?.presentCount || 0;
+    const absentCount = stats?.absentCount || 0;
+    const lateCount = stats?.lateCount || 0;
+    const excusedCount = stats?.excusedCount || 0;
 
-  return (
-    <View
-      style={{
-        backgroundColor: '#F6F6F6',
-        padding: 16,
-        borderRadius: 16,
-      }}>
-      {/* Header với title và badge */}
+    return (
       <View
         style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 12,
+          backgroundColor: '#F6F6F6',
+          padding: 16,
+          borderRadius: 16,
         }}>
-        <Text style={{ fontSize: 18, fontWeight: '600', flex: 1, fontFamily: 'Mulish-Bold' }}>
-          {title}
-        </Text>
-        <View
-          style={{
-            backgroundColor: hasAttendance ? '#3DB838' : '#FFFFFF',
-            paddingHorizontal: 14,
-            paddingVertical: 8,
-            borderRadius: 20,
-            borderWidth: hasAttendance ? 0 : 1,
-            borderColor: '#E5E7EB',
-          }}>
-          <Text
-            style={{
-              fontSize: 13,
-              fontWeight: '600',
-              color: hasAttendance ? '#FFFFFF' : '#6B7280',
-              fontFamily: 'Mulish-Bold',
-            }}>
-            {hasAttendance ? 'Đã điểm danh' : 'Chưa điểm danh'}
-          </Text>
-        </View>
-      </View>
-
-      {/* Môn học và phòng - chỉ cho tab GVBM */}
-      {isTimetableEntry && (
-        <View style={{ marginBottom: 16 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-            <Ionicons name="globe-outline" size={24} color="#666" />
-            <Text
-              style={{
-                fontSize: 14,
-                color: '#666',
-                marginLeft: 10,
-                fontFamily: 'Mulish-Medium',
-              }}>
-              {subject || 'Chưa có môn'}
-            </Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Ionicons name="location-outline" size={24} color="#666" />
-            <Text
-              style={{
-                fontSize: 14,
-                color: '#666',
-                marginLeft: 10,
-                fontFamily: 'Mulish-Medium',
-              }}>
-              {room || title}
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* Check-in/Check-out stats - chỉ cho tab GVCN */}
-      {tab === 'GVCN' && (
+        {/* Header với title và badge */}
         <View
           style={{
             flexDirection: 'row',
             justifyContent: 'space-between',
-            marginVertical: 12,
+            alignItems: 'center',
+            marginBottom: 12,
           }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Ionicons name="log-in-outline" size={20} color="#444" />
+          <Text style={{ fontSize: 18, fontWeight: '600', flex: 1, fontFamily: 'Mulish-Bold' }}>
+            {title}
+          </Text>
+          <View
+            style={{
+              backgroundColor: hasAttendance ? '#3DB838' : '#FFFFFF',
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 20,
+              borderWidth: hasAttendance ? 0 : 1,
+              borderColor: '#E5E7EB',
+            }}>
             <Text
               style={{
-                marginLeft: 6,
                 fontSize: 13,
-                color: '#444',
-                fontFamily: 'Mulish-Medium',
+                fontWeight: '600',
+                color: hasAttendance ? '#FFFFFF' : '#6B7280',
+                fontFamily: 'Mulish-Bold',
               }}>
-              {stats?.checkInCount || 0}/{stats?.totalStudents || 0} học sinh
+              {hasAttendance ? 'Đã điểm danh' : 'Chưa điểm danh'}
             </Text>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Ionicons name="log-out-outline" size={20} color="#444" />
+        </View>
+
+        {/* Môn học và phòng - chỉ cho tab GVBM */}
+        {isTimetableEntry && (
+          <View style={{ marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+              <Ionicons name="globe-outline" size={24} color="#666" />
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: '#666',
+                  marginLeft: 10,
+                  fontFamily: 'Mulish-Medium',
+                }}>
+                {subject || 'Chưa có môn'}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="location-outline" size={24} color="#666" />
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: '#666',
+                  marginLeft: 10,
+                  fontFamily: 'Mulish-Medium',
+                }}>
+                {room || title}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Check-in/Check-out stats - chỉ cho tab GVCN */}
+        {tab === 'GVCN' && (
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              marginVertical: 12,
+            }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="log-in-outline" size={20} color="#444" />
+              <Text
+                style={{
+                  marginLeft: 6,
+                  fontSize: 13,
+                  color: '#444',
+                  fontFamily: 'Mulish-Medium',
+                }}>
+                {stats?.checkInCount || 0}/{stats?.totalStudents || 0} học sinh
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="log-out-outline" size={20} color="#444" />
+              <Text
+                style={{
+                  marginLeft: 6,
+                  fontSize: 13,
+                  color: '#444',
+                  fontFamily: 'Mulish-Medium',
+                }}>
+                {stats?.checkOutCount || 0}/{stats?.totalStudents || 0} học sinh
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Attendance status icons */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-around',
+            marginHorizontal: 4,
+            marginTop: 12,
+            marginBottom: 24,
+          }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="checkmark" size={24} color="#22C55E" />
             <Text
               style={{
-                marginLeft: 6,
-                fontSize: 13,
-                color: '#444',
+                marginLeft: 4,
+                fontSize: 16,
+                color: '#22C55E',
+                fontWeight: '500',
                 fontFamily: 'Mulish-Medium',
               }}>
-              {stats?.checkOutCount || 0}/{stats?.totalStudents || 0} học sinh
+              {presentCount}
+            </Text>
+          </View>
+
+          <Text
+            style={{
+              color: '#757575',
+              fontSize: 16,
+              fontWeight: 'semibold',
+              fontFamily: 'Mulish-SemiBold',
+            }}>
+            |
+          </Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="close" size={24} color="#EF4444" />
+            <Text
+              style={{
+                marginLeft: 4,
+                fontSize: 16,
+                color: '#EF4444',
+                fontWeight: '500',
+                fontFamily: 'Mulish-Medium',
+              }}>
+              {absentCount}
+            </Text>
+          </View>
+
+          <Text
+            style={{
+              color: '#757575',
+              fontSize: 16,
+              fontWeight: 'semibold',
+              fontFamily: 'Mulish-SemiBold',
+            }}>
+            |
+          </Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="time-outline" size={24} color="#F5AA1E" />
+            <Text
+              style={{
+                marginLeft: 4,
+                fontSize: 16,
+                color: '#F5AA1E',
+                fontWeight: '500',
+                fontFamily: 'Mulish-Medium',
+              }}>
+              {lateCount}
+            </Text>
+          </View>
+
+          <Text
+            style={{
+              color: '#757575',
+              fontSize: 16,
+              fontWeight: 'semibold',
+              fontFamily: 'Mulish-SemiBold',
+            }}>
+            |
+          </Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="ban-outline" size={24} color="#6B7280" />
+            <Text
+              style={{
+                marginLeft: 4,
+                fontSize: 16,
+                color: '#6B7280',
+                fontWeight: '500',
+                fontFamily: 'Mulish-Medium',
+              }}>
+              {excusedCount}
             </Text>
           </View>
         </View>
-      )}
 
-      {/* Attendance status icons */}
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-around',
-          marginHorizontal: 4,
-          marginTop: 12,
-          marginBottom: 24,
-        }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="checkmark" size={24} color="#22C55E" />
-          <Text
-            style={{
-              marginLeft: 4,
-              fontSize: 16,
-              color: '#22C55E',
-              fontWeight: '500',
-              fontFamily: 'Mulish-Medium',
-            }}>
-            {presentCount}
-          </Text>
-        </View>
-
-        <Text
+        <TouchableOpacity
           style={{
-            color: '#757575',
-            fontSize: 16,
-            fontWeight: 'semibold',
-            fontFamily: 'Mulish-SemiBold',
-          }}>
-          |
-        </Text>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="close" size={24} color="#EF4444" />
+            backgroundColor: hasAttendance ? '#FFFFFF' : '#333333',
+            borderWidth: hasAttendance ? 1 : 0,
+            borderColor: hasAttendance ? '#E5E7EB' : 'transparent',
+            paddingVertical: 10,
+            borderRadius: 30,
+          }}
+          onPress={() => onNavigate(classData, periodId, periodName)}>
           <Text
             style={{
-              marginLeft: 4,
-              fontSize: 16,
-              color: '#EF4444',
-              fontWeight: '500',
-              fontFamily: 'Mulish-Medium',
+              color: hasAttendance ? '#333333' : 'white',
+              textAlign: 'center',
+              fontSize: 14,
+              fontWeight: '600',
+              fontFamily: 'Mulish-Bold',
             }}>
-            {absentCount}
+            {hasAttendance ? 'Chỉnh sửa' : 'Điểm danh'}
           </Text>
-        </View>
-
-        <Text
-          style={{
-            color: '#757575',
-            fontSize: 16,
-            fontWeight: 'semibold',
-            fontFamily: 'Mulish-SemiBold',
-          }}>
-          |
-        </Text>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="time-outline" size={24} color="#F5AA1E" />
-          <Text
-            style={{
-              marginLeft: 4,
-              fontSize: 16,
-              color: '#F5AA1E',
-              fontWeight: '500',
-              fontFamily: 'Mulish-Medium',
-            }}>
-            {lateCount}
-          </Text>
-        </View>
-
-        <Text
-          style={{
-            color: '#757575',
-            fontSize: 16,
-            fontWeight: 'semibold',
-            fontFamily: 'Mulish-SemiBold',
-          }}>
-          |
-        </Text>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="ban-outline" size={24} color="#6B7280" />
-          <Text
-            style={{
-              marginLeft: 4,
-              fontSize: 16,
-              color: '#6B7280',
-              fontWeight: '500',
-              fontFamily: 'Mulish-Medium',
-            }}>
-            {excusedCount}
-          </Text>
-        </View>
+        </TouchableOpacity>
       </View>
-
-      <TouchableOpacity
-        style={{
-          backgroundColor: hasAttendance ? '#FFFFFF' : '#333333',
-          borderWidth: hasAttendance ? 1 : 0,
-          borderColor: hasAttendance ? '#E5E7EB' : 'transparent',
-          paddingVertical: 10,
-          borderRadius: 30,
-        }}
-        onPress={() => onNavigate(classData, periodId, periodName)}>
-        <Text
-          style={{
-            color: hasAttendance ? '#333333' : 'white',
-            textAlign: 'center',
-            fontSize: 14,
-            fontWeight: '600',
-            fontFamily: 'Mulish-Bold',
-          }}>
-          {hasAttendance ? 'Chỉnh sửa' : 'Điểm danh'}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
-});
+    );
+  }
+);
 
 const AttendanceHome = () => {
   const nav = useNavigation<any>();
@@ -404,10 +413,10 @@ const AttendanceHome = () => {
 
         if (!actualClassId) return;
 
-        const statsKey = isTimetableEntry
-          ? `${actualClassId}_${classData.timetable_column_id}`
-          : actualClassId;
-        const period = isTimetableEntry ? classData.timetable_column_id : 'homeroom';
+        const period = isTimetableEntry ? getGvbmAttendancePeriodKey(classData) : 'homeroom';
+        if (isTimetableEntry && !period) return;
+
+        const statsKey = isTimetableEntry ? `${actualClassId}_${period}` : actualClassId;
 
         // resultKey từ API sẽ là: class_id cho homeroom, class_id_period cho timetable
         const resultKey = period === 'homeroom' ? actualClassId : `${actualClassId}_${period}`;
@@ -550,13 +559,14 @@ const AttendanceHome = () => {
       currentDateStr
     );
     todayTimetable.forEach((entry) => {
-      if (entry.class_id && entry.timetable_column_id) {
+      const periodKey = getGvbmAttendancePeriodKey(entry);
+      if (entry.class_id && periodKey) {
         items.push({
           class_id: entry.class_id,
           date: currentDateStr,
-          period: entry.timetable_column_id,
+          period: periodKey,
         });
-        const resultKey = `${entry.class_id}_${entry.timetable_column_id}`;
+        const resultKey = `${entry.class_id}_${periodKey}`;
         statsKeyMap[resultKey] = resultKey;
       }
     });
@@ -670,10 +680,10 @@ const AttendanceHome = () => {
           <View style={{ alignItems: 'center', marginHorizontal: 20 }}>
             <Text
               style={{
-                fontSize: 28,
+                fontSize: 24,
                 fontWeight: '800',
                 color: '#F05023',
-                fontFamily: 'Mulish-ExtraBold',
+                fontFamily: 'Mulish-Bold',
               }}>
               {dayName}
             </Text>
@@ -734,7 +744,7 @@ const AttendanceHome = () => {
             const classId = isTimetableEntry ? classData.class_id : classData.name;
             // Use unique stats key: for timetable entries, combine class_id and timetable_column_id
             const statsKey = isTimetableEntry
-              ? `${classId}_${classData.timetable_column_id}`
+              ? `${classId}_${getGvbmAttendancePeriodKey(classData)}`
               : classId;
             const stats = classStats[statsKey];
 

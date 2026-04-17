@@ -240,7 +240,13 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
         ) : (
           <View style={{ width: 40 }} />
         )}
-        <Text className="flex-1 text-center text-2xl font-bold text-[#0A2240]">Ticket</Text>
+        <View className="flex-1 items-center justify-center">
+          <Text className="text-center text-2xl font-bold text-[#0A2240]">Tickets</Text>
+          {/* Phân biệt module IT vs Hành chính */}
+          <Text className="mt-0.5 text-center text-xs font-medium text-[#5A6575]">
+            (Công nghệ thông tin)
+          </Text>
+        </View>
         <View style={{ width: 40 }} />
       </View>
 

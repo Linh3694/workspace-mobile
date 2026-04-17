@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Pressable,
   TouchableOpacity,
   StyleSheet,
+  Platform,
 } from 'react-native';
 
 export interface ActionSheetOption {
@@ -20,6 +21,7 @@ interface ActionSheetProps {
   options: ActionSheetOption[];
   onSelect: (value: string) => void;
   onCancel: () => void;
+  onDismiss?: () => void;
   cancelText?: string;
   title?: string;
 }
@@ -29,10 +31,35 @@ const ActionSheet: React.FC<ActionSheetProps> = ({
   options,
   onSelect,
   onCancel,
+  onDismiss,
   cancelText = 'Hủy',
   title,
 }) => {
-  if (!visible) return null;
+  const [modalVisible, setModalVisible] = useState(visible);
+  const prevVisible = useRef(visible);
+
+  useEffect(() => {
+    if (visible) {
+      setModalVisible(true);
+    } else if (prevVisible.current && !visible) {
+      // Android: onDismiss không đáng tin cậy → gọi thủ công sau delay
+      if (Platform.OS === 'android') {
+        const t = setTimeout(() => {
+          setModalVisible(false);
+          onDismiss?.();
+        }, 350);
+        return () => clearTimeout(t);
+      }
+    }
+    prevVisible.current = visible;
+  }, [visible]);
+
+  const handleModalDismiss = useCallback(() => {
+    setModalVisible(false);
+    onDismiss?.();
+  }, [onDismiss]);
+
+  if (!visible && !modalVisible) return null;
 
   return (
     <Modal
@@ -41,6 +68,7 @@ const ActionSheet: React.FC<ActionSheetProps> = ({
       animationType="fade"
       statusBarTranslucent
       onRequestClose={onCancel}
+      onDismiss={handleModalDismiss}
     >
       <View style={styles.overlay}>
         {/* Backdrop - Ấn để đóng */}

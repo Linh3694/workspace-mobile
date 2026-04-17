@@ -8,7 +8,8 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
-import { TouchableOpacity, ActionSheet } from '../../../components/Common';
+import { TouchableOpacity } from '../../../components/Common';
+import BottomSheetModal from '../../../components/Common/BottomSheetModal';
 import {
   useTicketStore,
   useTicketUI,
@@ -220,7 +221,7 @@ export const CancelTicketModal: React.FC<CancelTicketModalProps> = ({ onConfirm 
 };
 
 // ============================================================================
-// Ticket Status Action Sheet
+// Chọn trạng thái ticket (UI đồng bộ với Ticket Hành chính — BottomSheetModal)
 // ============================================================================
 
 interface TicketStatusSheetProps {
@@ -257,22 +258,49 @@ export const TicketStatusSheet: React.FC<TicketStatusSheetProps> = ({
     }));
   };
 
+  const statusItems = getStatusItems();
+
   return (
-    <ActionSheet
+    <BottomSheetModal
       visible={showTicketStatusSheet}
-      options={getStatusItems()}
-      title="Chọn trạng thái"
-      onSelect={(value) => {
-        onSelect(value);
-        closeTicketStatusSheet();
-      }}
-      onCancel={closeTicketStatusSheet}
-    />
+      onClose={closeTicketStatusSheet}
+      maxHeightPercent={42}
+      keyboardAvoiding={false}
+      bottomPaddingExtra={8}>
+      <View className="px-4 pb-0 pt-0">
+        <View className="items-center pb-2.5 pt-1.5">
+          <View className="mb-2 h-1 w-10 rounded-full bg-[#D1D5DB]" />
+          <Text className="text-center text-[13px] leading-[18px] text-[#8E8E93]">Chọn trạng thái</Text>
+        </View>
+        <View className="overflow-hidden rounded-2xl bg-gray-100">
+          {statusItems.map((item, index) => (
+            <View key={item.value}>
+              <TouchableOpacity
+                onPress={() => {
+                  onSelect(item.value);
+                  closeTicketStatusSheet();
+                }}
+                className="px-4 py-3.5 active:bg-gray-200/80">
+                <Text className="text-center text-base font-medium text-[#002855]">{item.label}</Text>
+              </TouchableOpacity>
+              {index < statusItems.length - 1 ? <View className="h-px bg-black/10" /> : null}
+            </View>
+          ))}
+        </View>
+        <View className="mt-2 overflow-hidden rounded-2xl bg-gray-100">
+          <TouchableOpacity
+            onPress={closeTicketStatusSheet}
+            className="px-4 py-3.5 active:bg-gray-200/80">
+            <Text className="text-center text-base font-semibold text-[#FF3B30]">Hủy</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </BottomSheetModal>
   );
 };
 
 // ============================================================================
-// SubTask Status Action Sheet
+// SubTask — cùng pattern bottom sheet với Hành chính
 // ============================================================================
 
 interface SubTaskStatusSheetProps {
@@ -310,16 +338,43 @@ export const SubTaskStatusSheet: React.FC<SubTaskStatusSheetProps> = ({
   ];
 
   return (
-    <ActionSheet
+    <BottomSheetModal
       visible={showSubTaskStatusModal}
-      options={options}
-      title="Cập nhật trạng thái"
-      onSelect={(value) => {
-        onSelect(value);
-        closeSubTaskStatusModal();
-      }}
-      onCancel={closeSubTaskStatusModal}
-    />
+      onClose={closeSubTaskStatusModal}
+      maxHeightPercent={42}
+      keyboardAvoiding={false}
+      bottomPaddingExtra={8}>
+      <View className="px-4 pb-0 pt-0">
+        <View className="items-center pb-2.5 pt-1.5">
+          <View className="mb-2 h-1 w-10 rounded-full bg-[#D1D5DB]" />
+          <Text className="text-center text-[13px] leading-[18px] text-[#8E8E93]">
+            Cập nhật trạng thái
+          </Text>
+        </View>
+        <View className="overflow-hidden rounded-2xl bg-gray-100">
+          {options.map((item, index) => (
+            <View key={item.value}>
+              <TouchableOpacity
+                onPress={() => {
+                  onSelect(item.value);
+                  closeSubTaskStatusModal();
+                }}
+                className="px-4 py-3.5 active:bg-gray-200/80">
+                <Text className="text-center text-base font-medium text-[#002855]">{item.label}</Text>
+              </TouchableOpacity>
+              {index < options.length - 1 ? <View className="h-px bg-black/10" /> : null}
+            </View>
+          ))}
+        </View>
+        <View className="mt-2 overflow-hidden rounded-2xl bg-gray-100">
+          <TouchableOpacity
+            onPress={closeSubTaskStatusModal}
+            className="px-4 py-3.5 active:bg-gray-200/80">
+            <Text className="text-center text-base font-semibold text-[#FF3B30]">Hủy</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </BottomSheetModal>
   );
 };
 

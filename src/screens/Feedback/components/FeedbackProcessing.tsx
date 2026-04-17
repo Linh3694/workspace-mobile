@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Switch,
 } from 'react-native';
 import { TouchableOpacity } from '../../../components/Common';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,6 +39,10 @@ const FeedbackProcessing: React.FC<FeedbackProcessingProps> = ({
   const [isSending, setIsSending] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewVideo, setPreviewVideo] = useState<string | null>(null);
+  /** all | public | internal — lọc hiển thị lịch sử */
+  const [replyFilter, setReplyFilter] = useState<'all' | 'public' | 'internal'>('all');
+  /** Gửi dưới dạng ghi chú nội bộ (phụ huynh không thấy) */
+  const [isInternalNote, setIsInternalNote] = useState(false);
 
   // Refs
   const scrollViewRef = useRef<ScrollView>(null);
@@ -50,6 +55,13 @@ const FeedbackProcessing: React.FC<FeedbackProcessingProps> = ({
   // Check if can send reply
   const isClosed = ['Đóng', 'Tự động đóng', 'Hoàn thành'].includes(feedback?.status || '');
   const canSendReply = !isReadOnly && feedback?.assigned_to && !isClosed;
+
+  const visibleReplies = useMemo(() => {
+    const list = feedback?.replies || [];
+    if (replyFilter === 'all') return list;
+    if (replyFilter === 'public') return list.filter((r) => !r.is_internal);
+    return list.filter((r) => r.is_internal);
+  }, [feedback?.replies, replyFilter]);
 
   // Pick image/video
   const handlePickImage = useCallback(async () => {
@@ -88,15 +100,25 @@ const FeedbackProcessing: React.FC<FeedbackProcessingProps> = ({
       return;
     }
 
+    if (isInternalNote && selectedImages.length > 0) {
+      toast.error('Ghi chú nội bộ không đính kèm file. Bỏ ảnh/video hoặc tắt ghi chú nội bộ.');
+      return;
+    }
+
     setIsSending(true);
+    const sendingInternal = isInternalNote;
     try {
-      // Pass selectedImages to addReply
-      const success = await addReply(replyText.trim(), false, selectedImages);
+      const success = await addReply(
+        replyText.trim(),
+        sendingInternal,
+        sendingInternal ? [] : selectedImages,
+      );
 
       if (success) {
         setReplyText('');
         setSelectedImages([]);
-        toast.success('Đã gửi phản hồi');
+        setIsInternalNote(false);
+        toast.success(sendingInternal ? 'Đã lưu ghi chú nội bộ' : 'Đã gửi phản hồi');
       } else {
         toast.error('Không thể gửi phản hồi');
       }
@@ -106,7 +128,7 @@ const FeedbackProcessing: React.FC<FeedbackProcessingProps> = ({
     } finally {
       setIsSending(false);
     }
-  }, [replyText, selectedImages, addReply]);
+  }, [replyText, selectedImages, addReply, isInternalNote]);
 
   // Scroll to input on focus
   const handleInputFocus = useCallback(() => {
@@ -176,10 +198,32 @@ const FeedbackProcessing: React.FC<FeedbackProcessingProps> = ({
         <View className="mb-4">
           <Text className="mb-3 text-lg font-semibold">Lịch sử trao đổi</Text>
 
-          {feedback.replies && feedback.replies.length > 0 ? (
-            feedback.replies
-              .filter((reply) => !reply.is_internal)
-              .map((reply, index) => {
+          <View className="mb-3 flex-row flex-wrap gap-2">
+            {(
+              [
+                { key: 'all' as const, label: 'Tất cả' },
+                { key: 'public' as const, label: 'Hội thoại PH' },
+                { key: 'internal' as const, label: 'Nội bộ' },
+              ] as const
+            ).map((opt) => (
+              <TouchableOpacity
+                key={opt.key}
+                onPress={() => setReplyFilter(opt.key)}
+                className={`rounded-full px-3 py-1.5 ${
+                  replyFilter === opt.key ? 'bg-[#002855]' : 'bg-gray-200'
+                }`}>
+                <Text
+                  className={`text-xs font-medium ${
+                    replyFilter === opt.key ? 'text-white' : 'text-gray-700'
+                  }`}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {visibleReplies.length > 0 ? (
+            visibleReplies.map((reply, index) => {
                 const isStaff = reply.reply_by_type === 'Staff';
                 const staffName = normalizeVietnameseName(reply.reply_by_full_name || 'Kỹ thuật');
                 const guardianName =
@@ -197,7 +241,7 @@ const FeedbackProcessing: React.FC<FeedbackProcessingProps> = ({
                       elevation: 2,
                     }}>
                     {/* Header với avatar và tên */}
-                    <View className="mb-2 flex-row items-center">
+                    <View className="mb-2 flex-row flex-wrap items-center gap-2">
                       {isStaff ? (
                         <>
                           {/* Avatar cho kỹ thuật - chữ cái đầu tên */}
@@ -212,6 +256,11 @@ const FeedbackProcessing: React.FC<FeedbackProcessingProps> = ({
                           </Text>
                         </>
                       )}
+                      {reply.is_internal ? (
+                        <View className="rounded-md bg-amber-100 px-2 py-0.5">
+                          <Text className="text-xs font-medium text-amber-900">Nội bộ</Text>
+                        </View>
+                      ) : null}
                     </View>
 
                     {/* Nội dung tin nhắn - tách nội dung và file đính kèm */}
@@ -306,7 +355,11 @@ const FeedbackProcessing: React.FC<FeedbackProcessingProps> = ({
               })
           ) : (
             <View className="rounded-2xl bg-white p-4">
-              <Text className="text-center text-sm italic text-gray-400">Chưa có phản hồi</Text>
+              <Text className="text-center text-sm italic text-gray-400">
+                {feedback.replies && feedback.replies.length > 0
+                  ? 'Không có mục nào trong bộ lọc này.'
+                  : 'Chưa có phản hồi'}
+              </Text>
             </View>
           )}
         </View>
@@ -315,6 +368,22 @@ const FeedbackProcessing: React.FC<FeedbackProcessingProps> = ({
         {canSendReply && isAssignedToMe && (
           <View ref={replyInputRef} className="mb-4 rounded-2xl bg-[#F8F8F8] p-4">
             <Text className="mb-3 text-lg font-semibold">Phản hồi phụ huynh</Text>
+
+            <View className="mb-3 flex-row items-center justify-between rounded-xl bg-amber-50 px-3 py-2">
+              <View className="mr-2 flex-1">
+                <Text className="text-sm font-medium text-amber-950">Ghi chú nội bộ</Text>
+                <Text className="text-xs text-amber-800">Phụ huynh không thấy</Text>
+              </View>
+              <Switch
+                value={isInternalNote}
+                onValueChange={(v) => {
+                  setIsInternalNote(v);
+                  if (v) setSelectedImages([]);
+                }}
+                trackColor={{ false: '#ccc', true: '#92400e' }}
+                thumbColor="#fff"
+              />
+            </View>
 
             {/* Input area */}
             <View className="rounded-xl bg-white p-3">
@@ -330,8 +399,8 @@ const FeedbackProcessing: React.FC<FeedbackProcessingProps> = ({
                 onFocus={handleInputFocus}
               />
 
-              {/* Image/Video preview */}
-              {selectedImages.length > 0 && (
+              {/* Image/Video preview — không dùng khi ghi chú nội bộ */}
+              {!isInternalNote && selectedImages.length > 0 && (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2">
                   {selectedImages.map((media, index) => {
                     const isVideo = media.type?.startsWith('video/');
@@ -396,16 +465,22 @@ const FeedbackProcessing: React.FC<FeedbackProcessingProps> = ({
 
               {/* Action buttons */}
               <View className="mt-3 flex-row items-center justify-between">
-                <TouchableOpacity
-                  onPress={handlePickImage}
-                  disabled={isSending}
-                  className="rounded-lg p-2">
-                  <Ionicons name="image-outline" size={24} color="#6b7280" />
-                </TouchableOpacity>
+                {!isInternalNote ? (
+                  <TouchableOpacity
+                    onPress={handlePickImage}
+                    disabled={isSending}
+                    className="rounded-lg p-2">
+                    <Ionicons name="image-outline" size={24} color="#6b7280" />
+                  </TouchableOpacity>
+                ) : (
+                  <View className="w-10" />
+                )}
 
                 <TouchableOpacity
                   onPress={handleSendReply}
-                  disabled={isSending || !replyText.trim()}
+                  disabled={
+                    isSending || (!replyText.trim() && selectedImages.length === 0)
+                  }
                   style={{
                     backgroundColor: !replyText.trim() ? '#d1d5db' : '#002855',
                     borderRadius: 20,

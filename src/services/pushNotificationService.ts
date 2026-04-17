@@ -12,6 +12,10 @@ interface PushNotificationData {
   timestamp?: string;
   deviceName?: string;
   ticketId?: string;
+  /** Frappe Ticket Hành chính — cùng sound/channel ticket IT khi new_ticket_admin */
+  ticket_kind?: string;
+  ticketKind?: string;
+  ticket_id?: string;
   chatId?: string;
   messageId?: string;
   action?: string;
@@ -44,17 +48,21 @@ interface PushNotificationData {
   // Wislife related
   postId?: string;
   commentId?: string;
-}
-
-interface NotificationResponse {
-  notification: Notifications.Notification;
-  actionIdentifier: string;
+  // Daily health related
+  visitId?: string;
+  visit_id?: string;
+  classId?: string;
+  class_id?: string;
+  // CRM Issue
+  issueId?: string;
+  issue_id?: string;
+  issueCode?: string;
+  issue_code?: string;
 }
 
 class PushNotificationService {
   private isInitialized = false;
   private notificationListener?: Notifications.Subscription;
-  private responseListener?: Notifications.Subscription;
   private foregroundSubscription?: Notifications.Subscription;
 
   // Callback để handle attendance notifications
@@ -277,13 +285,7 @@ class PushNotificationService {
       this.handleNotification(notification, false);
     });
 
-    // Listen for user interactions with notifications
-    this.responseListener = Notifications.addNotificationResponseReceivedListener(
-      (response: NotificationResponse) => {
-        console.log('👆 Notification tapped:', response);
-        this.handleNotification(response.notification, true);
-      }
-    );
+    // Tap mở app: chỉ xử lý tại App.tsx (navigateFromPushNotificationData) để tránh trùng / navigateToScreen TODO
 
     console.log('👂 Notification listeners setup complete');
   }
@@ -332,6 +334,24 @@ class PushNotificationService {
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#8B5CF6',
+        sound: 'default',
+      });
+
+      await Notifications.setNotificationChannelAsync('daily_health', {
+        name: 'Y tế học sinh',
+        description: 'Thông báo về y tế học sinh',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#DC2626',
+        sound: 'default',
+      });
+
+      await Notifications.setNotificationChannelAsync('crm_issue', {
+        name: 'Vấn đề CRM',
+        description: 'Thông báo vấn đề tuyển sinh / CRM',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#E11D48',
         sound: 'default',
       });
 
@@ -390,6 +410,24 @@ class PushNotificationService {
       case 'wislife_comment_reaction':
       case 'wislife_mention':
         this.handleWislifeNotification(data, wasOpened);
+        break;
+      // Daily health notifications
+      case 'daily_health':
+      case 'health_visit_created':
+      case 'health_visit_received':
+      case 'health_visit_completed':
+      case 'health_visit_escalation':
+      case 'health_visit_cancelled':
+      case 'health_visit_rejected':
+        this.handleDailyHealthNotification(data, wasOpened);
+        break;
+      case 'crm_issue_created':
+      case 'crm_issue_approved':
+      case 'crm_issue_rejected':
+      case 'crm_issue_status_changed':
+      case 'crm_issue_pic_changed':
+      case 'crm_issue_log_added':
+        this.handleCRMIssueNotification(data, wasOpened);
         break;
       default:
         // Handle action-based notifications (from ticket-service)
@@ -488,14 +526,14 @@ class PushNotificationService {
   private handleNewTicketAdminNotification(data: PushNotificationData, wasOpened: boolean): void {
     console.log('🆕 New ticket admin notification:', data);
 
-    // Play notification sound for support team when new ticket is created
+    // Phát sound custom (ticket_create.wav) — IT & Ticket Hành chính dùng chung action new_ticket_admin
     if (!wasOpened) {
-      // Only play sound when notification arrives (not when tapped)
       soundService.playTicketCreatedSound();
     }
 
-    if (wasOpened && data.ticketId) {
-      this.navigateToTicketDetail(data.ticketId);
+    const tid = data.ticketId || data.ticket_id;
+    if (wasOpened && tid) {
+      this.navigateToTicketDetail(tid);
     }
   }
 
@@ -600,22 +638,77 @@ class PushNotificationService {
     console.log('📱 Wislife notification:', data);
 
     if (wasOpened && data.postId) {
-      // Navigate to Wislife tab with postId to open post detail
+      // Tap được xử lý ở App.tsx (navigateFromPushNotificationData)
       this.navigateToScreen('Main', {
-        screen: 'Wislife',
+        screen: 'Social',
         params: { postId: data.postId, commentId: data.commentId },
       });
+    }
+  }
+
+  // Daily health notification handler
+  private handleDailyHealthNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('🏥 Daily health notification:', data);
+
+    if (wasOpened) {
+      const visitId = data.visit_id || data.visitId;
+      const notificationType = data.type;
+
+      switch (notificationType) {
+        case 'health_visit_created':
+        case 'health_visit_escalation':
+          // Y tế / GV nhận báo mới hoặc nhắc nhở -> mở danh sách Y tế
+          this.navigateToScreen('DailyHealth', {});
+          break;
+
+        case 'health_visit_received':
+        case 'health_visit_completed':
+          // Tiếp nhận / checkout -> mở chi tiết visit nếu có visitId
+          if (visitId) {
+            this.navigateToScreen('HealthExam', { visitId });
+          } else {
+            this.navigateToScreen('DailyHealth', {});
+          }
+          break;
+
+        case 'health_visit_cancelled':
+        case 'health_visit_rejected':
+          // GV hủy / Y tế từ chối -> mở danh sách Y tế để refresh (visit đã bị xóa)
+          this.navigateToScreen('DailyHealth', {});
+          break;
+
+        default:
+          // Fallback cho 'daily_health' hoặc type không xác định
+          if (visitId) {
+            this.navigateToScreen('HealthExam', { visitId });
+          } else {
+            this.navigateToScreen('DailyHealth', {});
+          }
+          break;
+      }
+    }
+  }
+
+  private handleCRMIssueNotification(data: PushNotificationData, wasOpened: boolean): void {
+    console.log('📋 CRM Issue notification:', data);
+    if (wasOpened) {
+      const issueId = data.issueId || data.issue_id;
+      if (issueId) {
+        this.navigateToScreen('CRMIssueDetail', { issueId });
+      }
     }
   }
 
   private navigateToLeaveRequests(data: PushNotificationData): void {
     const studentId = data.student_id || data.studentId;
     const leaveRequestId = data.leave_request_id || data.leaveRequestId;
+    const classId = data.class_id || data.classId;
 
     console.log(
-      `🧭 Navigate to Leave Requests - Student: ${studentId}, LeaveRequest: ${leaveRequestId}`
+      `🧭 Navigate to Leave Requests - Class: ${classId}, Student: ${studentId}, LeaveRequest: ${leaveRequestId}`
     );
     this.navigateToScreen('LeaveRequests', {
+      classId,
       studentId,
       leaveRequestId,
       fromNotification: true,
@@ -685,7 +778,6 @@ class PushNotificationService {
 
   cleanup(): void {
     this.foregroundSubscription?.remove();
-    this.responseListener?.remove();
     this.notificationListener?.remove();
     this.isInitialized = false;
     console.log('🧹 Push notification service cleaned up');

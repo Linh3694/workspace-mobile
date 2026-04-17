@@ -131,7 +131,47 @@ const timetableService = {
   },
 
   /**
-   * Get timetable entries for a class in a week range
+   * Lấy TKB theo giáo viên (chỉ các tiết giáo viên dạy) - dùng cho Sổ đầu bài
+   * API: get_teacher_week - query từ SIS Teacher Timetable
+   */
+  async getTeacherTimetable(
+    teacherUserId: string,
+    startDate: string,
+    endDate: string,
+    educationStage?: string
+  ): Promise<TimetableEntry[]> {
+    try {
+      console.log('📅 Fetching TEACHER timetable:', teacherUserId, 'from', startDate, 'to', endDate);
+      const params: Record<string, string> = {
+        teacher_id: teacherUserId,
+        week_start: startDate,
+        week_end: endDate,
+      };
+      if (educationStage) params.education_stage = educationStage;
+
+      const response = await api.get(
+        `/method/erp.api.erp_sis.timetable.get_teacher_week`,
+        { params }
+      );
+
+      const messageData = response.data?.message;
+      if (messageData?.success && messageData?.data) {
+        console.log('📅 Found', messageData.data.length, 'teacher timetable entries');
+        return messageData.data;
+      }
+      if (response.data?.success && response.data?.data) {
+        return response.data.data;
+      }
+      console.log('📅 No teacher timetable data found');
+      return [];
+    } catch (error) {
+      console.error('📅 Error fetching teacher timetable:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Get timetable entries for a class in a week range (TKB theo lớp - tất cả tiết)
    */
   async getClassTimetable(
     classId: string,

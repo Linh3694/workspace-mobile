@@ -201,7 +201,11 @@ const TicketGuestScreen = ({ isFromTab = false }: TicketGuestScreenProps) => {
             </TouchableOpacity>
           )}
           <View className="flex-1 items-center justify-center">
-            <Text className="text-xl font-medium">Ticket</Text>
+            <Text className="text-xl font-medium">Tickets</Text>
+            {/* Phân biệt module IT */}
+            <Text className="mt-0.5 text-center text-sm text-gray-600">
+              (Công nghệ thông tin)
+            </Text>
           </View>
           {!isFromTab && <View style={{ width: 40 }} />}
         </View>

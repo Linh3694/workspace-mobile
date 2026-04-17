@@ -1,5 +1,25 @@
 import { API_BASE_URL } from '../config/constants.js';
 
+/**
+ * Chuẩn hoá user_image từ Frappe (/files/..., files/..., Avatar/...) → URL đầy đủ cho <Image source={{ uri }} />.
+ * Trả rỗng nếu không có path (UI dùng chữ cái thay thế).
+ */
+export function resolveFrappeUserImageUrl(path?: string | null): string {
+  if (!path?.trim()) return '';
+  const raw = path.trim();
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith('/')) return `${API_BASE_URL}${raw}`;
+  if (raw.startsWith('files/')) return `${API_BASE_URL}/${raw}`;
+  if (raw.startsWith('Avatar/')) return `${API_BASE_URL}/files/${raw}`;
+  if (raw.includes('/')) {
+    const normalized =
+      raw.startsWith('files/') || raw.startsWith('public/files/') ? raw : `files/${raw}`;
+    return `${API_BASE_URL}/${normalized}`;
+  }
+  if (/\.(png|jpe?g|gif|webp|svg)$/i.test(raw)) return `${API_BASE_URL}/files/${raw}`;
+  return `${API_BASE_URL}/files/Avatar/${raw}`;
+}
+
 export const getAvatar = (
   user: { fullname: string; avatarUrl?: string; avatar?: string } | null
 ) => {

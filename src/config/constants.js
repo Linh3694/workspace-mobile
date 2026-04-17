@@ -15,6 +15,10 @@ export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || PROD_API_URL
 // Base URL cho tất cả services (Frappe + Microservices)
 export const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL || PROD_API_URL;
 
+// AI Backend URL - dùng cho AI Assistant chat streaming
+// Giống web: dùng cùng base với main API + /api/ai (có thể override bằng EXPO_PUBLIC_AI_BACKEND_URL)
+export const AI_BACKEND_URL = process.env.EXPO_PUBLIC_AI_BACKEND_URL || `${API_BASE_URL}/api/ai`;
+
 // Helper function để lấy API base URL
 export const getApiBaseUrl = () => {
   return API_BASE_URL;

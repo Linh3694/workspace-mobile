@@ -1,11 +1,17 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 // @ts-ignore
 import { View, StyleSheet, Platform, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import AppNavigator, { RootStackParamList } from './src/navigation/AppNavigator';
+import {
+  navigateFromPushNotificationData,
+  consumePendingPushNotificationIfAny,
+  type PushNotificationPayload,
+} from './src/utils/pushNotificationNavigation';
+import { useAuth } from './src/context/AuthContext';
 import * as Notifications from 'expo-notifications';
-import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
+import { createNavigationContainerRef, NavigationContainer } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from './src/config/constants';
@@ -55,6 +61,23 @@ Notifications.setNotificationHandler({
   }),
 });
 
+const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
+/** Sau khi đăng nhập + navigator mount, xử lý payload push lưu tạm (cold start / race) */
+function PendingPushNotificationConsumer() {
+  const { isAuthenticated, loading } = useAuth();
+
+  useEffect(() => {
+    if (loading || !isAuthenticated) return;
+    const timer = setTimeout(() => {
+      consumePendingPushNotificationIfAny(navigationRef);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [loading, isAuthenticated]);
+
+  return null;
+}
+
 export default function App() {
   // Ẩn native splash ngay lập tức để hiển thị custom splash
   useEffect(() => {
@@ -67,6 +90,7 @@ export default function App() {
   // Load custom fonts
   const [fontsLoaded] = useFonts({
     'Mulish-Regular': require('./src/assets/fonts/Mulish-Regular.ttf'),
+    'Mulish-Italic': require('./src/assets/fonts/Mulish-Italic.ttf'),
     'Mulish-Medium': require('./src/assets/fonts/Mulish-Medium.ttf'),
     'Mulish-Bold': require('./src/assets/fonts/Mulish-Bold.ttf'),
     'Mulish-SemiBold': require('./src/assets/fonts/Mulish-SemiBold.ttf'),
@@ -77,8 +101,6 @@ export default function App() {
 
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
-  const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
-  const [initialRoute, setInitialRoute] = useState({ name: 'Home', params: {} });
 
   // Deep link handler (kept as before)
   useEffect(() => {
@@ -130,139 +152,24 @@ export default function App() {
     };
   }, []);
 
-  // Xử lý điều hướng khi người dùng tương tác với thông báo
-  const handleNotificationResponse = async (response: Notifications.NotificationResponse) => {
-    const data = response.notification.request.content.data as {
-      ticketId?: string;
-      chatId?: string;
-      type?: string;
-      action?: string;
-      screen?: string;
-      tab?: string;
-      senderId?: string;
-      employeeCode?: string;
-      notificationId?: string;
-      // Feedback related
-      feedbackId?: string;
-      feedbackCode?: string;
-      // Leave request related
-      leaveRequestId?: string;
-      leave_request_id?: string;
-      studentId?: string;
-      student_id?: string;
-    };
-    console.log('🔔 Phản hồi thông báo:', data);
+  // Xử lý điều hướng khi người dùng tương tác với thông báo (đồng bộ logic trong pushNotificationNavigation)
+  const handleNotificationResponse = useCallback(
+    async (response: Notifications.NotificationResponse) => {
+      const data = response.notification.request.content.data as PushNotificationPayload;
+      console.log('🔔 Phản hồi thông báo:', data);
 
-    try {
-      await Notifications.dismissNotificationAsync(response.notification.request.identifier);
-      await Notifications.setBadgeCountAsync(0);
-      console.log('✅ Notification cleared from lock screen');
-    } catch (error) {
-      console.warn('⚠️ Could not clear notification:', error);
-    }
-
-    // Helper function to navigate
-    const navigateTo = (screenName: string, params?: any) => {
-      if (navigationRef.current) {
-        (navigationRef.current as any).navigate(screenName, params);
-      } else {
-        setInitialRoute({ name: screenName, params } as any);
+      try {
+        await Notifications.dismissNotificationAsync(response.notification.request.identifier);
+        await Notifications.setBadgeCountAsync(0);
+        console.log('✅ Notification cleared from lock screen');
+      } catch (error) {
+        console.warn('⚠️ Could not clear notification:', error);
       }
-    };
 
-    // === TICKET NOTIFICATIONS ===
-    const ticketTypes = ['new_ticket', 'ticket_update', 'ticket_created', 'ticket_updated'];
-    const ticketActions = [
-      'ticket_status_changed',
-      'ticket_assigned',
-      'ticket_processing',
-      'ticket_waiting',
-      'ticket_done',
-      'ticket_closed',
-      'ticket_cancelled',
-      'new_ticket_admin',
-      'user_reply',
-      'ticket_cancelled_admin',
-      'completion_confirmed',
-      'ticket_feedback_received',
-    ];
-
-    if (ticketTypes.includes(data?.type || '') || ticketActions.includes(data?.action || '')) {
-      if (data.ticketId) {
-        navigateTo('TicketDetail', { ticketId: data.ticketId });
-        return;
-      }
-    }
-
-    // === FEEDBACK NOTIFICATIONS ===
-    const feedbackTypes = [
-      'feedback_created',
-      'feedback_new',
-      'feedback_reply',
-      'feedback_updated',
-    ];
-    const feedbackActions = [
-      'new_feedback',
-      'feedback_created',
-      'feedback_reply',
-      'guardian_reply',
-      'feedback_assigned',
-    ];
-
-    if (feedbackTypes.includes(data?.type || '') || feedbackActions.includes(data?.action || '')) {
-      if (data.feedbackId) {
-        navigateTo('FeedbackDetail', { feedbackId: data.feedbackId });
-        return;
-      }
-    }
-
-    // === LEAVE REQUEST NOTIFICATIONS ===
-    const leaveTypes = ['leave_request', 'leave'];
-
-    if (leaveTypes.includes(data?.type || '')) {
-      const studentId = data.student_id || data.studentId;
-      const leaveRequestId = data.leave_request_id || data.leaveRequestId;
-      navigateTo('LeaveRequests', {
-        studentId,
-        leaveRequestId,
-        fromNotification: true,
-      });
-      return;
-    }
-
-    // === ATTENDANCE NOTIFICATIONS ===
-    if (data?.type === 'attendance_reminder') {
-      navigateTo('AttendanceHome', {
-        initialTab: data.tab || 'GVCN',
-      });
-      return;
-    }
-
-    if (data?.type === 'attendance' || data?.type === 'staff_attendance') {
-      navigateTo('Main', {
-        screen: 'Notification',
-        params: data.notificationId ? { notificationId: data.notificationId } : undefined,
-      });
-      return;
-    }
-
-    // === CHAT NOTIFICATIONS ===
-    if (data?.type === 'chat_message' && data.chatId) {
-      // Navigate to Main with Chat tab, then to chat detail
-      navigateTo('Main', {
-        screen: 'Chat',
-        params: { chatId: data.chatId },
-      });
-      return;
-    }
-
-    // === DEFAULT: Navigate to Notifications screen ===
-    console.log('📝 Unhandled notification type, navigating to Notifications screen');
-    navigateTo('Main', {
-      screen: 'Notification',
-      params: data.notificationId ? { notificationId: data.notificationId } : undefined,
-    });
-  };
+      await navigateFromPushNotificationData(data, navigationRef);
+    },
+    []
+  );
 
   // Register notification listeners and setup push token registration
   useEffect(() => {
@@ -399,7 +306,7 @@ export default function App() {
       if (notificationListener.current) notificationListener.current.remove();
       if (responseListener.current) responseListener.current.remove();
     };
-  }, []);
+  }, [handleNotificationResponse]);
 
   console.log('🔍 [App] fontsLoaded (forced):', fontsLoaded);
 
@@ -427,6 +334,7 @@ export default function App() {
               <VersionChecker>
                 <NavigationContainer linking={linking} ref={navigationRef}>
                   <AppNavigator />
+                  <PendingPushNotificationConsumer />
                 </NavigationContainer>
               </VersionChecker>
             </AuthProvider>

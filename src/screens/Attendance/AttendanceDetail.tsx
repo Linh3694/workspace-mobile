@@ -1,11 +1,14 @@
 // @ts-nocheck
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, FlatList, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { StudentAvatar } from '../../utils/studentAvatar';
 import { attendanceApiService } from '../../services/attendanceApiService';
+import dailyHealthService, {
+  type HealthStatusForPeriodResponse,
+} from '../../services/dailyHealthService';
 import { TouchableOpacity } from '../../components/Common';
 
 // Attendance status type aligned with web
@@ -24,6 +27,16 @@ const cardBgByStatus: Record<AttendanceStatus, string> = {
   late: '#FFFCF2',
   excused: '#f6f6f6',
 };
+
+/** Giống ClassLog/LessonLog: rows API → map student_id → status */
+function attendanceRowsToMap(rows: any[] | undefined): Record<string, AttendanceStatus> {
+  const m: Record<string, AttendanceStatus> = {};
+  (rows || []).forEach((item: any) => {
+    const id = item.student_id || item.name;
+    if (id) m[id] = (item.status as AttendanceStatus) || 'present';
+  });
+  return m;
+}
 
 // Props type cho StudentCard
 interface StudentCardProps {
@@ -229,31 +242,15 @@ const AttendanceDetail = () => {
     selectedDate: routeSelectedDate,
   } = params;
 
-  // Early return if classData is missing (prevents crash)
-  if (!classData) {
-    return (
-      <SafeAreaView className="flex-1 bg-white">
-        <View className="flex-row items-center justify-between px-4 py-3">
-          <TouchableOpacity onPress={() => nav.goBack()}>
-            <Ionicons name="chevron-back" size={24} color="#0A2240" />
-          </TouchableOpacity>
-          <Text className="text-2xl font-bold text-[#0A2240]">Điểm danh</Text>
-          <View style={{ width: 24 }} />
-        </View>
-        <View className="flex-1 items-center justify-center">
-          <Text className="text-gray-500">Không tìm thấy thông tin lớp học</Text>
-          <TouchableOpacity
-            onPress={() => nav.goBack()}
-            className="mt-4 rounded-xl bg-[#3F4246] px-6 py-3">
-            <Text className="font-medium text-white">Quay lại</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   const [students, setStudents] = useState<any[]>([]);
-  const [statusMap, setStatusMap] = useState<Record<string, AttendanceStatus>>({});
+  /** Điểm danh nền từ server: tiết học nếu đã có bản ghi, không thì homeroom (đồng bộ LessonLog) */
+  const [serverAttendanceMap, setServerAttendanceMap] = useState<
+    Record<string, AttendanceStatus>
+  >({});
+  /** Chỉnh tay của GV trên màn hình (tách khỏi nền để overlay Y tế không bị chặn bởi present) */
+  const [userAttendanceOverrides, setUserAttendanceOverrides] = useState<
+    Record<string, AttendanceStatus>
+  >({});
   const [eventStatuses, setEventStatuses] = useState<Record<string, AttendanceStatus>>({});
   const [leaveStatuses, setLeaveStatuses] = useState<Record<string, AttendanceStatus>>({});
   const [checkInOutTimes, setCheckInOutTimes] = useState<
@@ -262,6 +259,9 @@ const AttendanceDetail = () => {
   const [events, setEvents] = useState<
     { eventId: string; eventTitle: string; studentIds: string[] }[]
   >([]);
+  const [healthStatus, setHealthStatus] = useState<
+    HealthStatusForPeriodResponse['students']
+  >({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [classTitle, setClassTitle] = useState<string>('');
@@ -287,8 +287,13 @@ const AttendanceDetail = () => {
 
   // Determine mode based on classData structure (GVBM if has subject_title, GVCN otherwise)
   const mode = classData?.subject_title ? 'GVBM' : 'GVCN';
-  // Use route period if provided (from timetable entries), otherwise use default logic
-  const period = routePeriod || (mode === 'GVCN' ? 'homeroom' : undefined);
+
+  /** Period gửi API điểm danh / Y tế / lưu — khớp web LessonLog (period_name trong URL, không phải timetable_column_id) */
+  const savePeriod = useMemo(() => {
+    if (mode === 'GVCN') return 'homeroom';
+    const p = String(routePeriodName || routePeriod || '').trim();
+    return p || 'homeroom';
+  }, [mode, routePeriod, routePeriodName]);
 
   const fetchStudents = useCallback(async () => {
     if (!classId) {
@@ -314,7 +319,8 @@ const AttendanceDetail = () => {
 
       setClassTitle(title);
 
-      const p = period || '1';
+      const isHomeroomOnly = mode === 'GVCN';
+      const lessonPeriod = isHomeroomOnly ? 'homeroom' : savePeriod;
 
       // === PHASE 1+2: Song song lấy education info và student list ===
       // Phase 1: getClassInfo → getEducationStage (chained)
@@ -366,65 +372,93 @@ const AttendanceDetail = () => {
 
       if (studentsData.length === 0) {
         setStudents([]);
-        setStatusMap({});
+        setServerAttendanceMap({});
+        setUserAttendanceOverrides({});
         setEventStatuses({});
         setLeaveStatuses({});
+        setHealthStatus({});
         setCheckInOutTimes({});
         return;
       }
 
       setStudents(studentsData);
+      setUserAttendanceOverrides({});
       const studentCodes = studentsData.map((s) => s.student_code).filter(Boolean);
 
       // === PHASE 3: Song song tất cả các API còn lại ===
-      const [attendanceResult, dayMapResult, eventData, leavesResult] = await Promise.all([
-        // Lấy attendance records
-        attendanceApiService.getClassAttendance(String(classId), today, p),
+      const periodAttPromise = lessonPeriod
+        ? attendanceApiService.getClassAttendance(String(classId), today, lessonPeriod, true)
+        : Promise.resolve({ success: true, data: [] as any[] });
+      const homeroomAttPromise =
+        !isHomeroomOnly && lessonPeriod && lessonPeriod !== 'homeroom'
+          ? attendanceApiService.getClassAttendance(String(classId), today, 'homeroom', true)
+          : Promise.resolve({ success: true, data: [] as any[] });
 
-        // Lấy check-in/out times
-        studentCodes.length > 0
-          ? attendanceApiService.getStudentsDayMap(studentCodes, today)
-          : Promise.resolve({ success: true, data: {} }),
+      const [periodAttResult, homeroomAttResult, dayMapResult, eventData, leavesResult, healthResult] =
+        await Promise.all([
+          periodAttPromise,
 
-        // Lấy event statuses và events list
-        localEducationStageId
-          ? Promise.all([
-              attendanceApiService.getEventAttendanceStatuses(
-                String(classId),
-                today,
-                p,
-                localEducationStageId
-              ),
-              attendanceApiService.getEventsByClassPeriod(
-                String(classId),
-                today,
-                p,
-                localEducationStageId
-              ),
-            ])
-          : Promise.resolve([
-              { success: true, data: {} },
-              { success: true, data: [] },
-            ]),
+          homeroomAttPromise,
 
-        // Lấy active leaves
-        attendanceApiService.getActiveLeaves(String(classId), today),
-      ]);
+          // Lấy check-in/out times
+          studentCodes.length > 0
+            ? attendanceApiService.getStudentsDayMap(studentCodes, today)
+            : Promise.resolve({ success: true, data: {} }),
 
-      // Xử lý attendance result
-      if (attendanceResult.success && attendanceResult.data) {
-        const statusMapData: Record<string, AttendanceStatus> = {};
-        attendanceResult.data.forEach((attendanceRecord: any) => {
-          const studentId = attendanceRecord.student_id;
-          const status = attendanceRecord.status;
-          if (studentId && status) {
-            statusMapData[studentId] = (status as AttendanceStatus) || 'present';
-          }
-        });
-        setStatusMap(statusMapData);
+          // Lấy event statuses và events list
+          localEducationStageId
+            ? Promise.all([
+                attendanceApiService.getEventAttendanceStatuses(
+                  String(classId),
+                  today,
+                  lessonPeriod,
+                  localEducationStageId
+                ),
+                attendanceApiService.getEventsByClassPeriod(
+                  String(classId),
+                  today,
+                  lessonPeriod,
+                  localEducationStageId
+                ),
+              ])
+            : Promise.resolve([
+                { success: true, data: {} },
+                { success: true, data: [] },
+              ]),
+
+          // Lấy active leaves
+          attendanceApiService.getActiveLeaves(String(classId), today),
+
+          // Lấy trạng thái Y tế theo tiết học (học sinh báo xuống y tế)
+          dailyHealthService.getHealthStatusForPeriod({
+            class_id: String(classId),
+            date: today,
+            period: lessonPeriod,
+          }),
+        ]);
+
+      // Điểm danh nền: giống LessonLog — có bản ghi tiết thì dùng tiết, không thì homeroom
+      const periodRows =
+        periodAttResult.success && Array.isArray(periodAttResult.data) ? periodAttResult.data : [];
+      const homeroomRows =
+        homeroomAttResult.success && Array.isArray(homeroomAttResult.data)
+          ? homeroomAttResult.data
+          : [];
+      const hasPeriodAttendance = !isHomeroomOnly && periodRows.length > 0;
+      const periodMap = attendanceRowsToMap(periodRows);
+      const homeroomMap = attendanceRowsToMap(homeroomRows);
+
+      const serverBase: Record<string, AttendanceStatus> = {};
+      if (isHomeroomOnly) {
+        Object.assign(serverBase, periodMap);
       } else {
-        setStatusMap({});
+        for (const s of studentsData) {
+          const sid = s.name;
+          const st = hasPeriodAttendance ? periodMap[sid] : homeroomMap[sid];
+          if (st) serverBase[sid] = st;
+        }
       }
+      setServerAttendanceMap(serverBase);
 
       // Xử lý check-in/out times
       if (dayMapResult.success && dayMapResult.data) {
@@ -484,23 +518,34 @@ const AttendanceDetail = () => {
       } else {
         setLeaveStatuses({});
       }
+
+      // Xử lý trạng thái Y tế (học sinh báo xuống y tế)
+      if (healthResult && healthResult.students) {
+        setHealthStatus(healthResult.students);
+      } else {
+        setHealthStatus({});
+      }
     } catch (e) {
       console.error('AttendanceDetail error:', e);
       setStudents([]);
-      setStatusMap({});
+      setServerAttendanceMap({});
+      setUserAttendanceOverrides({});
       setEventStatuses({});
       setLeaveStatuses({});
+      setHealthStatus({});
       setCheckInOutTimes({});
     } finally {
       setLoading(false);
     }
-  }, [classId, mode, classData, today, period, routePeriod, routePeriodName]);
+  }, [classId, mode, classData, today, savePeriod, routePeriod, routePeriodName]);
 
-  useEffect(() => {
-    if (classData) {
-      fetchStudents();
-    }
-  }, [classData, fetchStudents]);
+  useFocusEffect(
+    useCallback(() => {
+      if (classData) {
+        fetchStudents();
+      }
+    }, [classData, fetchStudents])
+  );
 
   // Sort students by Vietnamese name (aligned with web)
   const sortedStudents = useMemo(() => {
@@ -523,16 +568,23 @@ const AttendanceDetail = () => {
     });
   }, [sortedStudents, searchQuery]);
 
-  // Compute final status: Priority = Event > Manual > Leave > Default
-  // Cho phép manual override leave, nhưng không cho override event
+  // Coi "ở Y tế / vắng vì Y tế" khi: left_class, at_clinic, examining, picked_up, transferred
+  // returned = đã về lớp → dùng attendance record (GV có thể đã điểm danh lại)
+  const isAtHealthForStudent = (studentId: string) => {
+    const h = healthStatus[studentId];
+    return !!h && ['left_class', 'at_clinic', 'examining', 'picked_up', 'transferred'].includes(h.status || '');
+  };
+
+  // Đồng bộ LessonLog/ClassLog: Event > chỉnh tay GV > nghỉ phép > overlay Y tế > nền server (tiết/homeroom)
   const getFinalStatus = (studentId: string): AttendanceStatus => {
-    // Event có priority cao nhất, không cho override
     if (eventStatuses[studentId]) return eventStatuses[studentId];
-    // Nếu có manual override thì dùng manual (ưu tiên hơn leave)
-    if (statusMap[studentId]) return statusMap[studentId];
-    // Nếu có leave thì dùng leave
+    if (Object.prototype.hasOwnProperty.call(userAttendanceOverrides, studentId)) {
+      return userAttendanceOverrides[studentId];
+    }
     if (leaveStatuses[studentId]) return leaveStatuses[studentId];
-    return 'present';
+    // Y tế còn trong luồng → ép excused kể cả khi nền server là present (DB chưa kịp excused)
+    if (isAtHealthForStudent(studentId)) return 'excused';
+    return serverAttendanceMap[studentId] || 'present';
   };
 
   // Chỉ block khi có event status (không block leave)
@@ -542,26 +594,38 @@ const AttendanceDetail = () => {
 
   // Vẫn giữ hàm này để check có override nào không (dùng cho UI badge)
   const hasOverrideStatus = (studentId: string): boolean => {
-    return !!(eventStatuses[studentId] || leaveStatuses[studentId]);
+    return !!(
+      eventStatuses[studentId] ||
+      Object.prototype.hasOwnProperty.call(userAttendanceOverrides, studentId) ||
+      leaveStatuses[studentId] ||
+      isAtHealthForStudent(studentId)
+    );
   };
 
   const getOverrideBadge = (studentId: string): string | null => {
     if (eventStatuses[studentId]) return 'Sự kiện';
     // Nếu có leave nhưng đã manual override thì hiện badge đặc biệt
     if (leaveStatuses[studentId]) {
-      if (statusMap[studentId]) return 'Nghỉ phép (đã thay đổi)';
+      if (Object.prototype.hasOwnProperty.call(userAttendanceOverrides, studentId)) {
+        return 'Nghỉ phép (đã thay đổi)';
+      }
       return 'Nghỉ phép';
     }
+    // Học sinh đang ở Y tế (chưa về lớp)
+    if (isAtHealthForStudent(studentId)) return 'Y tế';
     return null;
   };
 
   const setStatus = (id: string, status: AttendanceStatus) => {
-    // Chỉ block event, cho phép override leave
     if (hasEventOverrideStatus(id)) return;
-    setStatusMap((prev) => ({ ...prev, [id]: status }));
+    setUserAttendanceOverrides((prev) => ({ ...prev, [id]: status }));
   };
 
+  const savingRef = useRef(false);
+
   const handleSave = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       const items = sortedStudents.map((s) => {
@@ -583,8 +647,16 @@ const AttendanceDetail = () => {
               remarks = `Sự kiện: ${eventInfo.eventTitle}`;
             }
           }
-        } else if (leaveStatus && !statusMap[studentId]) {
+        } else if (
+          leaveStatus &&
+          !Object.prototype.hasOwnProperty.call(userAttendanceOverrides, studentId)
+        ) {
           remarks = `Nghỉ phép`;
+        } else if (
+          isAtHealthForStudent(studentId) &&
+          !Object.prototype.hasOwnProperty.call(userAttendanceOverrides, studentId)
+        ) {
+          remarks = `Xuống Y tế`;
         }
 
         return {
@@ -593,7 +665,7 @@ const AttendanceDetail = () => {
           student_name: s.student_name,
           class_id: String(classId),
           date: today,
-          period: period || '1',
+          period: savePeriod,
           status: finalStatus,
           remarks,
         };
@@ -612,8 +684,32 @@ const AttendanceDetail = () => {
       Alert.alert('Lỗi', 'Không thể lưu điểm danh');
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
   };
+
+  // Phải đặt sau hooks (Rules of Hooks)
+  if (!classData) {
+    return (
+      <SafeAreaView className="flex-1 bg-white">
+        <View className="flex-row items-center justify-between px-4 py-3">
+          <TouchableOpacity onPress={() => nav.goBack()}>
+            <Ionicons name="chevron-back" size={24} color="#0A2240" />
+          </TouchableOpacity>
+          <Text className="text-2xl font-bold text-[#0A2240]">Điểm danh</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View className="flex-1 items-center justify-center">
+          <Text className="text-gray-500">Không tìm thấy thông tin lớp học</Text>
+          <TouchableOpacity
+            onPress={() => nav.goBack()}
+            className="mt-4 rounded-xl bg-[#3F4246] px-6 py-3">
+            <Text className="font-medium text-white">Quay lại</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-white">

@@ -26,6 +26,10 @@ import FeedbackProcessing from './components/FeedbackProcessing';
 import { FeedbackModals } from './components/FeedbackModals';
 
 import type { SupportTeamUser } from '../../services/feedbackService';
+import { getLinkedIssue } from '../../services/crmIssueService';
+import type { LinkedCrmIssueSummary } from '../../types/crmIssue';
+import { CRM_ISSUE_STATUS_LABELS } from '../../types/crmIssue';
+import { ROUTES } from '../../constants/routes';
 
 type FeedbackDetailNavigationProp = NativeStackNavigationProp<RootStackParamList, 'FeedbackDetail'>;
 
@@ -50,6 +54,8 @@ const FeedbackDetailScreen = () => {
   const [activeTab, setActiveTab] = useState('information');
   const [isReadOnly, setIsReadOnly] = useState(false);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [linkedIssue, setLinkedIssue] = useState<LinkedCrmIssueSummary | null>(null);
+  const [loadingLinkedIssue, setLoadingLinkedIssue] = useState(false);
 
   // Store
   const { feedback, loading, error } = useFeedbackData();
@@ -58,7 +64,7 @@ const FeedbackDetailScreen = () => {
   const actionLoading = useFeedbackStore((state) => state.actionLoading);
   const resetDetail = useFeedbackStore((state) => state.resetDetail);
 
-  // Check user role (Mobile BOD = read only)
+  // Check user role (Mobile BOD / Mobile Sales Care = read only)
   useEffect(() => {
     const checkUserRole = async () => {
       const rolesStr = await AsyncStorage.getItem('userRoles');
@@ -67,8 +73,9 @@ const FeedbackDetailScreen = () => {
 
       if (rolesStr) {
         const roles: string[] = JSON.parse(rolesStr);
-        // Mobile BOD can only view, Mobile IT can take actions
-        if (roles.includes('Mobile BOD') && !roles.includes('Mobile IT')) {
+        const hasActionRole = roles.includes('Mobile IT');
+        const hasViewOnlyRole = roles.includes('Mobile BOD') || roles.includes('Mobile Sales Care');
+        if (hasViewOnlyRole && !hasActionRole) {
           setIsReadOnly(true);
         } else {
           setIsReadOnly(false);
@@ -77,6 +84,32 @@ const FeedbackDetailScreen = () => {
     };
     checkUserRole();
   }, []);
+
+  // Issue CRM liên kết (backend tự tạo khi phụ huynh gửi Góp ý)
+  useEffect(() => {
+    if (
+      !feedback ||
+      feedback.name !== feedbackId ||
+      feedback.feedback_type !== 'Góp ý'
+    ) {
+      setLinkedIssue(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingLinkedIssue(true);
+    void getLinkedIssue(feedback.name).then((res) => {
+      if (cancelled) return;
+      setLoadingLinkedIssue(false);
+      if (res.success) {
+        setLinkedIssue(res.data ?? null);
+      } else {
+        setLinkedIssue(null);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [feedbackId, feedback?.name, feedback?.feedback_type]);
 
   // Fetch feedback on mount
   useEffect(() => {
@@ -210,6 +243,39 @@ const FeedbackDetailScreen = () => {
               </Text>
             </View>
 
+            {feedback.feedback_type === 'Góp ý' && (
+              <View className="mx-4 mb-4 rounded-xl border border-[#002855]/25 bg-[#f8fafc] p-4">
+                <Text className="mb-2 text-base font-semibold text-[#002855]">
+                  Vấn đề liên kết (CRM)
+                </Text>
+                {loadingLinkedIssue ? (
+                  <ActivityIndicator color="#002855" />
+                ) : linkedIssue ? (
+                  <>
+                    <Text className="text-sm text-gray-800">
+                      {linkedIssue.issue_code} — {linkedIssue.title}
+                    </Text>
+                    <Text className="mt-1 text-xs text-gray-500">
+                      Trạng thái: {CRM_ISSUE_STATUS_LABELS[linkedIssue.status] || linkedIssue.status}
+                    </Text>
+                    <TouchableOpacity
+                      className="mt-3 self-start rounded-lg bg-[#002855] px-4 py-2.5"
+                      onPress={() =>
+                        navigation.navigate(ROUTES.SCREENS.CRM_ISSUE_DETAIL, {
+                          issueId: linkedIssue.name,
+                        })
+                      }>
+                      <Text className="text-sm font-medium text-white">Mở chi tiết vấn đề</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <Text className="text-sm text-gray-500">
+                    Không có vấn đề CRM liên kết.
+                  </Text>
+                )}
+              </View>
+            )}
+
             {/* Action buttons - Only show for Mobile IT */}
             {!isReadOnly && (
               <View className="mb-6 flex-row items-center gap-4 pl-5">
@@ -247,11 +313,11 @@ const FeedbackDetailScreen = () => {
               </View>
             )}
 
-            {/* Read only badge for Mobile BOD */}
+            {/* Read only badge */}
             {isReadOnly && (
               <View className="mx-4 mb-4 rounded-lg bg-gray-100 px-3 py-2">
                 <Text className="text-center text-sm text-gray-500">
-                  Bạn chỉ có quyền xem (Mobile BOD)
+                  Bạn chỉ có quyền xem
                 </Text>
               </View>
             )}
