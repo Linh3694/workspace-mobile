@@ -1,6 +1,6 @@
 {
   "name": "wis-mobile",
-  "version": "1.5.22",
+  "version": "1.5.23",
   "scripts": {
     "android": "npm run copy-firebase && expo run:android",
     "ios": "expo run:ios",
@@ -26,7 +26,8 @@
     "release:both": "./scripts/release-both.sh",
     "release:both:build-only": "./scripts/release-both.sh --no-submit",
     "clean-all": "rm -rf node_modules && npm install && expo start --clear",
-    "check-apple-signin": "node scripts/check-apple-signin.js"
+    "check-apple-signin": "node scripts/check-apple-signin.js",
+    "generate-icons": "node scripts/generate-app-icons.js"
   },
   "dependencies": {
     "@callstack/liquid-glass": "^0.6.0",
@@ -117,6 +118,7 @@
     "prettier": "^3.2.5",
     "prettier-plugin-tailwindcss": "^0.5.11",
     "react-native-svg-transformer": "^1.5.1",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.0",
     "typescript": "~5.9.2"
   },
