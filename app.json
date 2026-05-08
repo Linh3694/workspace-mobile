@@ -2,7 +2,7 @@
   "expo": {
     "name": "Wis",
     "slug": "workspace",
-    "version": "1.5.26",
+    "version": "1.5.27",
     "web": {
       "favicon": "./src/assets/favicon-winter.png"
     },
@@ -54,6 +54,11 @@
       ]
     ],
     "orientation": "portrait",
+    "splash": {
+      "image": "./src/assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFCF5"
+    },
     "icon": "./src/assets/icon.png",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": [
@@ -102,7 +107,7 @@
         "projectId": "f6365a6d-3c57-4b54-aaa8-119f05e3698e"
       }
     },
-    "runtimeVersion": "1.5.26",
+    "runtimeVersion": "1.5.27",
     "updates": {
       "url": "https://u.expo.dev/f6365a6d-3c57-4b54-aaa8-119f05e3698e"
     }
