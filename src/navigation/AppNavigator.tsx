@@ -60,6 +60,9 @@ import {
   CRMIssueDetailScreen,
   CRMIssueAddEditScreen,
 } from '../screens/CRMIssue';
+import ClassActivityScreen from '../screens/ClassActivity/ClassActivityScreen';
+import ExchangeListScreen from '../screens/Exchange/ExchangeListScreen';
+import ExchangeChatScreen from '../screens/Exchange/ExchangeChatScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -196,6 +199,17 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.CRM_ISSUE_DETAIL]: { issueId: string };
   [ROUTES.SCREENS.CRM_ISSUE_ADD]: undefined;
   [ROUTES.SCREENS.CRM_ISSUE_EDIT]: { issueId: string };
+  [ROUTES.SCREENS.CLASS_ACTIVITY]: undefined;
+  [ROUTES.SCREENS.EXCHANGE_LIST]:
+    | { classId?: string; schoolYearId?: string; classTitle?: string }
+    | undefined;
+  [ROUTES.SCREENS.EXCHANGE_CHAT]: {
+    conversationId: string;
+    classId?: string;
+    schoolYearId?: string;
+    teacherId?: string;
+    guardianId?: string;
+  };
 };
 
 const MainTabWrapper = ({ route }: { route: any }) => <BottomTabNavigator route={route} />;
@@ -551,6 +565,21 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.CRM_ISSUE_EDIT}
             component={CRMIssueAddEditScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.CLASS_ACTIVITY}
+            component={ClassActivityScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.EXCHANGE_LIST}
+            component={ExchangeListScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.EXCHANGE_CHAT}
+            component={ExchangeChatScreen}
             options={{ headerShown: false }}
           />
         </>

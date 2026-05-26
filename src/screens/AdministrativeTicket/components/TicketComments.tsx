@@ -25,7 +25,9 @@ import {
   useCanSendAdministrativeMessage,
   useAdministrativeTicketData,
   useAdministrativeTicketActions,
+  useAdministrativeTicketStore,
 } from '../../../hooks/useAdministrativeTicketStore';
+import { useHCTicketMessageRealtime } from '../../../hooks/useHCTicketMessageRealtime';
 import {
   sendAdminTicketMessage,
   getAdminTicketMessages,
@@ -303,6 +305,24 @@ const TicketComments: React.FC<TicketCommentsProps> = ({ ticketId }) => {
 
     loadMessages();
   }, [ticketId]);
+
+  // Realtime: append tin từ Frappe; đồng bộ store (fetchMessages/refresh dùng chung mảng messages)
+  const { connected: hcRtConnected } = useHCTicketMessageRealtime(ticketId, (msg) => {
+    setMessages((prev) => (prev.some((m) => m._id === msg._id) ? prev : [...prev, msg]));
+    useAdministrativeTicketStore.getState().addMessage(msg);
+  });
+
+  // Fallback poll chậm khi socket lỗi (giống web 60s)
+  useEffect(() => {
+    if (!ticketId) return;
+    if (hcRtConnected) return;
+    const id = setInterval(() => {
+      getAdminTicketMessages(ticketId)
+        .then((data) => setMessages(data || []))
+        .catch(() => undefined);
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [ticketId, hcRtConnected]);
 
   // Group messages for display
   const groupedMessages = useMemo(() => groupMessages(messages), [messages]);

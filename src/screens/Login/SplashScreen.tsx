@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React, { useEffect } from 'react';
-import { View, Text, Image, StyleSheet, StatusBar, ImageBackground } from 'react-native';
+import { View, Text, Image, Dimensions, StyleSheet, StatusBar } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -8,13 +9,8 @@ import Reanimated, {
   withDelay,
   runOnJS,
 } from 'react-native-reanimated';
-import Constants from 'expo-constants';
-import KVIcon from '../../assets/theme/new-year/KV.svg';
-import DecorIcon1 from '../../assets/theme/new-year/1.svg';
-import DecorIcon2 from '../../assets/theme/new-year/2.svg';
-import DecorIcon3 from '../../assets/theme/new-year/3.svg';
-import DecorIcon4 from '../../assets/theme/new-year/4.svg';
-import DecorIcon5 from '../../assets/theme/new-year/5.svg';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface SplashScreenProps {
   onFinish: () => void;
@@ -22,38 +18,28 @@ interface SplashScreenProps {
 
 const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   // Animation values
-  const iconOpacity = useSharedValue(0);
-  const kvOpacity = useSharedValue(0);
-  const versionOpacity = useSharedValue(0);
-  const decor1Opacity = useSharedValue(0);
-  const decor2Opacity = useSharedValue(0);
-  const decor3Opacity = useSharedValue(0);
-  const decor4Opacity = useSharedValue(0);
-  const decor5Opacity = useSharedValue(0);
+  const logoOpacity = useSharedValue(0);
+  const subtitleOpacity = useSharedValue(0);
   const containerOpacity = useSharedValue(1);
+  const circleScale1 = useSharedValue(0);
+  const circleScale2 = useSharedValue(0);
 
   useEffect(() => {
     console.log('🎬 SplashScreen useEffect starting animations...');
 
-    // Phase 1: Icon-splash fade in (after 200ms)
-    iconOpacity.value = withDelay(200, withTiming(1, { duration: 500 }));
+    // Phase 1: Circles expand
+    circleScale1.value = withTiming(1, { duration: 600 });
+    circleScale2.value = withDelay(200, withTiming(1, { duration: 600 }));
 
-    // Phase 2: KV fade in (after 700ms)
-    kvOpacity.value = withDelay(700, withTiming(1, { duration: 400 }));
+    // Phase 2: Logo fade in (no scale animation)
+    logoOpacity.value = withDelay(200, withTiming(1, { duration: 500 }));
 
-    // Phase 3: Version appears (after 1100ms)
-    versionOpacity.value = withDelay(1100, withTiming(1, { duration: 300 }));
+    // Phase 3: Subtitle appears (after 900ms)
+    subtitleOpacity.value = withDelay(900, withTiming(1, { duration: 300 }));
 
-    // Phase 4: Decorative images fade in lần lượt từ trên xuống
-    decor1Opacity.value = withDelay(1300, withTiming(1, { duration: 300 }));
-    decor2Opacity.value = withDelay(1450, withTiming(1, { duration: 300 }));
-    decor3Opacity.value = withDelay(1600, withTiming(1, { duration: 300 }));
-    decor4Opacity.value = withDelay(1750, withTiming(1, { duration: 300 }));
-    decor5Opacity.value = withDelay(1900, withTiming(1, { duration: 300 }));
-
-    // Phase 5: Fade out and finish (after 2800ms)
+    // Phase 4: Fade out and finish (after 2500ms)
     containerOpacity.value = withDelay(
-      2800,
+      2500,
       withTiming(0, { duration: 400 }, (finished) => {
         if (finished) {
           console.log('🎬 Animation finished, calling onFinish');
@@ -63,36 +49,21 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
     );
   }, []);
 
-  const iconStyle = useAnimatedStyle(() => ({
-    opacity: iconOpacity.value,
+  // Animated styles
+  const circle1Style = useAnimatedStyle(() => ({
+    transform: [{ scale: circleScale1.value }],
   }));
 
-  const kvStyle = useAnimatedStyle(() => ({
-    opacity: kvOpacity.value,
+  const circle2Style = useAnimatedStyle(() => ({
+    transform: [{ scale: circleScale2.value }],
   }));
 
-  const versionStyle = useAnimatedStyle(() => ({
-    opacity: versionOpacity.value,
+  const logoStyle = useAnimatedStyle(() => ({
+    opacity: logoOpacity.value,
   }));
 
-  const decor1Style = useAnimatedStyle(() => ({
-    opacity: decor1Opacity.value,
-  }));
-
-  const decor2Style = useAnimatedStyle(() => ({
-    opacity: decor2Opacity.value,
-  }));
-
-  const decor3Style = useAnimatedStyle(() => ({
-    opacity: decor3Opacity.value,
-  }));
-
-  const decor4Style = useAnimatedStyle(() => ({
-    opacity: decor4Opacity.value,
-  }));
-
-  const decor5Style = useAnimatedStyle(() => ({
-    opacity: decor5Opacity.value,
+  const subtitleStyle = useAnimatedStyle(() => ({
+    opacity: subtitleOpacity.value,
   }));
 
   const containerStyle = useAnimatedStyle(() => ({
@@ -103,62 +74,39 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
     <Reanimated.View style={[styles.container, containerStyle]}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-      {/* Nền Tết 2026 */}
-      <ImageBackground
-        source={require('../../assets/theme/new-year/splashpage.png')}
+      <LinearGradient
+        colors={['#FEFEFE', '#FFF9F0', '#FFF5E6']}
         style={styles.gradient}
-        resizeMode="cover"
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       />
 
-      {/* Main content */}
+      {/* Vòng trang trí */}
+      <Reanimated.View style={[styles.decorCircle, styles.circle1, circle1Style]} />
+      <Reanimated.View style={[styles.decorCircle, styles.circle2, circle2Style]} />
+
+      {/* Nội dung chính */}
       <View style={styles.content}>
-        {/* Icon splash - Logo W với gradient */}
-        <Reanimated.View style={[styles.iconContainer, iconStyle]}>
-          <Image
-            source={require('../../assets/theme/new-year/icon-splash.png')}
-            style={styles.iconSplash}
-            resizeMode="contain"
-          />
+        <Reanimated.View style={logoStyle}>
+          <View style={styles.logoStack}>
+            <View style={[styles.logoLayer, styles.logoLayer1]} />
+            <View style={[styles.logoLayer, styles.logoLayer2]} />
+            <View style={[styles.logoLayer, styles.logoLayerMain]}>
+              <Image
+                source={require('../../assets/icon.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            </View>
+          </View>
         </Reanimated.View>
 
-        {/* KV - Key Visual / Slogan */}
-        <Reanimated.View style={[styles.kvContainer, kvStyle]}>
-          <KVIcon width={280} height={80} />
+        <Reanimated.View style={[styles.subtitleContainer, subtitleStyle]}>
+          <Text style={styles.subtitle}>Wellspring Innovation Spaces</Text>
         </Reanimated.View>
-
-        {/* Version text */}
-        <Reanimated.View style={[styles.versionContainer, versionStyle]}>
-          <Text style={styles.versionText}>v{Constants.expoConfig?.version || '1.0.0'}</Text>
-        </Reanimated.View>
-
-        {/* Decorative images dưới version - Absolute positioning */}
-        <View style={styles.decorContainer}>
-          {/* Ảnh 1 */}
-          <Reanimated.View style={[styles.decorItem, { top: 0, left: '0%' }, decor1Style]}>
-            <DecorIcon1 width={130} height={130} />
-          </Reanimated.View>
-
-          {/* Ảnh 2 */}
-          <Reanimated.View style={[styles.decorItem, { top: 130, left: '0%' }, decor2Style]}>
-            <DecorIcon2 width={110} height={110} />
-          </Reanimated.View>
-
-          {/* Ảnh 3 */}
-          <Reanimated.View style={[styles.decorItem, { top: 240, left: '-20%' }, decor3Style]}>
-            <DecorIcon3 width={130} height={130} />
-          </Reanimated.View>
-
-          {/* Ảnh 4 */}
-          <Reanimated.View style={[styles.decorItem, { top: 360, left: '5%' }, decor4Style]}>
-            <DecorIcon4 width={100} height={100} />
-          </Reanimated.View>
-
-          {/* Ảnh 5 */}
-          <Reanimated.View style={[styles.decorItem, { top: 420, right: '5%' }, decor5Style]}>
-            <DecorIcon5 width={100} height={100} />
-          </Reanimated.View>
-        </View>
       </View>
+
+      <Reanimated.View style={[styles.accentLine, subtitleStyle]} />
     </Reanimated.View>
   );
 };
@@ -177,39 +125,99 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
+  decorCircle: {
+    position: 'absolute',
+    borderRadius: 9999,
+    backgroundColor: '#F5AA1E',
+    opacity: 0.12,
+  },
+  circle1: {
+    width: SCREEN_WIDTH * 1.2,
+    height: SCREEN_WIDTH * 1.2,
+    top: -SCREEN_WIDTH * 0.4,
+    right: -SCREEN_WIDTH * 0.4,
+  },
+  circle2: {
+    width: SCREEN_WIDTH * 0.8,
+    height: SCREEN_WIDTH * 0.8,
+    bottom: -SCREEN_WIDTH * 0.3,
+    left: -SCREEN_WIDTH * 0.3,
+  },
   content: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconSplash: {
-    width: 280,
+  logoStack: {
+    width: 150,
     height: 180,
-  },
-  kvContainer: {
+    marginBottom: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  versionContainer: {
+  logoLayer: {
+    position: 'absolute',
+    borderRadius: 32,
+  },
+  logoLayer1: {
+    width: 120,
+    height: 130,
+    top: 15,
+    backgroundColor: '#E4E4E7',
+    opacity: 0.6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  logoLayer2: {
+    width: 130,
+    height: 130,
+    top: 28,
+    backgroundColor: '#D6D3D1',
+    opacity: 0.8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  logoLayerMain: {
+    width: 140,
+    height: 140,
+    top: 40,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  logo: {
+    width: 140,
+    height: 140,
+  },
+  subtitleContainer: {
+    marginTop: 12,
     alignItems: 'center',
   },
-  versionText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#03687F',
-    letterSpacing: 1,
+  subtitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#666',
+    letterSpacing: 3,
+    textTransform: 'uppercase',
   },
-  decorContainer: {
-    position: 'relative',
-    marginTop: 20,
-    width: '100%',
-    height: 500,
-  },
-  decorItem: {
+  accentLine: {
     position: 'absolute',
+    bottom: 60,
+    width: 40,
+    height: 3,
+    backgroundColor: '#F5AA1E',
+    borderRadius: 2,
   },
 });
 

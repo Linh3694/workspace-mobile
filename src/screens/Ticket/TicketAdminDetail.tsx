@@ -102,7 +102,7 @@ const TicketAdminDetail = () => {
   };
 
   const handleAssignToUser = async (member: SupportTeamMember) => {
-    const userId = member?.userObjectId || member?._id;
+    const userId = member?.userId || member?.email;
     if (!userId) {
       toast.error('Không tìm thấy thông tin người dùng');
       return;

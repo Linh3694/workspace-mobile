@@ -27,6 +27,7 @@ import {
   getTicketMessages,
   getTicketDetail,
 } from '../../../services/ticketService';
+import { useITTicketMessageRealtime } from '../../../hooks/useITTicketMessageRealtime';
 
 // Utils
 import { getFullImageUrl } from '../../../utils/imageUtils';
@@ -265,6 +266,7 @@ const TicketComments: React.FC<TicketCommentsProps> = ({ ticketId }) => {
   const { ticket } = useTicketData();
   const canSendMessage = useCanSendMessage();
   const addMessageToStore = useTicketStore((state) => state.addMessage);
+  const refreshTicket = useTicketStore((state) => state.refreshTicket);
 
   // Pull to refresh handler
   const onRefresh = useCallback(async () => {
@@ -325,6 +327,24 @@ const TicketComments: React.FC<TicketCommentsProps> = ({ ticketId }) => {
     loadMessages();
   }, [ticketId, ticket?.messages?.length]);
 
+  // Realtime: append tin từ Frappe; đồng bộ store
+  const { connected: itRtConnected } = useITTicketMessageRealtime(ticketId, (msg) => {
+    setMessages((prev) => (prev.some((m) => m._id === msg._id) ? prev : [...prev, msg]));
+    addMessageToStore(msg);
+  });
+
+  // Fallback poll chậm khi socket lỗi
+  useEffect(() => {
+    if (!ticketId) return;
+    if (itRtConnected) return;
+    const id = setInterval(() => {
+      getTicketMessages(ticketId)
+        .then((data) => setMessages(data || []))
+        .catch(() => undefined);
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [ticketId, itRtConnected]);
+
   // Group messages for display
   const groupedMessages = useMemo(() => groupMessages(messages), [messages]);
 
@@ -362,15 +382,15 @@ const TicketComments: React.FC<TicketCommentsProps> = ({ ticketId }) => {
       });
 
       if (sentMessage && sentMessage._id) {
-        // Add to local state
         setMessages((prev) => {
           const exists = prev.some((m) => m._id === sentMessage._id);
           if (exists) return prev;
           return [...prev, sentMessage];
         });
-        // Also add to global store
         addMessageToStore(sentMessage);
       }
+
+      await refreshTicket();
 
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });

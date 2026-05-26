@@ -27,7 +27,7 @@ import {
 } from '../../../hooks/useTicketStore';
 import {
   acceptFeedback,
-  updateTicket,
+  reopenTicket,
   getTeamMemberFeedbackStats,
 } from '../../../services/ticketService';
 
@@ -148,10 +148,9 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
         try {
           const stats = await getTeamMemberFeedbackStats(ticket.assignedTo.email);
           if (stats) {
-            // API returns: data.feedback.averageRating and data.summary.feedbackCount
             setTechnicianStats({
-              averageRating: stats.feedback?.averageRating || 0,
-              totalFeedbacks: stats.summary?.feedbackCount || 0,
+              averageRating: stats.averageRating || 0,
+              totalFeedbacks: stats.totalFeedbacks || 0,
             });
           }
         } catch (error) {
@@ -183,12 +182,6 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
         comment: review,
         badges: selectedBadges,
       });
-      console.log('[handleSubmitFeedback] Feedback submitted successfully');
-
-      await updateTicket(ticketId, {
-        status: 'Closed',
-      });
-      console.log('[handleSubmitFeedback] Ticket status updated to Closed');
 
       toast.success('Đánh giá đã được gửi thành công');
       await refreshTicket();
@@ -204,10 +197,7 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
     try {
       setSubmitting(true);
 
-      await updateTicket(ticketId, {
-        status: 'Processing',
-        notifyAction: 'reopen_ticket',
-      });
+      await reopenTicket(ticketId);
 
       toast.success('Ticket đã được mở lại');
       await refreshTicket();

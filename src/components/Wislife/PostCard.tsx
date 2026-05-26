@@ -27,6 +27,7 @@ import { useAuth } from '../../context/AuthContext';
 import { API_BASE_URL } from '../../config/constants';
 import { formatRelativeTime } from '../../utils/dateUtils';
 import LikeSkeletonSvg from '../../assets/like-skeleton.svg';
+import { MentionRichText } from './MentionInput';
 import { getAvatar } from '../../utils/avatar';
 import { getEmojiByCode, isFallbackEmoji, hasLottieAnimation } from '../../utils/emojiUtils';
 import { normalizeVietnameseName } from '../../utils/nameFormatter';
@@ -266,7 +267,11 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
 
   const reactionCounts = getReactionCounts();
   const userReaction = getUserReaction();
-  const totalReactions = post.reactions.length;
+  const totalReactions = post.reactions?.length ?? 0;
+  /** Feed API chỉ trả `commentCount`; mảng `comments` có thể thiếu */
+  const commentCount =
+    typeof post.commentCount === 'number' ? post.commentCount : post.comments?.length ?? 0;
+
 
   // Kiểm tra xem user có quyền xóa bài viết không - CHỈ Mobile BOD
   // Mobile BOD có thể xóa mọi bài viết, kể cả bài của người khác
@@ -388,7 +393,10 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
       {/* Content - Ấn để xem chi tiết */}
       <TouchableOpacity onPress={openPostDetail} activeOpacity={0.8}>
         <View className="px-4 pb-3">
-          <Text className="text-base leading-5 text-gray-900">{post.content}</Text>
+          <MentionRichText
+            content={post.content}
+            className="text-base leading-5 text-gray-900"
+          />
         </View>
       </TouchableOpacity>
 
@@ -428,7 +436,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
       )}
 
       {/* Reactions & Comments Summary - Hiển thị khi có reaction HOẶC comment */}
-      {(totalReactions > 0 || post.comments.length > 0) && (
+      {(totalReactions > 0 || commentCount > 0) && (
         <View className="px-4 pb-2">
           <View className="flex-row items-center justify-between">
             {/* Ấn vào để xem danh sách người thích */}
@@ -464,9 +472,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
             ) : (
               <View />
             )}
-            {post.comments.length > 0 && (
+            {commentCount > 0 && (
               <TouchableOpacity onPress={() => (onCommentPress ? onCommentPress(post) : undefined)}>
-                <Text className="text-sm text-gray-600">{post.comments.length} bình luận</Text>
+                <Text className="text-sm text-gray-600">{commentCount} bình luận</Text>
               </TouchableOpacity>
             )}
           </View>

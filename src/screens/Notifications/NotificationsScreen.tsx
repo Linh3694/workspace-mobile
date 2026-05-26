@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, FlatList, ActivityIndicator, RefreshControl, Alert } from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, RefreshControl, Alert, DeviceEventEmitter } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { G, Path, Rect, Defs, ClipPath } from 'react-native-svg';
 import { TouchableOpacity } from '../../components/Common';
@@ -12,6 +12,7 @@ import { notificationCenterService } from '../../services/notificationCenterServ
 import { postService } from '../../services/postService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ROUTES } from '../../constants/routes';
+import { NOTIFICATION_INBOX_REFRESH_EVENT } from '../../providers/NotificationInboxSocketProvider';
 
 // Custom Mark As Read Icon component (giống parent-portal)
 const MarkAsReadIcon = ({ size = 16, color = '#002855' }: { size?: number; color?: string }) => (
@@ -731,6 +732,14 @@ const NotificationsScreen = () => {
       fetchNotifications(1);
     }, [fetchNotifications])
   );
+
+  /** Realtime inbox từ notification-service Socket */
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(NOTIFICATION_INBOX_REFRESH_EVENT, () => {
+      fetchNotifications(1);
+    });
+    return () => sub.remove();
+  }, [fetchNotifications]);
 
   // Render notification item
   const renderNotification = ({ item }: { item: NotificationData }) => {

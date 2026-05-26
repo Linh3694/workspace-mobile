@@ -972,7 +972,7 @@ const StudentHealthDetailScreen: React.FC = () => {
                                   exam.creation || exam.modified
                                 ),
                               },
-                              { label: 'NVYT thăm khám', value: staffName || '---' },
+                              { label: 'Nhân viên Y Tế thăm khám', value: staffName || '---' },
                               {
                                 label: 'Hướng xử trí',
                                 value: finalOutcome ? getOutcomeLabel(finalOutcome) : '---',
@@ -1186,7 +1186,7 @@ const StudentHealthDetailScreen: React.FC = () => {
                                   ),
                                 },
                                 {
-                                  label: 'NVYT thăm khám',
+                                  label: 'Nhân viên Y Tế thăm khám',
                                   value:
                                     normalizeVietnameseName(
                                       exam.followup_medical_staff_name || ''
@@ -1367,9 +1367,9 @@ const StudentHealthDetailScreen: React.FC = () => {
                                   color: '#757575',
                                   fontFamily: 'Mulish',
                                 }}>
-                                Bộ phận y tế nhà trường sẽ tiếp tục theo dõi tình trạng sức khoẻ
-                                của học sinh tại trường cho đến khi ổn định và sẽ kịp thời thông tin
-                                đến phụ huynh khi có vấn đề sức khoẻ cần lưu ý.
+                                Bộ phận y tế nhà trường sẽ tiếp tục theo dõi tình trạng sức khoẻ của
+                                học sinh tại trường cho đến khi ổn định và sẽ kịp thời thông tin đến
+                                phụ huynh khi có vấn đề sức khoẻ cần lưu ý.
                               </Text>
                             </ExamSection>
                           )}

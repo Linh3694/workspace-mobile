@@ -1,5 +1,6 @@
 /**
- * Tạo / sửa vấn đề CRM — giao diện theo DisciplineAddEditScreen; nghiệp vụ khớp web AddEditIssue (HTML nội dung, đính kèm upload khi Lưu)
+ * Tạo / sửa vấn đề CRM — giao diện theo DisciplineAddEditScreen; nghiệp vụ khớp web AddEditIssue (HTML nội dung, đính kèm upload khi Lưu).
+ * PIC do server gán (module / học sinh / phòng ban) — khách hàng không chọn PIC trên mobile.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -24,7 +25,6 @@ import { useTranslation } from 'react-i18next';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import DatePickerModal from '../../components/DatePickerModal';
-import TimePickerModal from '../../components/TimePickerModal';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
 import { useAuth } from '../../context/AuthContext';
@@ -38,16 +38,14 @@ import {
   getIssue,
   getModules,
   getDepartments,
-  getIssuePicCandidates,
   updateIssue,
   uploadIssueAttachment,
   searchCrmStudents,
   collectDepartmentMemberEmailsForIssue,
   type CrmStudentSearchHit,
 } from '../../services/crmIssueService';
-import type { CRMIssueModule, CRMIssueDepartment, IssuePicCandidate } from '../../types/crmIssue';
+import type { CRMIssueModule, CRMIssueDepartment, CRMIssuePriority } from '../../types/crmIssue';
 import { normalizeStudentClassTitle } from '../../utils/studentClassUtils';
-import { getPicDisplayName } from '../../utils/nameUtils';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type RAdd = RouteProp<RootStackParamList, typeof ROUTES.SCREENS.CRM_ISSUE_ADD>;
@@ -122,28 +120,7 @@ const toIsoDate = (d: Date) => {
 
 const formatOccurredForApi = (d: Date): string => {
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-};
-
-const timeStrFromDate = (d: Date): string => {
-  const h = String(d.getHours()).padStart(2, '0');
-  const m = String(d.getMinutes()).padStart(2, '0');
-  return `${h}:${m}`;
-};
-
-const mergeDateAndTime = (datePart: Date, timeHHmm: string): Date => {
-  const m = timeHHmm.trim().match(/^(\d{1,2}):(\d{2})/);
-  const h = m ? parseInt(m[1], 10) : datePart.getHours();
-  const min = m ? parseInt(m[2], 10) : datePart.getMinutes();
-  return new Date(
-    datePart.getFullYear(),
-    datePart.getMonth(),
-    datePart.getDate(),
-    h,
-    min,
-    0,
-    0
-  );
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
 const extFromName = (name: string) => name.split('.').pop()?.toLowerCase() ?? '';
@@ -173,24 +150,20 @@ const CRMIssueAddEditScreen: React.FC = () => {
 
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
-  const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [modules, setModules] = useState<CRMIssueModule[]>([]);
   const [departments, setDepartments] = useState<CRMIssueDepartment[]>([]);
   const [moduleId, setModuleId] = useState<string>('');
   /** Nhiều CRM Issue Department — khớp web departments[] */
   const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>([]);
-  const [picId, setPicId] = useState<string>('');
-  const [candidates, setCandidates] = useState<IssuePicCandidate[]>([]);
   const [occurredAt, setOccurredAt] = useState(new Date());
-  const [occurredTimeStr, setOccurredTimeStr] = useState(() => timeStrFromDate(new Date()));
+  const [priority, setPriority] = useState<CRMIssuePriority>('Trung binh');
   const [showDate, setShowDate] = useState(false);
-  const [showTime, setShowTime] = useState(false);
   const [showStudents, setShowStudents] = useState(false);
   const [showModule, setShowModule] = useState(false);
   const [showDept, setShowDept] = useState(false);
+  const [showPriority, setShowPriority] = useState(false);
   const [showAttachSheet, setShowAttachSheet] = useState(false);
-  const [showPic, setShowPic] = useState(false);
   /** URL từ server (sửa) */
   const [serverAttachmentUrl, setServerAttachmentUrl] = useState<string>('');
   /** File chọn cục bộ — chỉ upload khi bấm Lưu (giống web) */
@@ -206,13 +179,11 @@ const CRMIssueAddEditScreen: React.FC = () => {
   >([]);
   const [studentSheetSearch, setStudentSheetSearch] = useState('');
   const [studentHits, setStudentHits] = useState<CrmStudentSearchHit[]>([]);
-  const [picSearch, setPicSearch] = useState('');
 
   const loadMeta = useCallback(async () => {
-    const [m, d, p] = await Promise.all([getModules(), getDepartments(), getIssuePicCandidates()]);
+    const [m, d] = await Promise.all([getModules(), getDepartments()]);
     if (m.success && m.data) setModules(m.data);
     if (d.success && d.data) setDepartments(d.data);
-    if (p.success && p.data) setCandidates(p.data);
   }, []);
 
   useEffect(() => {
@@ -242,21 +213,19 @@ const CRMIssueAddEditScreen: React.FC = () => {
             navigation.goBack();
             return;
           }
-          setTitle(doc.title);
           setContent(htmlToPlainText(doc.content || ''));
           setModuleId(doc.issue_module);
+          setPriority((doc.priority as CRMIssuePriority) || 'Trung binh');
           const fromRows = (doc.issue_departments ?? [])
             .map((r) => r.department)
             .filter(Boolean) as string[];
           setSelectedDeptIds(
             fromRows.length > 0 ? fromRows : doc.department ? [doc.department] : []
           );
-          setPicId(doc.pic || '');
           if (doc.occurred_at) {
             const d = new Date(doc.occurred_at);
             if (!Number.isNaN(d.getTime())) {
               setOccurredAt(d);
-              setOccurredTimeStr(timeStrFromDate(d));
             }
           }
           setServerAttachmentUrl(doc.attachment || '');
@@ -294,17 +263,6 @@ const CRMIssueAddEditScreen: React.FC = () => {
     }, 400);
     return () => clearTimeout(timer);
   }, [studentSheetSearch, showStudents]);
-
-  const filteredPicCandidates = useMemo(() => {
-    const q = picSearch.trim().toLowerCase();
-    if (!q) return candidates;
-    return candidates.filter(
-      (c) =>
-        (c.full_name || '').toLowerCase().includes(q) ||
-        getPicDisplayName(c.full_name, c.email).toLowerCase().includes(q) ||
-        (c.email || '').toLowerCase().includes(q)
-    );
-  }, [candidates, picSearch]);
 
   const attachmentDisplayName = useMemo(() => {
     if (pendingAttachment) return pendingAttachment.name;
@@ -434,7 +392,7 @@ const CRMIssueAddEditScreen: React.FC = () => {
   };
 
   const onSubmit = async () => {
-    if (!title.trim() || !content.trim() || !moduleId) {
+    if (!content.trim() || !moduleId || selectedDeptIds.length === 0 || !priority) {
       Alert.alert(t('common.error'), t('crm_issue.required_fields'));
       return;
     }
@@ -455,20 +413,18 @@ const CRMIssueAddEditScreen: React.FC = () => {
         attachmentFinal = up.fileUrl;
       }
 
-      const occurred = mergeDateAndTime(occurredAt, occurredTimeStr);
       const contentHtml = plainTextToHtml(content.trim());
       const studentIds = students.map((s) => s.name);
 
       if (isEdit && issueId) {
         const res = await updateIssue({
           name: issueId,
-          title: title.trim(),
           content: contentHtml,
           issue_module: moduleId,
           department: selectedDeptIds[0] || undefined,
           departments: selectedDeptIds.length ? selectedDeptIds : undefined,
-          pic: picId || undefined,
-          occurred_at: formatOccurredForApi(occurred),
+          occurred_at: formatOccurredForApi(occurredAt),
+          priority,
           attachment: attachmentFinal,
           students: studentIds,
           student: studentIds[0] || '',
@@ -479,13 +435,12 @@ const CRMIssueAddEditScreen: React.FC = () => {
         } else Alert.alert(t('common.error'), res.message || '');
       } else {
         const res = await createIssue({
-          title: title.trim(),
           content: contentHtml,
           issue_module: moduleId,
           department: selectedDeptIds[0] || undefined,
           departments: selectedDeptIds.length ? selectedDeptIds : undefined,
-          pic: picId || undefined,
-          occurred_at: formatOccurredForApi(occurred),
+          occurred_at: formatOccurredForApi(occurredAt),
+          priority,
           attachment: attachmentFinal,
           students: studentIds,
           student: studentIds[0] || '',
@@ -545,7 +500,19 @@ const CRMIssueAddEditScreen: React.FC = () => {
               </Text>
             </View>
           ) : null}
-          {/* Học sinh — mở bottom sheet (cùng pattern loại vấn đề / phòng ban / PIC) */}
+          <View style={styles.fieldWrapper}>
+            <Text style={styles.fieldLabel}>
+              {t('crm_issue.module')} <Text style={styles.asterisk}>*</Text>
+            </Text>
+            <TouchableOpacity onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowModule(true), 100); }} style={styles.inputRow}>
+              <Text style={[styles.inputText, !moduleId && styles.placeholder]} numberOfLines={1}>
+                {modules.find((m) => m.name === moduleId)?.module_name || t('crm_issue.select_module')}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Học sinh — mở bottom sheet (cùng pattern loại vấn đề / phòng ban) */}
           <View style={styles.fieldWrapper}>
             <Text style={styles.fieldLabel}>{t('crm_issue.students')}</Text>
             <TouchableOpacity onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowStudents(true), 100); }} style={styles.inputRow}>
@@ -590,45 +557,17 @@ const CRMIssueAddEditScreen: React.FC = () => {
           </View>
 
           <View style={styles.fieldWrapper}>
-            <Text style={styles.fieldLabel}>
-              {t('crm_issue.field_title')} <Text style={styles.asterisk}>*</Text>
-            </Text>
-            <TextInput
-              style={styles.textInput}
-              value={title}
-              onChangeText={setTitle}
-              placeholderTextColor="#9CA3AF"
-            />
-          </View>
-
-          <View style={styles.fieldWrapper}>
-            <Text style={styles.fieldLabel}>
-              {t('crm_issue.module')} <Text style={styles.asterisk}>*</Text>
-            </Text>
-            <TouchableOpacity onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowModule(true), 100); }} style={styles.inputRow}>
-              <Text style={[styles.inputText, !moduleId && styles.placeholder]} numberOfLines={1}>
-                {modules.find((m) => m.name === moduleId)?.module_name || t('crm_issue.select_module')}
-              </Text>
-              <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.fieldWrapper}>
-            <Text style={styles.fieldLabel}>{t('crm_issue.occurred_at')}</Text>
+            <Text style={styles.fieldLabel}>{t('crm_issue.received_date')}</Text>
             <TouchableOpacity onPress={() => setShowDate(true)} style={styles.inputRow}>
               <Text style={styles.inputText}>{toIsoDate(occurredAt)}</Text>
               <Ionicons name="calendar-outline" size={20} color="#9CA3AF" />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setShowTime(true)}
-              style={[styles.inputRow, { marginTop: 8 }]}>
-              <Text style={styles.inputText}>{occurredTimeStr}</Text>
-              <Ionicons name="time-outline" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
           </View>
 
           <View style={styles.fieldWrapper}>
-            <Text style={styles.fieldLabel}>{t('crm_issue.department')}</Text>
+            <Text style={styles.fieldLabel}>
+              {t('crm_issue.department')} <Text style={styles.asterisk}>*</Text>
+            </Text>
             <TouchableOpacity onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowDept(true), 100); }} style={styles.inputRow}>
               <Text
                 style={[styles.inputText, selectedDeptIds.length === 0 && styles.placeholder]}
@@ -644,13 +583,12 @@ const CRMIssueAddEditScreen: React.FC = () => {
           </View>
 
           <View style={styles.fieldWrapper}>
-            <Text style={styles.fieldLabel}>{t('crm_issue.pic')}</Text>
-            <TouchableOpacity onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowPic(true), 100); }} style={styles.inputRow}>
-              <Text style={[styles.inputText, !picId && styles.placeholder]} numberOfLines={1}>
-                {(() => {
-                  const c = candidates.find((x) => x.user_id === picId);
-                  return c ? getPicDisplayName(c.full_name, c.email) : t('crm_issue.optional');
-                })()}
+            <Text style={styles.fieldLabel}>
+              {t('crm_issue.priority')} <Text style={styles.asterisk}>*</Text>
+            </Text>
+            <TouchableOpacity onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowPriority(true), 100); }} style={styles.inputRow}>
+              <Text style={styles.inputText}>
+                {priority === 'Trung binh' ? t('crm_issue.priority_medium') : priority === 'Thap' ? t('crm_issue.priority_low') : t('crm_issue.priority_high')}
               </Text>
               <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
             </TouchableOpacity>
@@ -720,20 +658,10 @@ const CRMIssueAddEditScreen: React.FC = () => {
         visible={showDate}
         value={occurredAt}
         onSelect={(d) => {
-          setOccurredAt(mergeDateAndTime(d, occurredTimeStr));
+          setOccurredAt(d);
           setShowDate(false);
         }}
         onClose={() => setShowDate(false)}
-      />
-      <TimePickerModal
-        visible={showTime}
-        value={occurredTimeStr}
-        onSelect={(tStr) => {
-          setOccurredTimeStr(tStr);
-          setOccurredAt(mergeDateAndTime(occurredAt, tStr));
-          setShowTime(false);
-        }}
-        onClose={() => setShowTime(false)}
       />
 
       {/* Bottom sheet: học sinh liên quan — tìm ≥2 ký tự, chọn nhiều */}
@@ -888,60 +816,35 @@ const CRMIssueAddEditScreen: React.FC = () => {
         </View>
       </BottomSheetModal>
 
-      <BottomSheetModal visible={showPic} onClose={() => setShowPic(false)} maxHeightPercent={70} fillHeight>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1, minHeight: 200 }}>
-          <View style={styles.sheetInner}>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>{t('crm_issue.select_pic')}</Text>
-              <TouchableOpacity onPress={() => setShowPic(false)} style={styles.sheetDone}>
-                <Text style={styles.sheetDoneText}>{t('common.close')}</Text>
-              </TouchableOpacity>
-            </View>
-            <TextInput
-              placeholder={t('crm_issue.pic_search_placeholder')}
-              value={picSearch}
-              onChangeText={setPicSearch}
-              style={styles.searchInput}
-              placeholderTextColor="#9CA3AF"
-            />
-            <TouchableOpacity
-              onPress={() => {
-                setPicId('');
-                setShowPic(false);
-              }}
-              style={styles.sheetItem}>
-              <Text style={styles.clearText}>{t('crm_issue.clear_pic')}</Text>
+      <BottomSheetModal visible={showPriority} onClose={() => setShowPriority(false)} maxHeightPercent={40} keyboardAvoiding={false}>
+        <View style={styles.sheetInner}>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle}>{t('crm_issue.priority')}</Text>
+            <TouchableOpacity onPress={() => setShowPriority(false)} style={styles.sheetDone}>
+              <Text style={styles.sheetDoneText}>{t('common.close')}</Text>
             </TouchableOpacity>
-            <ScrollView keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
-              {filteredPicCandidates.map((c) => (
-                <TouchableOpacity
-                  key={c.user_id}
-                  onPress={() => {
-                    setPicId(c.user_id);
-                    setShowPic(false);
-                    setPicSearch('');
-                  }}
-                  style={[styles.sheetItem, picId === c.user_id && styles.sheetItemSelected]}>
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={[styles.sheetItemText, picId === c.user_id && styles.sheetItemTextSelected]}
-                      numberOfLines={1}>
-                      {getPicDisplayName(c.full_name, c.email)}
-                    </Text>
-                    <Text style={styles.picEmail} numberOfLines={1}>
-                      {c.email}
-                    </Text>
-                  </View>
-                  {picId === c.user_id ? (
-                    <Ionicons name="checkmark-circle" size={22} color={PRIMARY} />
-                  ) : null}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
           </View>
-        </KeyboardAvoidingView>
+          {[
+            { value: 'Cao' as CRMIssuePriority, label: t('crm_issue.priority_high') },
+            { value: 'Trung binh' as CRMIssuePriority, label: t('crm_issue.priority_medium') },
+            { value: 'Thap' as CRMIssuePriority, label: t('crm_issue.priority_low') },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.value}
+              onPress={() => {
+                setPriority(item.value);
+                setShowPriority(false);
+              }}
+              style={[styles.sheetItem, priority === item.value && styles.sheetItemSelected]}>
+              <Text style={[styles.sheetItemText, priority === item.value && styles.sheetItemTextSelected]}>
+                {item.label}
+              </Text>
+              {priority === item.value ? (
+                <Ionicons name="checkmark-circle" size={22} color={PRIMARY} />
+              ) : null}
+            </TouchableOpacity>
+          ))}
+        </View>
       </BottomSheetModal>
 
       <ActionSheet
@@ -1227,7 +1130,6 @@ const styles = StyleSheet.create({
     color: PRIMARY,
   },
   clearText: { fontSize: 14, color: '#6B7280', fontFamily: MULISH },
-  picEmail: { fontSize: 12, color: '#6B7280', marginTop: 2, fontFamily: MULISH },
 });
 
 export default CRMIssueAddEditScreen;

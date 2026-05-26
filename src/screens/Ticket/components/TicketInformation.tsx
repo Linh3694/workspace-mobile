@@ -7,7 +7,7 @@ import Modal from 'react-native-modal';
 import { useTicketData, useTicketActions } from '../../../hooks/useTicketStore';
 
 // Utils & Constants
-import { API_BASE_URL } from '../../../config/constants';
+import { getFullImageUrl } from '../../../utils/imageUtils';
 import { normalizeVietnameseName } from '../../../utils/nameFormatter';
 import { getStatusColor, getStatusLabel } from '../../../config/ticketConstants';
 
@@ -116,17 +116,17 @@ const TicketInformation: React.FC<TicketInformationProps> = ({ ticketId, activeT
           <View className="mt-1 flex-row flex-wrap items-center gap-2">
             {ticket.attachments && ticket.attachments.length > 0 ? (
               ticket.attachments.map((attachment, index) => {
-                const imageUrl = attachment.url.startsWith('http')
-                  ? attachment.url
-                  : `${API_BASE_URL}/uploads/Tickets/${attachment.url}`;
+                const imageUrl = getFullImageUrl(attachment.url);
 
                 return (
-                  <TouchableOpacity key={index} onPress={() => setPreviewImage(imageUrl)}>
-                    <Image
-                      source={{ uri: imageUrl }}
-                      className="h-20 w-20 rounded-lg"
-                      onError={(e) => console.error('Lỗi tải ảnh:', e.nativeEvent.error)}
-                    />
+                  <TouchableOpacity key={index} onPress={() => imageUrl && setPreviewImage(imageUrl)}>
+                    {imageUrl ? (
+                      <Image
+                        source={{ uri: imageUrl }}
+                        className="h-20 w-20 rounded-lg"
+                        onError={(e) => console.error('Lỗi tải ảnh:', e.nativeEvent.error)}
+                      />
+                    ) : null}
                   </TouchableOpacity>
                 );
               })

@@ -1,22 +1,20 @@
 /**
- * Notification Center Service for Mobile App (Staff/Employee)
- * Gọi Frappe API để lấy notifications từ notification-service
+ * Notification Center — Phase 3: notification-service (PostgreSQL inbox).
+ * Map REST → NotificationData cho NotificationsScreen / HomeScreen.
  */
-
-import { API_BASE_URL } from '../config/constants';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { notificationRequest } = require('./notificationApiClient');
 
 export interface NotificationData {
-  _id?: string; // MongoDB ID
-  id?: string; // Frappe ID (backend trả về 'id' thay vì '_id')
+  _id?: string;
+  id?: string;
   title: string | { vi: string; en: string };
   message: string | { vi: string; en: string };
-  data: any;
+  data: Record<string, unknown>;
   read: boolean;
   createdAt: string;
   eventTimestamp?: string;
-  type: string;
+  type?: string;
   student_name?: string;
 }
 
@@ -38,18 +36,92 @@ export interface GetNotificationsParams {
   include_read?: boolean;
 }
 
+type InboxApiRow = {
+  id: string;
+  title: string;
+  body: string;
+  titleVi?: string | null;
+  titleEn?: string | null;
+  bodyVi?: string | null;
+  bodyEn?: string | null;
+  eventType: string;
+  readAt?: string | null;
+  createdAt: string;
+  dataJson?: Record<string, unknown> | null;
+};
+
+function mapRow(row: InboxApiRow): NotificationData {
+  const baseData =
+    row.dataJson && typeof row.dataJson === 'object' ? { ...row.dataJson } : {};
+
+  const title: string | { vi: string; en: string } =
+    row.titleVi || row.titleEn
+      ? {
+          vi: row.titleVi || row.title || '',
+          en: row.titleEn || row.title || '',
+        }
+      : row.title || '';
+
+  const message: string | { vi: string; en: string } =
+    row.bodyVi || row.bodyEn
+      ? {
+          vi: row.bodyVi || row.body || '',
+          en: row.bodyEn || row.body || '',
+        }
+      : row.body || '';
+
+  return {
+    id: row.id,
+    title,
+    message,
+    data: {
+      ...baseData,
+      type:
+        (baseData.type as string | undefined) || row.eventType || 'system',
+    },
+    read: Boolean(row.readAt),
+    createdAt:
+      typeof row.createdAt === 'string'
+        ? row.createdAt
+        : new Date(row.createdAt).toISOString(),
+    type: row.eventType,
+  };
+}
+
 class NotificationCenterService {
-  private baseUrl = '/api/method/erp.api.parent_portal.notification_center';
+  private basePath = '/api/notifications/inbox';
 
-  /**
-   * Lấy danh sách thông báo cho staff/employee
-   */
-  async getNotifications(params: GetNotificationsParams = {}): Promise<NotificationListResponse> {
+  async getNotifications(
+    params: GetNotificationsParams = {}
+  ): Promise<NotificationListResponse> {
     try {
-      const authToken = await AsyncStorage.getItem('authToken');
+      const limit = params.limit || 200;
+      const offset = params.offset || 0;
+      const page = Math.floor(offset / Math.max(limit, 1)) + 1;
+      const readFilter =
+        params.status === 'unread'
+          ? 'unread'
+          : params.status === 'read'
+            ? 'read'
+            : 'all';
 
-      if (!authToken) {
-        console.warn('⚠️ No auth token found');
+      const res = await notificationRequest({
+        method: 'GET',
+        url: this.basePath,
+        params: {
+          page,
+          pageSize: limit,
+          readFilter,
+        },
+      });
+
+      const body = res.data as {
+        success?: boolean;
+        data?: { items: InboxApiRow[]; total: number };
+        message?: string;
+      };
+
+      if (!body.success || !body.data) {
         return {
           success: false,
           data: {
@@ -57,37 +129,38 @@ class NotificationCenterService {
             unread_count: 0,
             total: 0,
           },
-          message: 'No authentication token',
+          message: body.message || 'Failed',
         };
       }
 
-      console.log('📤 [NotificationCenter] Fetching notifications with params:', params);
+      let notifications = body.data.items.map(mapRow);
 
-      const response = await axios.post<{ message: NotificationListResponse }>(
-        `${API_BASE_URL}${this.baseUrl}.get_notifications`,
-        {
-          type: params.type,
-          status: params.status,
-          limit: params.limit || 200,
-          offset: params.offset || 0,
-          include_read: params.include_read !== undefined ? params.include_read : true,
+      if (params.include_read === false) {
+        notifications = notifications.filter((n) => !n.read);
+      }
+      if (params.type) {
+        notifications = notifications.filter(
+          (n) =>
+            n.type === params.type ||
+            String(n.data?.type) === params.type
+        );
+      }
+
+      const unreadRes = await this.getUnreadCount();
+      const unread_count = unreadRes.success
+        ? unreadRes.data.unread_count
+        : notifications.filter((x) => !x.read).length;
+
+      return {
+        success: true,
+        data: {
+          notifications,
+          unread_count,
+          total: body.data.total,
         },
-        {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      console.log('📥 [NotificationCenter] Response:', response.data);
-
-      return response.data.message;
-    } catch (error: any) {
-      console.error('❌ [NotificationCenter] Error fetching notifications:', error);
-      console.error('❌ Error response:', error.response?.data);
-      console.error('❌ Error status:', error.response?.status);
-
+      };
+    } catch (error: unknown) {
+      console.error('❌ [NotificationCenter] Error:', error);
       return {
         success: false,
         data: {
@@ -100,174 +173,65 @@ class NotificationCenterService {
     }
   }
 
-  /**
-   * Lấy số lượng thông báo chưa đọc
-   */
   async getUnreadCount(): Promise<{ success: boolean; data: { unread_count: number } }> {
     try {
-      const authToken = await AsyncStorage.getItem('authToken');
-
-      if (!authToken) {
-        return {
-          success: false,
-          data: { unread_count: 0 },
-        };
-      }
-
-      const response = await axios.post<{
-        message: { success: boolean; data: { unread_count: number } };
-      }>(
-        `${API_BASE_URL}${this.baseUrl}.get_unread_count`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      return response.data.message;
-    } catch (error) {
-      console.error('❌ [NotificationCenter] Error fetching unread count:', error);
-      return {
-        success: false,
-        data: { unread_count: 0 },
+      const res = await notificationRequest({
+        method: 'GET',
+        url: '/api/notifications/inbox/unread-count',
+      });
+      const body = res.data as {
+        success?: boolean;
+        data?: { count: number };
       };
+      const count = body.data?.count ?? 0;
+      return { success: true, data: { unread_count: count } };
+    } catch {
+      return { success: false, data: { unread_count: 0 } };
     }
   }
 
-  /**
-   * Đánh dấu một thông báo là đã đọc
-   */
-  async markAsRead(notificationId: string): Promise<{ success: boolean; message?: string }> {
-    try {
-      // Validate notificationId
-      if (!notificationId) {
-        console.error(
-          '❌ [NotificationCenter] notificationId is required but got:',
-          notificationId
-        );
-        return {
-          success: false,
-          message: 'notification_id is required',
-        };
-      }
-
-      const authToken = await AsyncStorage.getItem('authToken');
-
-      if (!authToken) {
-        return {
-          success: false,
-          message: 'No authentication token',
-        };
-      }
-
-      console.log('📤 [NotificationCenter] Marking as read:', notificationId);
-      console.log('📤 [NotificationCenter] Request body:', { notification_id: notificationId });
-
-      const response = await axios.post<{ message: { success: boolean; message?: string } }>(
-        `${API_BASE_URL}${this.baseUrl}.mark_as_read`,
-        { notification_id: notificationId },
-        {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      console.log('📥 [NotificationCenter] markAsRead response:', response.data);
-
-      return response.data.message;
-    } catch (error: any) {
-      console.error('❌ [NotificationCenter] Error marking as read:', error);
-      console.error('❌ [NotificationCenter] Error response:', error.response?.data);
-      return {
-        success: false,
-        message: error.response?.data?.message || error.message || 'Unknown error',
-      };
-    }
-  }
-
-  /**
-   * Đánh dấu tất cả thông báo là đã đọc
-   */
-  async markAllAsRead(): Promise<{ success: boolean; message?: string }> {
-    try {
-      const authToken = await AsyncStorage.getItem('authToken');
-
-      if (!authToken) {
-        return {
-          success: false,
-          message: 'No authentication token',
-        };
-      }
-
-      console.log('📤 [NotificationCenter] Marking all as read');
-
-      const response = await axios.post<{ message: { success: boolean; message?: string } }>(
-        `${API_BASE_URL}${this.baseUrl}.mark_all_as_read`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      console.log('📥 [NotificationCenter] markAllAsRead response:', response.data);
-
-      return response.data.message;
-    } catch (error) {
-      console.error('❌ [NotificationCenter] Error marking all as read:', error);
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : 'Unknown error',
-      };
-    }
-  }
-
-  /**
-   * Xóa một thông báo
-   */
-  async deleteNotification(
+  async markAsRead(
     notificationId: string
   ): Promise<{ success: boolean; message?: string }> {
     try {
-      const authToken = await AsyncStorage.getItem('authToken');
-
-      if (!authToken) {
-        return {
-          success: false,
-          message: 'No authentication token',
-        };
-      }
-
-      console.log('📤 [NotificationCenter] Deleting notification:', notificationId);
-
-      const response = await axios.post<{ message: { success: boolean; message?: string } }>(
-        `${API_BASE_URL}${this.baseUrl}.delete_notification`,
-        { notification_id: notificationId },
-        {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      console.log('📥 [NotificationCenter] deleteNotification response:', response.data);
-
-      return response.data.message;
-    } catch (error) {
-      console.error('❌ [NotificationCenter] Error deleting notification:', error);
+      const res = await notificationRequest({
+        method: 'POST',
+        url: `${this.basePath}/${encodeURIComponent(notificationId)}/read`,
+        data: {},
+      });
+      return { success: Boolean(res.data?.success !== false) };
+    } catch (e) {
       return {
         success: false,
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: e instanceof Error ? e.message : 'Unknown error',
       };
     }
+  }
+
+  async markAllAsRead(): Promise<{ success: boolean; message?: string }> {
+    try {
+      await notificationRequest({
+        method: 'POST',
+        url: '/api/notifications/inbox/read-all',
+        data: {},
+      });
+      return { success: true };
+    } catch (e) {
+      return {
+        success: false,
+        message: e instanceof Error ? e.message : 'Unknown error',
+      };
+    }
+  }
+
+  /** Chưa có API xoá trên notification-service */
+  async deleteNotification(
+    _notificationId: string
+  ): Promise<{ success: boolean; message?: string }> {
+    return {
+      success: false,
+      message: 'delete_notification chưa được hỗ trợ trên notification-service',
+    };
   }
 }
 

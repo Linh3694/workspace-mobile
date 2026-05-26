@@ -33,7 +33,10 @@ export interface Post {
   videos: string[];
   tags: User[];
   reactions: Reaction[];
-  comments: Comment[];
+  /** Feed list thường bỏ mảng đầy đủ — dùng `commentCount` + chi tiết tải khi vào PostDetail */
+  comments?: Comment[];
+  commentCount?: number;
+  topComments?: Comment[];
   isPinned: boolean;
   department?: {
     _id: string;

@@ -89,6 +89,16 @@ export const WISLIFE_EMOJIS: WislifeEmoji[] = [
 const emojiMap = new Map<string, WislifeEmoji>();
 WISLIFE_EMOJIS.forEach((emoji) => emojiMap.set(emoji.code, emoji));
 
+/** Tin chat cũ lưu mã legacy — map sang mã Wislife để hiển thị. */
+const LEGACY_CHAT_REACTION_TO_WISLIFE: Record<string, string> = {
+  clap: 'like',
+  joy: 'haha',
+  cry: 'sad',
+  surprised: 'wow',
+  party: 'love',
+  sleepy: 'angry',
+};
+
 /**
  * Lấy emoji theo code
  * @param code - Emoji code (like, love, haha, wow, sad, angry)
@@ -153,6 +163,17 @@ export function getEmojiColor(code: string): string {
   return emojiMap.get(code)?.color || '#1877F2';
 }
 
+/** Chuẩn hóa mã reaction (DB có thể còn bản legacy). */
+export function resolveChatReactionCode(stored: string): string {
+  return LEGACY_CHAT_REACTION_TO_WISLIFE[stored] ?? stored;
+}
+
+/** Ký tự fallback hiển thị trên chip reaction trong chat. */
+export function getChatReactionGlyph(stored: string): string {
+  const code = resolveChatReactionCode(stored);
+  return emojiMap.get(code)?.fallbackText ?? '👍';
+}
+
 export default {
   getEmojiByCode,
   isFallbackEmoji,
@@ -162,5 +183,7 @@ export default {
   getEmojiFallbackText,
   getLottieSource,
   getEmojiColor,
+  resolveChatReactionCode,
+  getChatReactionGlyph,
   WISLIFE_EMOJIS,
 };

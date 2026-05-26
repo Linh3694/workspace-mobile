@@ -3,12 +3,10 @@ import {
   View,
   Text,
   Modal,
-  TextInput,
   ScrollView,
   Image,
   Alert,
   ActivityIndicator,
-  Dimensions,
 } from 'react-native';
 import { TouchableOpacity } from '../Common';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,8 +24,16 @@ import MentionInput, { MentionUser, extractMentionIds, getMentionPlainText } fro
 const IMAGE_CONFIG = {
   maxWidth: 1200,      // Max width để upload nhanh
   maxHeight: 1200,     // Max height
-  quality: 0.7,        // 70% quality - cân bằng giữa chất lượng và kích thước
+  quality: 0.7,        // 70% quality — cân bằng giữa chất lượng và kích thước
 };
+
+/** Dòng phạm vi đăng trong modal: không lặp "Đăng vào lớp Lớp …" khi API đã có tiền tố Lớp */
+function labelAudienceClassScope(className: string): string {
+  const s = String(className || '').trim();
+  if (!s) return '';
+  if (/^lớp(\s|$)/i.test(s)) return `Đăng vào ${s}`;
+  return `Đăng vào lớp ${s}`;
+}
 
 /**
  * Compress và resize ảnh để upload nhanh hơn
@@ -70,14 +76,19 @@ interface CreatePostModalProps {
   visible: boolean;
   onClose: () => void;
   onPostCreated: (post: Post) => void;
+  /** Khi có: đăng bài vào lớp chủ nhiệm (class-feed) */
+  classContext?: {
+    classId: string;
+    schoolYearId: string;
+    className?: string;
+  } | null;
 }
-
-const { width } = Dimensions.get('window');
 
 const CreatePostModal: React.FC<CreatePostModalProps> = ({
   visible,
   onClose,
   onPostCreated,
+  classContext,
 }) => {
   const { user } = useAuth();
   const [content, setContent] = useState('');
@@ -234,20 +245,46 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
       
       // Bước 2: Upload
       setUploadProgress('Đang đăng bài...');
-      
+
       // Convert mention format @[name](id) sang plain text @name
       const plainContent = getMentionPlainText(content);
-      
+
       // Lấy danh sách mention IDs (tags) từ text
       const mentionIds = extractMentionIds(content, mentionedUsers);
-      
-      const newPost = await postService.createPost({
-        content: plainContent.trim(),
-        type: 'Chia sẻ',
-        visibility: 'public',
-        files: compressedFiles,
-        tags: mentionIds,
-      });
+
+      let newPost: Post;
+
+      if (
+        classContext?.classId &&
+        classContext?.schoolYearId &&
+        String(classContext.classId).trim() &&
+        String(classContext.schoolYearId).trim()
+      ) {
+        // Đăng vào lớp (audienceType class) — Wislife lớp chủ nhiệm
+        const fallbackText =
+          plainContent.trim() ||
+          (compressedFiles.length > 0
+            ? classContext.className
+              ? `Bài chia sẻ — ${classContext.className}`
+              : 'Bài chia sẻ'
+            : '');
+        newPost = await postService.createClassPost({
+          classId: String(classContext.classId).trim(),
+          schoolYearId: String(classContext.schoolYearId).trim(),
+          content: fallbackText,
+          files: compressedFiles,
+          type: 'Chia sẻ',
+          tags: mentionIds.length ? mentionIds : undefined,
+        });
+      } else {
+        newPost = await postService.createPost({
+          content: plainContent.trim(),
+          type: 'Chia sẻ',
+          visibility: 'public',
+          files: compressedFiles,
+          tags: mentionIds,
+        });
+      }
 
       setUploadProgress('');
       onPostCreated(newPost);
@@ -278,11 +315,9 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
           <TouchableOpacity onPress={handleClose}>
             <Text className="text-lg text-gray-600">Hủy</Text>
           </TouchableOpacity>
-          
-          <Text className="text-lg font-semibold text-gray-900">
-            Tạo bài viết
-          </Text>
-          
+
+          <Text className="text-lg font-semibold text-gray-900">Tạo bài viết</Text>
+
           <TouchableOpacity
             onPress={handleCreatePost}
             disabled={(!content.trim() && selectedFiles.length === 0) || loading}
@@ -290,8 +325,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
               (!content.trim() && selectedFiles.length === 0) || loading
                 ? 'bg-gray-300'
                 : 'bg-[#FF7A00]'
-            }`}
-          >
+            }`}>
             {loading ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
@@ -310,38 +344,42 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
           </View>
         )}
 
-        <ScrollView className="flex-1 px-4">
+        <ScrollView className="flex-1 px-4" keyboardShouldPersistTaps="handled">
           {/* User Info */}
           <View className="py-4">
             <View className="flex-row items-center">
               <View className="w-12 h-12 rounded-full overflow-hidden bg-gray-300 mr-3">
-                <Image 
-                  source={{ uri: getAvatar(user) }} 
-                  className="w-full h-full"
-                />
+                <Image source={{ uri: getAvatar(user) }} className="w-full h-full" />
               </View>
               <View className="flex-col items-start">
-                <Text className="text-lg font-semibold text-gray-900">
-                  {user?.fullname}
-                </Text>
-                <View className="flex-row items-center">
-                <View className="w-6 h-6 rounded-full items-center justify-center">
-                  <Ionicons name="globe" size={14} color="#757575" />
-                </View>
-                <Text className="text-gray-600 text-sm">Công khai</Text>
+                <Text className="text-lg font-semibold text-gray-900">{user?.fullname}</Text>
+                <View className="flex-row items-center mt-1">
+                  {classContext?.className ? (
+                    <Ionicons name="school-outline" size={14} color="#757575" />
+                  ) : (
+                    <Ionicons name="globe" size={14} color="#757575" />
+                  )}
+                  <Text className="text-gray-600 text-sm ml-1">
+                    {classContext?.className ? labelAudienceClassScope(classContext.className) : 'Công khai'}
+                  </Text>
                 </View>
               </View>
             </View>
-            
+
             {/* Post visibility */}
-            <View className="flex-row items-center mt-2 ml-15">
-             
-            </View>
+            <View className="flex-row items-center mt-2 ml-15" />
           </View>
 
-          {/* Content Input với Mention */}
+          {/* Ô nội dung: cao đủ chỗ gõ nhiều dòng + chừa padding dưới */}
           <MentionInput
-            className="text-lg text-gray-900 min-h-[100px]"
+            className="min-h-[184px] w-full text-lg text-gray-900"
+            style={{
+              minHeight: 184,
+              paddingTop: 12,
+              paddingBottom: 14,
+              lineHeight: 26,
+              fontSize: 18,
+            }}
             placeholder="Có gì mới? (gõ @ để mention)"
             placeholderTextColor="#9CA3AF"
             value={content}

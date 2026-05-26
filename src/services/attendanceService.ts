@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL } from '../config/constants';
+import { fetchAuthNoCookies } from '../utils/fetchAuthNoCookies';
 
 interface AttendanceRecord {
   _id: string;
@@ -238,7 +239,7 @@ class AttendanceService {
       const todayDateString = this.getCurrentVNDateString();
 
       // Fix: Use correct BE API endpoint
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${BASE_URL}/api/method/erp.api.attendance.query.get_employee_attendance_range` +
           `?employee_code=${encodeURIComponent(employeeCode)}&start_date=${todayDateString}&end_date=${todayDateString}&limit=1&include_raw_data=true`,
         { headers }
@@ -289,7 +290,7 @@ class AttendanceService {
           `${BASE_URL}/api/method/erp.api.attendance.query.get_employee_attendance_range` +
           `?employee_code=${encodeURIComponent(employeeCode)}&start_date=${todayDateString}&end_date=${todayDateString}&limit=1`;
 
-        const response = await fetch(apiUrl, { headers });
+        const response = await fetchAuthNoCookies(apiUrl, { headers });
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -338,7 +339,7 @@ class AttendanceService {
       if (endDate) params.append('endDate', endDate);
       if (employeeCode) params.append('employeeCode', employeeCode);
 
-      const response = await fetch(`${BASE_URL}/api/attendance/records?${params.toString()}`, {
+      const response = await fetchAuthNoCookies(`${BASE_URL}/api/attendance/records?${params.toString()}`, {
         headers,
       });
 
@@ -508,7 +509,7 @@ class AttendanceService {
   async fetchCampuses(): Promise<{ name: string; title_vn?: string; title_en?: string }[]> {
     try {
       const headers = await this.getAuthHeaders();
-      const res = await fetch(`${BASE_URL}/api/method/erp.api.erp_sis.campus.get_campuses`, {
+      const res = await fetchAuthNoCookies(`${BASE_URL}/api/method/erp.api.erp_sis.campus.get_campuses`, {
         headers,
       });
       if (!res.ok) return [];
@@ -531,7 +532,7 @@ class AttendanceService {
       // Note: get_all_classes doesn't accept page/limit parameters
       if (campusId) url.searchParams.set('campus_id', campusId);
 
-      const res = await fetch(url.toString(), { headers });
+      const res = await fetchAuthNoCookies(url.toString(), { headers });
       if (!res.ok) {
         const text = await res.text();
         return [];
@@ -568,7 +569,7 @@ class AttendanceService {
         const campusId = await AsyncStorage.getItem('currentCampusId');
         const selectedCampus = await AsyncStorage.getItem('selectedCampus');
       } catch {}
-      const res = await fetch(url.toString(), { method: 'GET', headers });
+      const res = await fetchAuthNoCookies(url.toString(), { method: 'GET', headers });
       if (!res.ok) {
         const text = await res.text();
         return null;
@@ -624,7 +625,7 @@ class AttendanceService {
       const campusId = (await AsyncStorage.getItem('currentCampusId')) || '';
 
       // 1) Resolve teacher_id by user email via get_all_teachers
-      const tRes = await fetch(`${BASE_URL}/api/method/erp.api.erp_sis.teacher.get_all_teachers`, {
+      const tRes = await fetchAuthNoCookies(`${BASE_URL}/api/method/erp.api.erp_sis.teacher.get_all_teachers`, {
         headers,
       });
       if (!tRes.ok) {
@@ -651,7 +652,7 @@ class AttendanceService {
       classesUrl.searchParams.set('page', '1');
       classesUrl.searchParams.set('limit', '500');
       if (campusId) classesUrl.searchParams.set('campus_id', campusId);
-      const cRes = await fetch(classesUrl.toString(), { headers });
+      const cRes = await fetchAuthNoCookies(classesUrl.toString(), { headers });
       if (!cRes.ok) {
         const txt = await cRes.text();
         return null;
@@ -677,7 +678,7 @@ class AttendanceService {
       weekUrl.searchParams.set('week_start', weekStart);
       weekUrl.searchParams.set('week_end', weekEnd);
       if (campusId) weekUrl.searchParams.set('campus_id', campusId);
-      const wRes = await fetch(weekUrl.toString(), { headers });
+      const wRes = await fetchAuthNoCookies(weekUrl.toString(), { headers });
       let teaching_class_ids: string[] = [];
       if (wRes.ok) {
         const wJson = await wRes.json();

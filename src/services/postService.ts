@@ -19,6 +19,78 @@ class PostService {
     };
   }
 
+  /** Feed nhật ký theo lớp — audienceType class (giáo viên GVCN/phó) */
+  async getClassFeed(
+    classId: string,
+    schoolYearId: string,
+    page = 1,
+    limit = 10
+  ): Promise<PostsResponse['data']> {
+    try {
+      const headers = await this.getAuthHeaders();
+      const q = new URLSearchParams({
+        classId,
+        schoolYearId,
+        page: String(page),
+        limit: String(limit),
+      }).toString();
+      const url = `${BASE_URL}/api/social/class-feed?${q}`;
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch class feed: ${response.status} ${errorText}`);
+      }
+      const data: PostsResponse = await response.json();
+      return data.data;
+    } catch (e) {
+      console.error('[PostService] getClassFeed:', e);
+      throw e;
+    }
+  }
+
+  async createClassPost(payload: {
+    classId: string;
+    schoolYearId: string;
+    content: string;
+    files: MediaFile[];
+    type?: Post['type'];
+    /** Mention tags (Mongo user id) — tùy chọn */
+    tags?: string[];
+  }): Promise<Post> {
+    const headers = await this.getMultipartHeaders();
+    const formData = new FormData();
+    const text =
+      payload.content.trim() ||
+      (payload.files?.length ? `Bài chia sẻ từ lớp` : '');
+    formData.append('content', text);
+    formData.append('type', payload.type || 'Chia sẻ');
+    formData.append('visibility', 'public');
+    formData.append('audienceType', 'class');
+    formData.append('classId', payload.classId);
+    formData.append('schoolYearId', payload.schoolYearId);
+    if (payload.tags?.length) {
+      formData.append('tags', JSON.stringify(payload.tags));
+    }
+    (payload.files || []).forEach((file) => {
+      formData.append('files', {
+        uri: file.uri,
+        type: file.type,
+        name: file.name,
+      } as unknown as Blob);
+    });
+    const response = await fetch(`${BASE_URL}/api/social/`, {
+      method: 'POST',
+      headers,
+      body: formData as unknown as BodyInit,
+    });
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Failed to create class post: ${response.status} ${errorText}`);
+    }
+    const data: CreatePostResponse = await response.json();
+    return data.data;
+  }
+
   async getNewsfeed(page = 1, limit = 10): Promise<PostsResponse['data']> {
     try {
       const headers = await this.getAuthHeaders();

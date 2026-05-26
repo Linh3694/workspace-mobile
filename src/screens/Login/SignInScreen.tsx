@@ -20,6 +20,7 @@ import VisibilityIcon from '../../assets/visibility.svg';
 // Removed FaceID per new requirement
 // import { ROUTES } from '../../constants/routes';
 import { API_BASE_URL } from '../../config/constants';
+import { fetchAuthNoCookies } from '../../utils/fetchAuthNoCookies';
 import { useAuth } from '../../context/AuthContext';
 // Removed biometric auth per new requirement
 import { useLanguage } from '../../hooks/useLanguage';
@@ -90,7 +91,7 @@ const SignInScreen = () => {
         showNotification(t('auth.login_failed'), 'error');
       }
     },
-    (_error, errorCode) => {
+    (error, errorCode) => {
       // Show user-friendly error messages
       if (errorCode === 'USER_NOT_REGISTERED') {
         showNotification(error, 'error');
@@ -117,7 +118,7 @@ const SignInScreen = () => {
           identityTokenLength: credential.identityToken?.length || 0,
         });
 
-        const response = await fetch(`${API_BASE_URL}/api/auth/apple/login`, {
+        const response = await fetchAuthNoCookies(`${API_BASE_URL}/api/auth/apple/login`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -239,7 +240,7 @@ const SignInScreen = () => {
       if (isPhone) {
         // Đăng nhập bằng số điện thoại cho Monitor
         console.log('📱 [SignInScreen] Logging in with phone number...');
-        response = await fetch(
+        response = await fetchAuthNoCookies(
           `${API_BASE_URL}/api/method/erp.api.bus_application.auth.login_with_password`,
           {
             method: 'POST',
@@ -321,7 +322,7 @@ const SignInScreen = () => {
       }
 
       // Đăng nhập bằng email (logic cũ)
-      response = await fetch(`${API_BASE_URL}/api/method/erp.api.erp_common_user.auth.login`, {
+      response = await fetchAuthNoCookies(`${API_BASE_URL}/api/method/erp.api.erp_common_user.auth.login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -386,7 +387,7 @@ const SignInScreen = () => {
           } else {
             // Nếu login không trả user, gọi get_current_user để lấy thông tin đầy đủ
             try {
-              const resp = await fetch(
+              const resp = await fetchAuthNoCookies(
                 `${API_BASE_URL}/api/method/erp.api.erp_common_user.auth.get_current_user`,
                 {
                   method: 'GET',
@@ -433,7 +434,7 @@ const SignInScreen = () => {
             // Fallback cuối cùng nếu vẫn chưa có user đầy đủ
             if (!finalUser) {
               try {
-                const fallbackResp = await fetch(
+                const fallbackResp = await fetchAuthNoCookies(
                   `${API_BASE_URL}/api/method/frappe.auth.get_logged_user`,
                   {
                     method: 'GET',

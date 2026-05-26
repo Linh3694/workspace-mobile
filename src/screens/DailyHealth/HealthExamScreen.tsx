@@ -171,20 +171,31 @@ const HealthExamScreen: React.FC = () => {
         }
       }
 
+      const publish = data.publish !== false;
+
       let result;
       if (editingExam) {
         // Update existing
         result = await dailyHealthService.updateHealthExamination({
           exam_id: editingExam.name,
           ...data,
+          publish,
         });
       } else {
         // Create new
-        result = await dailyHealthService.createHealthExamination(data);
+        result = await dailyHealthService.createHealthExamination({ ...data, publish });
       }
 
       if (result.success) {
-        Alert.alert('Thành công', editingExam ? 'Đã cập nhật hồ sơ khám' : 'Đã tạo hồ sơ khám');
+        const okTitle = 'Thành công';
+        const okMsg = publish
+          ? editingExam
+            ? 'Đã cập nhật và chia sẻ GVCN'
+            : 'Đã lưu và chia sẻ GVCN'
+          : editingExam
+            ? 'Đã lưu nháp (chưa chia sẻ GVCN)'
+            : 'Đã lưu nội bộ (chưa chia sẻ GVCN)';
+        Alert.alert(okTitle, okMsg);
         setShowForm(false);
         setEditingExam(null);
         loadDataCallback();
@@ -322,7 +333,7 @@ const HealthExamScreen: React.FC = () => {
   }
 
   const statusInfo = statusConfig[visit.status] || statusConfig.at_clinic;
-  const isActive = ['left_class', 'at_clinic', 'examining'].includes(visit.status);
+  // Cho phép tạo hồ sơ mới ở mọi trạng thái visit (kể cả đã checkout)
 
   // Nếu đang hiển thị form
   if (showForm) {
@@ -585,7 +596,7 @@ const HealthExamScreen: React.FC = () => {
                   borderColor: '#A7F3D0',
                   paddingVertical: 8,
                   borderRadius: 12,
-                  marginBottom: isActive ? 12 : 16,
+                  marginBottom: 12,
                 }}>
                 <Ionicons name="log-out-outline" size={20} color="#047857" />
                 <Text
@@ -600,36 +611,34 @@ const HealthExamScreen: React.FC = () => {
                 </Text>
               </TouchableOpacity>
             )}
-            {isActive && (
-              <TouchableOpacity
-                onPress={() => {
-                  setEditingExam(null);
-                  setShowForm(true);
-                }}
+            <TouchableOpacity
+              onPress={() => {
+                setEditingExam(null);
+                setShowForm(true);
+              }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#FFF7ED',
+                borderWidth: 1,
+                borderColor: '#FED7AA',
+                paddingVertical: 8,
+                borderRadius: 12,
+                marginBottom: 16,
+              }}>
+              <Ionicons name="add-circle-outline" size={20} color="#C2410C" />
+              <Text
                 style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: '#FFF7ED',
-                  borderWidth: 1,
-                  borderColor: '#FED7AA',
-                  paddingVertical: 8,
-                  borderRadius: 12,
-                  marginBottom: 16,
+                  marginLeft: 8,
+                  fontSize: 14,
+                  fontWeight: '600',
+                  color: '#C2410C',
+                  fontFamily: 'Mulish',
                 }}>
-                <Ionicons name="add-circle-outline" size={20} color="#C2410C" />
-                <Text
-                  style={{
-                    marginLeft: 8,
-                    fontSize: 14,
-                    fontWeight: '600',
-                    color: '#C2410C',
-                    fontFamily: 'Mulish',
-                  }}>
-                  Tạo hồ sơ khám mới
-                </Text>
-              </TouchableOpacity>
-            )}
+                Tạo hồ sơ khám mới
+              </Text>
+            </TouchableOpacity>
 
             {/* Danh sách hồ sơ khám hôm nay */}
             {todayExams.length === 0 ? (
@@ -639,12 +648,10 @@ const HealthExamScreen: React.FC = () => {
                   style={{ marginTop: 12, fontSize: 16, color: '#6B7280', fontFamily: 'Mulish' }}>
                   Chưa có hồ sơ khám nào hôm nay
                 </Text>
-                {isActive && (
-                  <Text
-                    style={{ marginTop: 4, fontSize: 14, color: '#9CA3AF', fontFamily: 'Mulish' }}>
-                    Nhấn nút trên để tạo hồ sơ khám mới
-                  </Text>
-                )}
+                <Text
+                  style={{ marginTop: 4, fontSize: 14, color: '#9CA3AF', fontFamily: 'Mulish' }}>
+                  Nhấn nút trên để tạo hồ sơ khám mới
+                </Text>
               </View>
             ) : (
               todayExams.map((exam) => (

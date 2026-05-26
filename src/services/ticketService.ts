@@ -1,29 +1,65 @@
+/**
+ * IT Ticket — gọi Frappe erp.api.erp_it_support.ticket (đồng bộ web frappe-sis-frontend)
+ */
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_BASE_URL } from '../config/constants';
+import { BASE_URL } from '../config/constants';
 import { getAllCategoryMappings } from '../config/ticketConstants';
+import { parseFrappeApiError } from './administrativeTicketService';
 
-// Helper function to get axios config with auth token
+const IT_API = '/api/method/erp.api.erp_it_support.ticket';
+const IT_TEAM_API = '/api/method/erp.api.erp_it_support.support_team';
+
 const getAxiosConfig = async (additionalConfig: { headers?: Record<string, string> } = {}) => {
   const token = await AsyncStorage.getItem('authToken');
   const defaultHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
-
-  // Merge headers properly to avoid overriding Authorization
-  const mergedHeaders = {
-    ...defaultHeaders,
-    ...(additionalConfig.headers || {}),
-  };
-
   return {
-    baseURL: API_BASE_URL,
-    timeout: 30000,
+    baseURL: BASE_URL,
+    timeout: 120000,
     ...additionalConfig,
-    headers: mergedHeaders,
+    headers: { ...defaultHeaders, ...(additionalConfig.headers || {}) },
   };
 };
+
+function unwrap<T>(response: {
+  data?: { message?: { success?: boolean; data?: T; message?: string }; exc?: string };
+}): { success: boolean; data?: T; message?: string } {
+  const msg = response?.data?.message ?? response?.data;
+  if (msg && typeof msg === 'object' && 'success' in msg && msg.success === true) {
+    return {
+      success: true,
+      data: msg.data as T,
+      message: typeof msg.message === 'string' ? msg.message : undefined,
+    };
+  }
+  const fallback =
+    (msg && typeof msg === 'object' && 'message' in msg && typeof (msg as { message?: string }).message === 'string'
+      ? (msg as { message: string }).message
+      : null) || parseFrappeApiError(response?.data);
+  return {
+    success: false,
+    message: fallback || 'Lỗi API',
+  };
+}
+
+async function frappeGet<T>(method: string): Promise<T> {
+  const config = await getAxiosConfig();
+  const response = await axios.get(`${IT_API}.${method}`, config);
+  const out = unwrap<T>(response);
+  if (!out.success) throw new Error(out.message || 'Request failed');
+  return out.data as T;
+}
+
+async function frappePost<T>(method: string, data?: Record<string, unknown>): Promise<T> {
+  const config = await getAxiosConfig();
+  const response = await axios.post(`${IT_API}.${method}`, data ?? {}, config);
+  const out = unwrap<T>(response);
+  if (!out.success) throw new Error(out.message || 'Request failed');
+  return out.data as T;
+}
 
 export interface Feedback {
   assignedTo?: string;
@@ -45,7 +81,7 @@ export interface Message {
   text: string;
   images?: string[];
   timestamp: string;
-  type: 'text' | 'image';
+  type: 'text' | 'image' | 'text_with_images';
   tempId?: string;
 }
 
@@ -67,9 +103,10 @@ export interface SubTask {
 }
 
 export interface TicketHistoryEntry {
+  _id?: string;
   timestamp: string;
   action: string;
-  user: {
+  user?: {
     _id: string;
     fullname: string;
     email: string;
@@ -131,97 +168,77 @@ export interface TicketResponse {
   message?: string;
 }
 
-/**
- * Lấy danh sách ticket của user đang đăng nhập
- */
+export interface FeedbackStats {
+  averageRating: number;
+  totalFeedbacks: number;
+  badges: string[];
+  badgeCounts: Record<string, number>;
+}
+
+export interface SupportTeamMember {
+  _id: string;
+  userId?: string;
+  email: string;
+  fullname: string;
+  avatarUrl?: string;
+  department?: string;
+  roles?: string[];
+}
+
+/** Lấy danh sách ticket của user đang đăng nhập */
 export const getMyTickets = async (): Promise<Ticket[]> => {
   try {
-    const config = await getAxiosConfig();
-    const response = await axios.get<any>('/api/ticket/my-tickets', config);
-
-    if (response.data?.success && response.data?.data?.tickets) {
-      return response.data.data.tickets;
-    }
-
-    return [];
+    const data = await frappeGet<{ tickets: Ticket[] }>('get_my_tickets');
+    return data?.tickets || [];
   } catch (error) {
     console.error('Error fetching my tickets:', error);
     throw error;
   }
 };
 
-/**
- * Lấy tất cả ticket (dành cho admin/support team)
- */
+/** Lấy tất cả ticket (dành cho admin/support team) */
 export const getAllTickets = async (): Promise<Ticket[]> => {
   try {
-    const config = await getAxiosConfig();
-    const response = await axios.get<any>('/api/ticket/all-tickets', config);
-
-    if (response.data?.success && response.data?.data?.tickets) {
-      return response.data.data.tickets;
-    }
-
-    return [];
+    const data = await frappeGet<{ tickets: Ticket[] }>('get_all_tickets');
+    return data?.tickets || [];
   } catch (error) {
     console.error('Error fetching all tickets:', error);
     throw error;
   }
 };
 
-/**
- * Lấy chi tiết ticket
- */
+/** Lấy chi tiết ticket */
 export const getTicketDetail = async (ticketId: string): Promise<Ticket | null> => {
   try {
-    const config = await getAxiosConfig();
-    const response = await axios.get<any>(`/api/ticket/${ticketId}`, config);
-
-    if (response.data?.success && response.data?.data) {
-      const ticket = response.data.data;
-      // Debug log for feedback
-      if (ticket.feedback) {
-        console.log('[getTicketDetail] Ticket feedback:', JSON.stringify(ticket.feedback, null, 2));
-      }
-      return ticket;
-    }
-
-    return null;
+    const data = await frappePost<Ticket>('get_ticket', { ticket_id: ticketId });
+    return data || null;
   } catch (error) {
     console.error('Error fetching ticket detail:', error);
     throw error;
   }
 };
 
-/**
- * Tạo ticket mới với file upload
- */
+/** Tạo ticket mới với file upload */
 export const createTicket = async (ticketData: {
   title: string;
   description: string;
   category: string;
   notes?: string;
   priority?: string;
-  files?: any[]; // React Native file objects
+  files?: any[];
 }): Promise<Ticket> => {
-  try {
-    const formData = new FormData();
+  const maxRetries = 3;
 
+  const buildFormData = () => {
+    const formData = new FormData();
     formData.append('title', ticketData.title);
     formData.append('description', ticketData.description);
     formData.append('category', ticketData.category);
-
-    if (ticketData.notes) {
-      formData.append('notes', ticketData.notes);
-    }
-
-    if (ticketData.priority) {
-      formData.append('priority', ticketData.priority);
-    }
-
-    // Handle file uploads for React Native
-    if (ticketData.files && ticketData.files.length > 0) {
-      ticketData.files.forEach((file, index) => {
+    formData.append('notes', ticketData.notes || '');
+    formData.append('priority', ticketData.priority || 'Medium');
+    formData.append('source', 'mobile');
+    if (ticketData.files?.length) {
+      ticketData.files.forEach((file) => {
         if (file.uri && file.name && file.type) {
           formData.append('attachments', {
             uri: file.uri,
@@ -231,77 +248,90 @@ export const createTicket = async (ticketData: {
         }
       });
     }
+    return formData;
+  };
 
-    const config = await getAxiosConfig({
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    const response = await axios.post('/api/ticket', formData, config);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      const formData = buildFormData();
+      const response = await axios.post(`${IT_API}.create_ticket`, formData, {
+        baseURL: BASE_URL,
+        timeout: 120000,
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'Content-Type': 'multipart/form-data',
+        },
+        validateStatus: (status) => status >= 200 && status < 600,
+      });
 
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
+      if (response.status >= 400) {
+        throw new Error(parseFrappeApiError(response.data));
+      }
+
+      const out = unwrap<Ticket>(response);
+      if (!out.success || !out.data) {
+        throw new Error(out.message || 'Failed to create ticket');
+      }
+      return out.data;
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      if (attempt < maxRetries && err?.message?.includes('Trùng')) {
+        await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+        continue;
+      }
+      console.error(`Error creating ticket (attempt ${attempt}):`, error);
+      throw error;
     }
-
-    throw new Error('Failed to create ticket');
-  } catch (error) {
-    console.error('Error creating ticket:', error);
-    throw error;
   }
+
+  throw new Error('Failed to create ticket after multiple attempts');
 };
 
-/**
- * Cập nhật ticket
- */
-export const updateTicket = async (ticketId: string, updates: Partial<Ticket>): Promise<Ticket> => {
+/** Cập nhật ticket */
+export const updateTicket = async (ticketId: string, updates: Partial<Ticket> & { status?: string }): Promise<Ticket> => {
   try {
-    const config = await getAxiosConfig();
-    const response = await axios.put(`/api/ticket/${ticketId}`, updates, config);
-
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
-    }
-
-    throw new Error('Failed to update ticket');
+    const payload: Record<string, unknown> = { ticket_id: ticketId };
+    if (updates.title) payload.title = updates.title;
+    if (updates.description) payload.description = updates.description;
+    if (updates.category) payload.category = updates.category;
+    if (updates.notes !== undefined) payload.notes = updates.notes;
+    if (updates.priority) payload.priority = updates.priority;
+    if (updates.status) payload.status = updates.status;
+    return frappePost<Ticket>('update_ticket', payload);
   } catch (error) {
     console.error('Error updating ticket:', error);
     throw error;
   }
 };
 
-/**
- * Xóa ticket
- */
+/** Xóa ticket */
 export const deleteTicket = async (ticketId: string): Promise<void> => {
   try {
-    const config = await getAxiosConfig();
-    await axios.delete(`/api/ticket/${ticketId}`, config);
+    await frappePost('delete_ticket', { ticket_id: ticketId });
   } catch (error) {
     console.error('Error deleting ticket:', error);
     throw error;
   }
 };
 
-/**
- * Gửi message vào ticket
- */
+/** Gửi message vào ticket */
 export const sendMessage = async (
   ticketId: string,
   messageData: {
     text?: string;
-    images?: any[]; // React Native file objects
+    images?: any[];
   }
 ): Promise<Message> => {
   try {
+    const token = await AsyncStorage.getItem('authToken');
     const formData = new FormData();
-
+    formData.append('ticket_id', ticketId);
     if (messageData.text) {
       formData.append('text', messageData.text);
     }
-
-    // Handle image uploads
-    if (messageData.images && messageData.images.length > 0) {
-      messageData.images.forEach((image, index) => {
+    if (messageData.images?.length) {
+      messageData.images.forEach((image) => {
         if (image.uri && image.name && image.type) {
           formData.append('files', {
             uri: image.uri,
@@ -312,205 +342,137 @@ export const sendMessage = async (
       });
     }
 
-    const config = await getAxiosConfig({
+    const response = await axios.post(`${IT_API}.send_comment`, formData, {
+      baseURL: BASE_URL,
+      timeout: 120000,
       headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         'Content-Type': 'multipart/form-data',
       },
+      validateStatus: (status) => status >= 200 && status < 600,
     });
 
-    console.log('[sendMessage] Sending to:', `/api/ticket/${ticketId}/messages`);
-    console.log('[sendMessage] Text:', messageData.text);
-    console.log('[sendMessage] Images count:', messageData.images?.length || 0);
-
-    const response = await axios.post(`/api/ticket/${ticketId}/messages`, formData, config);
-
-    console.log('[sendMessage] Response:', JSON.stringify(response.data, null, 2));
-
-    // Handle different response formats
-    // API returns { success: true, messageData: {...} }
-    if (response.data?.success && response.data?.messageData) {
-      return response.data.messageData;
+    if (response.status >= 400) {
+      throw new Error(parseFrappeApiError(response.data));
     }
 
-    // Fallback: { success: true, data: {...} }
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
+    const out = unwrap<{
+      messageData?: Message;
+      success?: boolean;
+    }>(response);
+
+    if (!out.success) {
+      throw new Error(out.message || 'Không thể gửi tin nhắn');
     }
 
-    // If response has _id, it might be the message itself
-    if (response.data?._id) {
-      return response.data;
+    const data = out.data as { messageData?: Message } | Message | undefined;
+    if (data && typeof data === 'object' && 'messageData' in data && data.messageData?._id) {
+      return data.messageData;
+    }
+    if (data && typeof data === 'object' && '_id' in data) {
+      return data as Message;
     }
 
-    console.error('[sendMessage] Unexpected response format:', response.data);
     throw new Error('Không thể gửi tin nhắn');
-  } catch (error: any) {
-    console.error('[sendMessage] Error:', error?.response?.data || error?.message || error);
-    const errorMsg = error?.response?.data?.message || error?.message || 'Không thể gửi tin nhắn';
-    throw new Error(errorMsg);
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    console.error('[sendMessage] Error:', err?.message || error);
+    throw new Error(err?.message || 'Không thể gửi tin nhắn');
   }
 };
 
-/**
- * Lấy messages của ticket
- */
+/** Lấy messages của ticket */
 export const getTicketMessages = async (ticketId: string): Promise<Message[]> => {
   try {
-    const config = await getAxiosConfig();
-    console.log('[getTicketMessages] Fetching messages for ticket:', ticketId);
-    const response = await axios.get(`/api/ticket/${ticketId}/messages`, config);
-
-    console.log('[getTicketMessages] Response:', JSON.stringify(response.data, null, 2));
-
-    // Handle different response formats
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
-    }
-
-    // Some APIs return messages directly in array
-    if (Array.isArray(response.data)) {
-      return response.data;
-    }
-
-    // Check if messages is in response.data.messages
-    if (response.data?.messages && Array.isArray(response.data.messages)) {
-      return response.data.messages;
-    }
-
-    console.log('[getTicketMessages] No messages found in response');
-    return [];
-  } catch (error: any) {
-    console.error('[getTicketMessages] Error:', error?.response?.data || error?.message || error);
-    // Don't throw, return empty array to prevent crash
+    const data = await frappePost<{ messages: Message[] }>('get_comments', { ticket_id: ticketId });
+    return data?.messages || [];
+  } catch (error) {
+    console.error('[getTicketMessages] Error:', error);
     return [];
   }
 };
 
-/**
- * Lấy lịch sử ticket
- */
+/** Lấy lịch sử ticket */
 export const getTicketHistory = async (ticketId: string): Promise<TicketHistoryEntry[]> => {
   try {
-    const config = await getAxiosConfig();
-    const response = await axios.get(`/api/ticket/${ticketId}/history`, config);
-
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
-    }
-
-    return [];
+    const data = await frappePost<TicketHistoryEntry[]>('get_history', { ticket_id: ticketId });
+    return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error('Error fetching ticket history:', error);
-    throw error;
+    return [];
   }
 };
 
-/**
- * Assign ticket to me (for support team)
- * Backend: PUT /api/ticket/:ticketId/assign
- */
+/** Nhận ticket (assign to me) */
 export const assignTicketToMe = async (ticketId: string): Promise<Ticket> => {
   try {
-    const config = await getAxiosConfig();
-    const response = await axios.put(`/api/ticket/${ticketId}/assign`, {}, config);
-
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
-    }
-
-    throw new Error('Failed to assign ticket');
+    return frappePost<Ticket>('assign_ticket', { ticket_id: ticketId });
   } catch (error) {
     console.error('Error assigning ticket:', error);
     throw error;
   }
 };
 
-/**
- * Cancel ticket with reason
- * Backend: PUT /api/ticket/:ticketId/cancel
- */
+/** Chuyển ticket cho nhân viên IT khác */
+export const assignTicketToUser = async (ticketId: string, userId: string): Promise<Ticket> => {
+  try {
+    return frappePost<Ticket>('reassign_ticket', {
+      ticket_id: ticketId,
+      assignedTo: userId,
+    });
+  } catch (error) {
+    console.error('Error assigning ticket to user:', error);
+    throw error;
+  }
+};
+
+/** Hủy ticket kèm lý do */
 export const cancelTicket = async (ticketId: string, reason: string): Promise<Ticket> => {
   try {
-    const config = await getAxiosConfig();
-    const response = await axios.put(
-      `/api/ticket/${ticketId}/cancel`,
-      { cancelReason: reason },
-      config
-    );
-
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
-    }
-
-    throw new Error('Failed to cancel ticket');
+    return frappePost<Ticket>('cancel_ticket', { ticket_id: ticketId, cancelReason: reason });
   } catch (error) {
     console.error('Error canceling ticket:', error);
     throw error;
   }
 };
 
-/**
- * Reopen ticket
- */
+/** Mở lại ticket */
 export const reopenTicket = async (ticketId: string): Promise<Ticket> => {
   try {
-    const config = await getAxiosConfig();
-    const response = await axios.post(`/api/ticket/${ticketId}/reopen`, {}, config);
-
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
+    const data = await frappePost<{ ticket?: Ticket }>('reopen_ticket', { ticket_id: ticketId });
+    if (data && typeof data === 'object' && 'ticket' in data && data.ticket) {
+      return data.ticket;
     }
-
-    throw new Error('Failed to reopen ticket');
+    return data as unknown as Ticket;
   } catch (error) {
     console.error('Error reopening ticket:', error);
     throw error;
   }
 };
 
-/**
- * Lấy danh sách categories
- */
+/** Lấy danh sách categories */
 export const getTicketCategories = async (): Promise<TicketCategory[]> => {
   try {
-    const config = await getAxiosConfig();
-    const response = await axios.get('/api/ticket/categories', config);
-
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
-    }
-
-    // Fallback to default categories
-    return getAllCategoryMappings();
+    const data = await frappeGet<TicketCategory[]>('get_ticket_categories');
+    return Array.isArray(data) ? data : getAllCategoryMappings();
   } catch (error) {
     console.error('Error fetching ticket categories:', error);
-    // Fallback to default categories
     return getAllCategoryMappings();
   }
 };
 
-/**
- * Lấy danh sách sub-tasks
- */
+/** Lấy danh sách sub-tasks */
 export const getSubTasks = async (ticketId: string): Promise<SubTask[]> => {
   try {
-    const config = await getAxiosConfig();
-    const response = await axios.get(`/api/ticket/${ticketId}/subtasks`, config);
-
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
-    }
-
-    return [];
+    const data = await frappePost<{ subTasks: SubTask[] }>('get_subtasks', { ticket_id: ticketId });
+    return data?.subTasks || [];
   } catch (error) {
     console.error('Error fetching subtasks:', error);
     throw error;
   }
 };
 
-/**
- * Tạo sub-task mới
- */
+/** Tạo sub-task mới */
 export const createSubTask = async (
   ticketId: string,
   subTaskData: {
@@ -520,166 +482,105 @@ export const createSubTask = async (
   }
 ): Promise<SubTask> => {
   try {
-    const config = await getAxiosConfig();
-    const response = await axios.post(`/api/ticket/${ticketId}/subtasks`, subTaskData, config);
-
-    // Backend trả về ticket object, lấy subtask mới nhất
-    if (response.data?.success && response.data?.ticket) {
-      const subTasks = response.data.ticket.subTasks || [];
-      return subTasks[subTasks.length - 1];
-    }
-
-    throw new Error('Failed to create subtask');
+    const result = await frappePost<{ ticket: Ticket }>('create_subtask', {
+      ticket_id: ticketId,
+      ...subTaskData,
+    });
+    const subTasks = result?.ticket?.subTasks || [];
+    const last = subTasks[subTasks.length - 1];
+    if (!last) throw new Error('Failed to create subtask');
+    return last;
   } catch (error) {
     console.error('Error creating subtask:', error);
     throw error;
   }
 };
 
-/**
- * Cập nhật sub-task status
- */
+/** Cập nhật sub-task status */
 export const updateSubTaskStatus = async (
   ticketId: string,
   subTaskId: string,
   status: string
 ): Promise<void> => {
   try {
-    const config = await getAxiosConfig();
-    const response = await axios.put(
-      `/api/ticket/${ticketId}/subtasks/${subTaskId}`,
-      { status },
-      config
-    );
-
-    if (!response.data?.success) {
-      throw new Error(response.data?.message || 'Failed to update subtask');
-    }
+    await frappePost('update_subtask', {
+      ticket_id: ticketId,
+      sub_task_id: subTaskId,
+      status,
+    });
   } catch (error) {
     console.error('Error updating subtask:', error);
     throw error;
   }
 };
 
-/**
- * Submit feedback
- */
+/** Gửi feedback */
 export const acceptFeedback = async (ticketId: string, feedbackData: Feedback): Promise<Ticket> => {
   try {
-    const config = await getAxiosConfig();
-    console.log('[acceptFeedback] Submitting feedback for ticket:', ticketId, feedbackData);
-
-    const response = await axios.post(`/api/ticket/${ticketId}/feedback`, feedbackData, config);
-    console.log('[acceptFeedback] Response:', JSON.stringify(response.data, null, 2));
-
-    // Handle different response formats
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
+    const data = await frappePost<{ ticket?: Ticket }>('accept_feedback', {
+      ticket_id: ticketId,
+      rating: feedbackData.rating,
+      comment: feedbackData.comment || '',
+      badges: feedbackData.badges || [],
+    });
+    if (data && typeof data === 'object' && 'ticket' in data && data.ticket) {
+      return data.ticket;
     }
-
-    // Some backends return data directly
-    if (response.data?.ticket || response.data?._id) {
-      return response.data.ticket || response.data;
-    }
-
-    // If response status is OK but no expected data structure
-    if (response.status === 200 || response.status === 201) {
-      console.log('[acceptFeedback] Response OK but unexpected format, returning response.data');
-      return response.data;
-    }
-
-    const errorMsg = response.data?.message || response.data?.error || 'Failed to submit feedback';
-    throw new Error(errorMsg);
-  } catch (error: any) {
-    console.error('[acceptFeedback] Error:', error?.response?.data || error?.message || error);
-    const errorMessage =
-      error?.response?.data?.message || error?.message || 'Không thể gửi đánh giá';
-    throw new Error(errorMessage);
+    return data as unknown as Ticket;
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    console.error('[acceptFeedback] Error:', err?.message || error);
+    throw new Error(err?.message || 'Không thể gửi đánh giá');
   }
 };
 
-/**
- * Lấy feedback stats của team member
- */
-export const getTeamMemberFeedbackStats = async (email: string): Promise<any> => {
+/** Lấy feedback stats của team member */
+export const getTeamMemberFeedbackStats = async (email: string): Promise<FeedbackStats> => {
   try {
-    const config = await getAxiosConfig();
-    const response = await axios.get(`/api/ticket/feedback-stats/${email}`, config);
+    const data = await frappePost<{
+      summary?: { feedbackCount?: number };
+      feedback?: {
+        averageRating?: number;
+        badges?: string[];
+        badgeCounts?: Record<string, number>;
+      };
+    }>('get_feedback_stats', { email });
 
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
-    }
+    const feedbackData = data?.feedback;
+    const summaryData = data?.summary;
 
-    return null;
+    return {
+      averageRating: feedbackData?.averageRating || 0,
+      totalFeedbacks: summaryData?.feedbackCount || 0,
+      badges: feedbackData?.badges || [],
+      badgeCounts: feedbackData?.badgeCounts || {},
+    };
   } catch (error) {
     console.error('Error fetching feedback stats:', error);
-    return null; // Return null instead of throwing to avoid breaking UI
+    return {
+      averageRating: 0,
+      totalFeedbacks: 0,
+      badges: [],
+      badgeCounts: {},
+    };
   }
 };
 
-/**
- * Lấy technical stats by user ID
- */
-export const getTechnicalStatsByUserId = async (userId: string): Promise<any> => {
-  try {
-    const config = await getAxiosConfig();
-    const response = await axios.get(`/api/ticket/technical-stats/${userId}`, config);
-
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Error fetching technical stats by user ID:', error);
-    return null; // Return null instead of throwing to avoid breaking UI
-  }
-};
-
-export interface SupportTeamMember {
-  _id: string;
-  email: string;
-  fullname: string;
-  avatarUrl?: string;
-  department?: string;
-  roles?: string[];
-  userObjectId?: string; // User's ObjectId (dùng khi assign ticket)
-}
-
-/**
- * Lấy danh sách support team members
- */
+/** Lấy danh sách support team members */
 export const getSupportTeamMembers = async (): Promise<SupportTeamMember[]> => {
   try {
     const config = await getAxiosConfig();
-    const response = await axios.get('/api/ticket/support-team', config);
-
-    if (response.data?.success && response.data?.data?.members) {
-      return response.data.data.members;
+    const response = await axios.get(`${IT_TEAM_API}.get_all_team_members`, config);
+    const out = unwrap<{ members?: SupportTeamMember[] }>(response);
+    if (out.success && out.data?.members) {
+      return out.data.members.map((m) => ({
+        ...m,
+        userId: m.userId || m._id,
+      }));
     }
-
     return [];
   } catch (error) {
     console.error('Error fetching support team members:', error);
-    throw error;
-  }
-};
-
-/**
- * Assign ticket cho user khác
- */
-export const assignTicketToUser = async (ticketId: string, userId: string): Promise<Ticket> => {
-  try {
-    const config = await getAxiosConfig();
-    const response = await axios.put(`/api/ticket/${ticketId}`, { assignedTo: userId }, config);
-
-    if (response.data?.success && response.data?.data) {
-      return response.data.data;
-    }
-
-    throw new Error('Failed to assign ticket');
-  } catch (error) {
-    console.error('Error assigning ticket:', error);
     throw error;
   }
 };

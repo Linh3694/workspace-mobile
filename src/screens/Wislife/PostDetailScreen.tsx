@@ -31,6 +31,7 @@ import { getEmojiByCode, hasLottieAnimation } from '../../utils/emojiUtils';
 import { normalizeVietnameseName } from '../../utils/nameFormatter';
 import ReactionPicker from '../../components/Wislife/ReactionPicker';
 import ReactionsListModal from '../../components/Wislife/ReactionsListModal';
+import { MentionRichText } from '../../components/Wislife/MentionInput';
 
 const { width } = Dimensions.get('window');
 
@@ -48,7 +49,10 @@ const PostDetailScreen = () => {
   const insets = useSafeAreaInsets();
 
   const { user } = useAuth();
-  const [post, setPost] = useState<Post>(initialPost);
+  const [post, setPost] = useState<Post>(() => ({
+    ...initialPost,
+    comments: Array.isArray(initialPost.comments) ? initialPost.comments : [],
+  }));
   const [commentText, setCommentText] = useState('');
   const [loading, setLoading] = useState(false);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -88,10 +92,39 @@ const PostDetailScreen = () => {
     [onUpdate]
   );
 
+  // Feed có thể không gửi comments[] — tải chi tiết một lần để có đủ bình luận
+  React.useEffect(() => {
+    if (Array.isArray(initialPost.comments)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const full = await postService.getPostById(initialPost._id);
+        if (cancelled) return;
+        updatePost({
+          ...full,
+          comments: Array.isArray(full.comments) ? full.comments : [],
+        });
+      } catch (e) {
+        if (!cancelled) {
+          console.warn('[PostDetailScreen] hydrate post:', e?.message || e);
+          updatePost({ ...initialPost, comments: [] });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ hydrate theo post mở
+  }, [initialPost._id]);
+
+  const commentsList = post.comments ?? [];
+  const displayCommentCount =
+    commentsList.length > 0 ? commentsList.length : (typeof post.commentCount === 'number' ? post.commentCount : 0);
+
   // Sắp xếp comments
   const organizeComments = () => {
-    const mainComments = post.comments.filter((comment) => !comment.parentComment);
-    const replies = post.comments.filter((comment) => comment.parentComment);
+    const mainComments = commentsList.filter((comment) => !comment.parentComment);
+    const replies = commentsList.filter((comment) => comment.parentComment);
 
     const sortedMainComments = [...mainComments].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -131,7 +164,7 @@ const PostDetailScreen = () => {
     }
 
     // Kiểm tra trong comments
-    for (const comment of post.comments) {
+    for (const comment of commentsList) {
       if (comment.user) {
         const commentEmail = comment.user.email?.toLowerCase();
         const commentUsername = (comment.user as any).username?.toLowerCase();
@@ -263,7 +296,7 @@ const PostDetailScreen = () => {
       setCommentReactionModalVisible(false);
       setSelectedCommentId(null);
 
-      const comment = post.comments.find((c) => c._id === commentId);
+      const comment = commentsList.find((c) => c._id === commentId);
       if (!comment) {
         console.error('Comment not found:', commentId);
         return;
@@ -348,31 +381,6 @@ const PostDetailScreen = () => {
   const userReaction = getUserReaction();
   const totalReactions = post.reactions.length;
 
-  // Render comment content với @mention
-  // Render comment content với @mention màu cam
-  const renderCommentContent = (content: string) => {
-    // Tách text thành các phần để highlight @mentions
-    // Chỉ match tên người thật: @ + từ đầu viết hoa + tối đa 2 từ tiếp theo cũng viết hoa
-    const parts = content.split(
-      /(@[A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ][a-zàáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]*(?:\s+[A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ][a-zàáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]*){0,2})/g
-    );
-
-    return (
-      <Text className="text-base leading-5 text-gray-800">
-        {parts.map((part, index) => {
-          if (part.startsWith('@') && part.trim().length > 1) {
-            return (
-              <Text key={index} className="font-bold text-orange-500">
-                {part.trim()}
-              </Text>
-            );
-          }
-          return part;
-        })}
-      </Text>
-    );
-  };
-
   const getUniqueReactionTypes = (reactions: Reaction[]): string[] => {
     const types: string[] = [];
     reactions.forEach((reaction) => {
@@ -452,7 +460,10 @@ const PostDetailScreen = () => {
 
             {/* Post Content Text */}
             <View className="px-4 pb-4">
-              <Text className="text-base leading-6 text-gray-900">{post.content}</Text>
+              <MentionRichText
+                content={post.content}
+                className="text-base leading-6 text-gray-900"
+              />
             </View>
 
             {/* Media */}
@@ -547,7 +558,7 @@ const PostDetailScreen = () => {
                   </>
                 )}
               </TouchableOpacity>
-              <Text className="text-sm text-gray-600">{post.comments.length} bình luận</Text>
+              <Text className="text-sm text-gray-600">{displayCommentCount} bình luận</Text>
             </View>
 
             {/* Action Buttons */}
@@ -598,10 +609,10 @@ const PostDetailScreen = () => {
           {/* Comments Section */}
           <View className="px-4 py-4">
             <Text className="mb-4 text-base font-semibold text-gray-900">
-              Bình luận ({post.comments.length})
+              Bình luận ({displayCommentCount})
             </Text>
 
-            {post.comments.length === 0 ? (
+            {commentsList.length === 0 ? (
               <View className="items-center py-8">
                 <Ionicons name="chatbubble-outline" size={48} color="#D1D5DB" />
                 <Text className="mt-3 text-gray-500">Chưa có bình luận nào</Text>
@@ -625,7 +636,7 @@ const PostDetailScreen = () => {
                               ? normalizeVietnameseName(comment.user.fullname)
                               : 'Ẩn danh'}
                           </Text>
-                          {renderCommentContent(comment.content)}
+                          <MentionRichText content={comment.content} />
                         </View>
 
                         {/* Comment Actions */}
@@ -728,9 +739,10 @@ const PostDetailScreen = () => {
                                             ? normalizeVietnameseName(reply.user.fullname)
                                             : 'Ẩn danh'}
                                         </Text>
-                                        <Text className="text-sm text-gray-800">
-                                          {reply.content}
-                                        </Text>
+                                        <MentionRichText
+                                          content={reply.content}
+                                          className="text-sm leading-5 text-gray-800"
+                                        />
                                       </View>
                                       <View className="ml-2 mt-1 flex-row items-center justify-between">
                                         <View className="flex-row items-center">
@@ -882,12 +894,13 @@ const PostDetailScreen = () => {
                 value={commentText}
                 onChangeText={setCommentText}
                 multiline
-                textAlignVertical="center"
+                textAlignVertical="top"
                 style={{
-                  minHeight: 22,
+                  minHeight: 36,
                   maxHeight: 80,
-                  paddingTop: 0,
-                  paddingBottom: 0,
+                  lineHeight: 22,
+                  fontSize: 16,
+                  paddingVertical: 8,
                   includeFontPadding: false,
                 }}
               />
@@ -929,7 +942,7 @@ const PostDetailScreen = () => {
         }}
         currentReaction={(() => {
           if (!selectedCommentId) return null;
-          const comment = post.comments.find((c) => c._id === selectedCommentId);
+          const comment = commentsList.find((c) => c._id === selectedCommentId);
           if (!comment) return null;
           const myReaction = getCommentUserReaction(comment.reactions);
           return myReaction?.type || null;

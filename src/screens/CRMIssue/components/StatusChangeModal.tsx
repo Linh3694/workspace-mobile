@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, Alert } from 'react-native';
 import { TouchableOpacity, BottomSheetModal } from '../../../components/Common';
 import { useTranslation } from 'react-i18next';
 import type { CRMIssueResult, CRMIssueStatus } from '../../../types/crmIssue';
@@ -16,7 +16,7 @@ type Props = {
   loading?: boolean;
 };
 
-const STATUSES: CRMIssueStatus[] = ['Tiep nhan', 'Dang xu ly', 'Hoan thanh'];
+const STATUSES: CRMIssueStatus[] = ['Dang xu ly', 'Hoan thanh', 'Dong'];
 
 export const StatusChangeModal: React.FC<Props> = ({ visible, onClose, onConfirm, loading }) => {
   const { t } = useTranslation();

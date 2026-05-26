@@ -36,6 +36,7 @@ import { ADMIN_TICKET_MAX_IMAGES_UPLOAD } from '../../config/administrativeTicke
 import { isAxiosError } from 'axios';
 import {
   getAdminTicketCategories,
+  getPendingAckCategories,
   createAdminTicket,
   uploadAdminTicketAttachment,
   parseFrappeApiError,
@@ -145,6 +146,7 @@ const TicketCreate = () => {
   const [categories, setCategories] = useState<AdminTicketCategory[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [assignments, setAssignments] = useState<AdministrativeSupportAssignment[]>([]);
+  const [pendingAckCategories, setPendingAckCategories] = useState<string[]>([]);
   const [eventRooms, setEventRooms] = useState<AdminEventRoomOption[]>([]);
   const [nonEventRooms, setNonEventRooms] = useState<AdminEventRoomOption[]>([]);
   const [ticketEquipment, setTicketEquipment] = useState<AdminTicketEquipmentLine[]>([]);
@@ -176,6 +178,11 @@ const TicketCreate = () => {
   });
 
   const insets = useSafeAreaInsets();
+
+  const pendingCategorySet = useMemo(
+    () => new Set(pendingAckCategories),
+    [pendingAckCategories],
+  );
 
   const isEventCategory = ticketData.category === EVENT_FACILITY_CATEGORY;
 
@@ -231,16 +238,18 @@ const TicketCreate = () => {
   useEffect(() => {
     const run = async () => {
       try {
-        const [storedUserName, cats, bld, asn] = await Promise.all([
+        const [storedUserName, cats, bld, asn, pending] = await Promise.all([
           AsyncStorage.getItem('userFullname'),
           getAdminTicketCategories(),
           getAllBuildings(),
           getAllAdministrativeAssignments(),
+          getPendingAckCategories(),
         ]);
         setUserName(normalizeVietnameseName(storedUserName || 'WISer'));
         setCategories(cats);
         setBuildings(bld);
         setAssignments(asn);
+        setPendingAckCategories(pending);
       } catch (e) {
         console.error('TicketCreate bootstrap', e);
       } finally {
@@ -366,9 +375,18 @@ const TicketCreate = () => {
   };
 
   const handleContinue = () => {
-    if (step === 1 && !ticketData.category) {
-      Alert.alert('Thông báo', 'Vui lòng chọn hạng mục');
-      return;
+    if (step === 1) {
+      if (!ticketData.category) {
+        Alert.alert('Thông báo', 'Vui lòng chọn hạng mục');
+        return;
+      }
+      if (pendingCategorySet.has(ticketData.category)) {
+        Alert.alert(
+          'Thông báo',
+          'Bạn còn ticket cùng hạng mục chưa xác nhận kết quả. Hãy xử lý ở danh sách ticket trước khi tạo mới.',
+        );
+        return;
+      }
     }
     if (step === 2 && !validateStep2()) return;
     if (step === 3) {
@@ -423,6 +441,7 @@ const TicketCreate = () => {
       });
 
       if (created?.ticketCode) {
+        setPendingAckCategories(await getPendingAckCategories());
         setTicketCreatedId(created.ticketCode);
         setStep(5);
       } else {
@@ -547,16 +566,31 @@ const TicketCreate = () => {
         <Text className="mb-4 text-center font-semibold text-base text-[#002147]">
           Chọn hạng mục <Text className="text-red-500">*</Text>
         </Text>
+        {pendingAckCategories.length > 0 ? (
+          <View className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <Text className="text-sm text-amber-900">
+              Một số hạng mục tạm không thể tạo mới vì còn ticket chưa xác nhận kết quả (xong, chưa
+              đóng/đánh giá). Vào màn Danh sách ticket để xử lý trước.
+            </Text>
+          </View>
+        ) : null}
         <View className="space-y-3">
-          {categories.map((category) => (
+          {categories.map((category) => {
+            const blocked = pendingCategorySet.has(category.value);
+            return (
             <TouchableOpacity
               key={category.value}
+              activeOpacity={blocked ? 1 : 0.7}
               className={`mb-2 rounded-xl border-2 p-4 ${
-                ticketData.category === category.value
+                blocked
+                  ? 'border-gray-200 bg-gray-100 opacity-60'
+                  : ticketData.category === category.value
                   ? 'border-[#FF5733] bg-[#FFF5F3]'
                   : 'border-gray-200 bg-white'
               }`}
-              onPress={() =>
+              disabled={blocked}
+              onPress={() => {
+                if (blocked) return;
                 setTicketData((prev) => ({
                   ...prev,
                   category: category.value,
@@ -566,16 +600,18 @@ const TicketCreate = () => {
                   event_room_id: '',
                   related_equipment_id: '',
                   related_student_ids: [],
-                }))
-              }>
+                }));
+              }}>
               <Text
                 className={`font-medium text-base ${
-                  ticketData.category === category.value ? 'text-[#FF5733]' : 'text-gray-800'
+                  ticketData.category === category.value && !blocked ? 'text-[#FF5733]' : 'text-gray-800'
                 }`}>
                 {category.label}
+                {blocked ? ' (đang chờ xác nhận)' : ''}
               </Text>
             </TouchableOpacity>
-          ))}
+            );
+          })}
         </View>
       </View>
     </View>

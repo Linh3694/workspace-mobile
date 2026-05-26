@@ -28,7 +28,13 @@ export interface DailyHealthVisit {
   accompanying_health_staff?: string;
 }
 
-export type VisitStatus = 'left_class' | 'at_clinic' | 'examining' | 'returned' | 'picked_up' | 'transferred';
+export type VisitStatus =
+  | 'left_class'
+  | 'at_clinic'
+  | 'examining'
+  | 'returned'
+  | 'picked_up'
+  | 'transferred';
 
 export interface ExaminationImage {
   name?: string;
@@ -57,9 +63,11 @@ export interface HealthExamination {
   examined_by_name?: string;
   sent_to_parent?: boolean;
   sent_to_parent_at?: string;
+  /** Đồng bộ GVCN; false = bản nháp nội bộ */
+  shared_with_homeroom?: boolean | number;
   creation?: string;
   modified?: string;
-  // NVYT thăm khám
+  // Nhân viên Y Tế thăm khám
   medical_staff?: string;
   medical_staff_name?: string;
   // Thời gian vào/về y tế
@@ -132,6 +140,8 @@ export interface CreateExaminationParams {
   medical_staff?: string;
   clinic_checkin_time?: string;
   clinic_checkout_time?: string;
+  /** true = chia sẻ GVCN + thông báo GVCN (không gửi PH) */
+  publish?: boolean;
 }
 
 export interface UpdateExaminationParams {
@@ -176,6 +186,8 @@ export interface UpdateExaminationParams {
   hospital_transport_other?: string;
   hospital_health_monitoring?: string;
   hospital_notes?: string;
+  /** true = chia sẻ GVCN (không gửi PH) */
+  publish?: boolean;
 }
 
 export interface CompleteVisitParams {
@@ -195,12 +207,15 @@ export interface GetHealthStatusForPeriodParams {
 }
 
 export interface HealthStatusForPeriodResponse {
-  students: Record<string, {
-    visit_id: string;
-    status: string;
-    leave_class_time: string | null;
-    leave_clinic_time: string | null;
-  }>;
+  students: Record<
+    string,
+    {
+      visit_id: string;
+      status: string;
+      leave_class_time: string | null;
+      leave_clinic_time: string | null;
+    }
+  >;
 }
 
 // Interface cho danh sách thăm khám theo lớp (Teacher Health module)
@@ -231,7 +246,7 @@ const USER_URL = '/method/erp.api.erp_common_user.user_management';
 
 const dailyHealthService = {
   /**
-   * Lấy danh sách NVYT (role SIS Medical) - giống Web: getUsers({ role: 'SIS Medical', active: 1, limit: 200 })
+   * Lấy danh sách Nhân viên Y Tế (role SIS Medical) - giống Web: getUsers({ role: 'SIS Medical', active: 1, limit: 200 })
    */
   async getMedicalStaffList(): Promise<MedicalStaffUser[]> {
     try {
@@ -275,7 +290,9 @@ const dailyHealthService = {
   /**
    * Báo cáo học sinh xuống Y tế (Giáo viên gọi)
    */
-  async reportStudentToClinic(params: ReportStudentParams): Promise<{ success: boolean; data?: DailyHealthVisit; message?: string }> {
+  async reportStudentToClinic(
+    params: ReportStudentParams
+  ): Promise<{ success: boolean; data?: DailyHealthVisit; message?: string }> {
     try {
       const response = await api.post(`${BASE_URL}.report_student_to_clinic`, params);
       const messageData = response.data?.message;
@@ -285,17 +302,26 @@ const dailyHealthService = {
       if (response.data?.success) {
         return { success: true, data: response.data.data };
       }
-      return { success: false, message: messageData?.message || response.data?.message || 'Báo Y tế thất bại' };
+      return {
+        success: false,
+        message: messageData?.message || response.data?.message || 'Báo Y tế thất bại',
+      };
     } catch (error: any) {
       console.error('Error reporting student to clinic:', error);
-      return { success: false, message: error.response?.data?.message || error.message || 'Báo Y tế thất bại' };
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Báo Y tế thất bại',
+      };
     }
   },
 
   /**
    * GV hủy đơn báo Y tế (học sinh quay lại lớp / trốn đi chơi)
    */
-  async cancelHealthVisit(visitId: string, reason?: string): Promise<{ success: boolean; message?: string }> {
+  async cancelHealthVisit(
+    visitId: string,
+    reason?: string
+  ): Promise<{ success: boolean; message?: string }> {
     try {
       const response = await api.post(`${BASE_URL}.cancel_health_visit`, {
         visit_id: visitId,
@@ -305,17 +331,26 @@ const dailyHealthService = {
       if (messageData?.success || response.data?.success) {
         return { success: true };
       }
-      return { success: false, message: messageData?.message || response.data?.message || 'Hủy đơn thất bại' };
+      return {
+        success: false,
+        message: messageData?.message || response.data?.message || 'Hủy đơn thất bại',
+      };
     } catch (error: any) {
       console.error('Error cancelling health visit:', error);
-      return { success: false, message: error.response?.data?.message || error.message || 'Hủy đơn thất bại' };
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Hủy đơn thất bại',
+      };
     }
   },
 
   /**
    * Y tế từ chối tiếp nhận (chuyển về status returned, không revert attendance)
    */
-  async rejectHealthVisit(visitId: string, rejectReason?: string): Promise<{ success: boolean; message?: string }> {
+  async rejectHealthVisit(
+    visitId: string,
+    rejectReason?: string
+  ): Promise<{ success: boolean; message?: string }> {
     try {
       const response = await api.post(`${BASE_URL}.reject_health_visit`, {
         visit_id: visitId,
@@ -325,10 +360,16 @@ const dailyHealthService = {
       if (messageData?.success || response.data?.success) {
         return { success: true };
       }
-      return { success: false, message: messageData?.message || response.data?.message || 'Từ chối thất bại' };
+      return {
+        success: false,
+        message: messageData?.message || response.data?.message || 'Từ chối thất bại',
+      };
     } catch (error: any) {
       console.error('Error rejecting health visit:', error);
-      return { success: false, message: error.response?.data?.message || error.message || 'Từ chối thất bại' };
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Từ chối thất bại',
+      };
     }
   },
 
@@ -337,15 +378,23 @@ const dailyHealthService = {
    */
   async receiveStudentAtClinic(visitId: string): Promise<{ success: boolean; message?: string }> {
     try {
-      const response = await api.post(`${BASE_URL}.receive_student_at_clinic`, { visit_id: visitId });
+      const response = await api.post(`${BASE_URL}.receive_student_at_clinic`, {
+        visit_id: visitId,
+      });
       const messageData = response.data?.message;
       if (messageData?.success || response.data?.success) {
         return { success: true };
       }
-      return { success: false, message: messageData?.message || response.data?.message || 'Tiếp nhận thất bại' };
+      return {
+        success: false,
+        message: messageData?.message || response.data?.message || 'Tiếp nhận thất bại',
+      };
     } catch (error: any) {
       console.error('Error receiving student at clinic:', error);
-      return { success: false, message: error.response?.data?.message || error.message || 'Tiếp nhận thất bại' };
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Tiếp nhận thất bại',
+      };
     }
   },
 
@@ -359,17 +408,25 @@ const dailyHealthService = {
       if (messageData?.success || response.data?.success) {
         return { success: true };
       }
-      return { success: false, message: messageData?.message || response.data?.message || 'Bắt đầu khám thất bại' };
+      return {
+        success: false,
+        message: messageData?.message || response.data?.message || 'Bắt đầu khám thất bại',
+      };
     } catch (error: any) {
       console.error('Error starting examination:', error);
-      return { success: false, message: error.response?.data?.message || error.message || 'Bắt đầu khám thất bại' };
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Bắt đầu khám thất bại',
+      };
     }
   },
 
   /**
    * Tạo hồ sơ thăm khám mới
    */
-  async createHealthExamination(params: CreateExaminationParams): Promise<{ success: boolean; data?: HealthExamination; message?: string }> {
+  async createHealthExamination(
+    params: CreateExaminationParams
+  ): Promise<{ success: boolean; data?: HealthExamination; message?: string }> {
     try {
       const response = await api.post(`${BASE_URL}.create_health_examination`, params);
       const messageData = response.data?.message;
@@ -379,17 +436,25 @@ const dailyHealthService = {
       if (response.data?.success) {
         return { success: true, data: response.data.data };
       }
-      return { success: false, message: messageData?.message || response.data?.message || 'Tạo hồ sơ thất bại' };
+      return {
+        success: false,
+        message: messageData?.message || response.data?.message || 'Tạo hồ sơ thất bại',
+      };
     } catch (error: any) {
       console.error('Error creating health examination:', error);
-      return { success: false, message: error.response?.data?.message || error.message || 'Tạo hồ sơ thất bại' };
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Tạo hồ sơ thất bại',
+      };
     }
   },
 
   /**
    * Cập nhật hồ sơ thăm khám
    */
-  async updateHealthExamination(params: UpdateExaminationParams): Promise<{ success: boolean; data?: HealthExamination; message?: string }> {
+  async updateHealthExamination(
+    params: UpdateExaminationParams
+  ): Promise<{ success: boolean; data?: HealthExamination; message?: string }> {
     try {
       const response = await api.post(`${BASE_URL}.update_health_examination`, params);
       const messageData = response.data?.message;
@@ -399,7 +464,10 @@ const dailyHealthService = {
       if (response.data?.success) {
         return { success: true, data: response.data.data };
       }
-      return { success: false, message: messageData?.message || response.data?.message || 'Cập nhật hồ sơ thất bại' };
+      return {
+        success: false,
+        message: messageData?.message || response.data?.message || 'Cập nhật hồ sơ thất bại',
+      };
     } catch (error: any) {
       console.error('Error updating health examination:', error);
       const errData = error.response?.data;
@@ -415,10 +483,13 @@ const dailyHealthService = {
   /**
    * Lấy lịch sử thăm khám của học sinh
    */
-  async getStudentExaminationHistory(studentId: string, limit: number = 10): Promise<HealthExamination[]> {
+  async getStudentExaminationHistory(
+    studentId: string,
+    limit: number = 10
+  ): Promise<HealthExamination[]> {
     try {
       const response = await api.get(`${BASE_URL}.get_student_examination_history`, {
-        params: { student_id: studentId, limit }
+        params: { student_id: studentId, limit },
       });
       const messageData = response.data?.message;
       if (messageData?.success && messageData?.data) {
@@ -437,24 +508,34 @@ const dailyHealthService = {
   /**
    * Hoàn thành lượt xuống Y tế (checkout)
    */
-  async completeHealthVisit(params: CompleteVisitParams): Promise<{ success: boolean; message?: string }> {
+  async completeHealthVisit(
+    params: CompleteVisitParams
+  ): Promise<{ success: boolean; message?: string }> {
     try {
       const response = await api.post(`${BASE_URL}.complete_health_visit`, params);
       const messageData = response.data?.message;
       if (messageData?.success || response.data?.success) {
         return { success: true };
       }
-      return { success: false, message: messageData?.message || response.data?.message || 'Checkout thất bại' };
+      return {
+        success: false,
+        message: messageData?.message || response.data?.message || 'Checkout thất bại',
+      };
     } catch (error: any) {
       console.error('Error completing health visit:', error);
-      return { success: false, message: error.response?.data?.message || error.message || 'Checkout thất bại' };
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Checkout thất bại',
+      };
     }
   },
 
   /**
    * Lấy trạng thái Y tế theo tiết học (cho ClassLog)
    */
-  async getHealthStatusForPeriod(params: GetHealthStatusForPeriodParams): Promise<HealthStatusForPeriodResponse> {
+  async getHealthStatusForPeriod(
+    params: GetHealthStatusForPeriodParams
+  ): Promise<HealthStatusForPeriodResponse> {
     try {
       const response = await api.get(`${BASE_URL}.get_health_status_for_period`, { params });
       const messageData = response.data?.message;
@@ -474,7 +555,9 @@ const dailyHealthService = {
   /**
    * Lấy danh sách thăm khám theo lớp (cho Teacher Health module)
    */
-  async getClassHealthExaminations(params: GetClassHealthExamParams): Promise<ClassHealthExamStudent[]> {
+  async getClassHealthExaminations(
+    params: GetClassHealthExamParams
+  ): Promise<ClassHealthExamStudent[]> {
     try {
       const response = await api.get(`${BASE_URL}.get_class_health_examinations`, {
         params: {
@@ -499,17 +582,29 @@ const dailyHealthService = {
   /**
    * Cập nhật lý do báo cáo Y tế
    */
-  async updateVisitReason(visitId: string, reason: string): Promise<{ success: boolean; message?: string }> {
+  async updateVisitReason(
+    visitId: string,
+    reason: string
+  ): Promise<{ success: boolean; message?: string }> {
     try {
-      const response = await api.post(`${BASE_URL}.update_visit_reason`, { visit_id: visitId, reason });
+      const response = await api.post(`${BASE_URL}.update_visit_reason`, {
+        visit_id: visitId,
+        reason,
+      });
       const messageData = response.data?.message;
       if (messageData?.success || response.data?.success) {
         return { success: true };
       }
-      return { success: false, message: messageData?.message || response.data?.message || 'Cập nhật thất bại' };
+      return {
+        success: false,
+        message: messageData?.message || response.data?.message || 'Cập nhật thất bại',
+      };
     } catch (error: any) {
       console.error('Error updating visit reason:', error);
-      return { success: false, message: error.response?.data?.message || error.message || 'Cập nhật thất bại' };
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Cập nhật thất bại',
+      };
     }
   },
 
@@ -519,7 +614,7 @@ const dailyHealthService = {
   async getVisitDetail(visitId: string): Promise<DailyHealthVisit | null> {
     try {
       const response = await api.get(`${BASE_URL}.get_visit_by_id`, {
-        params: { visit_id: visitId }
+        params: { visit_id: visitId },
       });
       const messageData = response.data?.message;
       const data = messageData?.data || response.data?.data;
@@ -543,10 +638,16 @@ const dailyHealthService = {
       if (messageData?.success || response.data?.success) {
         return { success: true, message: 'Đã gửi hồ sơ đến phụ huynh' };
       }
-      return { success: false, message: messageData?.message || response.data?.message || 'Gửi hồ sơ thất bại' };
+      return {
+        success: false,
+        message: messageData?.message || response.data?.message || 'Gửi hồ sơ thất bại',
+      };
     } catch (error: any) {
       console.error('Error sending exam to parent:', error);
-      return { success: false, message: error.response?.data?.message || error.message || 'Gửi hồ sơ thất bại' };
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Gửi hồ sơ thất bại',
+      };
     }
   },
 
@@ -560,17 +661,27 @@ const dailyHealthService = {
       if (messageData?.success || response.data?.success) {
         return { success: true, message: 'Đã thu hồi hồ sơ' };
       }
-      return { success: false, message: messageData?.message || response.data?.message || 'Thu hồi hồ sơ thất bại' };
+      return {
+        success: false,
+        message: messageData?.message || response.data?.message || 'Thu hồi hồ sơ thất bại',
+      };
     } catch (error: any) {
       console.error('Error recalling exam from parent:', error);
-      return { success: false, message: error.response?.data?.message || error.message || 'Thu hồi hồ sơ thất bại' };
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || 'Thu hồi hồ sơ thất bại',
+      };
     }
   },
 
   /**
    * Upload file lên server
    */
-  async uploadFile(file: { uri: string; name: string; type: string }): Promise<{ success: boolean; file_url?: string; message?: string }> {
+  async uploadFile(file: {
+    uri: string;
+    name: string;
+    type: string;
+  }): Promise<{ success: boolean; file_url?: string; message?: string }> {
     try {
       const formData = new FormData();
       formData.append('file', {

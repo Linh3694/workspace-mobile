@@ -78,8 +78,6 @@ const DailyHealthScreen: React.FC = () => {
   const [rejectReason, setRejectReason] = useState('');
   const [isRejecting, setIsRejecting] = useState(false);
 
-  /** Đồng bộ web DailyHealthList: visit đã có hồ sơ thăm khám trong ngày → cho Check out dù status at_clinic */
-  const [visitHasExamMap, setVisitHasExamMap] = useState<Record<string, boolean>>({});
   const [checkoutModalVisible, setCheckoutModalVisible] = useState(false);
   const [checkoutVisit, setCheckoutVisit] = useState<DailyHealthVisit | null>(null);
   const [checkingOut, setCheckingOut] = useState(false);
@@ -107,47 +105,6 @@ const DailyHealthScreen: React.FC = () => {
     })();
   }, []);
 
-  const normalizeExamDateStr = (value: string | undefined) => {
-    if (!value) return '';
-    const s = String(value).trim();
-    return s.length >= 10 ? s.slice(0, 10) : s;
-  };
-
-  const loadVisitExamFlags = useCallback(async (visitList: DailyHealthVisit[], dateStr: string) => {
-    const atClinicVisits = visitList.filter((v) => v.status === 'at_clinic');
-    if (atClinicVisits.length === 0) {
-      setVisitHasExamMap({});
-      return;
-    }
-    const studentIds = [...new Set(atClinicVisits.map((v) => v.student_id))];
-    const map: Record<string, boolean> = {};
-    const visitDay = (v: DailyHealthVisit) => normalizeExamDateStr(v.visit_date || dateStr);
-    try {
-      await Promise.all(
-        studentIds.map(async (studentId) => {
-          const exams = await dailyHealthService.getStudentExaminationHistory(studentId, 200);
-          for (const exam of exams) {
-            if (normalizeExamDateStr(exam.examination_date) !== dateStr) continue;
-            const vid = exam.visit_id?.trim();
-            if (vid) {
-              map[vid] = true;
-              continue;
-            }
-            const sameDay = atClinicVisits.filter(
-              (v) => v.student_id === studentId && visitDay(v) === dateStr
-            );
-            if (sameDay.length === 1) {
-              map[sameDay[0].name] = true;
-            }
-          }
-        })
-      );
-      setVisitHasExamMap(map);
-    } catch {
-      setVisitHasExamMap({});
-    }
-  }, []);
-
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -157,14 +114,12 @@ const DailyHealthScreen: React.FC = () => {
         education_stage: selectedStage || undefined,
       });
       setVisits(data);
-      await loadVisitExamFlags(data, dateStr);
     } catch (error) {
       console.error('Error loading daily health visits:', error);
-      setVisitHasExamMap({});
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, selectedStage, loadVisitExamFlags]);
+  }, [selectedDate, selectedStage]);
 
   // Load data when screen focuses, date or campus changes
   useFocusEffect(
@@ -294,11 +249,19 @@ const DailyHealthScreen: React.FC = () => {
 
   const handleStartExam = async (visit: DailyHealthVisit) => {
     try {
-      const result = await dailyHealthService.startExamination(visit.name);
-      if (result.success) {
-        navigation.navigate(ROUTES.SCREENS.HEALTH_EXAM, { visitId: visit.name, visitData: visit });
+      if (visit.status === 'at_clinic' || visit.status === 'examining') {
+        const result = await dailyHealthService.startExamination(visit.name);
+        if (result.success) {
+          navigation.navigate(ROUTES.SCREENS.HEALTH_EXAM, {
+            visitId: visit.name,
+            visitData: { ...visit, status: 'examining' as const },
+          });
+        } else {
+          Alert.alert('Lỗi', result.message || 'Không thể bắt đầu khám');
+        }
       } else {
-        Alert.alert('Lỗi', result.message || 'Không thể bắt đầu khám');
+        // Đã checkout hoặc trạng thái khác: vào màn hồ sơ không gọi start_examination
+        navigation.navigate(ROUTES.SCREENS.HEALTH_EXAM, { visitId: visit.name, visitData: visit });
       }
     } catch (error: any) {
       Alert.alert('Lỗi', error.message || 'Không thể bắt đầu khám');
@@ -465,9 +428,7 @@ const DailyHealthScreen: React.FC = () => {
               onStartExam={() => handleStartExam(item)}
               isReturnVisit={returnVisitIds.has(item.name)}
               canCheckout={
-                item.status === 'examining' ||
-                (item.status === 'at_clinic' && !!visitHasExamMap[item.name]) ||
-                returnVisitIds.has(item.name)
+                item.status === 'examining' || item.status === 'at_clinic'
               }
               onCheckout={() => handleOpenCheckout(item)}
             />

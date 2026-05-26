@@ -7,6 +7,7 @@ import {
   getAdminTicketMessages,
   getAdminTicketHistory,
   getAdminTicketCategories,
+  getPendingAckCategories,
   createAdminTicket,
   updateAdminTicket,
   assignAdminTicketToMe,
@@ -320,4 +321,32 @@ export const useAdministrativeTicketActionsHook = () => {
     loading,
     error,
   };
+};
+
+/**
+ * Hạng mục bị chặn khi tạo ticket mới (user còn ticket Done/Resolved chưa xác nhận).
+ */
+export const usePendingAckCategories = () => {
+  const [categories, setCategories] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refetch = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const c = await getPendingAckCategories();
+      setCategories(c);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Lỗi tải hạng mục bị chặn');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refetch();
+  }, [refetch]);
+
+  return { categories, loading, error, refetch };
 };

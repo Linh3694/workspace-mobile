@@ -62,6 +62,11 @@ export const ROUTES = {
     CRM_ISSUE_DETAIL: 'CRMIssueDetail',
     CRM_ISSUE_ADD: 'CRMIssueAdd',
     CRM_ISSUE_EDIT: 'CRMIssueEdit',
+    /** Hoạt động lớp (journal GVCN/phó CN) */
+    CLASS_ACTIVITY: 'ClassActivity',
+    /** Trao đổi realtime với PH */
+    EXCHANGE_LIST: 'ExchangeList',
+    EXCHANGE_CHAT: 'ExchangeChat',
   },
   // Tab names trong bottom navigation
   TABS: {

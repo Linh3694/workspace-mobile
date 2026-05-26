@@ -5,16 +5,19 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
+  StyleSheet,
+  Platform,
   StyleProp,
   ViewStyle,
   TextStyle,
+  TextInput,
 } from 'react-native';
 import {
-  MentionInput as RNMentionInput,
   Suggestion,
   SuggestionsProvidedProps,
   Triggers,
   replaceTriggerValues,
+  useMentions,
 } from 'react-native-controlled-mentions';
 import { TouchableOpacity } from '../Common';
 import { postService } from '../../services/postService';
@@ -55,6 +58,8 @@ interface MentionInputProps {
   multiline?: boolean;
   textAlignVertical?: 'auto' | 'top' | 'bottom' | 'center';
   autoFocus?: boolean;
+  inputRef?: React.Ref<any>;
+  inputOffsetY?: number;
   className?: string;
   style?: StyleProp<TextStyle>;
 }
@@ -70,7 +75,11 @@ const MentionInput: React.FC<MentionInputProps> = ({
   placeholder,
   placeholderTextColor,
   multiline,
+  textAlignVertical,
   autoFocus,
+  inputRef,
+  inputOffsetY = 0,
+  className,
   style,
 }) => {
   // State để lưu danh sách users gợi ý
@@ -160,16 +169,91 @@ const MentionInput: React.FC<MentionInputProps> = ({
       },
     },
   }), []);
+
+  const { triggers, textInputProps } = useMentions({
+    value,
+    onChange: onChangeText,
+    triggersConfig,
+  });
+
+  useEffect(() => {
+    handleTriggersChange(triggers);
+  }, [triggers, handleTriggersChange]);
   
-  // Memoize input style
-  const inputStyle = useMemo(() => [
-    style,
-    {
-      backgroundColor: 'transparent',
-      color: '#1F2937',
-      fontSize: 16,
-    },
-  ], [style]);
+  // Memoize input style — style từ màn cha merge sau để không bị đè fontSize/minHeight
+  const inputStyle = useMemo(
+    () => [
+      {
+        backgroundColor: 'transparent',
+        color: '#1F2937',
+        fontSize: 16,
+        ...(Platform.OS === 'android' ? { includeFontPadding: false } : {}),
+      },
+      style,
+    ],
+    [style]
+  );
+
+  /**
+   * Dùng style đã merge (mặc định + màn cha) để ô overlay placeholder trùng padding với TextInput.
+   * Trên Android, Text có includeFontPadding mặc định còn TextInput có includeFontPadding: false —
+   * nếu không đồng bộ thì cụt cursor lên trên, chữ hint tụt xuống dưới.
+   */
+  const mergedInputFlat = StyleSheet.flatten(inputStyle) as TextStyle;
+  const resolvedTextAlignVertical =
+    multiline ? textAlignVertical || 'top' : textAlignVertical || 'center';
+  const overlayTextAlignVertical =
+    multiline && resolvedTextAlignVertical === 'center' ? 'top' : resolvedTextAlignVertical;
+  const fallbackPadVertical =
+    multiline && overlayTextAlignVertical !== 'bottom'
+      ? overlayTextAlignVertical === 'center'
+        ? 0
+        : 12
+      : 0;
+  const overlayPadTop =
+    typeof mergedInputFlat.paddingTop === 'number'
+      ? mergedInputFlat.paddingTop
+      : typeof mergedInputFlat.paddingVertical === 'number'
+        ? mergedInputFlat.paddingVertical
+        : fallbackPadVertical;
+  const overlayPadBottom =
+    typeof mergedInputFlat.paddingBottom === 'number'
+      ? mergedInputFlat.paddingBottom
+      : typeof mergedInputFlat.paddingVertical === 'number'
+        ? mergedInputFlat.paddingVertical
+        : fallbackPadVertical;
+  const overlayPadLeft =
+    typeof mergedInputFlat.paddingLeft === 'number'
+      ? mergedInputFlat.paddingLeft
+      : typeof mergedInputFlat.paddingHorizontal === 'number'
+        ? mergedInputFlat.paddingHorizontal
+        : 0;
+  const overlayPadRight =
+    typeof mergedInputFlat.paddingRight === 'number'
+      ? mergedInputFlat.paddingRight
+      : typeof mergedInputFlat.paddingHorizontal === 'number'
+        ? mergedInputFlat.paddingHorizontal
+        : 0;
+  const overlayJustifyContent =
+    overlayTextAlignVertical === 'center'
+      ? 'center'
+      : overlayTextAlignVertical === 'bottom'
+        ? 'flex-end'
+        : 'flex-start';
+  const placeholderFontSize =
+    typeof mergedInputFlat.fontSize === 'number' ? mergedInputFlat.fontSize : 16;
+  const placeholderLineHeight =
+    typeof mergedInputFlat.lineHeight === 'number' ? mergedInputFlat.lineHeight : undefined;
+  const inputOffsetStyle =
+    inputOffsetY && typeof overlayPadTop === 'number'
+      ? {
+          paddingTop: overlayPadTop + inputOffsetY,
+          paddingBottom:
+            typeof overlayPadBottom === 'number'
+              ? Math.max(0, overlayPadBottom - inputOffsetY)
+              : overlayPadBottom,
+        }
+      : {};
 
   // Handle chọn suggestion
   const handleSelectSuggestion = (suggestion: MentionSuggestion) => {
@@ -276,11 +360,11 @@ const MentionInput: React.FC<MentionInputProps> = ({
       {/* Suggestions phía trên nếu suggestionsAbove = true */}
       {suggestionsAbove && renderSuggestions()}
       
-      {/* Container cho input và placeholder */}
-      <View style={{ position: 'relative' }}>
+      {/* Khung chứa input + placeholder — áp className min-h/min-w từ màn compose */}
+      <View className={className} style={{ position: 'relative' }}>
         {/* Custom placeholder vì thư viện có thể không hỗ trợ */}
         {!value && placeholder && (
-          <View 
+          <View
             pointerEvents="none"
             style={{
               position: 'absolute',
@@ -288,33 +372,42 @@ const MentionInput: React.FC<MentionInputProps> = ({
               left: 0,
               right: 0,
               bottom: 0,
-              justifyContent: multiline ? 'flex-start' : 'center',
-            }}
-          >
+              zIndex: 0,
+              paddingTop: overlayPadTop,
+              paddingBottom: overlayPadBottom,
+              paddingLeft: overlayPadLeft,
+              paddingRight: overlayPadRight,
+              justifyContent: overlayJustifyContent,
+              alignItems: 'flex-start',
+            }}>
             <Text
-              style={[
-                {
-                  fontSize: 16,
-                  color: placeholderTextColor || '#9CA3AF',
-                },
-                style,
-                { backgroundColor: 'transparent' },
-              ]}
-            >
+              pointerEvents="none"
+              style={{
+                fontSize: placeholderFontSize,
+                ...(placeholderLineHeight != null ? { lineHeight: placeholderLineHeight } : {}),
+                color: placeholderTextColor || '#9CA3AF',
+                ...(Platform.OS === 'android' ? { includeFontPadding: false } : {}),
+              }}>
               {placeholder}
             </Text>
           </View>
         )}
-        
-        {/* @ts-ignore - TextInput props được support nhưng TypeScript không nhận ra */}
-        <RNMentionInput
-          value={value}
-          onChange={onChangeText}
-          onTriggersChange={handleTriggersChange}
-          triggersConfig={triggersConfig}
+
+        {/* zIndex để luôn nhận tap trước lớp placeholder (một số máy/Android) */}
+        <TextInput
+          ref={inputRef}
+          {...textInputProps}
           multiline={multiline}
           autoFocus={autoFocus}
-          style={inputStyle}
+          textAlignVertical={resolvedTextAlignVertical}
+          underlineColorAndroid="transparent"
+          style={[
+            ...(Array.isArray(inputStyle) ? inputStyle : [inputStyle]),
+            { zIndex: 1 },
+            // Dịch riêng baseline của TextInput thật, placeholder overlay vẫn giữ nguyên.
+            inputOffsetStyle,
+            Platform.OS === 'android' ? { elevation: 2 } : {},
+          ]}
         />
       </View>
       
@@ -370,4 +463,36 @@ export const getMentionPlainText = (text: string): string => {
     // Fallback: dùng regex để convert
     return text.replace(/(?:\{@\}|\@)\[([^\]]+)\]\([^)]+\)/g, '@$1');
   }
+};
+
+/**
+ * Hiển thị nội dung post/comment đã lưu với @mention in đậm + màu cam (#F97316),
+ * cùng cách tách token như parent-portal JournalDetailScreen (không bắt buộc chữ hoa đầu từ).
+ */
+export const MentionRichText: React.FC<{
+  content: string;
+  /** Class cho Text bọc ngoài (cỡ chữ, màu nền chữ) */
+  className?: string;
+  /** Class cho span @mention */
+  mentionClassName?: string;
+}> = ({
+  content,
+  className = 'text-base leading-5 text-gray-800',
+  mentionClassName = 'font-bold text-[#F97316]',
+}) => {
+  const normalized = getMentionPlainText(content);
+  const parts = normalized.split(/(@[^\s@]+(?:\s+[^\s@]+){0,2})/g);
+  return (
+    <Text className={className}>
+      {parts.map((part, index) =>
+        part.startsWith('@') && part.trim().length > 1 ? (
+          <Text key={`m-${index}`} className={mentionClassName}>
+            {part.trim()}
+          </Text>
+        ) : (
+          part
+        ),
+      )}
+    </Text>
+  );
 };

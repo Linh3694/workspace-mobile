@@ -1,11 +1,13 @@
+import './axiosDefaults';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import { API_BASE_URL } from '../config/constants';
 
-// Tạo instance axios
+// Tạo instance axios — withCredentials: false (mặc định đã set trong axiosDefaults, lặp lại cho rõ ràng)
 const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,
+  withCredentials: false,
   headers: {
     'Content-Type': 'application/json',
   },

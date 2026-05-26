@@ -227,11 +227,12 @@ export async function updateIssue(
 }
 
 export async function approveIssue(
-  name: string
+  name: string,
+  data?: { departments?: string[]; department?: string; pic?: string; priority?: string }
 ): Promise<{ success: boolean; data?: CRMIssue; message?: string }> {
   try {
     const config = await getAxiosConfig();
-    const response = await axios.post(`${ISSUE_BASE}.approve_issue`, { name }, config);
+    const response = await axios.post(`${ISSUE_BASE}.approve_issue`, { name, ...(data || {}) }, config);
     return unwrap<CRMIssue>(response);
   } catch (e: any) {
     return { success: false, message: e?.response?.data?.message || e?.message || 'Lỗi duyệt' };
@@ -272,7 +273,7 @@ export async function changeIssueStatus(
 
 export async function addProcessLog(data: {
   issue_name: string;
-  title: string;
+  title?: string;
   content: string;
   logged_at?: string;
   assignees?: string;

@@ -103,6 +103,7 @@ const getStatusTextColor = (status: string) => {
       return '#F97316';
     case 'done':
     case 'completed':
+    case 'resolved':
       return '#4CAF50';
     case 'closed':
       return '#9E9E9E';
@@ -246,6 +247,8 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
   const rawStatus = ticket.status?.toLowerCase().replace(/_/g, ' ') || '';
   // "waiting for customer" được xem như "processing" để UI đồng nhất cho guest
   const status = rawStatus === 'waiting for customer' ? 'processing' : rawStatus;
+  /** Web ERP: admin có thể để Done hoặc Resolved trước khi user đánh giá — cả hai đều cần form phản hồi */
+  const isAwaitingUserFeedback = status === 'done' || status === 'resolved';
   const statusTextColor = getStatusTextColor(ticket.status);
 
   // ============================================================================
@@ -415,7 +418,10 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
           )}
 
           {/* Messages from technician - Show for processing, done and completed status */}
-          {(status === 'processing' || status === 'done' || status === 'completed') && (
+          {(status === 'processing' ||
+            status === 'done' ||
+            status === 'completed' ||
+            status === 'resolved') && (
             <View className="mb-4 rounded-xl bg-[#f8f8f8] p-4">
               <Text className="mb-3 text-base font-bold text-gray-700">
                 Phản hồi từ kỹ thuật viên
@@ -531,8 +537,8 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
             </View>
           )}
 
-          {/* Done Status - Feedback Form */}
-          {status === 'done' && (
+          {/* Done / Resolved — form đánh giá (khớp ticket HC web + Frappe) */}
+          {isAwaitingUserFeedback && (
             <View className="rounded-2xl">
               <View className="mb-4 rounded-xl bg-[#f8f8f8] p-4">
                 <Text className="mb-3 text-base font-bold text-gray-700">Phản hồi</Text>

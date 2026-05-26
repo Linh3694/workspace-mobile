@@ -2,7 +2,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BASE_URL } from '../config/constants';
+import { ROUTES } from '../constants/routes';
 import { soundService } from './soundService';
 
 interface PushNotificationData {
@@ -17,6 +17,8 @@ interface PushNotificationData {
   ticketKind?: string;
   ticket_id?: string;
   chatId?: string;
+  conversationId?: string;
+  conversation_id?: string;
   messageId?: string;
   action?: string;
   oldStatus?: string;
@@ -250,28 +252,19 @@ class PushNotificationService {
         JSON.stringify(deviceInfo, null, 2)
       );
 
-      // Use new mobile device registration API
-      const response = await fetch(
-        `${BASE_URL}/api/method/erp.api.erp_sis.mobile_push_notification.register_device_token`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authToken}`,
-          },
-          body: JSON.stringify(deviceInfo),
-        }
-      );
+      const { registerDeviceOnNotificationService } = require('../services/notificationApiClient');
+      const response = await registerDeviceOnNotificationService(deviceInfo);
 
-      if (response.ok) {
-        const responseData = await response.json();
+      if (response?.status >= 200 && response?.status < 300) {
         console.log('✅ Push token registered successfully for', appType);
-        console.log('📥 Server response:', JSON.stringify(responseData, null, 2));
         await AsyncStorage.setItem('pushTokenRegistered', 'true');
         await AsyncStorage.setItem('pushTokenAppType', appType);
       } else {
-        const errorText = await response.text();
-        console.error('❌ Failed to register push token:', errorText);
+        console.error(
+          '❌ Failed to register push token:',
+          response?.status,
+          response?.data,
+        );
       }
     } catch (error) {
       console.error('❌ Error registering push token:', error);
@@ -316,6 +309,15 @@ class PushNotificationService {
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#10B981',
+        sound: 'default',
+      });
+
+      await Notifications.setNotificationChannelAsync('chat', {
+        name: 'Trao đổi',
+        description: 'Tin nhắn giáo viên và phụ huynh',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#0EA5E9',
         sound: 'default',
       });
 
@@ -383,6 +385,7 @@ class PushNotificationService {
         this.handleTicketNotification(data, wasOpened);
         break;
       case 'chat_message':
+      case 'chat':
         this.handleChatNotification(data, wasOpened);
         break;
       // Feedback notifications
@@ -436,6 +439,10 @@ class PushNotificationService {
             this.handleTicketStatusChangeNotification(data, wasOpened);
             break;
           case 'ticket_assigned':
+            this.handleTicketAssignmentNotification(data, wasOpened);
+            break;
+          // Ticket hành chính (Frappe) — staff nhận xử lý, báo người tạo; điều hướng giống assign
+          case 'ticket_picked_up':
             this.handleTicketAssignmentNotification(data, wasOpened);
             break;
           case 'ticket_processing':
@@ -578,8 +585,12 @@ class PushNotificationService {
   private handleChatNotification(data: PushNotificationData, wasOpened: boolean): void {
     console.log('💬 Chat notification:', data);
 
-    if (wasOpened && data.chatId) {
-      this.navigateToScreen('ChatDetail', { chatId: data.chatId });
+    const convId = data.conversationId || data.conversation_id || data.chatId;
+    if (wasOpened && convId) {
+      this.navigateToScreen(ROUTES.SCREENS.EXCHANGE_CHAT, {
+        conversationId: String(convId),
+        classId: data.class_id || data.classId,
+      });
     }
   }
 

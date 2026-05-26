@@ -259,7 +259,7 @@ const TodayExamView: React.FC<TodayExamViewProps> = ({
             </View>
           )}
           <View style={{ marginBottom: 12 }}>
-            <Text style={[sectionLabel, { fontFamily: 'Mulish' }]}>Triệu chứng</Text>
+            <Text style={[sectionLabel, { fontFamily: 'Mulish' }]}>Lý do vào phòng y tế</Text>
             <View style={{ backgroundColor: '#FFFFFF', borderRadius: 8, padding: 12 }}>
               <Text style={sectionValue}>{exam.symptoms || '-'}</Text>
             </View>

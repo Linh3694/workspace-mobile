@@ -200,10 +200,7 @@ const HealthExamTab: React.FC<Props> = ({ classId, date, refreshing, onRefresh }
   // Stats - dùng countExaminationVisits đồng bộ parent-portal
   const totalExaminations = useMemo(() => {
     const safeData = Array.isArray(data) ? data : [];
-    return safeData.reduce(
-      (sum, s) => sum + countExaminationVisits(s.examinations || []),
-      0
-    );
+    return safeData.reduce((sum, s) => sum + countExaminationVisits(s.examinations || []), 0);
   }, [data]);
 
   // Toggle expand
@@ -296,7 +293,7 @@ const HealthExamTab: React.FC<Props> = ({ classId, date, refreshing, onRefresh }
           </Text>
         )}
 
-        {/* NVYT */}
+        {/* Nhân viên Y Tế */}
         {(exam.medical_staff_name || exam.examined_by_name) && (
           <Text style={{ marginTop: 8, fontSize: 13, color: '#64748B', fontFamily: 'Mulish' }}>
             Nhân viên thăm khám:{' '}

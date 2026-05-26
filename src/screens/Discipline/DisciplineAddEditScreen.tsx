@@ -69,6 +69,15 @@ const formatDateForInput = (d: Date): string => {
   return `${y}-${m}-${day}`;
 };
 
+const normalizeSearchText = (text?: string | null): string =>
+  (text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .trim();
+
 // ─── PickerField ──────────────────────────────────────────────────────────────
 
 interface PickerFieldProps {
@@ -336,7 +345,7 @@ const MultiClassPicker: React.FC<MultiSelectPickerProps> = ({
 };
 
 // ─── MultiStudentPicker ───────────────────────────────────────────────────────
-// Mở modal: load danh sách học sinh đầy đủ. Search chỉ dùng để lọc thêm.
+// Mở modal: load danh sách học sinh đầy đủ. Search chỉ dùng để lọc local.
 
 interface MultiStudentPickerProps {
   label: string;
@@ -372,8 +381,6 @@ interface MultiStudentPickerProps {
   required?: boolean;
 }
 
-const SEARCH_DEBOUNCE_MS = 350;
-
 const MultiStudentPicker: React.FC<MultiStudentPickerProps> = ({
   label,
   values,
@@ -392,7 +399,16 @@ const MultiStudentPicker: React.FC<MultiStudentPickerProps> = ({
     { name: string; title?: string; subtitle?: string; raw?: Record<string, unknown> }[]
   >([]);
   const [loading, setLoading] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const normalizedSearch = normalizeSearchText(search);
+  const filteredOptions = useMemo(() => {
+    if (!normalizedSearch) return optionsWithRaw;
+    return optionsWithRaw.filter((o) =>
+      normalizeSearchText(`${o.title || ''} ${o.name} ${o.subtitle || ''}`).includes(
+        normalizedSearch
+      )
+    );
+  }, [normalizedSearch, optionsWithRaw]);
 
   const toggle = (
     id: string,
@@ -421,10 +437,10 @@ const MultiStudentPicker: React.FC<MultiStudentPickerProps> = ({
   };
 
   const fetchStudents = useCallback(
-    async (query: string) => {
+    async () => {
       setLoading(true);
       try {
-        const res = await searchStudents(query);
+        const res = await searchStudents('');
         const seen = new Set<string>();
         const unique = res.filter((s) => {
           if (seen.has(s.name)) return false;
@@ -435,9 +451,13 @@ const MultiStudentPicker: React.FC<MultiStudentPickerProps> = ({
           unique.map((s) => {
             const classLabel =
               s.current_class_title?.trim() || s.current_class?.title?.trim() || '';
+            const studentLabel =
+              s.student_name && s.student_code
+                ? `${s.student_name} (${s.student_code})`
+                : s.student_name || s.student_code || s.name;
             return {
               name: s.name,
-              title: `${s.student_name || ''} (${s.student_code || ''})`,
+              title: studentLabel,
               subtitle: classLabel,
               raw: s as Record<string, unknown>,
             };
@@ -452,18 +472,11 @@ const MultiStudentPicker: React.FC<MultiStudentPickerProps> = ({
     [searchStudents]
   );
 
-  // Khi mở modal: load danh sách đầy đủ. Khi user gõ search: debounce rồi filter.
+  // Khi mở modal: tải danh sách đầy đủ, sau đó lọc local để hỗ trợ tìm không dấu/có dấu.
   useEffect(() => {
     if (!visible) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    const delay = search.trim() ? SEARCH_DEBOUNCE_MS : 0;
-    debounceRef.current = setTimeout(() => {
-      fetchStudents(search.trim());
-    }, delay);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [visible, search, fetchStudents]);
+    fetchStudents();
+  }, [visible, fetchStudents]);
 
   const handleClose = () => {
     setVisible(false);
@@ -524,7 +537,7 @@ const MultiStudentPicker: React.FC<MultiStudentPickerProps> = ({
               </View>
             ) : (
               <FlatList
-                data={optionsWithRaw}
+                data={filteredOptions}
                 keyExtractor={(o) => o.name}
                 renderItem={({ item }) => (
                   <TouchableOpacity
@@ -644,8 +657,26 @@ const DisciplineAddEditScreen: React.FC = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   /** Owner bản ghi khi sửa — dùng kiểm tra lại trước khi submit */
   const [editCreatorId, setEditCreatorId] = useState<string | null>(null);
+  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
 
   // ── Effects ────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const subShow = Keyboard.addListener('keyboardDidShow', (e) => {
+      setAndroidKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const subHide = Keyboard.addListener('keyboardDidHide', () => {
+      setAndroidKeyboardHeight(0);
+    });
+
+    return () => {
+      subShow.remove();
+      subHide.remove();
+    };
+  }, []);
 
   // Load campusId khi mount và mỗi khi màn hình được focus (vd: đổi campus ở Profile rồi quay lại)
   useFocusEffect(
@@ -805,7 +836,7 @@ const DisciplineAddEditScreen: React.FC = () => {
     loadClassOptions,
   ]);
 
-  // Search học sinh: gọi API khi user gõ trong MultiStudentPicker (search-first)
+  // Tải học sinh theo năm học; MultiStudentPicker lọc local để hỗ trợ tìm có dấu/không dấu.
   const searchStudents = useCallback(
     async (query: string) => {
       if (!enabledSchoolYearId) return [];
@@ -839,6 +870,12 @@ const DisciplineAddEditScreen: React.FC = () => {
       };
     });
   };
+
+  const handleDescriptionFocus = useCallback(() => {
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 250);
+  }, []);
 
   const validate = (): boolean => {
     const e: Record<string, string> = {};
@@ -1083,16 +1120,19 @@ const DisciplineAddEditScreen: React.FC = () => {
         </Text>
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
+      <View style={{ flex: 1 }}>
         <ScrollView
+          ref={scrollRef}
           className="flex-1 px-4"
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 40, paddingTop: 16 }}>
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+          contentContainerStyle={{
+            paddingBottom:
+              40 + insets.bottom + (Platform.OS === 'android' ? androidKeyboardHeight : 0),
+            paddingTop: 16,
+          }}>
           <Text style={styles.sectionHeading}>Chi tiết</Text>
 
           {/* Ngày */}
@@ -1196,7 +1236,7 @@ const DisciplineAddEditScreen: React.FC = () => {
             selectedCountLabel={(n) => (n ? `Đã chọn ${n} lớp` : 'Chọn lớp...')}
           />
 
-          {/* Chọn học sinh - search-first: chỉ gọi API khi user gõ tìm kiếm */}
+          {/* Chọn học sinh - tải theo năm học, lọc local trong picker */}
           <MultiStudentPicker
             label="Chọn học sinh"
             values={formData.target_student_ids}
@@ -1328,6 +1368,7 @@ const DisciplineAddEditScreen: React.FC = () => {
                 errors.description ? styles.inputError : null,
               ]}
               multiline
+              onFocus={handleDescriptionFocus}
             />
             {errors.description ? <Text style={styles.errorText}>{errors.description}</Text> : null}
           </View>
@@ -1352,7 +1393,7 @@ const DisciplineAddEditScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </View>
 
       <DatePickerModal
         visible={showDatePicker}

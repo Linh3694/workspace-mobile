@@ -4,8 +4,6 @@ import type { CRMIssue } from '../types/crmIssue';
 export const CRM_ISSUE_DIRECT_ISSUE_ROLES = [
   'SIS Sales Care',
   'SIS Sales Care Admin',
-  'SIS Sales',
-  'SIS Sales Admin',
 ] as const;
 
 /** Roles Sales — đồng bộ web CRM_ISSUE_SALES_STATUS_ROLES — chỉ nhóm này đổi Trạng thái / Kết quả xử lý */

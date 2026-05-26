@@ -26,7 +26,6 @@ import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
 import { useAuth } from '../../context/AuthContext';
 import {
-  canChangeIssuePic,
   canWriteCrmIssue,
   canEditSalesStatusResult,
   getIssueDepartmentDocnames,
@@ -40,7 +39,6 @@ import {
   addProcessLog,
   updateProcessLog,
   collectDepartmentMemberEmailsForIssue,
-  getIssuePicCandidates,
   updateIssue,
   getDepartment,
   getDepartments,
@@ -55,7 +53,6 @@ import type {
   CRMIssueLogAccent,
   CRMIssueResult,
   CRMIssueStatus,
-  IssuePicCandidate,
   LinkedFeedbackPayload,
 } from '../../types/crmIssue';
 import {
@@ -172,16 +169,13 @@ const CRMIssueDetailScreen: React.FC = () => {
   const [deptName, setDeptName] = useState('');
   /** Thành viên phòng ban (user + full_name từ API get_department) */
   const [deptMemberRows, setDeptMemberRows] = useState<CRMIssueDeptMember[]>([]);
-  const [candidates, setCandidates] = useState<IssuePicCandidate[]>([]);
 
   const [showReject, setShowReject] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
   const [showLog, setShowLog] = useState(false);
-  const [showPicSheet, setShowPicSheet] = useState(false);
   const [showDeptSheet, setShowDeptSheet] = useState(false);
   
   const [departmentList, setDepartmentList] = useState<CRMIssueDepartment[]>([]);
-  const [picSearchText, setPicSearchText] = useState('');
   const [deptSearchText, setDeptSearchText] = useState('');
   const [activeTab, setActiveTab] = useState<'info' | 'logs'>('info');
   /** Menu FAB: thêm log vs phản hồi phụ huynh (khi có source_feedback) */
@@ -207,12 +201,9 @@ const CRMIssueDetailScreen: React.FC = () => {
           const emails = await collectDepartmentMemberEmailsForIssue(doc);
           setDeptMemberEmails(emails);
 
-          const [mod, pics] = await Promise.all([
-            doc.issue_module
-              ? getModule(doc.issue_module)
-              : Promise.resolve({ success: false } as any),
-            getIssuePicCandidates(),
-          ]);
+          const mod = doc.issue_module
+            ? await getModule(doc.issue_module)
+            : ({ success: false } as any);
           if (mod.success && mod.data) {
             setModuleName(mod.data.module_name);
             setModuleCode(mod.data.code || '');
@@ -241,8 +232,6 @@ const CRMIssueDetailScreen: React.FC = () => {
           }
           setDeptName(deptLabels.join(', '));
           setDeptMemberRows(mergedRows);
-
-          if (pics.success && pics.data) setCandidates(pics.data);
 
           // Lịch sử trao đổi phụ huynh (Feedback liên kết)
           if (doc.source_feedback) {
@@ -294,14 +283,6 @@ const CRMIssueDetailScreen: React.FC = () => {
 
   const canEdit = canWriteIssue;
 
-  const showChangePicButton = useMemo(() => {
-    if (!issue) return false;
-    if (issue.can_change_pic === true || issue.can_change_pic === false) {
-      return issue.can_change_pic;
-    }
-    return issue.approval_status === 'Da duyet' && canChangeIssuePic(roles);
-  }, [issue, roles]);
-
   const showDeptPickerButton = useMemo(() => {
     if (!issue) return false;
     if (issue.can_change_department === true || issue.can_change_department === false) {
@@ -330,7 +311,7 @@ const CRMIssueDetailScreen: React.FC = () => {
     return (
       canWriteIssue &&
       issue.approval_status === 'Da duyet' &&
-      issue.status !== 'Hoan thanh'
+      issue.status === 'Dang xu ly'
     );
   }, [issue, canWriteIssue]);
 
@@ -358,7 +339,13 @@ const CRMIssueDetailScreen: React.FC = () => {
     if (!issue) return;
     setActionLoading(true);
     try {
-      const res = await approveIssue(issue.name);
+      const deptIds =
+        (issue.issue_departments ?? []).map((r) => r.department).filter(Boolean) as string[];
+      const res = await approveIssue(issue.name, {
+        departments: deptIds.length > 0 ? deptIds : issue.department ? [issue.department] : undefined,
+        pic: issue.pic || undefined,
+        priority: issue.priority || 'Trung binh',
+      });
       if (res.success) {
         Alert.alert(t('common.success'), t('crm_issue.approve_success'));
         await load();
@@ -398,7 +385,7 @@ const CRMIssueDetailScreen: React.FC = () => {
     }
   };
 
-  const onLogConfirm = async (title: string, content: string) => {
+  const onLogConfirm = async (content: string) => {
     if (!issue) return;
     setActionLoading(true);
     try {
@@ -406,10 +393,9 @@ const CRMIssueDetailScreen: React.FC = () => {
         ? await updateProcessLog({
             issue_name: issue.name,
             log_name: editLogName,
-            title,
             content,
           })
-        : await addProcessLog({ issue_name: issue.name, title, content });
+        : await addProcessLog({ issue_name: issue.name, content });
       setShowLog(false);
       setEditLogName(null);
       setInitialLogTitle('');
@@ -433,19 +419,6 @@ const CRMIssueDetailScreen: React.FC = () => {
       } else {
         Alert.alert(t('common.error'), res.message || '');
       }
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const onPickPic = async (pic: string) => {
-    if (!issue) return;
-    setShowPicSheet(false);
-    setActionLoading(true);
-    try {
-      const res = await updateIssue({ name: issue.name, pic });
-      if (res.success) await load();
-      else Alert.alert(t('common.error'), res.message || '');
     } finally {
       setActionLoading(false);
     }
@@ -494,16 +467,6 @@ const CRMIssueDetailScreen: React.FC = () => {
     for (const [date, items] of map) groups.push({ date, items });
     return groups;
   }, [issue?.process_logs]);
-
-  const filteredCandidates = useMemo(() => {
-    const q = picSearchText.trim().toLowerCase();
-    if (!q) return candidates;
-    return candidates.filter(
-      (c) =>
-        (c.full_name || '').toLowerCase().includes(q) ||
-        (c.email || '').toLowerCase().includes(q),
-    );
-  }, [candidates, picSearchText]);
 
   const filteredDepartments = useMemo(() => {
     const q = deptSearchText.trim().toLowerCase();
@@ -734,15 +697,6 @@ const CRMIssueDetailScreen: React.FC = () => {
             </TouchableOpacity>
           )}
 
-          {showChangePicButton && (
-            <TouchableOpacity
-              onPress={() => setShowPicSheet(true)}
-              disabled={actionLoading}
-              className="h-10 w-10 items-center justify-center rounded-full bg-[#E3F2FD]">
-              <FontAwesome5 name="user-plus" size={14} color="#1565C0" />
-            </TouchableOpacity>
-          )}
-
           {showDeptPickerButton && (
             <TouchableOpacity
               onPress={openDeptSheet}
@@ -823,8 +777,11 @@ const CRMIssueDetailScreen: React.FC = () => {
               </Text>
               <InfoRow label={t('crm_issue.issue_code')} value={issue.issue_code} />
               <InfoRow label={t('crm_issue.module')} value={moduleName || issue.issue_module} />
-              <InfoRow label={t('crm_issue.occurred_at')} value={fmtDateTime(issue.occurred_at)} />
-              <InfoRow label={t('crm_issue.created_by')} value={createdByDisplay} />
+              <InfoRow label={t('crm_issue.received_date')} value={fmtDate(issue.occurred_at)} />
+              <InfoRow
+                label={t('crm_issue.created_by')}
+                value={issue.created_by_title ? `${createdByDisplay}\n${issue.created_by_title}` : createdByDisplay}
+              />
               <View className="mb-3 flex-row items-start justify-between">
                 <Text className="max-w-[38%] flex-shrink-0 pr-2 text-base font-semibold text-[#757575]">
                   {t('crm_issue.students')}
@@ -892,6 +849,18 @@ const CRMIssueDetailScreen: React.FC = () => {
                   );
                 })()}
               </View>
+              <InfoRow
+                label={t('crm_issue.priority')}
+                value={
+                  issue.priority === 'Trung binh'
+                    ? t('crm_issue.priority_medium')
+                    : issue.priority === 'Thap'
+                      ? t('crm_issue.priority_low')
+                      : issue.priority
+                        ? t('crm_issue.priority_high')
+                        : '—'
+                }
+              />
               <View className="mb-3 flex-row items-start justify-between">
                 <Text className="max-w-[38%] flex-shrink-0 pr-2 text-base font-semibold text-[#757575]">
                   SLA
@@ -1130,7 +1099,7 @@ const CRMIssueDetailScreen: React.FC = () => {
                           ) : (
                             <View className="flex-1" />
                           )}
-                          {canWriteIssue && log.name ? (
+                          {issue.can_edit_process_log && log.name ? (
                             <TouchableOpacity
                               onPress={() => {
                                 setEditLogName(log.name!);
@@ -1266,47 +1235,6 @@ const CRMIssueDetailScreen: React.FC = () => {
         }}
         onCancel={() => setShowFabMenu(false)}
       />
-
-      {/* PIC Selection Bottom Sheet */}
-      <BottomSheetModal
-        visible={showPicSheet}
-        onClose={() => { setShowPicSheet(false); setPicSearchText(''); }}
-        maxHeightPercent={65}
-        fillHeight>
-        <View className="flex-1 px-4 pb-4 pt-4">
-          <Text className="mb-3 text-lg font-bold text-[#002855]">{t('crm_issue.select_pic')}</Text>
-          <TextInput
-            className="mb-3 rounded-lg border border-gray-200 bg-[#F9FAFB] px-3 py-2.5 text-sm"
-            placeholder={t('crm_issue.pic_search_placeholder') || 'Tìm kiếm...'}
-            value={picSearchText}
-            onChangeText={setPicSearchText}
-            placeholderTextColor="#9CA3AF"
-          />
-          <ScrollView className="flex-1" showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {filteredCandidates.map((c) => (
-              <TouchableOpacity
-                key={c.user_id}
-                onPress={() => { onPickPic(c.user_id); setPicSearchText(''); }}
-                className="flex-row items-center border-b border-gray-100 py-3">
-                <View className="min-w-0 flex-1 pr-2">
-                  <Text className="text-base font-medium text-[#002855]">
-                    {formatIssuePersonDisplayName({ fullName: c.full_name, userId: c.email })}
-                  </Text>
-                  <Text className="text-xs text-gray-400">{c.email}</Text>
-                </View>
-                {issue.pic === c.user_id ? (
-                  <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                ) : null}
-              </TouchableOpacity>
-            ))}
-            {filteredCandidates.length === 0 && picSearchText.trim() ? (
-              <Text className="py-4 text-center text-sm text-gray-400">
-                {t('common.no_results') || 'Không tìm thấy'}
-              </Text>
-            ) : null}
-          </ScrollView>
-        </View>
-      </BottomSheetModal>
 
       {/* Chọn phòng ban */}
       <BottomSheetModal

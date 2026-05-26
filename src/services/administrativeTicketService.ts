@@ -301,6 +301,22 @@ export async function getAdminTicketCategories(): Promise<AdminTicketCategory[]>
   }
 }
 
+/** Tên hạng mục (Support Category) đang bị chặn tạo mới: có ticket Done/Resolved chưa xác nhận */
+export async function getPendingAckCategories(): Promise<string[]> {
+  try {
+    const config = await getAxiosConfig();
+    const response = await axios.get(`${BASE}.get_pending_ack_categories`, config);
+    const out = unwrap<{ categories?: string[] }>(response);
+    if (out.success && out.data?.categories && Array.isArray(out.data.categories)) {
+      return out.data.categories;
+    }
+    return [];
+  } catch (e) {
+    console.error('getPendingAckCategories', e);
+    return [];
+  }
+}
+
 /** Upload file đính kèm — folder khớp web */
 export async function uploadAdminTicketAttachment(
   uri: string,

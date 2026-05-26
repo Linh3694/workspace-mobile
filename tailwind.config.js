@@ -16,6 +16,8 @@ module.exports = {
         sans: ['Mulish-Regular'],
         mulish: ['Mulish-Regular'],
         'mulish-medium': ['Mulish-Medium'],
+        /** RN: cần file Mulish-Italic; class italic + Mulish-Medium không nghiêng được */
+        'mulish-italic': ['Mulish-Italic'],
         'mulish-semibold': ['Mulish-SemiBold'],
         'mulish-bold': ['Mulish-Bold'],
         'mulish-extrabold': ['Mulish-ExtraBold'],

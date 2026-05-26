@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL } from '../config/constants';
+import { fetchAuthNoCookies } from '../utils/fetchAuthNoCookies';
 
 interface ClassData {
   name: string;
@@ -63,7 +64,7 @@ class AttendanceApiService {
   ): Promise<{ success: boolean; data?: TeacherClassesResponse; error?: string }> {
     try {
       const headers = await this.getAuthHeaders();
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${BASE_URL}/api/method/erp.api.erp_sis.teacher_dashboard.get_teacher_classes_optimized?teacher_user_id=${encodeURIComponent(teacherUserId)}`,
         { headers }
       );
@@ -114,7 +115,7 @@ class AttendanceApiService {
         url += `&education_stage=${encodeURIComponent(educationStage)}`;
       }
 
-      const response = await fetch(url, { headers });
+      const response = await fetchAuthNoCookies(url, { headers });
 
       if (!response.ok) {
         console.error('Failed to fetch teacher timetable:', response.status);
@@ -171,7 +172,7 @@ class AttendanceApiService {
         url += `&education_stage=${encodeURIComponent(educationStage)}`;
       }
 
-      const response = await fetch(url, { headers });
+      const response = await fetchAuthNoCookies(url, { headers });
 
       if (!response.ok) {
         console.error('Failed to fetch GVBM teacher timetable:', response.status);
@@ -240,7 +241,7 @@ class AttendanceApiService {
   async getClassInfo(className: string): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const headers = await this.getAuthHeaders();
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${BASE_URL}/api/method/erp.api.erp_sis.sis_class.get_class?name=${encodeURIComponent(className)}`,
         { headers }
       );
@@ -280,7 +281,7 @@ class AttendanceApiService {
   ): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const headers = await this.getAuthHeaders();
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${BASE_URL}/api/method/erp.api.erp_sis.event_class_attendance.get_education_stage?name=${encodeURIComponent(gradeName)}`,
         { headers }
       );
@@ -331,7 +332,7 @@ class AttendanceApiService {
       const url = `${BASE_URL}/api/method/erp.api.erp_sis.class_student.get_all_class_students?${qs.toString()}`;
       console.log('📚 getClassStudents - Calling URL:', url);
 
-      const response = await fetch(url, { headers });
+      const response = await fetchAuthNoCookies(url, { headers });
 
       if (!response.ok) {
         console.error('📚 getClassStudents - Response not OK:', response.status);
@@ -377,7 +378,7 @@ class AttendanceApiService {
   ): Promise<{ success: boolean; data?: any[]; error?: string }> {
     try {
       const headers = await this.getAuthHeaders();
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${BASE_URL}/api/method/erp.api.erp_sis.student.batch_get_students`,
         {
           method: 'POST',
@@ -421,7 +422,7 @@ class AttendanceApiService {
     try {
       const headers = await this.getAuthHeaders();
       const skip = skipCache ? '&skip_cache=1' : '';
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${BASE_URL}/api/method/erp.api.erp_sis.attendance.get_class_attendance?class_id=${encodeURIComponent(classId)}&date=${date}&period=${encodeURIComponent(period)}${skip}`,
         { headers }
       );
@@ -463,7 +464,7 @@ class AttendanceApiService {
   ): Promise<{ success: boolean; data?: Record<string, any[]>; error?: string }> {
     try {
       const headers = await this.getAuthHeaders();
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${BASE_URL}/api/method/erp.api.erp_sis.attendance.batch_get_class_attendance`,
         {
           method: 'POST',
@@ -521,7 +522,7 @@ class AttendanceApiService {
         education_stage_id: educationStageId,
       });
 
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${BASE_URL}/api/method/erp.api.erp_sis.event_class_attendance.get_event_attendance_statuses?${qs.toString()}`,
         { headers }
       );
@@ -566,7 +567,7 @@ class AttendanceApiService {
         education_stage_id: educationStageId,
       });
 
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${BASE_URL}/api/method/erp.api.erp_sis.event_class_attendance.get_events_by_class_period?${qs.toString()}`,
         { headers }
       );
@@ -602,7 +603,7 @@ class AttendanceApiService {
   ): Promise<{ success: boolean; data?: Record<string, any>; error?: string }> {
     try {
       const headers = await this.getAuthHeaders();
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${BASE_URL}/api/method/erp.api.erp_sis.leave.batch_get_active_leaves`,
         {
           method: 'POST',
@@ -646,7 +647,7 @@ class AttendanceApiService {
     try {
       const headers = await this.getAuthHeaders();
 
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${BASE_URL}/api/method/erp.api.attendance.query.get_students_day_map`,
         {
           method: 'POST',
@@ -703,7 +704,7 @@ class AttendanceApiService {
         JSON.stringify(requestBody, null, 2)
       );
 
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${BASE_URL}/api/method/erp.api.erp_sis.attendance.save_class_attendance`,
         {
           method: 'POST',
@@ -774,7 +775,7 @@ class AttendanceApiService {
   }> {
     try {
       const headers = await this.getAuthHeaders();
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${BASE_URL}/api/method/erp.api.erp_sis.attendance.batch_get_classes_attendance_summary`,
         {
           method: 'POST',
@@ -864,7 +865,7 @@ class AttendanceApiService {
   ): Promise<{ success: boolean; data?: Record<string, { has_attendance: boolean; count: number }>; error?: string }> {
     try {
       const headers = await this.getAuthHeaders();
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${BASE_URL}/api/method/erp.api.erp_sis.attendance.batch_check_has_attendance`,
         {
           method: 'POST',

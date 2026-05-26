@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiBaseUrl } from '../config/constants';
+import { fetchAuthNoCookies } from '../utils/fetchAuthNoCookies';
 
 export interface MicrosoftAuthResponse {
   success: boolean;
@@ -57,7 +58,7 @@ class MicrosoftAuthService {
    */
   async getAuthStatus(): Promise<MicrosoftAuthStatus> {
     try {
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${this.baseUrl}/api/method/erp.api.erp_common_user.mobile_microsoft_auth.mobile_auth_status`,
         {
           method: 'GET',
@@ -103,7 +104,7 @@ class MicrosoftAuthService {
       const endpoint = `${this.baseUrl}/api/method/erp.api.erp_common_user.mobile_microsoft_auth.mobile_microsoft_callback`;
       console.log('📤 [MicrosoftAuthService] POST to:', endpoint);
 
-      const response = await fetch(endpoint, {
+      const response = await fetchAuthNoCookies(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -186,7 +187,7 @@ class MicrosoftAuthService {
     try {
       console.log('🔄 [MicrosoftAuthService] Authenticating with Microsoft token...');
 
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${this.baseUrl}/api/method/erp.api.erp_common_user.mobile_microsoft_auth.mobile_direct_token_auth`,
         {
           method: 'POST',

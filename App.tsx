@@ -1,3 +1,4 @@
+import './src/utils/axiosDefaults';
 import React, { useCallback, useEffect, useRef } from 'react';
 // @ts-ignore
 import { View, StyleSheet, Platform, Text } from 'react-native';
@@ -32,6 +33,8 @@ import './src/config/i18n';
 import { AuthProvider } from './src/context/AuthContext';
 import { ThemeProvider } from './src/context/ThemeContext';
 import VersionChecker from './src/components/VersionChecker';
+import { ChatMessageNotificationProvider } from './src/providers/ChatMessageNotificationProvider';
+import { NotificationInboxSocketProvider } from './src/providers/NotificationInboxSocketProvider';
 
 // Cấu hình linking cho deep links
 const linking = {
@@ -331,12 +334,16 @@ export default function App() {
           <ToastProvider>
             <ToastInitializer />
             <AuthProvider>
-              <VersionChecker>
-                <NavigationContainer linking={linking} ref={navigationRef}>
-                  <AppNavigator />
-                  <PendingPushNotificationConsumer />
-                </NavigationContainer>
-              </VersionChecker>
+              <NotificationInboxSocketProvider>
+              <ChatMessageNotificationProvider>
+                <VersionChecker>
+                  <NavigationContainer linking={linking} ref={navigationRef}>
+                    <AppNavigator />
+                    <PendingPushNotificationConsumer />
+                  </NavigationContainer>
+                </VersionChecker>
+              </ChatMessageNotificationProvider>
+              </NotificationInboxSocketProvider>
             </AuthProvider>
             <StatusBar style="auto" />
           </ToastProvider>

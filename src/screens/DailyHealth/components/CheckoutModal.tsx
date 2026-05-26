@@ -152,7 +152,7 @@ const CheckoutModal: React.FC<CheckoutModalProps> = ({
             </View>
           </View>
 
-          {/* Nếu chuyển viện: Bệnh viện chuyển tới, Thầy/ cô đi cùng, NVYT đi cùng */}
+          {/* Nếu chuyển viện: Bệnh viện chuyển tới, Thầy/ cô đi cùng, Nhân viên Y Tế đi cùng */}
           {outcome === 'transferred' && (
             <>
               <View style={{ marginBottom: 16 }}>

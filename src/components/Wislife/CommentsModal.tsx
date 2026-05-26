@@ -28,7 +28,12 @@ import { getEmojiByCode, isFallbackEmoji, hasLottieAnimation } from '../../utils
 import { normalizeVietnameseName } from '../../utils/nameFormatter';
 import ReactionPicker from './ReactionPicker';
 import ReactionsListModal from './ReactionsListModal';
-import MentionInput, { MentionUser, extractMentionIds, getMentionPlainText } from './MentionInput';
+import MentionInput, {
+  MentionUser,
+  extractMentionIds,
+  getMentionPlainText,
+  MentionRichText,
+} from './MentionInput';
 
 interface CommentsModalProps {
   visible: boolean;
@@ -76,11 +81,36 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
   // State cho việc xóa comment
   const [deletingComment, setDeletingComment] = useState<string | null>(null);
 
+  // Feed có thể không gửi comments[] — khi mở modal, tải bài đầy đủ
+  React.useEffect(() => {
+    if (!visible || !post?._id) return;
+    if (Array.isArray(post.comments)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const full = await postService.getPostById(post._id);
+        if (!cancelled) {
+          onUpdate({
+            ...full,
+            comments: Array.isArray(full.comments) ? full.comments : [],
+          });
+        }
+      } catch (_) {
+        if (!cancelled) onUpdate({ ...post, comments: [] });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, post._id, onUpdate]);
+
+  const commentsList = post.comments ?? [];
+
   // Sắp xếp comments từ mới nhất đến cũ nhất và nhóm replies
   const organizeComments = () => {
     // Tách main comments và replies
-    const mainComments = post.comments.filter((comment) => !comment.parentComment);
-    const replies = post.comments.filter((comment) => comment.parentComment);
+    const mainComments = commentsList.filter((comment) => !comment.parentComment);
+    const replies = commentsList.filter((comment) => comment.parentComment);
 
     // Sort main comments từ mới đến cũ
     const sortedMainComments = [...mainComments].sort(
@@ -119,7 +149,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
     }
 
     // Kiểm tra trong comments
-    for (const comment of post.comments) {
+    for (const comment of commentsList) {
       if (comment.user) {
         const commentEmail = comment.user.email?.toLowerCase();
         const commentUsername = (comment.user as any).username?.toLowerCase();
@@ -247,7 +277,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
       setLikingComment(commentId);
 
       // Kiểm tra xem user đã like comment này chưa
-      const comment = post.comments.find((c) => c._id === commentId);
+      const comment = commentsList.find((c) => c._id === commentId);
       if (!comment) return;
 
       const userReaction = comment.reactions.find((r) => r.user?._id === user?._id);
@@ -284,7 +314,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
       setCommentReactionModalVisible(false);
 
       // Kiểm tra xem user đã có reaction loại này chưa
-      const comment = post.comments.find((c) => c._id === commentId);
+      const comment = commentsList.find((c) => c._id === commentId);
       if (!comment) return;
 
       const userReaction = comment.reactions.find((r) => r.user?._id === user?._id);
@@ -466,29 +496,6 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
   const userReaction = getUserReaction();
   const totalReactions = post.reactions.length;
 
-  const renderCommentContent = (content: string) => {
-    // Tách text thành các phần để highlight @mentions
-    // Chỉ match tên người thật: @ + từ đầu viết hoa + tối đa 2 từ tiếp theo cũng viết hoa
-    const parts = content.split(
-      /(@[A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ][a-zàáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]*(?:\s+[A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ][a-zàáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]*){0,2})/g
-    );
-
-    return (
-      <Text className="text-base leading-5 text-gray-800">
-        {parts.map((part, index) => {
-          if (part.startsWith('@') && part.trim().length > 1) {
-            return (
-              <Text key={index} className="font-bold text-orange-500">
-                {part.trim()}
-              </Text>
-            );
-          }
-          return part;
-        })}
-      </Text>
-    );
-  };
-
   const getUniqueReactionTypes = (reactions: Reaction[]): string[] => {
     const types: string[] = [];
     reactions.forEach((reaction) => {
@@ -606,7 +613,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
           keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 60}>
           {/* Comments List */}
           <ScrollView className="flex-1 px-4 pt-4">
-            {post.comments.length === 0 ? (
+            {commentsList.length === 0 ? (
               <View className="flex-1 items-center justify-center py-10">
                 <Ionicons name="chatbubble-outline" size={64} color="#D1D5DB" />
                 <Text className="mt-4 text-lg font-medium text-gray-500">
@@ -639,7 +646,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                               {formatRelativeTime(comment.createdAt)}
                             </Text>
                           </View>
-                          {renderCommentContent(comment.content)}
+                          <MentionRichText content={comment.content} />
                         </View>
                         <View className="mt-2 flex-row items-center justify-between">
                           <View className="flex-1 flex-row items-center">
@@ -764,7 +771,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                                             {formatRelativeTime(reply.createdAt)}
                                           </Text>
                                         </View>
-                                        {renderCommentContent(reply.content)}
+                                        <MentionRichText content={reply.content} />
                                       </View>
 
                                       {/* Actions và Reactions cho reply trên cùng một hàng */}
@@ -921,7 +928,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
               <View className="mr-3 h-10 w-10 overflow-hidden rounded-full bg-gray-300">
                 <Image source={{ uri: getAvatar(user) }} className="h-full w-full" />
               </View>
-              <View className="flex-1 flex-row items-center rounded-full bg-gray-100 px-4 py-3">
+              <View className="flex-1 flex-row items-center rounded-full bg-gray-100 py-2 pl-4 pr-2">
                 <MentionInput
                   inputRef={inputRef}
                   className="flex-1 text-base"
@@ -931,21 +938,23 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
                   onChangeText={setCommentText}
                   onMentionsChange={setCurrentMentions}
                   multiline
-                  textAlignVertical="center"
+                  textAlignVertical="top"
                   suggestionsAbove={true}
                   containerStyle={{ flex: 1 }}
                   style={{
                     minHeight: 24,
                     maxHeight: 100,
                     textAlign: 'left',
-                    paddingTop: 0,
+                    lineHeight: 22,
+                    fontSize: 15,
+                    paddingTop: 2,
                     paddingBottom: 0,
                   }}
                 />
                 <TouchableOpacity
                   onPress={handleComment}
                   disabled={!commentText.trim() || loading}
-                  className={`ml-2 p-1 ${
+                  className={`ml-2 h-9 w-9 items-center justify-center rounded-full ${
                     commentText.trim() && !loading ? 'opacity-100' : 'opacity-50'
                   }`}>
                   {loading ? (
@@ -983,7 +992,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ visible, onClose, post, o
         }}
         currentReaction={(() => {
           if (!selectedCommentId) return null;
-          const comment = post.comments.find((c) => c._id === selectedCommentId);
+          const comment = commentsList.find((c) => c._id === selectedCommentId);
           if (!comment) return null;
           const myReaction = comment.reactions.find((r) => r.user?._id === user?._id);
           return myReaction?.type || null;

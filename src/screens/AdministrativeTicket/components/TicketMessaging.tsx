@@ -17,7 +17,9 @@ import {
   useAdministrativeTicketMessages,
   useCanSendAdministrativeMessage,
   useAdministrativeTicketActions,
+  useAdministrativeTicketStore,
 } from '../../../hooks/useAdministrativeTicketStore';
+import { useHCTicketMessageRealtime } from '../../../hooks/useHCTicketMessageRealtime';
 import { useSendAdministrativeMessage } from '../../../hooks/useAdministrativeTicketHooks';
 import type { AdminTicketMessage } from '../../../services/administrativeTicketService';
 import { getFullImageUrl } from '../../../utils/imageUtils';
@@ -178,6 +180,20 @@ const TicketMessaging: React.FC<TicketMessagingProps> = ({ ticketId }) => {
       fetchMessages(ticketId);
     }
   }, [ticketId, fetchMessages]);
+
+  const { connected: hcRtConnected } = useHCTicketMessageRealtime(ticketId, (msg) => {
+    useAdministrativeTicketStore.getState().addMessage(msg);
+  });
+
+  // Poll chậm khi không nối được socket
+  useEffect(() => {
+    if (!ticketId) return;
+    if (hcRtConnected) return;
+    const id = setInterval(() => {
+      fetchMessages(ticketId);
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [ticketId, hcRtConnected, fetchMessages]);
 
   const handleSendMessage = async () => {
     if (!messageText.trim() && selectedImages.length === 0) return;

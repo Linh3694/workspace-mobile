@@ -16,6 +16,7 @@ import {
   PanResponder,
   Animated,
   ImageBackground,
+  DeviceEventEmitter,
 } from 'react-native';
 import { TouchableOpacity } from '../../components/Common';
 
@@ -45,12 +46,14 @@ import CalendarIcon from '../../assets/calendar-icon.svg';
 import attendanceService from '../../services/attendanceService';
 import pushNotificationService from '../../services/pushNotificationService';
 import notificationCenterService from '../../services/notificationCenterService';
+import { NOTIFICATION_INBOX_REFRESH_EVENT } from '../../providers/NotificationInboxSocketProvider';
 import DailyHealthIcon from '../../assets/daily_health.svg';
 import TeacherHealthIcon from '../../assets/teacher_health.svg';
 import ClassLogIcon from '../../assets/classlog.svg';
 import DisciplineIcon from '../../assets/discipline.svg';
 // Icon tile module Vấn đề (CRM)
 import IssueIcon from '../../assets/issue.svg';
+import ClassActivitySvg from '../../assets/class_activity.svg';
 import { hasCrmAccess } from '../../utils/crmIssuePermissions';
 import {
   applyMenuTap,
@@ -60,6 +63,9 @@ import {
   sortMenuItemsByUsage,
   type HomeMenuUsageState,
 } from '../../utils/homeMenuUsage';
+
+import timetableService from '../../services/timetableService';
+import { homeroomClassesToOptions } from '../../utils/homeroomClassUtils';
 
 // Define type cho navigation
 type HomeScreenNavigationProp = NativeStackNavigationProp<
@@ -81,6 +87,33 @@ const HomeScreen = () => {
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const isMountedRef = useRef(true);
+
+  /** Có lớp GVCN/phó — mới hiện tile Hoạt động */
+  const [hasClassActivityHomeroom, setHasClassActivityHomeroom] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await timetableService.getTeacherClasses();
+        if (cancelled || !data?.teacher_user_id) {
+          if (!cancelled) setHasClassActivityHomeroom(false);
+          return;
+        }
+        const opts = homeroomClassesToOptions(
+          data.homeroom_classes || [],
+          data.teacher_user_id,
+          user?.email
+        );
+        if (!cancelled) setHasClassActivityHomeroom(opts.length > 0);
+      } catch {
+        if (!cancelled) setHasClassActivityHomeroom(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.email]);
+
   useEffect(() => {
     if (unreadNotificationCount > 0) {
       pulseAnim.setValue(1);
@@ -248,6 +281,14 @@ const HomeScreen = () => {
     }, [route.params, fetchTodayAttendance, navigation])
   );
 
+  // Badge: cập nhật khi notification-service push qua Socket inbox
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(NOTIFICATION_INBOX_REFRESH_EVENT, () => {
+      fetchUnreadNotificationCount();
+    });
+    return () => sub.remove();
+  }, [fetchUnreadNotificationCount]);
+
   const navigateToTicket = () => {
     try {
       if (user) {
@@ -340,6 +381,10 @@ const HomeScreen = () => {
 
   const navigateToCrmIssues = () => {
     navigation.navigate(ROUTES.SCREENS.CRM_ISSUE_LIST);
+  };
+
+  const navigateToClassActivity = () => {
+    navigation.navigate(ROUTES.SCREENS.CLASS_ACTIVITY as any);
   };
 
   // Role-based menu configuration
@@ -475,14 +520,25 @@ const HomeScreen = () => {
       onPress: navigateToAdministrativeTicket,
       key: 'administrative_tickets',
     },
+    {
+      id: 16,
+      title: t('class_activity.tile_title'),
+      component: ClassActivitySvg,
+      description: t('class_activity.tile_desc'),
+      onPress: navigateToClassActivity,
+      key: 'class_activity',
+    },
   ];
 
   // Thu thập tất cả các keys được phép dựa trên tất cả roles của user
   const allowedKeys = new Set<string>();
 
   if (hasMobileBOD) {
-    // Mobile BOD: tất cả
-    allItems.forEach((item) => allowedKeys.add(item.key));
+    // Mobile BOD: tất cả (trừ Hoạt động nếu user không có lớp GVCN/phó — giống kế hoạch)
+    allItems.forEach((item) => {
+      if (item.key === 'class_activity' && !hasClassActivityHomeroom) return;
+      allowedKeys.add(item.key);
+    });
   }
 
   if (hasMobileMonitor) {
@@ -510,6 +566,7 @@ const HomeScreen = () => {
       'class_log',
       'teacher_health',
     ].forEach((key) => allowedKeys.add(key));
+    if (hasClassActivityHomeroom) allowedKeys.add('class_activity');
   }
 
   if (hasMobileMedical) {

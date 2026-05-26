@@ -3,6 +3,7 @@ import { Platform, Linking } from 'react-native';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import { API_BASE_URL } from '../config/constants';
+import { fetchAuthNoCookies } from '../utils/fetchAuthNoCookies';
 
 export interface VersionInfo {
   currentVersion: string;
@@ -44,7 +45,7 @@ export const useVersionCheck = () => {
       const platform = Platform.OS;
 
       // Gọi API backend để check version
-      const response = await fetch(
+      const response = await fetchAuthNoCookies(
         `${API_BASE_URL}/api/method/erp.api.erp_sis.app_version.check_update`,
         {
           method: 'POST',

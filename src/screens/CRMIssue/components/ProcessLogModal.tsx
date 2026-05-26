@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next';
 type Props = {
   visible: boolean;
   onClose: () => void;
-  onConfirm: (title: string, content: string) => void;
+  onConfirm: (content: string) => void;
   /** Khi có — chế độ sửa log (API update_process_log) */
   editLogName?: string | null;
   initialTitle?: string;
@@ -26,32 +26,28 @@ export const ProcessLogModal: React.FC<Props> = ({
   onClose,
   onConfirm,
   editLogName,
-  initialTitle,
   initialContent,
   loading,
 }) => {
   const { t } = useTranslation();
-  const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
 
   useEffect(() => {
     if (visible) {
       if (editLogName) {
-        setTitle((initialTitle || '').trim());
         setContent((initialContent || '').trim());
       } else {
-        setTitle('');
         setContent('');
       }
     }
-  }, [visible, editLogName, initialTitle, initialContent]);
+  }, [visible, editLogName, initialContent]);
 
   const handleConfirm = () => {
-    if (!title.trim() || !content.trim()) return;
-    onConfirm(title.trim(), content.trim());
+    if (!content.trim()) return;
+    onConfirm(content.trim());
   };
 
-  const canSubmit = title.trim() && content.trim();
+  const canSubmit = content.trim();
 
   return (
     <BottomSheetModal visible={visible} onClose={onClose} maxHeightPercent={55}>
@@ -63,17 +59,9 @@ export const ProcessLogModal: React.FC<Props> = ({
             {editLogName ? t('crm_issue.edit_log') || 'Sửa log' : t('crm_issue.add_log')}
           </Text>
           <Text className="mb-4 text-xs text-gray-400">
-            {t('crm_issue.add_log_hint') || 'Nhập tiêu đề và nội dung để ghi nhận bước xử lý.'}
+            {t('crm_issue.add_log_hint') || 'Nhập nội dung để ghi nhận bước xử lý.'}
           </Text>
 
-          <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-[#F9FAFB] px-3 py-3 text-sm text-gray-900"
-            placeholder={`${t('crm_issue.log_title_placeholder') || 'Tiêu đề'} *`}
-            placeholderTextColor="#9CA3AF"
-            value={title}
-            onChangeText={setTitle}
-            editable={!loading}
-          />
           <TextInput
             className="rounded-xl border border-gray-200 bg-[#F9FAFB] px-3 py-3 text-sm text-gray-900"
             style={{ height: 120, textAlignVertical: 'top' }}

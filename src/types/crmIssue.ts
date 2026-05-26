@@ -2,13 +2,10 @@
  * Kiểu dữ liệu CRM Issue (đồng bộ với frappe-sis-frontend / backend erp.api.crm.issue)
  */
 
-export type CRMIssueStatus = 'Cho duyet' | 'Tiep nhan' | 'Dang xu ly' | 'Hoan thanh';
+export type CRMIssueStatus = 'Cho duyet' | 'Tiep nhan' | 'Dang xu ly' | 'Hoan thanh' | 'Dong';
 
-export type CRMIssueResult =
-  | 'Hai long'
-  | 'Chua hai long'
-  | 'Dong y nhung chua hai long'
-  | 'Tiep tuc theo doi';
+export type CRMIssueResult = 'Hai long' | 'Chua hai long';
+export type CRMIssuePriority = 'Cao' | 'Trung binh' | 'Thap';
 
 export type CRMIssueApprovalStatus = 'Cho duyet' | 'Da duyet' | 'Tu choi';
 
@@ -20,6 +17,7 @@ export const CRM_ISSUE_STATUS_LABELS: Record<CRMIssueStatus, string> = {
   'Tiep nhan': 'Tiếp nhận',
   'Dang xu ly': 'Đang xử lý',
   'Hoan thanh': 'Hoàn thành',
+  Dong: 'Đóng',
 };
 
 export const CRM_ISSUE_APPROVAL_LABELS: Record<CRMIssueApprovalStatus, string> = {
@@ -40,6 +38,7 @@ export const CRM_ISSUE_STATUS_COLORS: Record<CRMIssueStatus, string> = {
   'Tiep nhan': '#002855',
   'Dang xu ly': '#FFCE02',
   'Hoan thanh': '#BED232',
+  Dong: '#64748B',
 };
 
 /** Badge phê duyệt — pastel (khác badge trạng thái workflow) */
@@ -58,13 +57,12 @@ export const CRM_ISSUE_STATUS_BADGE_STYLES: Record<CRMIssueStatus, { bg: string;
   'Tiep nhan': { bg: '#002855', text: '#FFFFFF' },
   'Dang xu ly': { bg: '#FFCE02', text: '#002855' },
   'Hoan thanh': { bg: '#BED232', text: '#FFFFFF' },
+  Dong: { bg: '#64748B', text: '#FFFFFF' },
 };
 
 export const CRM_ISSUE_RESULT_LABELS: Record<CRMIssueResult, string> = {
   'Hai long': 'Hài lòng',
   'Chua hai long': 'Chưa hài lòng',
-  'Dong y nhung chua hai long': 'Đồng ý nhưng chưa hài lòng',
-  'Tiep tuc theo doi': 'Tiếp tục theo dõi',
 };
 
 /** Thứ tự option trên web/Frappe: dòng đầu trong Select = rỗng → «Chưa có kết quả» */
@@ -72,16 +70,12 @@ export const CRM_ISSUE_RESULT_OPTION_ORDER: readonly (CRMIssueResult | '')[] = [
   '',
   'Hai long',
   'Chua hai long',
-  'Dong y nhung chua hai long',
-  'Tiep tuc theo doi',
 ] as const;
 
 /** Style badge kết quả — pill Y tế: nền + chữ, không viền */
 export const CRM_ISSUE_RESULT_CHIP_STYLES: Record<CRMIssueResult, { bg: string; text: string }> = {
   'Hai long': { bg: '#F0FDF4', text: '#166534' },
   'Chua hai long': { bg: '#FEF2F2', text: '#991B1B' },
-  'Dong y nhung chua hai long': { bg: '#FFFBEB', text: '#92400E' },
-  'Tiep tuc theo doi': { bg: '#EFF6FF', text: '#1E40AF' },
 };
 
 export const CRM_ISSUE_RESULT_NONE_CHIP_STYLE = { bg: '#F3F4F6', text: '#6B7280' };
@@ -120,6 +114,7 @@ export interface CRMIssueDeptMember {
   full_name?: string;
   /** Đường dẫn ảnh User (Frappe) — API get_department đã enrich */
   user_image?: string;
+  is_manager?: 0 | 1;
 }
 
 export interface CRMIssueDepartment {
@@ -129,6 +124,7 @@ export interface CRMIssueDepartment {
   members?: CRMIssueDeptMember[];
   modified?: string;
   member_count?: number;
+  manager_count?: number;
 }
 
 /** Viền trái log — API get_issue enrich (khớp web) */
@@ -136,7 +132,7 @@ export type CRMIssueLogAccent = 'bod' | 'sales' | 'dept' | 'neutral';
 
 export interface CRMIssueLog {
   name?: string;
-  title: string;
+  title?: string;
   content: string;
   logged_at: string;
   logged_by?: string;
@@ -208,6 +204,7 @@ export interface CRMIssue {
   issue_departments?: { department: string; name?: string }[];
   /** get_issues enrich: docname các phòng ban */
   departments?: string[];
+  priority?: CRMIssuePriority;
   status: CRMIssueStatus;
   result?: CRMIssueResult;
   lead?: string;
@@ -239,6 +236,7 @@ export interface CRMIssue {
   pic_user_image?: string;
   created_by_name?: string;
   created_by_image?: string;
+  created_by_title?: string;
   /** get_issue: quyền thực tế từ Frappe session */
   can_approve_reject?: boolean;
   can_write_issue?: boolean;
@@ -246,13 +244,14 @@ export interface CRMIssue {
   can_change_pic?: boolean;
   can_change_department?: boolean;
   can_add_process_log?: boolean;
+  can_edit_process_log?: boolean;
   can_reply_parent?: boolean;
   /** API get_issue: có thấy scope hàng chờ (khi BE trả ngoài data) */
   can_see_pending_queue_scope?: boolean;
 }
 
 export interface CreateIssueData {
-  title: string;
+  title?: string;
   content: string;
   issue_module: string;
   occurred_at?: string;
@@ -263,6 +262,7 @@ export interface CreateIssueData {
   department?: string;
   /** Ưu tiên khi gửi — nhiều CRM Issue Department */
   departments?: string[];
+  priority: CRMIssuePriority;
   attachment?: string;
 }
 

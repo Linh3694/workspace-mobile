@@ -254,8 +254,7 @@ const TreatmentItemRow: React.FC<TreatmentItemRowProps> = ({
     if (!item.treatment_name?.trim()) return undefined;
     return options.find(
       (o) =>
-        o.label === item.treatment_name ||
-        o.label.startsWith(`${item.treatment_name.trim()} (`)
+        o.label === item.treatment_name || o.label.startsWith(`${item.treatment_name.trim()} (`)
     );
   }, [options, item.treatment_name]);
   const displayText = selectedOption
@@ -493,9 +492,7 @@ const TreatmentItemRow: React.FC<TreatmentItemRowProps> = ({
         <TextInput
           value={item.treatment_name}
           onChangeText={(text) => onUpdate('treatment_name', text)}
-          placeholder={
-            item.item_type === 'rest' ? 'Ghi chú nghỉ ngơi...' : 'Mô tả xử trí khác...'
-          }
+          placeholder={item.item_type === 'rest' ? 'Ghi chú nghỉ ngơi...' : 'Mô tả xử trí khác...'}
           placeholderTextColor="#9CA3AF"
           multiline
           numberOfLines={2}
@@ -664,7 +661,7 @@ const ExaminationForm: React.FC<ExaminationFormProps> = ({
     { id: '1', item_type: '', treatment_name: '', quantity: '', notes: '' },
   ]);
   const [notes, setNotes] = useState(initialData?.notes || '');
-  // NVYT thăm khám
+  // Nhân viên Y Tế thăm khám
   const [medicalStaff, setMedicalStaff] = useState(initialData?.medical_staff || '');
   const [medicalStaffList, setMedicalStaffList] = useState<MedicalStaffUser[]>([]);
   // Thời gian vào/về y tế
@@ -809,8 +806,8 @@ const ExaminationForm: React.FC<ExaminationFormProps> = ({
     );
   };
 
-  // Validate & save
-  const handleSave = () => {
+  // Validate & save — publish: chia sẻ GVCN (PH do GVCN gửi sau)
+  const handleSave = (publish: boolean) => {
     if (!medicalStaff) {
       Alert.alert('Thiếu thông tin', 'Vui lòng chọn nhân viên y tế thăm khám');
       return;
@@ -871,7 +868,9 @@ const ExaminationForm: React.FC<ExaminationFormProps> = ({
       medical_staff: medicalStaff || undefined,
       clinic_checkin_time: normalizeTimeForApi(clinicCheckinTime) || undefined,
       clinic_checkout_time:
-        normalizeTimeForApi(visitLeaveClinicTime?.trim() || initialData?.clinic_checkout_time) || undefined,
+        normalizeTimeForApi(visitLeaveClinicTime?.trim() || initialData?.clinic_checkout_time) ||
+        undefined,
+      publish,
     };
 
     onSave(data, visitReason.trim() !== initialVisitReason ? visitReason.trim() : undefined);
@@ -915,7 +914,8 @@ const ExaminationForm: React.FC<ExaminationFormProps> = ({
       keyboardDismissMode="on-drag"
       automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       contentContainerStyle={{
-        paddingBottom: insets.bottom + 100 + (Platform.OS === 'android' ? androidKeyboardHeight : 0) + 12,
+        paddingBottom:
+          insets.bottom + 100 + (Platform.OS === 'android' ? androidKeyboardHeight : 0) + 12,
       }}>
       <View style={{ padding: 16 }}>
         {/* 1. Nhân viên Y tế thăm khám (*) */}
@@ -1229,36 +1229,34 @@ const ExaminationForm: React.FC<ExaminationFormProps> = ({
         {visitStatus &&
           CHECKOUT_STATUSES.includes(visitStatus) &&
           (visitLeaveClinicTime?.trim() || initialData?.clinic_checkout_time) && (
-          <View style={{ marginBottom: 16 }}>
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: '500',
-                color: '#374151',
-                marginBottom: 8,
-                fontFamily: 'Mulish',
-              }}>
-              Thời gian về
-            </Text>
-            <View
-              style={{
-                borderRadius: 12,
-                backgroundColor: '#F3F4F6',
-                padding: 12,
-              }}>
+            <View style={{ marginBottom: 16 }}>
               <Text
                 style={{
-                  fontSize: 15,
-                  color: '#1F2937',
+                  fontSize: 14,
+                  fontWeight: '500',
+                  color: '#374151',
+                  marginBottom: 8,
                   fontFamily: 'Mulish',
                 }}>
-                {formatTimeHHMM(
-                  visitLeaveClinicTime || initialData?.clinic_checkout_time
-                ) || '-'}
+                Thời gian về
               </Text>
+              <View
+                style={{
+                  borderRadius: 12,
+                  backgroundColor: '#F3F4F6',
+                  padding: 12,
+                }}>
+                <Text
+                  style={{
+                    fontSize: 15,
+                    color: '#1F2937',
+                    fontFamily: 'Mulish',
+                  }}>
+                  {formatTimeHHMM(visitLeaveClinicTime || initialData?.clinic_checkout_time) || '-'}
+                </Text>
+              </View>
             </View>
-          </View>
-        )}
+          )}
 
         {/* 7. Ghi chú */}
         <View style={{ marginBottom: 24 }}>
@@ -1296,38 +1294,71 @@ const ExaminationForm: React.FC<ExaminationFormProps> = ({
           />
         </View>
 
-        {/* Nút Lưu */}
-        <TouchableOpacity
-          onPress={handleSave}
-          disabled={loading || !isFormValid}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            paddingVertical: 16,
-            borderRadius: 12,
-            backgroundColor: loading || !isFormValid ? '#E5E7EB' : '#FFF7ED',
-            borderWidth: loading || !isFormValid ? 0 : 1,
-            borderColor: loading || !isFormValid ? 'transparent' : '#FED7AA',
-          }}>
-          {loading ? (
-            <ActivityIndicator size="small" color="#C2410C" />
-          ) : (
-            <>
-              <Ionicons name="save-outline" size={20} color="#C2410C" />
-              <Text
-                style={{
-                  marginLeft: 8,
-                  fontSize: 16,
-                  fontWeight: '600',
-                  color: '#C2410C',
-                  fontFamily: 'Mulish',
-                }}>
-                Lưu hồ sơ khám
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
+        {/* Lưu nháp / Lưu và chia sẻ GVCN */}
+        <View style={{ gap: 12 }}>
+          <TouchableOpacity
+            onPress={() => handleSave(false)}
+            disabled={loading || !isFormValid}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 16,
+              borderRadius: 12,
+              backgroundColor: loading || !isFormValid ? '#E5E7EB' : '#FFFFFF',
+              borderWidth: loading || !isFormValid ? 0 : 1,
+              borderColor: loading || !isFormValid ? 'transparent' : '#002855',
+            }}>
+            {loading ? (
+              <ActivityIndicator size="small" color="#002855" />
+            ) : (
+              <>
+                <Ionicons name="document-text-outline" size={20} color="#002855" />
+                <Text
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 16,
+                    fontWeight: '600',
+                    color: '#002855',
+                    fontFamily: 'Mulish',
+                  }}>
+                  Lưu
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => handleSave(true)}
+            disabled={loading || !isFormValid}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 16,
+              borderRadius: 12,
+              backgroundColor: loading || !isFormValid ? '#E5E7EB' : '#FFF7ED',
+              borderWidth: loading || !isFormValid ? 0 : 1,
+              borderColor: loading || !isFormValid ? 'transparent' : '#FED7AA',
+            }}>
+            {loading ? (
+              <ActivityIndicator size="small" color="#C2410C" />
+            ) : (
+              <>
+                <Ionicons name="send-outline" size={20} color="#C2410C" />
+                <Text
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 16,
+                    fontWeight: '600',
+                    color: '#C2410C',
+                    fontFamily: 'Mulish',
+                  }}>
+                  Lưu và gửi GVCN
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     </ScrollView>
   );

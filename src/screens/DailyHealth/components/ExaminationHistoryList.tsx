@@ -411,7 +411,7 @@ const ExaminationHistoryList: React.FC<ExaminationHistoryListProps> = ({
                                     ),
                                   },
                                   {
-                                    label: 'NVYT phụ trách',
+                                    label: 'Nhân viên Y Tế phụ trách',
                                     value: staffName || '---',
                                   },
                                   {
@@ -444,7 +444,7 @@ const ExaminationHistoryList: React.FC<ExaminationHistoryListProps> = ({
                                       {exam.symptoms && (
                                         <View>
                                           <Text style={[sectionStyles.label, { marginTop: 8 }]}>
-                                            Triệu chứng
+                                            Lý do vào phòng y tế
                                           </Text>
                                           <Text style={sectionStyles.value}>{exam.symptoms}</Text>
                                         </View>
@@ -454,7 +454,9 @@ const ExaminationHistoryList: React.FC<ExaminationHistoryListProps> = ({
                                           <Text style={[sectionStyles.label, { marginTop: 8 }]}>
                                             Lịch sử ăn uống
                                           </Text>
-                                          <Text style={sectionStyles.value}>{exam.diet_history}</Text>
+                                          <Text style={sectionStyles.value}>
+                                            {exam.diet_history}
+                                          </Text>
                                         </View>
                                       )}
                                       {exam.examination_notes && (
@@ -472,7 +474,8 @@ const ExaminationHistoryList: React.FC<ExaminationHistoryListProps> = ({
                                           <Text style={[sectionStyles.label, { marginTop: 8 }]}>
                                             Phân loại bệnh
                                           </Text>
-                                          <Text style={[sectionStyles.value, { fontWeight: '600' }]}>
+                                          <Text
+                                            style={[sectionStyles.value, { fontWeight: '600' }]}>
                                             {exam.disease_classification}
                                           </Text>
                                         </View>
@@ -520,7 +523,8 @@ const ExaminationHistoryList: React.FC<ExaminationHistoryListProps> = ({
                                               padding: 12,
                                               marginTop: 8,
                                             }}>
-                                            <Text style={[sectionStyles.value, { fontWeight: '600' }]}>
+                                            <Text
+                                              style={[sectionStyles.value, { fontWeight: '600' }]}>
                                               {item.name}
                                               {item.quantity ? ` × ${item.quantity}` : ''}
                                             </Text>
@@ -585,7 +589,8 @@ const ExaminationHistoryList: React.FC<ExaminationHistoryListProps> = ({
                                         )}
                                         {checkoutNotes && (
                                           <View>
-                                            <Text style={[sectionStyles.label, { color: '#757575' }]}>
+                                            <Text
+                                              style={[sectionStyles.label, { color: '#757575' }]}>
                                               Đề xuất của nhân viên y tế
                                             </Text>
                                             <Text style={sectionStyles.value}>{checkoutNotes}</Text>
@@ -614,7 +619,7 @@ const ExaminationHistoryList: React.FC<ExaminationHistoryListProps> = ({
                                       ),
                                     },
                                     {
-                                      label: 'NVYT phụ trách',
+                                      label: 'Nhân viên Y Tế phụ trách',
                                       value:
                                         normalizeVietnameseName(
                                           exam.followup_medical_staff_name || ''
@@ -636,10 +641,14 @@ const ExaminationHistoryList: React.FC<ExaminationHistoryListProps> = ({
                                       <Text style={[sectionStyles.label, { color: '#0A9D94' }]}>
                                         {'Thông tin tiếp nhận'}
                                       </Text>
-                                      <View style={{ backgroundColor: '#F5F5F5', borderRadius: 12, padding: 12, marginTop: 8 }}>
-                                        <Text style={sectionStyles.label}>
-                                          {'Thời gian lưu'}
-                                        </Text>
+                                      <View
+                                        style={{
+                                          backgroundColor: '#F5F5F5',
+                                          borderRadius: 12,
+                                          padding: 12,
+                                          marginTop: 8,
+                                        }}>
+                                        <Text style={sectionStyles.label}>{'Thời gian lưu'}</Text>
                                         <Text style={[sectionStyles.value, { fontWeight: '600' }]}>
                                           {formatStayDuration(
                                             exam.followup_clinic_checkin_time,
@@ -673,34 +682,64 @@ const ExaminationHistoryList: React.FC<ExaminationHistoryListProps> = ({
                                         ) : null}
                                       </View>
                                     </View>
-                                    {parseTreatmentItemsStructured(exam.followup_treatment_details).length > 0 ? (
+                                    {parseTreatmentItemsStructured(exam.followup_treatment_details)
+                                      .length > 0 ? (
                                       <View style={{ marginTop: 12 }}>
                                         <Text style={[sectionStyles.label, { color: '#0A9D94' }]}>
                                           {'Chăm sóc y tế'}
                                         </Text>
-                                        {parseTreatmentItemsStructured(exam.followup_treatment_details).map((item, idx) => (
-                                            <View key={idx} style={{ backgroundColor: '#F5F5F5', borderRadius: 12, padding: 12, marginTop: 8 }}>
-                                              <Text style={[sectionStyles.value, { fontWeight: '600' }]}>
-                                                {item.name}
-                                                {item.quantity ? ` × ${item.quantity}` : ''}
-                                              </Text>
-                                              {item.notes ? (
-                                                <View style={{ backgroundColor: '#FFFFFF', borderRadius: 12, padding: 8, marginTop: 8 }}>
-                                                  <Text style={{ fontSize: 12, fontStyle: 'italic', color: '#6B7280' }}>
-                                                    {item.notes}
-                                                  </Text>
-                                                </View>
-                                              ) : null}
-                                            </View>
-                                          ))}
+                                        {parseTreatmentItemsStructured(
+                                          exam.followup_treatment_details
+                                        ).map((item, idx) => (
+                                          <View
+                                            key={idx}
+                                            style={{
+                                              backgroundColor: '#F5F5F5',
+                                              borderRadius: 12,
+                                              padding: 12,
+                                              marginTop: 8,
+                                            }}>
+                                            <Text
+                                              style={[sectionStyles.value, { fontWeight: '600' }]}>
+                                              {item.name}
+                                              {item.quantity ? ` × ${item.quantity}` : ''}
+                                            </Text>
+                                            {item.notes ? (
+                                              <View
+                                                style={{
+                                                  backgroundColor: '#FFFFFF',
+                                                  borderRadius: 12,
+                                                  padding: 8,
+                                                  marginTop: 8,
+                                                }}>
+                                                <Text
+                                                  style={{
+                                                    fontSize: 12,
+                                                    fontStyle: 'italic',
+                                                    color: '#6B7280',
+                                                  }}>
+                                                  {item.notes}
+                                                </Text>
+                                              </View>
+                                            ) : null}
+                                          </View>
+                                        ))}
                                       </View>
                                     ) : null}
-                                    {(exam.followup_outcome || exam.followup_medical_suggestion || exam.followup_notes) ? (
+                                    {exam.followup_outcome ||
+                                    exam.followup_medical_suggestion ||
+                                    exam.followup_notes ? (
                                       <View style={{ marginTop: 12 }}>
                                         <Text style={[sectionStyles.label, { color: '#0A9D94' }]}>
                                           {'Hướng xử trí sau thăm khám'}
                                         </Text>
-                                        <View style={{ backgroundColor: '#F5F5F5', borderRadius: 12, padding: 12, marginTop: 8 }}>
+                                        <View
+                                          style={{
+                                            backgroundColor: '#F5F5F5',
+                                            borderRadius: 12,
+                                            padding: 12,
+                                            marginTop: 8,
+                                          }}>
                                           {exam.followup_outcome ? (
                                             <View style={{ marginBottom: 8 }}>
                                               <Text style={sectionStyles.label}>
@@ -712,9 +751,17 @@ const ExaminationHistoryList: React.FC<ExaminationHistoryListProps> = ({
                                                   paddingHorizontal: 10,
                                                   paddingVertical: 4,
                                                   borderRadius: 12,
-                                                  backgroundColor: getOutcomeColor(exam.followup_outcome).bg,
+                                                  backgroundColor: getOutcomeColor(
+                                                    exam.followup_outcome
+                                                  ).bg,
                                                 }}>
-                                                <Text style={{ fontSize: 12, fontWeight: '500', color: getOutcomeColor(exam.followup_outcome).text }}>
+                                                <Text
+                                                  style={{
+                                                    fontSize: 12,
+                                                    fontWeight: '500',
+                                                    color: getOutcomeColor(exam.followup_outcome)
+                                                      .text,
+                                                  }}>
                                                   {getOutcomeLabel(exam.followup_outcome)}
                                                 </Text>
                                               </View>
@@ -723,7 +770,7 @@ const ExaminationHistoryList: React.FC<ExaminationHistoryListProps> = ({
                                           {exam.followup_medical_suggestion ? (
                                             <View style={{ marginBottom: 8 }}>
                                               <Text style={sectionStyles.label}>
-                                                {'Đề xuất của NVYT'}
+                                                {'Đề xuất của Nhân viên Y Tế'}
                                               </Text>
                                               <Text style={sectionStyles.value}>
                                                 {exam.followup_medical_suggestion}
@@ -732,9 +779,7 @@ const ExaminationHistoryList: React.FC<ExaminationHistoryListProps> = ({
                                           ) : null}
                                           {exam.followup_notes ? (
                                             <View>
-                                              <Text style={sectionStyles.label}>
-                                                {'Ghi chú'}
-                                              </Text>
+                                              <Text style={sectionStyles.label}>{'Ghi chú'}</Text>
                                               <Text style={sectionStyles.value}>
                                                 {exam.followup_notes}
                                               </Text>
@@ -764,8 +809,7 @@ const ExaminationHistoryList: React.FC<ExaminationHistoryListProps> = ({
                                       }}>
                                       <Text style={sectionStyles.label}>Bệnh viện chuyển tới</Text>
                                       <Text style={[sectionStyles.value, { fontWeight: '600' }]}>
-                                        {exam.followup_transfer_hospital ||
-                                          'Chưa cập nhật'}
+                                        {exam.followup_transfer_hospital || 'Chưa cập nhật'}
                                       </Text>
                                       <Text style={[sectionStyles.label, { marginTop: 8 }]}>
                                         Chẩn đoán tại bệnh viện
@@ -872,12 +916,38 @@ const ExamSection: React.FC<ExamSectionProps> = ({
             flexWrap: 'wrap',
             gap: 12,
             marginBottom: 12,
-          }}>{summaryItems.map((item, idx) => (
-            <View key={idx} style={{ flex: 1, minWidth: 80 }}><Text style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 4, fontFamily: 'Mulish' }}>{item.label}</Text>{item.isBadge && item.badgeColor ? (
-                <View style={{ alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: item.badgeColor.bg }}><Text style={{ fontSize: 12, fontWeight: '500', color: item.badgeColor.text }}>{item.value}</Text></View>
+          }}>
+          {summaryItems.map((item, idx) => (
+            <View key={idx} style={{ flex: 1, minWidth: 80 }}>
+              <Text
+                style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 4, fontFamily: 'Mulish' }}>
+                {item.label}
+              </Text>
+              {item.isBadge && item.badgeColor ? (
+                <View
+                  style={{
+                    alignSelf: 'flex-start',
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 12,
+                    backgroundColor: item.badgeColor.bg,
+                  }}>
+                  <Text style={{ fontSize: 12, fontWeight: '500', color: item.badgeColor.text }}>
+                    {item.value}
+                  </Text>
+                </View>
               ) : (
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#1F2937', fontFamily: 'Mulish' }}>{item.value}</Text>
-              )}</View>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: '600',
+                    color: '#1F2937',
+                    fontFamily: 'Mulish',
+                  }}>
+                  {item.value}
+                </Text>
+              )}
+            </View>
           ))}
         </View>
       )}

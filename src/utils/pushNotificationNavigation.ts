@@ -14,6 +14,8 @@ export type PushNotificationPayload = {
   ticketKind?: 'administrative' | string;
   ticketCode?: string;
   chatId?: string;
+  conversationId?: string;
+  conversation_id?: string;
   type?: string;
   action?: string;
   screen?: string;
@@ -36,6 +38,8 @@ export type PushNotificationPayload = {
   issue_id?: string;
   postId?: string;
   commentId?: string;
+  conversationId?: string;
+  conversation_id?: string;
 };
 
 export const PENDING_PUSH_NOTIFICATION_DATA_KEY = 'pending_push_notification_data_v1';
@@ -118,6 +122,7 @@ export async function navigateFromPushNotificationData(
   const ticketActions = [
     'ticket_status_changed',
     'ticket_assigned',
+    'ticket_picked_up',
     'ticket_processing',
     'ticket_waiting',
     'ticket_done',
@@ -186,13 +191,17 @@ export async function navigateFromPushNotificationData(
     return;
   }
 
-  // === CHAT — module Chat chưa gắn vào stack chính: mở tab thông báo ===
-  if (data?.type === 'chat_message' && data.chatId) {
-    nav(ROUTES.SCREENS.MAIN, {
-      screen: ROUTES.MAIN.NOTIFICATIONS,
-      params: { notificationId: data.notificationId },
-    });
-    return;
+  // === CHAT — Trao đổi (Socket / push) ===
+  const chatTypes = ['chat_message', 'chat'];
+  if (chatTypes.includes(data?.type || '')) {
+    const convId = data.conversationId || data.conversation_id || data.chatId;
+    if (convId) {
+      nav(ROUTES.SCREENS.EXCHANGE_CHAT, {
+        conversationId: String(convId),
+        classId: (data.classId || data.class_id) as string | undefined,
+      });
+      return;
+    }
   }
 
   // === DAILY HEALTH (đồng bộ logic với pushNotificationService) ===
