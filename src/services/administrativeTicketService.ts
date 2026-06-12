@@ -150,6 +150,7 @@ export interface AdministrativeTicket {
   event_end_time?: string;
   room_id?: string;
   room_label?: string;
+  related_department_ids?: string[];
   related_equipment_id?: string;
   related_equipment_label?: string;
   related_student_ids?: string[] | string;
@@ -214,6 +215,8 @@ export interface AdminEventRoomOption {
   title_vn?: string;
   title_en?: string;
   short_title?: string;
+  yearly_assignment_display?: string | null;
+  yearly_assignment_display_en?: string | null;
   room_type?: string;
   capacity?: number;
 }
@@ -234,6 +237,24 @@ export interface AdminTicketEquipmentLine {
   equipment_type?: string;
   quantity?: number;
   condition?: string;
+}
+
+export interface AdminRoomBooking {
+  name: string;
+  title: string;
+  booked_by: string;
+  booked_by_employee_code?: string;
+  booked_by_email?: string;
+  booked_by_department?: string;
+  event_start_time: string;
+  event_end_time: string;
+  status: string;
+}
+
+export interface CrmIssueDepartmentOption {
+  name: string;
+  department_name?: string;
+  title?: string;
 }
 
 /** Thành viên gán ticket — map từ get_users (SIS Administrative) */
@@ -416,6 +437,69 @@ export async function getStudentsByRoom(
   }
 }
 
+/** Danh sách học sinh toàn campus hiện tại — không phụ thuộc phòng */
+export async function getAllStudentsForTicket(): Promise<AdminTicketStudentOption[]> {
+  try {
+    const config = await getAxiosConfig();
+    const response = await axios.get('/api/method/erp.api.erp_sis.student.get_all_students', {
+      ...config,
+      params: { include_all_campuses: '0' },
+    });
+    const out = unwrap<Array<Record<string, unknown>>>(response);
+    if (!out.success || !Array.isArray(out.data)) return [];
+
+    return out.data
+      .map((s) => ({
+        student_id: String(s.name || '').trim(),
+        student_name: String(s.student_name || '').trim(),
+        student_code: String(s.student_code || '').trim(),
+        avatar_url: String(s.avatar_url || s.user_image || s.photo || '').trim(),
+        class_title: String(s.current_class_title || s.class_name || '').trim(),
+      }))
+      .filter((s) => Boolean(s.student_id) && Boolean(s.student_name))
+      .sort((a, b) => a.student_name.localeCompare(b.student_name, 'vi'));
+  } catch (e) {
+    console.error('getAllStudentsForTicket', e);
+    return [];
+  }
+}
+
+export async function getRoomEventBookings(params: {
+  room_id: string;
+  range_start?: string;
+  range_end?: string;
+  exclude_ticket_id?: string;
+}): Promise<AdminRoomBooking[]> {
+  try {
+    const config = await getAxiosConfig();
+    const response = await axios.post(`${BASE}.get_room_event_bookings`, params, config);
+    const out = unwrap<{ bookings?: AdminRoomBooking[] }>(response);
+    if (out.success && out.data?.bookings && Array.isArray(out.data.bookings)) {
+      return out.data.bookings;
+    }
+    return [];
+  } catch (e) {
+    console.error('getRoomEventBookings', e);
+    return [];
+  }
+}
+
+export async function getCrmIssueDepartments(): Promise<CrmIssueDepartmentOption[]> {
+  try {
+    const config = await getAxiosConfig();
+    const response = await axios.get('/api/method/erp.api.crm.issue_department.get_departments', {
+      ...config,
+      params: { is_active: true },
+    });
+    const out = unwrap<CrmIssueDepartmentOption[]>(response);
+    if (out.success && Array.isArray(out.data)) return out.data;
+    return [];
+  } catch (e) {
+    console.error('getCrmIssueDepartments', e);
+    return [];
+  }
+}
+
 export async function createAdminTicket(payload: {
   title: string;
   description: string;
@@ -430,6 +514,7 @@ export async function createAdminTicket(payload: {
   event_start_time?: string;
   event_end_time?: string;
   room_id?: string;
+  related_department_ids?: string[];
   related_equipment_id?: string;
   related_student_ids?: string[];
 }): Promise<AdministrativeTicket> {
@@ -465,6 +550,7 @@ export async function updateAdminTicket(payload: {
   event_start_time?: string;
   event_end_time?: string;
   room_id?: string;
+  related_department_ids?: string[];
   related_equipment_id?: string;
   related_student_ids?: string[];
 }): Promise<AdministrativeTicket> {

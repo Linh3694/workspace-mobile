@@ -16,7 +16,7 @@ import {
   Dimensions,
 } from 'react-native';
 import BottomSheetModal from '../../components/Common/BottomSheetModal';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons, FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -25,12 +25,12 @@ import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { normalizeVietnameseName } from '../../utils/nameFormatter';
-import { normalizeCampusIdForBackend } from '../../utils/campusIdUtils';
 import {
   EVENT_FACILITY_CATEGORY,
   getBuildingLabelForAreaTitle,
   datetimeLocalToMysql,
   dateToDatetimeLocal,
+  hasBookingConflict,
 } from '../../utils/eventTicketUtils';
 import { ADMIN_TICKET_MAX_IMAGES_UPLOAD } from '../../config/administrativeTicketConstants';
 import { isAxiosError } from 'axios';
@@ -38,13 +38,17 @@ import {
   getAdminTicketCategories,
   getPendingAckCategories,
   createAdminTicket,
+  updateAdminTicket,
+  getAdminTicketDetail,
   uploadAdminTicketAttachment,
   parseFrappeApiError,
   getRoomsByBuilding,
+  getAllStudentsForTicket,
   getRoomEquipmentForTicket,
-  getStudentsByRoom,
+  getRoomEventBookings,
   type AdminTicketCategory,
   type AdminEventRoomOption,
+  type AdminRoomBooking,
   type AdminTicketEquipmentLine,
   type AdminTicketStudentOption,
 } from '../../services/administrativeTicketService';
@@ -120,10 +124,10 @@ function normalizeSearchText(s: string): string {
 }
 
 /** Lọc dòng picker theo label + value */
-function rowMatchesPickerSearch(query: string, label: string, value = ''): boolean {
+function rowMatchesPickerSearch(query: string, label: string, value = '', subtitle = ''): boolean {
   const q = normalizeSearchText(query);
   if (!q) return true;
-  return normalizeSearchText(`${label} ${value}`).includes(q);
+  return normalizeSearchText(`${label} ${subtitle} ${value}`).includes(q);
 }
 
 /** Lọc học sinh theo tên hoặc mã */
@@ -132,12 +136,99 @@ function studentMatchesSearch(query: string, item: AdminTicketStudentOption): bo
   if (!q) return true;
   return (
     normalizeSearchText(item.student_name).includes(q) ||
-    normalizeSearchText(item.student_code || '').includes(q)
+    normalizeSearchText(item.student_code || '').includes(q) ||
+    normalizeSearchText(item.class_title || '').includes(q)
   );
+}
+
+/** Ghép thông tin phụ của học sinh (mã + lớp) giống web */
+function formatStudentMeta(item: AdminTicketStudentOption): string {
+  return [item.student_code, item.class_title].filter(Boolean).join(' · ');
+}
+
+function toMysqlFromDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function formatDateTimeDisplay(input?: string): string {
+  if (!input || !input.trim()) return 'Chọn';
+  const normalized = input.includes('T') ? input : input.replace(' ', 'T');
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return input;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Mốc nhỏ nhất cho thời gian kết thúc: sau bắt đầu ít nhất 1 phút và không ở quá khứ */
+function getMinEventEndDate(startLocal?: string): Date {
+  const now = new Date();
+  const start = startLocal ? new Date(startLocal) : null;
+  if (!start || Number.isNaN(start.getTime())) return now;
+  const minEnd = new Date(start.getTime() + 60 * 1000);
+  return minEnd > now ? minEnd : now;
+}
+
+/** Ghép nhãn tòa nhà tiếng Việt + tiếng Anh (giống web) */
+function formatBuildingPickerLabel(building: Building): string {
+  const vn = String(building.title_vn || building.name).trim();
+  const en = String(building.title_en || '').trim();
+  if (!en || normalizeSearchText(vn) === normalizeSearchText(en)) return vn;
+  return `${vn} (${en})`;
+}
+
+/** Dữ liệu hiển thị cho picker tòa nhà: dòng chính + dòng phụ */
+function getBuildingPickerDisplay(building: Building): { label: string; subtitle: string } {
+  const label = String(building.title_vn || building.name).trim();
+  const en = String(building.title_en || '').trim();
+  if (!en || normalizeSearchText(label) === normalizeSearchText(en)) {
+    return { label, subtitle: '' };
+  }
+  return { label, subtitle: en };
+}
+
+/** Ghép nhãn phòng theo năm học + code (giống web) */
+function formatRoomPickerLabel(room: AdminEventRoomOption): string {
+  const yearly = String(room.yearly_assignment_display || '').trim();
+  const baseLabel = String(room.title_vn || room.name).trim();
+  const code = String(room.short_title || room.name).trim();
+  const main = yearly || baseLabel;
+  if (!main) return room.name;
+  if (!code || normalizeSearchText(main) === normalizeSearchText(code)) return main;
+  return `${main} (${code})`;
+}
+
+/** Dữ liệu hiển thị cho picker phòng: dòng chính + dòng phụ */
+function getRoomPickerDisplay(room: AdminEventRoomOption): { label: string; subtitle: string } {
+  const yearly = String(room.yearly_assignment_display || '').trim();
+  const baseLabel = String(room.title_vn || room.name).trim();
+  const code = String(room.short_title || room.name).trim();
+  const label = yearly || baseLabel;
+  const subtitleParts: string[] = [];
+  const seen = new Set<string>();
+  const pushUnique = (value: string) => {
+    const v = value.trim();
+    if (!v) return;
+    const key = normalizeSearchText(v);
+    if (seen.has(key)) return;
+    seen.add(key);
+    subtitleParts.push(v);
+  };
+  if (code && normalizeSearchText(code) !== normalizeSearchText(label)) pushUnique(code);
+  if (yearly && baseLabel && normalizeSearchText(baseLabel) !== normalizeSearchText(label)) {
+    pushUnique(baseLabel);
+  }
+  return { label: label || room.name, subtitle: subtitleParts.join(' · ') };
 }
 
 const TicketCreate = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<
+    | RouteProp<RootStackParamList, typeof ROUTES.SCREENS.ADMINISTRATIVE_TICKET_CREATE>
+    | RouteProp<RootStackParamList, typeof ROUTES.SCREENS.ADMINISTRATIVE_TICKET_EDIT>
+  >();
+  const editTicketId = (route.params as { ticketId?: string } | undefined)?.ticketId?.trim() || '';
+  const isEditMode = !!editTicketId;
   const [loading, setLoading] = useState(false);
   const [bootLoading, setBootLoading] = useState(true);
   const [step, setStep] = useState(1);
@@ -152,6 +243,10 @@ const TicketCreate = () => {
   const [ticketEquipment, setTicketEquipment] = useState<AdminTicketEquipmentLine[]>([]);
   const [ticketStudents, setTicketStudents] = useState<AdminTicketStudentOption[]>([]);
   const [loadingRoomDeps, setLoadingRoomDeps] = useState(false);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [loadingRoomBookings, setLoadingRoomBookings] = useState(false);
+  const [roomBookings, setRoomBookings] = useState<AdminRoomBooking[]>([]);
+  const [originCategory, setOriginCategory] = useState('');
 
   const [picker, setPicker] = useState<PickerKey>(null);
   /** Ô tìm trong sheet chọn khu vực / tòa / phòng / thiết bị / học sinh */
@@ -174,6 +269,7 @@ const TicketCreate = () => {
     event_end_local: '',
     room_id: '',
     related_equipment_id: '',
+    related_department_ids: [] as string[],
     related_student_ids: [] as string[],
   });
 
@@ -197,18 +293,36 @@ const TicketCreate = () => {
     const ids = [...new Set(rows.map((a) => (a.area_title || '').trim()).filter(Boolean))].sort((a, b) =>
       a.localeCompare(b)
     );
-    return ids.map((id) => ({
-      value: id,
-      label: getBuildingLabelForAreaTitle(id, buildings),
-    }));
+    return ids.map((id) => {
+      const byId = buildings.find((b) => b.name === id);
+      const byLegacy = buildings.find((b) => b.title_vn === id || b.short_title === id);
+      const match = byId || byLegacy;
+      if (!match) {
+        return {
+          value: id,
+          label: getBuildingLabelForAreaTitle(id, buildings),
+          subtitle: '',
+        };
+      }
+      const display = getBuildingPickerDisplay(match);
+      return {
+        value: id,
+        label: display.label,
+        subtitle: display.subtitle,
+      };
+    });
   }, [ticketData.category, assignments, buildings, isEventCategory]);
 
   const buildingItems = useMemo(
     () =>
-      buildings.map((b) => ({
-        value: b.name,
-        label: b.title_vn || b.name,
-      })),
+      buildings.map((b) => {
+        const display = getBuildingPickerDisplay(b);
+        return {
+          value: b.name,
+          label: display.label,
+          subtitle: display.subtitle,
+        };
+      }),
     [buildings]
   );
 
@@ -219,6 +333,30 @@ const TicketCreate = () => {
         label: `${eq.category_title || 'Thiết bị'} (×${eq.quantity ?? 0})`,
       })),
     [ticketEquipment]
+  );
+  const eventRoomItems = useMemo(
+    () =>
+      eventRooms.map((room) => {
+        const display = getRoomPickerDisplay(room);
+        return {
+          value: room.name,
+          label: display.label,
+          subtitle: display.subtitle,
+        };
+      }),
+    [eventRooms]
+  );
+  const nonEventRoomItems = useMemo(
+    () =>
+      nonEventRooms.map((room) => {
+        const display = getRoomPickerDisplay(room);
+        return {
+          value: room.name,
+          label: display.label,
+          subtitle: display.subtitle,
+        };
+      }),
+    [nonEventRooms]
   );
 
   /** Danh sách HS trong sheet chọn (đồng bộ index viền dưới từng dòng) */
@@ -261,6 +399,49 @@ const TicketCreate = () => {
 
   useEffect(() => {
     let cancelled = false;
+    const loadEditTicket = async () => {
+      if (!isEditMode || !editTicketId) return;
+      try {
+        const detail = await getAdminTicketDetail(editTicketId);
+        if (!detail || cancelled) return;
+        const studentIds =
+          Array.isArray(detail.related_student_ids)
+            ? detail.related_student_ids
+            : typeof detail.related_student_ids === 'string' && detail.related_student_ids.trim()
+              ? detail.related_student_ids.split(',').map((x) => x.trim()).filter(Boolean)
+              : [];
+        setOriginCategory(detail.category || '');
+        setTicketData((prev) => ({
+          ...prev,
+          title: detail.title || '',
+          category: detail.category || '',
+          description: detail.description || '',
+          notes: detail.notes || '',
+          area_title: detail.area_title || '',
+          event_building_id: detail.event_building_id || '',
+          event_room_id: detail.event_room_id || '',
+          event_start_local: (detail.event_start_time || '').replace(' ', 'T').slice(0, 16),
+          event_end_local: (detail.event_end_time || '').replace(' ', 'T').slice(0, 16),
+          room_id: detail.room_id || '',
+          related_equipment_id: detail.related_equipment_id || '',
+          related_department_ids: Array.isArray(detail.related_department_ids)
+            ? detail.related_department_ids
+            : [],
+          related_student_ids: studentIds,
+        }));
+      } catch (e) {
+        console.error('load edit administrative ticket', e);
+        Alert.alert('Lỗi', 'Không thể tải dữ liệu ticket để chỉnh sửa');
+      }
+    };
+    loadEditTicket();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditMode, editTicketId]);
+
+  useEffect(() => {
+    let cancelled = false;
     const loadEventRooms = async () => {
       if (!isEventCategory || !ticketData.event_building_id.trim()) {
         setEventRooms([]);
@@ -293,23 +474,36 @@ const TicketCreate = () => {
 
   useEffect(() => {
     let cancelled = false;
+    const loadAllStudents = async () => {
+      setLoadingStudents(true);
+      try {
+        const students = await getAllStudentsForTicket();
+        if (!cancelled) setTicketStudents(students);
+      } catch (e) {
+        console.error('load all students for ticket', e);
+        if (!cancelled) setTicketStudents([]);
+      } finally {
+        if (!cancelled) setLoadingStudents(false);
+      }
+    };
+    loadAllStudents();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     const loadDeps = async () => {
       if (!effectiveRoomId) {
         setTicketEquipment([]);
-        setTicketStudents([]);
         return;
       }
       setLoadingRoomDeps(true);
       try {
-        const campusRaw = await AsyncStorage.getItem('currentCampusId');
-        const campus_id = campusRaw ? normalizeCampusIdForBackend(campusRaw) : undefined;
-        const [eq, st] = await Promise.all([
-          getRoomEquipmentForTicket(effectiveRoomId),
-          getStudentsByRoom(effectiveRoomId, campus_id ? { campus_id } : undefined),
-        ]);
+        const eq = await getRoomEquipmentForTicket(effectiveRoomId);
         if (!cancelled) {
           setTicketEquipment(eq);
-          setTicketStudents(st);
         }
       } catch (e) {
         console.error('load room deps', e);
@@ -323,6 +517,44 @@ const TicketCreate = () => {
     };
   }, [effectiveRoomId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadRoomBookings = async () => {
+      if (!effectiveRoomId) {
+        setRoomBookings([]);
+        return;
+      }
+      setLoadingRoomBookings(true);
+      try {
+        const anchor =
+          isEventCategory && ticketData.event_start_local
+            ? new Date(ticketData.event_start_local)
+            : new Date();
+        const start = new Date(anchor);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 7);
+        end.setHours(23, 59, 59, 0);
+        const rows = await getRoomEventBookings({
+          room_id: effectiveRoomId,
+          range_start: toMysqlFromDate(start),
+          range_end: toMysqlFromDate(end),
+          ...(isEditMode ? { exclude_ticket_id: editTicketId } : {}),
+        });
+        if (!cancelled) setRoomBookings(rows);
+      } catch (e) {
+        console.error('load room bookings', e);
+        if (!cancelled) setRoomBookings([]);
+      } finally {
+        if (!cancelled) setLoadingRoomBookings(false);
+      }
+    };
+    loadRoomBookings();
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveRoomId, isEventCategory, ticketData.event_start_local, ticketData.event_end_local, editTicketId, isEditMode]);
+
   const handleGoBack = () => {
     if (step === 1) {
       navigation.goBack();
@@ -331,7 +563,7 @@ const TicketCreate = () => {
     }
   };
 
-  const validateStep2 = (): boolean => {
+  const validateStep2 = async (): Promise<boolean> => {
     if (!ticketData.title.trim() || ticketData.title.trim().length < 5) {
       Alert.alert('Thông báo', 'Tiêu đề phải có ít nhất 5 ký tự');
       return false;
@@ -353,6 +585,10 @@ const TicketCreate = () => {
         Alert.alert('Thông báo', 'Chọn thời gian bắt đầu sự kiện');
         return false;
       }
+      if (new Date(ticketData.event_start_local) < new Date()) {
+        Alert.alert('Thông báo', 'Không được đặt thời gian bắt đầu sự kiện trong quá khứ');
+        return false;
+      }
       if (!ticketData.event_end_local) {
         Alert.alert('Thông báo', 'Chọn thời gian kết thúc sự kiện');
         return false;
@@ -361,26 +597,37 @@ const TicketCreate = () => {
         Alert.alert('Thông báo', 'Thời gian kết thúc phải sau thời gian bắt đầu');
         return false;
       }
+      try {
+        const bookings = await getRoomEventBookings({
+          room_id: ticketData.event_room_id.trim(),
+          range_start: datetimeLocalToMysql(ticketData.event_start_local),
+          range_end: datetimeLocalToMysql(ticketData.event_end_local),
+          ...(isEditMode ? { exclude_ticket_id: editTicketId } : {}),
+        });
+        if (hasBookingConflict(ticketData.event_start_local, ticketData.event_end_local, bookings, editTicketId)) {
+          Alert.alert('Thông báo', 'Khung giờ này đã có người đặt');
+          return false;
+        }
+      } catch (e) {
+        console.error('validate room booking conflict', e);
+      }
     } else {
       if (!ticketData.area_title.trim()) {
         Alert.alert('Thông báo', 'Chọn khu vực (tòa) theo phân công');
-        return false;
-      }
-      if (!ticketData.room_id.trim()) {
-        Alert.alert('Thông báo', 'Chọn phòng');
         return false;
       }
     }
     return true;
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (step === 1) {
       if (!ticketData.category) {
         Alert.alert('Thông báo', 'Vui lòng chọn hạng mục');
         return;
       }
-      if (pendingCategorySet.has(ticketData.category)) {
+      const allowCurrentEditCategory = isEditMode && originCategory && originCategory === ticketData.category;
+      if (pendingCategorySet.has(ticketData.category) && !allowCurrentEditCategory) {
         Alert.alert(
           'Thông báo',
           'Bạn còn ticket cùng hạng mục chưa xác nhận kết quả. Hãy xử lý ở danh sách ticket trước khi tạo mới.',
@@ -388,7 +635,7 @@ const TicketCreate = () => {
         return;
       }
     }
-    if (step === 2 && !validateStep2()) return;
+    if (step === 2 && !(await validateStep2())) return;
     if (step === 3) {
       submitTicket();
     } else {
@@ -418,10 +665,41 @@ const TicketCreate = () => {
         : ticketData.area_title.trim();
 
       const relatedPayload = {
+        related_department_ids:
+          ticketData.related_department_ids.length > 0 ? ticketData.related_department_ids : undefined,
         related_equipment_id: ticketData.related_equipment_id.trim() || undefined,
         related_student_ids:
           ticketData.related_student_ids.length > 0 ? ticketData.related_student_ids : undefined,
       };
+      if (isEditMode && editTicketId) {
+        const updated = await updateAdminTicket({
+          ticket_id: editTicketId,
+          title: ticketData.title.trim(),
+          description: ticketData.description.trim(),
+          category: ticketData.category,
+          notes: ticketData.notes.trim(),
+          area_title: areaForPic,
+          attachment: attachmentUrl,
+          is_event_facility: isEventCategory,
+          room_id: !isEventCategory ? ticketData.room_id.trim() : '',
+          event_building_id: isEventCategory ? ticketData.event_building_id.trim() : '',
+          event_room_id: isEventCategory ? ticketData.event_room_id.trim() : '',
+          event_start_time: isEventCategory ? datetimeLocalToMysql(ticketData.event_start_local) : '',
+          event_end_time: isEventCategory ? datetimeLocalToMysql(ticketData.event_end_local) : '',
+          ...relatedPayload,
+        });
+        await getPendingAckCategories().then(setPendingAckCategories).catch(() => undefined);
+        Alert.alert('Thành công', 'Đã cập nhật ticket', [
+          {
+            text: 'OK',
+            onPress: () =>
+              navigation.navigate(ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST_DETAIL, {
+                ticketId: updated._id || editTicketId,
+              }),
+          },
+        ]);
+        return;
+      }
 
       const created = await createAdminTicket({
         title: ticketData.title.trim(),
@@ -471,8 +749,30 @@ const TicketCreate = () => {
       return;
     }
     if (date && datetimeTarget) {
-      const key = datetimeTarget === 'start' ? 'event_start_local' : 'event_end_local';
-      setTicketData((p) => ({ ...p, [key]: dateToDatetimeLocal(date) }));
+      const nextLocal = dateToDatetimeLocal(date);
+      if (datetimeTarget === 'start') {
+        if (date < new Date()) {
+          Alert.alert('Thông báo', 'Không được đặt thời gian bắt đầu sự kiện trong quá khứ');
+          if (Platform.OS === 'android') setDatetimeTarget(null);
+          return;
+        }
+        setTicketData((p) => {
+          const next = { ...p, event_start_local: nextLocal };
+          // Nếu start mới lớn hơn end hiện tại thì reset end để tránh khoảng thời gian sai.
+          if (p.event_end_local && new Date(nextLocal) > new Date(p.event_end_local)) {
+            next.event_end_local = '';
+          }
+          return next;
+        });
+      } else {
+        const minEndDate = getMinEventEndDate(ticketData.event_start_local);
+        if (date < minEndDate) {
+          Alert.alert('Thông báo', 'Thời gian kết thúc phải sau thời gian bắt đầu');
+          if (Platform.OS === 'android') setDatetimeTarget(null);
+          return;
+        }
+        setTicketData((p) => ({ ...p, event_end_local: nextLocal }));
+      }
       if (Platform.OS === 'android') {
         setDatetimeTarget(null);
       }
@@ -598,7 +898,10 @@ const TicketCreate = () => {
                   room_id: '',
                   event_building_id: '',
                   event_room_id: '',
+                  event_start_local: '',
+                  event_end_local: '',
                   related_equipment_id: '',
+                  related_department_ids: [],
                   related_student_ids: [],
                 }));
               }}>
@@ -622,11 +925,13 @@ const TicketCreate = () => {
   const renderPickerModal = (
     title: string,
     visible: boolean,
-    data: { value: string; label: string }[],
+    data: { value: string; label: string; subtitle?: string }[],
     onSelect: (v: string) => void,
     onClose: () => void
   ) => {
-    const filtered = data.filter((row) => rowMatchesPickerSearch(pickerSheetQuery, row.label, row.value));
+    const filtered = data.filter((row) =>
+      rowMatchesPickerSearch(pickerSheetQuery, row.label, row.value, row.subtitle || '')
+    );
     return (
       <BottomSheetModal
         visible={visible}
@@ -663,6 +968,7 @@ const TicketCreate = () => {
                   className={`px-3 py-3 ${index < filtered.length - 1 ? 'border-b border-gray-100' : ''}`}
                   onPress={() => onSelect(item.value)}>
                   <Text className="text-base font-medium text-[#002147]">{item.label}</Text>
+                  {item.subtitle ? <Text className="mt-0.5 text-sm text-gray-500">{item.subtitle}</Text> : null}
                 </TouchableOpacity>
               )}
               ListEmptyComponent={
@@ -682,7 +988,9 @@ const TicketCreate = () => {
 
   const renderStepTwo = () => (
     <View className="w-full">
-      <Text className="mb-3 text-center font-bold text-xl text-[#002147]">Thông tin chi tiết</Text>
+      <Text className="mb-3 text-center font-bold text-xl text-[#002147]">
+        {isEditMode ? 'Chỉnh sửa yêu cầu' : 'Thông tin chi tiết'}
+      </Text>
       <ProgressIndicator step={2} />
 
       <View className="mb-5">
@@ -722,7 +1030,11 @@ const TicketCreate = () => {
             <Text className="text-gray-500">Tòa nhà *</Text>
             <Text className="mt-1 font-medium">
               {ticketData.event_building_id
-                ? buildingItems.find((b) => b.value === ticketData.event_building_id)?.label
+                ? formatBuildingPickerLabel(
+                    buildings.find((b) => b.name === ticketData.event_building_id) || {
+                      name: ticketData.event_building_id,
+                    }
+                  )
                 : 'Chọn tòa nhà'}
             </Text>
           </TouchableOpacity>
@@ -733,18 +1045,27 @@ const TicketCreate = () => {
             <Text className="text-gray-500">Phòng *</Text>
             <Text className="mt-1 font-medium">
               {ticketData.event_room_id
-                ? eventRooms.find((r) => r.name === ticketData.event_room_id)?.title_vn ||
+                ? formatRoomPickerLabel(
+                    eventRooms.find((r) => r.name === ticketData.event_room_id) || {
+                      name: ticketData.event_room_id,
+                    }
+                  ) ||
                   ticketData.event_room_id
                 : 'Chọn phòng'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity className="mb-3 rounded-xl border border-gray-200 p-3" onPress={() => openDatetime('start')}>
             <Text className="text-gray-500">Bắt đầu sự kiện *</Text>
-            <Text className="mt-1 font-medium">{ticketData.event_start_local || 'Chọn'}</Text>
+            <Text className="mt-1 font-medium">{formatDateTimeDisplay(ticketData.event_start_local)}</Text>
           </TouchableOpacity>
-          <TouchableOpacity className="mb-3 rounded-xl border border-gray-200 p-3" onPress={() => openDatetime('end')}>
+          <TouchableOpacity
+            className={`mb-3 rounded-xl border border-gray-200 p-3 ${
+              !ticketData.event_start_local ? 'opacity-60' : ''
+            }`}
+            onPress={() => openDatetime('end')}
+            disabled={!ticketData.event_start_local}>
             <Text className="text-gray-500">Kết thúc sự kiện *</Text>
-            <Text className="mt-1 font-medium">{ticketData.event_end_local || 'Chọn'}</Text>
+            <Text className="mt-1 font-medium">{formatDateTimeDisplay(ticketData.event_end_local)}</Text>
           </TouchableOpacity>
         </>
       ) : (
@@ -755,7 +1076,7 @@ const TicketCreate = () => {
             <Text className="text-gray-500">Khu vực (tòa) *</Text>
             <Text className="mt-1 font-medium">
               {ticketData.area_title
-                ? areaOptions.find((a) => a.value === ticketData.area_title)?.label
+                ? getBuildingLabelForAreaTitle(ticketData.area_title, buildings)
                 : 'Chọn khu vực'}
             </Text>
           </TouchableOpacity>
@@ -766,17 +1087,22 @@ const TicketCreate = () => {
             className="mb-3 rounded-xl border border-gray-200 p-3"
             onPress={() => setPicker('room')}
             disabled={!ticketData.area_title}>
-            <Text className="text-gray-500">Phòng *</Text>
+            <Text className="text-gray-500">Phòng</Text>
             <Text className="mt-1 font-medium">
               {ticketData.room_id
-                ? nonEventRooms.find((r) => r.name === ticketData.room_id)?.title_vn || ticketData.room_id
+                ? formatRoomPickerLabel(
+                    nonEventRooms.find((r) => r.name === ticketData.room_id) || {
+                      name: ticketData.room_id,
+                    }
+                  ) ||
+                  ticketData.room_id
                 : 'Chọn phòng'}
             </Text>
           </TouchableOpacity>
         </>
       )}
 
-      {effectiveRoomId ? (
+      {!isEventCategory && effectiveRoomId ? (
         <>
           <TouchableOpacity
             className="mb-3 rounded-xl border border-gray-200 p-3"
@@ -790,16 +1116,67 @@ const TicketCreate = () => {
                 : 'Không chọn'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity className="mb-3 rounded-xl border border-gray-200 p-3" onPress={() => setPicker('students')}>
-            <Text className="text-gray-500">Học sinh liên quan (tuỳ chọn)</Text>
-            <Text className="mt-1 font-medium">
-              {ticketData.related_student_ids.length > 0
-                ? `${ticketData.related_student_ids.length} học sinh`
-                : 'Chọn học sinh'}
-            </Text>
-          </TouchableOpacity>
         </>
       ) : null}
+      {!isEventCategory && ticketData.category ? (
+        <TouchableOpacity
+          className="mb-3 rounded-xl border border-gray-200 p-3"
+          onPress={() => setPicker('students')}
+          disabled={loadingStudents}>
+          <Text className="text-gray-500">Học sinh liên quan (tuỳ chọn)</Text>
+          <Text className="mt-1 font-medium">
+            {ticketData.related_student_ids.length > 0
+              ? `${ticketData.related_student_ids.length} học sinh`
+              : loadingStudents
+                ? 'Đang tải danh sách học sinh...'
+                : 'Chọn học sinh'}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+
+      <View className="mb-3 rounded-xl border border-gray-200 bg-white p-3">
+        <Text className="mb-2 font-semibold text-[#002147]">Lịch đặt phòng</Text>
+        {!effectiveRoomId ? (
+          <Text className="text-sm text-gray-500">Chọn phòng để xem lịch đặt phòng trong 7 ngày tới.</Text>
+        ) : loadingRoomBookings ? (
+          <View className="flex-row items-center gap-2 py-2">
+            <ActivityIndicator size="small" color="#FF5733" />
+            <Text className="text-sm text-gray-500">Đang tải lịch...</Text>
+          </View>
+        ) : roomBookings.length === 0 ? (
+          <Text className="text-sm text-gray-500">Chưa có lịch đặt phòng trong khoảng thời gian này.</Text>
+        ) : (
+          <View className="gap-2">
+            {roomBookings.slice(0, 5).map((b) => (
+              <View key={`${b.name}-${b.event_start_time}`} className="rounded-lg bg-gray-50 p-2.5">
+                <Text className="font-semibold text-sm text-[#002147]">
+                  {normalizeVietnameseName(b.booked_by) || b.booked_by || 'Người đặt'}
+                </Text>
+                <View className="mt-1.5">
+                  <Text className="text-xs text-gray-500">
+                    Phòng ban: {b.booked_by_department?.trim() || '—'}
+                  </Text>
+                  <Text className="mt-0.5 text-xs text-gray-500">
+                    Email: {b.booked_by_email?.trim() || '—'}
+                  </Text>
+                  <Text className="mt-0.5 text-xs text-gray-600">
+                    {`Thời gian: ${formatDateTimeDisplay(b.event_start_time)} - ${formatDateTimeDisplay(b.event_end_time)}`}
+                  </Text>
+                </View>
+              </View>
+            ))}
+            {roomBookings.length > 5 ? (
+              <Text className="text-xs text-gray-500">{`+${roomBookings.length - 5} lịch khác`}</Text>
+            ) : null}
+          </View>
+        )}
+        {isEventCategory &&
+        ticketData.event_start_local &&
+        ticketData.event_end_local &&
+        hasBookingConflict(ticketData.event_start_local, ticketData.event_end_local, roomBookings, editTicketId) ? (
+          <Text className="mt-2 text-sm font-semibold text-red-600">Khung giờ đang chọn đã trùng lịch.</Text>
+        ) : null}
+      </View>
 
       {datetimeTarget && Platform.OS === 'android' && (
         <DateTimePicker
@@ -812,6 +1189,9 @@ const TicketCreate = () => {
           }
           mode="datetime"
           display="default"
+          minimumDate={
+            datetimeTarget === 'start' ? new Date() : getMinEventEndDate(ticketData.event_start_local)
+          }
           onChange={onDatetimeChange}
         />
       )}
@@ -837,6 +1217,11 @@ const TicketCreate = () => {
                 }
                 mode="datetime"
                 display="spinner"
+                minimumDate={
+                  datetimeTarget === 'start'
+                    ? new Date()
+                    : getMinEventEndDate(ticketData.event_start_local)
+                }
                 onChange={onDatetimeChange}
               />
             </View>
@@ -943,7 +1328,7 @@ const TicketCreate = () => {
                 }`}
                 onPress={handleContinue}>
                 <Text className="text-center font-bold text-lg text-white">
-                  {step === 3 ? 'Gửi yêu cầu' : 'Tiếp tục'}
+                  {step === 3 ? (isEditMode ? 'Cập nhật' : 'Gửi yêu cầu') : 'Tiếp tục'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity className="w-full rounded-full bg-gray-200 px-5 py-2.5" onPress={handleGoBack}>
@@ -999,6 +1384,7 @@ const TicketCreate = () => {
             area_title: v,
             room_id: '',
             related_equipment_id: '',
+            related_department_ids: [],
             related_student_ids: [],
           }));
           setPicker(null);
@@ -1024,7 +1410,7 @@ const TicketCreate = () => {
       {renderPickerModal(
         'Chọn phòng (sự kiện)',
         picker === 'eventRoom',
-        eventRooms.map((r) => ({ value: r.name, label: r.title_vn || r.name })),
+        eventRoomItems,
         (v) => {
           setTicketData((p) => ({
             ...p,
@@ -1039,12 +1425,13 @@ const TicketCreate = () => {
       {renderPickerModal(
         'Chọn phòng',
         picker === 'room',
-        nonEventRooms.map((r) => ({ value: r.name, label: r.title_vn || r.name })),
+        nonEventRoomItems,
         (v) => {
           setTicketData((p) => ({
             ...p,
             room_id: v,
             related_equipment_id: '',
+            related_department_ids: [],
             related_student_ids: [],
           }));
           setPicker(null);
@@ -1095,6 +1482,7 @@ const TicketCreate = () => {
               extraData={ticketData.related_student_ids}
               renderItem={({ item, index }) => {
                 const sel = ticketData.related_student_ids.includes(item.student_id);
+                const meta = formatStudentMeta(item);
                 return (
                   <TouchableOpacity
                     className={`flex-row items-center px-3 py-3 ${
@@ -1106,16 +1494,17 @@ const TicketCreate = () => {
                       size={22}
                       color={sel ? '#FF5733' : '#999'}
                     />
-                    <Text className="ml-2 flex-1 text-base font-medium text-[#002147]">
-                      {item.student_name} ({item.student_code})
-                    </Text>
+                    <View className="ml-2 flex-1">
+                      <Text className="text-base font-medium text-[#002147]">{item.student_name}</Text>
+                      {meta ? <Text className="mt-0.5 text-sm text-gray-500">{meta}</Text> : null}
+                    </View>
                   </TouchableOpacity>
                 );
               }}
               ListEmptyComponent={
                 <Text className="px-3 py-4 text-center text-sm text-gray-500">
                   {ticketStudents.length === 0
-                    ? 'Không có học sinh trong phòng'
+                    ? 'Không có học sinh'
                     : 'Không tìm thấy kết quả'}
                 </Text>
               }

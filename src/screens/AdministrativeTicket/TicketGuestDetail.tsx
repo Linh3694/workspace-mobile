@@ -116,6 +116,7 @@ const TicketGuestDetail = () => {
   // Check if ticket can show action buttons
   const isTerminalStatus =
     ticket?.status?.toLowerCase() === 'cancelled' || ticket?.status?.toLowerCase() === 'closed';
+  const canEditTicket = ['open', 'assigned'].includes((ticket?.status || '').toLowerCase());
 
   const renderContent = () => {
     switch (activeTab) {
@@ -172,6 +173,18 @@ const TicketGuestDetail = () => {
           {/* Action buttons - Only show when not in terminal status */}
           {!isTerminalStatus && (
             <View className="mb-6 flex-row items-center gap-4 pl-5">
+              {canEditTicket ? (
+                <TouchableOpacity
+                  onPress={() =>
+                    navigation.navigate(ROUTES.SCREENS.ADMINISTRATIVE_TICKET_EDIT, {
+                      ticketId,
+                    })
+                  }
+                  disabled={actionLoading}
+                  className="h-11 w-11 items-center justify-center rounded-full bg-[#002855]">
+                  <Ionicons name="create-outline" size={20} color="white" />
+                </TouchableOpacity>
+              ) : null}
               {/* Nút hoàn thành ticket */}
               <TouchableOpacity
                 onPress={openCompleteModal}

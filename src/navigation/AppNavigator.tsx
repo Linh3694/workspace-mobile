@@ -99,7 +99,8 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.TICKET]: undefined;
   [ROUTES.SCREENS.TICKET_ADMIN]: undefined;
   [ROUTES.SCREENS.TICKET_GUEST]: undefined;
-  [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_CREATE]: undefined;
+  [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_CREATE]: { ticketId?: string } | undefined;
+  [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_EDIT]: { ticketId: string };
   [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_ADMIN_DETAIL]: { ticketId: string };
   [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST_DETAIL]: { ticketId: string };
   [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_ADMIN]: undefined;
@@ -351,6 +352,11 @@ const AppNavigator = () => {
           />
           <Stack.Screen
             name={ROUTES.SCREENS.ADMINISTRATIVE_TICKET_CREATE}
+            component={AdministrativeTicketCreate}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.ADMINISTRATIVE_TICKET_EDIT}
             component={AdministrativeTicketCreate}
             options={{ headerShown: false }}
           />

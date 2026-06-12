@@ -9,6 +9,7 @@ import { useAdministrativeTicketData, useAdministrativeTicketActions } from '../
 // Utils & Constants
 import { API_BASE_URL } from '../../../config/constants';
 import { normalizeVietnameseName } from '../../../utils/nameFormatter';
+import { isLateEventNotice } from '../../../utils/eventTicketUtils';
 import {
   getAdminTicketStatusColorClass,
   getAdminTicketStatusLabel,
@@ -35,8 +36,10 @@ const TicketInformation: React.FC<TicketInformationProps> = ({ ticketId, activeT
     return <TicketComments ticketId={ticketId} />;
   }
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '--';
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '--';
     return date.toLocaleDateString('vi-VN', {
       day: '2-digit',
       month: '2-digit',
@@ -64,6 +67,17 @@ const TicketInformation: React.FC<TicketInformationProps> = ({ ticketId, activeT
       </View>
     );
   }
+
+  const attachmentUrl = ticket.attachment
+    ? ticket.attachment.startsWith('http')
+      ? ticket.attachment
+      : `${API_BASE_URL}${ticket.attachment.startsWith('/') ? '' : '/'}${ticket.attachment}`
+    : '';
+  const isEventTicket = !!ticket.is_event_facility;
+  const relatedStudentsText =
+    ticket.related_students && ticket.related_students.length > 0
+      ? ticket.related_students.map((s) => `${s.student_name} (${s.student_code})`).join(', ')
+      : 'Không có';
 
   return (
     <ScrollView
@@ -101,6 +115,12 @@ const TicketInformation: React.FC<TicketInformationProps> = ({ ticketId, activeT
             </Text>
           </View>
         </View>
+        <View className="mb-3 flex flex-row items-center justify-between">
+          <Text className="font-semibold text-base text-[#757575]">Hạng mục</Text>
+          <Text className="font-medium text-base text-[#002855]">
+            {ticket.category_label || ticket.category || '--'}
+          </Text>
+        </View>
       </View>
 
       <View className="mb-4 rounded-xl bg-[#F8F8F8] p-4">
@@ -117,24 +137,54 @@ const TicketInformation: React.FC<TicketInformationProps> = ({ ticketId, activeT
         </View>
 
         <View className="mb-3">
+          <Text className="font-semibold text-base text-[#002855]">Khu vực / Tòa</Text>
+          <Text className="mt-1 font-medium text-base text-[#757575]">
+            {ticket.event_building_label || ticket.area_title || '--'}
+          </Text>
+        </View>
+
+        <View className="mb-3">
+          <Text className="font-semibold text-base text-[#002855]">Phòng</Text>
+          <Text className="mt-1 font-medium text-base text-[#757575]">
+            {ticket.event_room_label || ticket.room_label || ticket.event_room_id || ticket.room_id || '--'}
+          </Text>
+        </View>
+
+        {isEventTicket ? (
+          <View className="mb-3 rounded-lg border border-orange-200 bg-orange-50 p-3">
+            <Text className="font-semibold text-base text-[#002855]">Thời gian sự kiện</Text>
+            <Text className="mt-1 font-medium text-base text-[#757575]">
+              {`${formatDate(ticket.event_start_time)} - ${formatDate(ticket.event_end_time)}`}
+            </Text>
+            {ticket.event_start_time && isLateEventNotice(ticket.event_start_time) ? (
+              <Text className="mt-2 font-semibold text-sm text-orange-700">{'Báo muộn (< 72 giờ)'}</Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View className="mb-3">
+          <Text className="font-semibold text-base text-[#002855]">Thiết bị liên quan</Text>
+          <Text className="mt-1 font-medium text-base text-[#757575]">
+            {ticket.related_equipment_label || ticket.related_equipment_id || 'Không có'}
+          </Text>
+        </View>
+
+        <View className="mb-3">
+          <Text className="font-semibold text-base text-[#002855]">Học sinh liên quan</Text>
+          <Text className="mt-1 font-medium text-base text-[#757575]">{relatedStudentsText}</Text>
+        </View>
+
+        <View className="mb-3">
           <Text className="font-semibold text-base text-[#002855]">Ảnh</Text>
           <View className="mt-1 flex-row flex-wrap items-center gap-2">
-            {ticket.attachments && ticket.attachments.length > 0 ? (
-              ticket.attachments.map((attachment, index) => {
-                const imageUrl = attachment.url.startsWith('http')
-                  ? attachment.url
-                  : `${API_BASE_URL}/uploads/Tickets/${attachment.url}`;
-
-                return (
-                  <TouchableOpacity key={index} onPress={() => setPreviewImage(imageUrl)}>
-                    <Image
-                      source={{ uri: imageUrl }}
-                      className="h-20 w-20 rounded-lg"
-                      onError={(e) => console.error('Lỗi tải ảnh:', e.nativeEvent.error)}
-                    />
-                  </TouchableOpacity>
-                );
-              })
+            {attachmentUrl ? (
+              <TouchableOpacity onPress={() => setPreviewImage(attachmentUrl)}>
+                <Image
+                  source={{ uri: attachmentUrl }}
+                  className="h-20 w-20 rounded-lg"
+                  onError={(e) => console.error('Lỗi tải ảnh:', e.nativeEvent.error)}
+                />
+              </TouchableOpacity>
             ) : (
               <Text className="font-medium text-sm text-[#757575]">Không có ảnh đính kèm</Text>
             )}

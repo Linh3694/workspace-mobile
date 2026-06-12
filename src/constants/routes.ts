@@ -14,6 +14,7 @@ export const ROUTES = {
     TICKET_GUEST: 'TicketGuest',
     /** Ticket Hành chính (Frappe) — tách module IT */
     ADMINISTRATIVE_TICKET_CREATE: 'AdministrativeTicketCreate',
+    ADMINISTRATIVE_TICKET_EDIT: 'AdministrativeTicketEdit',
     ADMINISTRATIVE_TICKET_ADMIN_DETAIL: 'AdministrativeTicketAdminDetail',
     ADMINISTRATIVE_TICKET_GUEST_DETAIL: 'AdministrativeTicketGuestDetail',
     ADMINISTRATIVE_TICKET_ADMIN: 'AdministrativeTicketAdmin',

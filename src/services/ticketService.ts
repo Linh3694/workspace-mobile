@@ -61,6 +61,28 @@ async function frappePost<T>(method: string, data?: Record<string, unknown>): Pr
   return out.data as T;
 }
 
+/** POST multipart (RN FormData) — dùng fetch (axios RN thường làm hỏng boundary khi có file) */
+async function frappePostFormData<T>(method: string, formData: FormData): Promise<T> {
+  const token = await AsyncStorage.getItem('authToken');
+  const response = await fetch(`${BASE_URL}${IT_API}.${method}`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // Không set Content-Type — fetch tự thêm boundary cho multipart
+    },
+    body: formData as unknown as BodyInit,
+  });
+
+  const raw = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(parseFrappeApiError(raw));
+  }
+
+  const out = unwrap<T>({ data: raw });
+  if (!out.success) throw new Error(out.message || 'Request failed');
+  return out.data as T;
+}
+
 export interface Feedback {
   assignedTo?: string;
   rating?: number;
@@ -228,6 +250,16 @@ export const createTicket = async (ticketData: {
   files?: any[];
 }): Promise<Ticket> => {
   const maxRetries = 3;
+  const hasFiles = Boolean(ticketData.files?.length);
+
+  const buildJsonPayload = () => ({
+    title: ticketData.title,
+    description: ticketData.description,
+    category: ticketData.category,
+    notes: ticketData.notes || '',
+    priority: ticketData.priority || 'Medium',
+    source: 'mobile',
+  });
 
   const buildFormData = () => {
     const formData = new FormData();
@@ -253,27 +285,10 @@ export const createTicket = async (ticketData: {
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const token = await AsyncStorage.getItem('authToken');
-      const formData = buildFormData();
-      const response = await axios.post(`${IT_API}.create_ticket`, formData, {
-        baseURL: BASE_URL,
-        timeout: 120000,
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          'Content-Type': 'multipart/form-data',
-        },
-        validateStatus: (status) => status >= 200 && status < 600,
-      });
-
-      if (response.status >= 400) {
-        throw new Error(parseFrappeApiError(response.data));
+      if (hasFiles) {
+        return await frappePostFormData<Ticket>('create_ticket', buildFormData());
       }
-
-      const out = unwrap<Ticket>(response);
-      if (!out.success || !out.data) {
-        throw new Error(out.message || 'Failed to create ticket');
-      }
-      return out.data;
+      return await frappePost<Ticket>('create_ticket', buildJsonPayload());
     } catch (error: unknown) {
       const err = error as { message?: string };
       if (attempt < maxRetries && err?.message?.includes('Trùng')) {
@@ -324,48 +339,38 @@ export const sendMessage = async (
   }
 ): Promise<Message> => {
   try {
-    const token = await AsyncStorage.getItem('authToken');
+    const hasImages = Boolean(messageData.images?.length);
+
+    if (!hasImages) {
+      const data = await frappePost<{ messageData?: Message } | Message>('send_comment', {
+        ticket_id: ticketId,
+        text: messageData.text || '',
+      });
+      if (data && typeof data === 'object' && 'messageData' in data && data.messageData?._id) {
+        return data.messageData;
+      }
+      if (data && typeof data === 'object' && '_id' in data) {
+        return data as Message;
+      }
+      throw new Error('Không thể gửi tin nhắn');
+    }
+
     const formData = new FormData();
     formData.append('ticket_id', ticketId);
     if (messageData.text) {
       formData.append('text', messageData.text);
     }
-    if (messageData.images?.length) {
-      messageData.images.forEach((image) => {
-        if (image.uri && image.name && image.type) {
-          formData.append('files', {
-            uri: image.uri,
-            name: image.name,
-            type: image.type,
-          } as any);
-        }
-      });
-    }
-
-    const response = await axios.post(`${IT_API}.send_comment`, formData, {
-      baseURL: BASE_URL,
-      timeout: 120000,
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        'Content-Type': 'multipart/form-data',
-      },
-      validateStatus: (status) => status >= 200 && status < 600,
+    messageData.images?.forEach((image) => {
+      if (image.uri && image.name && image.type) {
+        formData.append('files', {
+          uri: image.uri,
+          name: image.name,
+          type: image.type,
+        } as any);
+      }
     });
 
-    if (response.status >= 400) {
-      throw new Error(parseFrappeApiError(response.data));
-    }
-
-    const out = unwrap<{
-      messageData?: Message;
-      success?: boolean;
-    }>(response);
-
-    if (!out.success) {
-      throw new Error(out.message || 'Không thể gửi tin nhắn');
-    }
-
-    const data = out.data as { messageData?: Message } | Message | undefined;
+    const data = await frappePostFormData<{ messageData?: Message } | Message>('send_comment', formData);
     if (data && typeof data === 'object' && 'messageData' in data && data.messageData?._id) {
       return data.messageData;
     }
