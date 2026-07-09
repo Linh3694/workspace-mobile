@@ -141,6 +141,7 @@ export interface AdministrativeTicket {
   acceptedAt?: string;
   area_title?: string;
   attachment?: string;
+  attachments?: { url: string; filename?: string }[];
   is_event_facility?: boolean;
   event_building_id?: string;
   event_building_label?: string;
@@ -159,6 +160,14 @@ export interface AdministrativeTicket {
     student_name: string;
     student_code: string;
     avatar_url?: string;
+  }>;
+  related_staff_ids?: string[] | string;
+  related_staff?: Array<{
+    user_id: string;
+    email?: string;
+    full_name: string;
+    avatar_url?: string;
+    department_name?: string;
   }>;
   /** Gộp từ get_subtasks khi load detail (mobile) */
   subTasks?: AdminSubTask[];
@@ -227,6 +236,15 @@ export interface AdminTicketStudentOption {
   student_code: string;
   avatar_url?: string;
   class_title?: string;
+}
+
+/** Tùy chọn CBGVNV cho field "CBGVNV liên quan" — phòng ban lấy từ sơ đồ tổ chức */
+export interface AdminTicketStaffOption {
+  user_id: string;
+  email?: string;
+  full_name: string;
+  avatar_url?: string;
+  department_name?: string;
 }
 
 export interface AdminTicketEquipmentLine {
@@ -464,6 +482,30 @@ export async function getAllStudentsForTicket(): Promise<AdminTicketStudentOptio
   }
 }
 
+/** Danh sách CBGVNV (toàn bộ user nội bộ active) cho field "CBGVNV liên quan" */
+export async function getAllStaffForTicket(): Promise<AdminTicketStaffOption[]> {
+  try {
+    const config = await getAxiosConfig();
+    const response = await axios.post(`${BASE}.get_staff_for_ticket`, {}, config);
+    const out = unwrap<{ staff?: AdminTicketStaffOption[] }>(response);
+    if (out.success && Array.isArray(out.data?.staff)) {
+      return out.data!.staff
+        .map((s) => ({
+          user_id: String(s.user_id || '').trim(),
+          email: String(s.email || '').trim(),
+          full_name: String(s.full_name || '').trim(),
+          avatar_url: String(s.avatar_url || '').trim(),
+          department_name: String(s.department_name || '').trim(),
+        }))
+        .filter((s) => Boolean(s.user_id) && Boolean(s.full_name));
+    }
+    return [];
+  } catch (e) {
+    console.error('getAllStaffForTicket', e);
+    return [];
+  }
+}
+
 export async function getRoomEventBookings(params: {
   room_id: string;
   range_start?: string;
@@ -508,6 +550,7 @@ export async function createAdminTicket(payload: {
   notes?: string;
   area_title?: string;
   attachment?: string;
+  attachments?: string[];
   is_event_facility?: boolean;
   event_building_id?: string;
   event_room_id?: string;
@@ -517,6 +560,7 @@ export async function createAdminTicket(payload: {
   related_department_ids?: string[];
   related_equipment_id?: string;
   related_student_ids?: string[];
+  related_staff_ids?: string[];
 }): Promise<AdministrativeTicket> {
   const config = await getAxiosConfig();
   const response = await axios.post(`${BASE}.create_ticket`, payload, {
@@ -542,6 +586,7 @@ export async function updateAdminTicket(payload: {
   priority?: string;
   area_title?: string;
   attachment?: string;
+  attachments?: string[];
   status?: string;
   assigned_to?: string | null;
   is_event_facility?: boolean;
@@ -553,6 +598,7 @@ export async function updateAdminTicket(payload: {
   related_department_ids?: string[];
   related_equipment_id?: string;
   related_student_ids?: string[];
+  related_staff_ids?: string[];
 }): Promise<AdministrativeTicket> {
   const config = await getAxiosConfig();
   const response = await axios.post(`${BASE}.update_ticket`, payload, config);
@@ -664,19 +710,39 @@ export async function updateAdminSubTaskStatus(
   subTaskId: string,
   status: string
 ): Promise<void> {
+  return updateAdminSubTask(ticketId, subTaskId, { status });
+}
+
+export async function updateAdminSubTask(
+  ticketId: string,
+  subTaskId: string,
+  data: { status?: string; assignedTo?: string }
+): Promise<void> {
+  const config = await getAxiosConfig();
+  // Chỉ gửi field nào được truyền để tránh ghi đè ngoài ý muốn ở backend.
+  const payload: Record<string, unknown> = {
+    ticket_id: ticketId,
+    sub_task_id: subTaskId,
+  };
+  if (data.status !== undefined) payload.status = data.status;
+  if (data.assignedTo !== undefined) payload.assigned_to = data.assignedTo;
+  const response = await axios.post(`${BASE}.update_subtask`, payload, config);
+  const out = unwrap<unknown>(response);
+  if (!out.success) {
+    throw new Error(out.message || 'updateAdminSubTask failed');
+  }
+}
+
+export async function deleteAdminSubTask(ticketId: string, subTaskId: string): Promise<void> {
   const config = await getAxiosConfig();
   const response = await axios.post(
-    `${BASE}.update_subtask`,
-    {
-      ticket_id: ticketId,
-      sub_task_id: subTaskId,
-      status,
-    },
+    `${BASE}.delete_subtask`,
+    { ticket_id: ticketId, sub_task_id: subTaskId },
     config
   );
   const out = unwrap<unknown>(response);
   if (!out.success) {
-    throw new Error(out.message || 'updateAdminSubTask failed');
+    throw new Error(out.message || 'deleteAdminSubTask failed');
   }
 }
 

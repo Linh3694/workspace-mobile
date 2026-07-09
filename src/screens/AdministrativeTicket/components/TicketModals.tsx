@@ -9,6 +9,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { TouchableOpacity } from '../../../components/Common';
+import { Ionicons } from '@expo/vector-icons';
 import BottomSheetModal from '../../../components/Common/BottomSheetModal';
 import {
   useAdministrativeTicketStore,
@@ -18,8 +19,10 @@ import {
 } from '../../../hooks/useAdministrativeTicketStore';
 import { normalizeVietnameseName } from '../../../utils/nameFormatter';
 import { getAdminTicketStatusLabel } from '../../../config/administrativeTicketConstants';
-import type { AdministrativeSupportMember } from '../../../services/administrativeTicketService';
-import type { AdminSubTask } from '../../../services/administrativeTicketService';
+import type {
+  AdministrativeSupportMember,
+  AdminSubTask,
+} from '../../../services/administrativeTicketService';
 import LottieView from 'lottie-react-native';
 
 // Lottie animations for rating
@@ -272,7 +275,9 @@ export const TicketStatusSheet: React.FC<TicketStatusSheetProps> = ({
         {/* Thanh kéo + tiêu đề: neo sát nội dung, tránh khoảng trống giữa header và danh sách */}
         <View className="items-center pb-2.5 pt-1.5">
           <View className="mb-2 h-1 w-10 rounded-full bg-[#D1D5DB]" />
-          <Text className="text-center text-[13px] leading-[18px] text-[#8E8E93]">Chọn trạng thái</Text>
+          <Text className="text-center text-[13px] leading-[18px] text-[#8E8E93]">
+            Chọn trạng thái
+          </Text>
         </View>
         <View className="overflow-hidden rounded-2xl bg-gray-100">
           {statusItems.map((item, index) => (
@@ -283,7 +288,9 @@ export const TicketStatusSheet: React.FC<TicketStatusSheetProps> = ({
                   closeTicketStatusSheet();
                 }}
                 className="px-4 py-3.5 active:bg-gray-200/80">
-                <Text className="text-center text-base font-medium text-[#002855]">{item.label}</Text>
+                <Text className="text-center text-base font-medium text-[#002855]">
+                  {item.label}
+                </Text>
               </TouchableOpacity>
               {index < statusItems.length - 1 ? <View className="h-px bg-black/10" /> : null}
             </View>
@@ -309,12 +316,19 @@ interface SubTaskStatusSheetProps {
   subTask: AdminSubTask | null;
   allSubTasks: AdminSubTask[];
   onSelect: (status: string) => void;
+  /** PIC công việc con / PIC ticket / System Manager mới được đánh dấu hoàn thành. */
+  canComplete?: boolean;
+  onReassign?: () => void;
+  onDelete?: () => void;
 }
 
 export const SubTaskStatusSheet: React.FC<SubTaskStatusSheetProps> = ({
   subTask,
   allSubTasks,
   onSelect,
+  canComplete = true,
+  onReassign,
+  onDelete,
 }) => {
   const { showSubTaskStatusModal } = useAdministrativeTicketUI();
   const { closeSubTaskStatusModal } = useAdministrativeTicketUIActions();
@@ -329,10 +343,8 @@ export const SubTaskStatusSheet: React.FC<SubTaskStatusSheetProps> = ({
       label: isFirstInProgress ? 'Đang xử lý' : 'Chờ xử lý',
       value: 'In Progress',
     },
-    {
-      label: 'Hoàn thành',
-      value: 'Completed',
-    },
+    // Chỉ PIC subtask/PIC ticket/System Manager mới thấy tuỳ chọn Hoàn thành.
+    ...(canComplete ? [{ label: 'Hoàn thành', value: 'Completed' }] : []),
     {
       label: 'Huỷ',
       value: 'Cancelled',
@@ -349,7 +361,9 @@ export const SubTaskStatusSheet: React.FC<SubTaskStatusSheetProps> = ({
       <View className="px-4 pb-0 pt-0">
         <View className="items-center pb-2.5 pt-1.5">
           <View className="mb-2 h-1 w-10 rounded-full bg-[#D1D5DB]" />
-          <Text className="text-center text-[13px] leading-[18px] text-[#8E8E93]">Cập nhật trạng thái</Text>
+          <Text className="text-center text-[13px] leading-[18px] text-[#8E8E93]">
+            Cập nhật trạng thái
+          </Text>
         </View>
         <View className="overflow-hidden rounded-2xl bg-gray-100">
           {options.map((item, index) => (
@@ -360,12 +374,33 @@ export const SubTaskStatusSheet: React.FC<SubTaskStatusSheetProps> = ({
                   closeSubTaskStatusModal();
                 }}
                 className="px-4 py-3.5 active:bg-gray-200/80">
-                <Text className="text-center text-base font-medium text-[#002855]">{item.label}</Text>
+                <Text className="text-center text-base font-medium text-[#002855]">
+                  {item.label}
+                </Text>
               </TouchableOpacity>
               {index < options.length - 1 ? <View className="h-px bg-black/10" /> : null}
             </View>
           ))}
         </View>
+        {(onReassign || onDelete) && (
+          <View className="mt-2 overflow-hidden rounded-2xl bg-gray-100">
+            {onReassign && (
+              <TouchableOpacity onPress={onReassign} className="px-4 py-3.5 active:bg-gray-200/80">
+                <Text className="text-center text-base font-medium text-[#002855]">
+                  Đổi người xử lý
+                </Text>
+              </TouchableOpacity>
+            )}
+            {onReassign && onDelete ? <View className="h-px bg-black/10" /> : null}
+            {onDelete && (
+              <TouchableOpacity onPress={onDelete} className="px-4 py-3.5 active:bg-gray-200/80">
+                <Text className="text-center text-base font-medium text-[#FF3B30]">
+                  Xoá công việc con
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
         <View className="mt-2 overflow-hidden rounded-2xl bg-gray-100">
           <TouchableOpacity
             onPress={closeSubTaskStatusModal}
@@ -375,6 +410,179 @@ export const SubTaskStatusSheet: React.FC<SubTaskStatusSheetProps> = ({
         </View>
       </View>
     </BottomSheetModal>
+  );
+};
+
+// ============================================================================
+// Assignee Search Sheet (chọn/đổi người xử lý — bottom sheet có ô tìm kiếm)
+// ============================================================================
+
+interface AssigneeSearchSheetProps {
+  visible: boolean;
+  onSelect: (member: AdministrativeSupportMember) => void;
+  onClose: () => void;
+  title?: string;
+  /** _id hoặc email (đã lowercase) của người đang chọn — để hiển thị dấu ✓. */
+  selectedKey?: string;
+  /** Nếu truyền, hiện nút "Bỏ gán người xử lý" khi đang có người được chọn. */
+  onUnassign?: () => void;
+}
+
+export const AssigneeSearchSheet: React.FC<AssigneeSearchSheetProps> = ({
+  visible,
+  onSelect,
+  onClose,
+  title = 'Chọn người xử lý',
+  selectedKey = '',
+  onUnassign,
+}) => {
+  const { members, loading, fetch } = useAdministrativeSupportTeam();
+  const actionLoading = useAdministrativeTicketStore((state) => state.actionLoading);
+  const [query, setQuery] = React.useState('');
+
+  // Mỗi lần mở: reset ô tìm kiếm và nạp danh sách nếu chưa có.
+  React.useEffect(() => {
+    if (visible) {
+      setQuery('');
+      if (!members.length && !loading) fetch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? members.filter(
+        (m) =>
+          normalizeVietnameseName(m.fullname).toLowerCase().includes(q) ||
+          (m.fullname || '').toLowerCase().includes(q) ||
+          (m.email || '').toLowerCase().includes(q)
+      )
+    : members;
+
+  const key = (selectedKey || '').toLowerCase();
+
+  return (
+    <BottomSheetModal
+      visible={visible}
+      onClose={onClose}
+      maxHeightPercent={78}
+      keyboardAvoiding
+      bottomPaddingExtra={8}>
+      <View className="px-4 pb-0 pt-0">
+        <View className="items-center pb-2.5 pt-1.5">
+          <View className="mb-2 h-1 w-10 rounded-full bg-[#D1D5DB]" />
+          <Text className="text-center text-[13px] leading-[18px] text-[#8E8E93]">{title}</Text>
+        </View>
+
+        {/* Ô tìm kiếm */}
+        <View className="mb-2 flex-row items-center rounded-xl bg-gray-100 px-3">
+          <Ionicons name="search" size={18} color="#8E8E93" />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Tìm theo tên hoặc email"
+            placeholderTextColor="#9CA3AF"
+            className="ml-2 flex-1 py-3 text-base"
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+          {query.length > 0 ? (
+            <TouchableOpacity onPress={() => setQuery('')}>
+              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {loading ? (
+          <View className="py-8">
+            <ActivityIndicator size="large" color="#002855" />
+          </View>
+        ) : (
+          <FlatList
+            data={filtered}
+            keyExtractor={(item) => item._id}
+            keyboardShouldPersistTaps="handled"
+            style={{ maxHeight: 320 }}
+            ItemSeparatorComponent={() => <View className="h-px bg-gray-100" />}
+            ListEmptyComponent={() => (
+              <Text className="py-6 text-center text-gray-500">Không tìm thấy nhân viên</Text>
+            )}
+            renderItem={({ item }) => {
+              const selected =
+                (item._id || '').toLowerCase() === key || (item.email || '').toLowerCase() === key;
+              return (
+                <TouchableOpacity
+                  onPress={() => onSelect(item)}
+                  disabled={actionLoading}
+                  className="flex-row items-center justify-between px-1 py-3">
+                  <View className="flex-1 pr-2">
+                    <Text
+                      className={`text-base ${
+                        selected ? 'font-semibold text-[#009483]' : 'text-[#1F2937]'
+                      }`}>
+                      {normalizeVietnameseName(item.fullname)}
+                    </Text>
+                    {item.email ? (
+                      <Text className="text-sm text-gray-500">{item.email}</Text>
+                    ) : null}
+                  </View>
+                  {selected ? <Ionicons name="checkmark" size={20} color="#009483" /> : null}
+                </TouchableOpacity>
+              );
+            }}
+          />
+        )}
+
+        {onUnassign && key ? (
+          <TouchableOpacity
+            onPress={onUnassign}
+            disabled={actionLoading}
+            className="mt-2 items-center rounded-2xl bg-gray-100 py-3.5">
+            <Text className="font-medium text-[#FF3B30]">Bỏ gán người xử lý</Text>
+          </TouchableOpacity>
+        ) : null}
+        <TouchableOpacity
+          onPress={onClose}
+          disabled={actionLoading}
+          className="mt-2 items-center rounded-2xl bg-gray-100 py-3.5">
+          <Text className="font-semibold text-[#002855]">Đóng</Text>
+        </TouchableOpacity>
+      </View>
+    </BottomSheetModal>
+  );
+};
+
+// ============================================================================
+// SubTask Assignee Modal (Đổi người xử lý công việc con)
+// ============================================================================
+
+interface SubTaskAssigneeModalProps {
+  onSelect: (member: AdministrativeSupportMember) => void;
+  onUnassign: () => void;
+}
+
+export const SubTaskAssigneeModal: React.FC<SubTaskAssigneeModalProps> = ({
+  onSelect,
+  onUnassign,
+}) => {
+  const { showSubTaskAssignModal, selectedSubTask } = useAdministrativeTicketUI();
+  const { closeSubTaskAssignModal } = useAdministrativeTicketUIActions();
+
+  const currentKey = (
+    selectedSubTask?.assignedTo?._id ||
+    selectedSubTask?.assignedTo?.email ||
+    ''
+  ).toLowerCase();
+
+  return (
+    <AssigneeSearchSheet
+      visible={showSubTaskAssignModal}
+      title="Đổi người xử lý công việc con"
+      selectedKey={currentKey}
+      onSelect={onSelect}
+      onUnassign={onUnassign}
+      onClose={closeSubTaskAssignModal}
+    />
   );
 };
 

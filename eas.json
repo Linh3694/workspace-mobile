@@ -51,6 +51,10 @@
         "appleId": "developer@wellspring.edu.vn",
         "ascAppId": "6746143732",
         "appleTeamId": "2D237L9M35"
+      },
+      "android": {
+        "track": "production",
+        "releaseStatus": "completed"
       }
     }
   }

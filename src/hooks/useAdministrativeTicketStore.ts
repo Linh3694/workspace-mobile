@@ -18,6 +18,8 @@ import {
   acceptAdminFeedback,
   createAdminSubTask,
   updateAdminSubTaskStatus,
+  updateAdminSubTask,
+  deleteAdminSubTask,
   getAdministrativeSupportTeamMembers,
   getAdminTicketMessages,
 } from '../services/administrativeTicketService';
@@ -32,6 +34,7 @@ interface AdministrativeTicketUIState {
   showAssignModal: boolean;
   showConfirmAssignModal: boolean;
   showSubTaskStatusModal: boolean;
+  showSubTaskAssignModal: boolean;
   showTicketStatusSheet: boolean;
   showCompleteModal: boolean;
   cancelReason: string;
@@ -70,8 +73,10 @@ interface AdministrativeTicketStore {
   completeTicket: (feedback: AdminFeedbackData) => Promise<boolean>;
   updateStatus: (status: AdministrativeTicketStatusUi) => Promise<boolean>;
 
-  addSubTask: (title: string) => Promise<boolean>;
+  addSubTask: (title: string, assignedTo?: string) => Promise<boolean>;
   updateSubTaskStatus: (subTaskId: string, status: AdministrativeSubTaskStatusUi) => Promise<boolean>;
+  updateSubTaskAssignee: (subTaskId: string, assignedTo: string) => Promise<boolean>;
+  deleteSubTask: (subTaskId: string) => Promise<boolean>;
 
   addMessage: (message: AdminTicketMessage) => void;
 
@@ -84,6 +89,8 @@ interface AdministrativeTicketStore {
   closeConfirmAssignModal: () => void;
   openSubTaskStatusModal: (subTask: AdminSubTask) => void;
   closeSubTaskStatusModal: () => void;
+  openSubTaskAssignModal: (subTask: AdminSubTask) => void;
+  closeSubTaskAssignModal: () => void;
   openTicketStatusSheet: () => void;
   closeTicketStatusSheet: () => void;
   setCancelReason: (reason: string) => void;
@@ -101,6 +108,7 @@ const initialUIState: AdministrativeTicketUIState = {
   showAssignModal: false,
   showConfirmAssignModal: false,
   showSubTaskStatusModal: false,
+  showSubTaskAssignModal: false,
   showTicketStatusSheet: false,
   showCompleteModal: false,
   cancelReason: '',
@@ -308,12 +316,12 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
       }
     },
 
-    addSubTask: async (title: string) => {
+    addSubTask: async (title: string, assignedTo?: string) => {
       const { currentTicketId } = get();
       if (!currentTicketId) return false;
       set({ actionLoading: true });
       try {
-        await createAdminSubTask(currentTicketId, { title });
+        await createAdminSubTask(currentTicketId, { title, assignedTo });
         await get().refreshTicket();
         set({ actionLoading: false });
         return true;
@@ -335,6 +343,38 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
         return true;
       } catch (error) {
         console.error('Error updating subtask HC:', error);
+        set({ actionLoading: false });
+        return false;
+      }
+    },
+
+    updateSubTaskAssignee: async (subTaskId: string, assignedTo: string) => {
+      const { currentTicketId } = get();
+      if (!currentTicketId) return false;
+      set({ actionLoading: true });
+      try {
+        await updateAdminSubTask(currentTicketId, subTaskId, { assignedTo });
+        await get().refreshTicket();
+        set({ actionLoading: false });
+        return true;
+      } catch (error) {
+        console.error('Error updating subtask assignee HC:', error);
+        set({ actionLoading: false });
+        return false;
+      }
+    },
+
+    deleteSubTask: async (subTaskId: string) => {
+      const { currentTicketId } = get();
+      if (!currentTicketId) return false;
+      set({ actionLoading: true });
+      try {
+        await deleteAdminSubTask(currentTicketId, subTaskId);
+        await get().refreshTicket();
+        set({ actionLoading: false });
+        return true;
+      } catch (error) {
+        console.error('Error deleting subtask HC:', error);
         set({ actionLoading: false });
         return false;
       }
@@ -376,6 +416,22 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
     closeSubTaskStatusModal: () =>
       set((state) => ({
         ui: { ...state.ui, showSubTaskStatusModal: false, selectedSubTask: null },
+      })),
+
+    openSubTaskAssignModal: (subTask: AdminSubTask) => {
+      get().fetchSupportTeam();
+      set((state) => ({
+        ui: {
+          ...state.ui,
+          selectedSubTask: subTask,
+          showSubTaskStatusModal: false,
+          showSubTaskAssignModal: true,
+        },
+      }));
+    },
+    closeSubTaskAssignModal: () =>
+      set((state) => ({
+        ui: { ...state.ui, showSubTaskAssignModal: false, selectedSubTask: null },
       })),
 
     openTicketStatusSheet: () =>
@@ -476,6 +532,8 @@ export const useAdministrativeTicketActions = () =>
       updateStatus: state.updateStatus,
       addSubTask: state.addSubTask,
       updateSubTaskStatus: state.updateSubTaskStatus,
+      updateSubTaskAssignee: state.updateSubTaskAssignee,
+      deleteSubTask: state.deleteSubTask,
       actionLoading: state.actionLoading,
     }))
   );
@@ -492,6 +550,8 @@ export const useAdministrativeTicketUIActions = () =>
       closeConfirmAssignModal: state.closeConfirmAssignModal,
       openSubTaskStatusModal: state.openSubTaskStatusModal,
       closeSubTaskStatusModal: state.closeSubTaskStatusModal,
+      openSubTaskAssignModal: state.openSubTaskAssignModal,
+      closeSubTaskAssignModal: state.closeSubTaskAssignModal,
       openTicketStatusSheet: state.openTicketStatusSheet,
       closeTicketStatusSheet: state.closeTicketStatusSheet,
       setCancelReason: state.setCancelReason,

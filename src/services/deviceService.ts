@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_BASE_URL } from '../config/constants.js';
+import { BASE_URL } from '../config/constants.js';
 import {
   Device,
   DeviceType,
@@ -14,7 +14,13 @@ import {
 } from '../types/devices';
 
 // API configuration
-const INVENTORY_API_BASE_URL = API_BASE_URL;
+// Inventory đã gộp vào Frappe → dùng CHUNG base URL với các service Frappe khác (ticket/CRM…): BASE_URL
+// (EXPO_PUBLIC_BASE_URL). Trước đây trỏ API_BASE_URL nên có thể lệch môi trường (staging) so với phần còn lại.
+const INVENTORY_API_BASE_URL = BASE_URL;
+// Backend inventory đã gộp vào Frappe: erp.api.erp_inventory (thay cho REST /api/inventory cũ đã ngừng).
+const INV_METHOD_PREFIX = 'erp.api.erp_inventory';
+// User management (dùng cho picker người nhận thiết bị khi assign).
+const USER_MGMT_METHOD = 'erp.api.erp_common_user.user_management';
 
 // Pagination state interface
 export interface PaginationState {
@@ -30,31 +36,19 @@ export interface PaginationState {
 // Search and filter params interface - normalized to strings for API
 interface SearchFilterParams {
   search?: string;
-  status?: string;  // Comma-separated if multiple values
-  manufacturer?: string;  // Comma-separated if multiple values
-  type?: string;  // Comma-separated if multiple values
+  status?: string; // Comma-separated if multiple values
+  manufacturer?: string; // Comma-separated if multiple values
+  type?: string; // Comma-separated if multiple values
   assignedUser?: string;
   room?: string;
   releaseYear?: string | number;
-  departments?: string;  // Comma-separated if multiple values
-}
-
-// API params interface
-interface ApiParams {
-  page?: number;
-  limit?: number;
-  search?: string;
-  status?: string;
-  manufacturer?: string;
-  type?: string;
-  assignedUser?: string;
-  room?: string;
-  releaseYear?: string | number;
+  departments?: string; // Comma-separated if multiple values
 }
 
 class DeviceService {
   private async getAuthHeaders() {
-    const token = await AsyncStorage.getItem('frappe_token') || await AsyncStorage.getItem('authToken');
+    const token =
+      (await AsyncStorage.getItem('frappe_token')) || (await AsyncStorage.getItem('authToken'));
     return {
       Authorization: `Bearer ${token}`,
       'X-Frappe-CSRF-Token': token,
@@ -141,6 +135,47 @@ class DeviceService {
     };
   }
 
+  // Chuyển lỗi HTTP thành thông báo tiếng Việt thân thiện, tránh hiển thị HTML thô (vd: trang 502 của nginx)
+  private getFriendlyErrorMessage(status: number, errorText: string): string {
+    // Ưu tiên dùng message từ JSON nếu backend trả về JSON hợp lệ
+    if (errorText) {
+      try {
+        const errorData = JSON.parse(errorText);
+        const message = errorData.message || errorData.error;
+        if (message && typeof message === 'string') {
+          return message;
+        }
+      } catch {
+        // Không phải JSON: bỏ qua, xử lý theo mã trạng thái bên dưới
+      }
+    }
+
+    switch (status) {
+      case 502:
+      case 503:
+      case 504:
+        return 'Máy chủ đang bận hoặc tạm thời gián đoạn. Vui lòng thử lại sau.';
+      case 500:
+        return 'Đã xảy ra lỗi từ máy chủ. Vui lòng thử lại sau.';
+      case 401:
+      case 403:
+        return 'Phiên đăng nhập đã hết hạn hoặc không có quyền truy cập.';
+      case 404:
+        return 'Không tìm thấy dữ liệu yêu cầu.';
+      default:
+        break;
+    }
+
+    // Chỉ dùng errorText khi là chuỗi ngắn và không phải HTML
+    const trimmed = errorText?.trim() || '';
+    const isHtml = /<!DOCTYPE|<html/i.test(trimmed);
+    if (trimmed && !isHtml && trimmed.length <= 200) {
+      return trimmed;
+    }
+
+    return `Không thể kết nối tới máy chủ (mã lỗi ${status}).`;
+  }
+
   // Enhanced error handling for API calls
   private async makeApiCall(url: string, options: RequestInit = {}) {
     try {
@@ -155,19 +190,7 @@ class DeviceService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.message || errorData.error || errorMessage;
-        } catch {
-          // If not JSON, use the raw error text
-          if (errorText) {
-            errorMessage = errorText.substring(0, 200);
-          }
-        }
-
-        throw new Error(errorMessage);
+        throw new Error(this.getFriendlyErrorMessage(response.status, errorText));
       }
 
       return response;
@@ -179,26 +202,86 @@ class DeviceService {
     }
   }
 
+  // ===== Frappe inventory API (erp.api.erp_inventory) =====
+  // Gọi method Frappe và bóc lớp envelope { message: <payload> } mà Frappe trả về.
+  private frappeMethodUrl(method: string): string {
+    return `${INVENTORY_API_BASE_URL}/api/method/${method}`;
+  }
+
+  private unwrapFrappe<T>(json: unknown): T {
+    if (json && typeof json === 'object' && 'message' in (json as Record<string, unknown>)) {
+      return (json as { message: T }).message;
+    }
+    return json as T;
+  }
+
+  private async frappeGet<T>(method: string, params?: Record<string, unknown>): Promise<T> {
+    const search = new URLSearchParams();
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== null && value !== '') {
+          search.append(key, String(value));
+        }
+      }
+    }
+    // Cache-buster giống web (Frappe bỏ qua kwargs không khai báo nên param thừa là an toàn).
+    search.append('_t', String(Date.now()));
+    const response = await this.makeApiCall(`${this.frappeMethodUrl(method)}?${search.toString()}`);
+    const json = await response.json();
+    return this.unwrapFrappe<T>(json);
+  }
+
+  private async frappePost<T>(method: string, data?: Record<string, unknown>): Promise<T> {
+    const response = await this.makeApiCall(this.frappeMethodUrl(method), {
+      method: 'POST',
+      body: JSON.stringify(data ?? {}),
+    });
+    const json = await response.json();
+    return this.unwrapFrappe<T>(json);
+  }
+
+  // GET một method trong module inventory (erp.api.erp_inventory.<method>).
+  private invGet<T>(method: string, params?: Record<string, unknown>): Promise<T> {
+    return this.frappeGet<T>(`${INV_METHOD_PREFIX}.${method}`, params);
+  }
+
+  // POST một method trong module inventory.
+  private invPost<T>(method: string, data?: Record<string, unknown>): Promise<T> {
+    return this.frappePost<T>(`${INV_METHOD_PREFIX}.${method}`, data);
+  }
+
+  // Build params cho device.get_devices. Frappe lọc bỏ kwargs không nhận nên forward đầy đủ là an toàn.
+  private buildDeviceParams(
+    deviceType: DeviceType,
+    page: number,
+    limit: number,
+    filters?: SearchFilterParams
+  ): Record<string, unknown> {
+    const params: Record<string, unknown> = { device_type: deviceType, page, limit };
+    if (filters?.search) params.search = filters.search;
+    if (filters?.status) params.status = filters.status;
+    if (filters?.manufacturer) params.manufacturer = filters.manufacturer;
+    if (filters?.type) params.type = filters.type;
+    if (filters?.releaseYear) params.releaseYear = filters.releaseYear;
+    if (filters?.departments) params.departments = filters.departments;
+    if (filters?.assignedUser) params.assigned = filters.assignedUser;
+    if (filters?.room) params.room = filters.room;
+    return params;
+  }
+
   // Get laptops with pagination and filters (updated endpoint)
   async getLaptops(
     page: number = 1,
     limit: number = 20,
     filters?: SearchFilterParams
   ): Promise<{ populatedLaptops: Laptop[]; pagination: PaginationState }> {
-    const params: ApiParams = { page, limit };
-    if (filters?.search) params.search = filters.search;
-    if (filters?.status) params.status = filters.status;
-    if (filters?.manufacturer) params.manufacturer = filters.manufacturer;
-    if (filters?.type) params.type = filters.type;
-    if (filters?.releaseYear) params.releaseYear = filters.releaseYear;
-
-    const queryString = new URLSearchParams(params as any).toString();
-    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/laptops?${queryString}`);
-    const data = await response.json();
-
+    const data = await this.invGet<{ populatedLaptops?: Laptop[]; pagination?: PaginationState }>(
+      'device.get_devices',
+      this.buildDeviceParams('laptop', page, limit, filters)
+    );
     return {
-      populatedLaptops: data.populatedLaptops || [],
-      pagination: data.pagination || {},
+      populatedLaptops: data?.populatedLaptops || [],
+      pagination: data?.pagination || ({} as PaginationState),
     };
   }
 
@@ -208,20 +291,13 @@ class DeviceService {
     limit: number = 20,
     filters?: SearchFilterParams
   ): Promise<{ populatedMonitors: Monitor[]; pagination: PaginationState }> {
-    const params: ApiParams = { page, limit };
-    if (filters?.search) params.search = filters.search;
-    if (filters?.status) params.status = filters.status;
-    if (filters?.manufacturer) params.manufacturer = filters.manufacturer;
-    if (filters?.type) params.type = filters.type;
-    if (filters?.releaseYear) params.releaseYear = filters.releaseYear;
-
-    const queryString = new URLSearchParams(params as any).toString();
-    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/monitors?${queryString}`);
-    const data = await response.json();
-
+    const data = await this.invGet<{ populatedMonitors?: Monitor[]; pagination?: PaginationState }>(
+      'device.get_devices',
+      this.buildDeviceParams('monitor', page, limit, filters)
+    );
     return {
-      populatedMonitors: data.populatedMonitors || [],
-      pagination: data.pagination || {},
+      populatedMonitors: data?.populatedMonitors || [],
+      pagination: data?.pagination || ({} as PaginationState),
     };
   }
 
@@ -231,20 +307,13 @@ class DeviceService {
     limit: number = 20,
     filters?: SearchFilterParams
   ): Promise<{ populatedPrinters: Printer[]; pagination: PaginationState }> {
-    const params: ApiParams = { page, limit };
-    if (filters?.search) params.search = filters.search;
-    if (filters?.status) params.status = filters.status;
-    if (filters?.manufacturer) params.manufacturer = filters.manufacturer;
-    if (filters?.type) params.type = filters.type;
-    if (filters?.releaseYear) params.releaseYear = filters.releaseYear;
-
-    const queryString = new URLSearchParams(params as any).toString();
-    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/printers?${queryString}`);
-    const data = await response.json();
-
+    const data = await this.invGet<{ populatedPrinters?: Printer[]; pagination?: PaginationState }>(
+      'device.get_devices',
+      this.buildDeviceParams('printer', page, limit, filters)
+    );
     return {
-      populatedPrinters: data.populatedPrinters || [],
-      pagination: data.pagination || {},
+      populatedPrinters: data?.populatedPrinters || [],
+      pagination: data?.pagination || ({} as PaginationState),
     };
   }
 
@@ -254,41 +323,27 @@ class DeviceService {
     limit: number = 20,
     filters?: SearchFilterParams
   ): Promise<{ populatedProjectors: Projector[]; pagination: PaginationState }> {
-    const params: ApiParams = { page, limit };
-    if (filters?.search) params.search = filters.search;
-    if (filters?.status) params.status = filters.status;
-    if (filters?.manufacturer) params.manufacturer = filters.manufacturer;
-    if (filters?.type) params.type = filters.type;
-    if (filters?.releaseYear) params.releaseYear = filters.releaseYear;
-
-    const queryString = new URLSearchParams(params as any).toString();
-    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/projectors?${queryString}`);
-    const data = await response.json();
-
+    const data = await this.invGet<{
+      populatedProjectors?: Projector[];
+      pagination?: PaginationState;
+    }>('device.get_devices', this.buildDeviceParams('projector', page, limit, filters));
     return {
-      populatedProjectors: data.populatedProjectors || [],
-      pagination: data.pagination || {},
+      populatedProjectors: data?.populatedProjectors || [],
+      pagination: data?.pagination || ({} as PaginationState),
     };
   }
 
   // Get tools (no pagination, updated endpoint)
-  async getTools(
-    filters?: SearchFilterParams
-  ): Promise<{ populatedTools: Tool[]; total: number }> {
-    const params: ApiParams = {};
-    if (filters?.search) params.search = filters.search;
-    if (filters?.status) params.status = filters.status;
-    if (filters?.manufacturer) params.manufacturer = filters.manufacturer;
-    if (filters?.type) params.type = filters.type;
-    if (filters?.releaseYear) params.releaseYear = filters.releaseYear;
-
-    const queryString = new URLSearchParams(params as any).toString();
-    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/tools?${queryString}`);
-    const data = await response.json();
-
+  async getTools(filters?: SearchFilterParams): Promise<{ populatedTools: Tool[]; total: number }> {
+    // Tool không phân trang ở UI mobile → lấy limit lớn để gom toàn bộ.
+    const data = await this.invGet<{
+      populatedTools?: Tool[];
+      pagination?: PaginationState;
+    }>('device.get_devices', this.buildDeviceParams('tool', 1, 1000, filters));
+    const tools = data?.populatedTools || [];
     return {
-      populatedTools: data.populatedTools || [],
-      total: data.populatedTools?.length || 0,
+      populatedTools: tools,
+      total: data?.pagination?.total ?? tools.length,
     };
   }
 
@@ -298,20 +353,13 @@ class DeviceService {
     limit: number = 20,
     filters?: SearchFilterParams
   ): Promise<{ populatedPhones: Phone[]; pagination: PaginationState }> {
-    const params: ApiParams = { page, limit };
-    if (filters?.search) params.search = filters.search;
-    if (filters?.status) params.status = filters.status;
-    if (filters?.manufacturer) params.manufacturer = filters.manufacturer;
-    if (filters?.type) params.type = filters.type;
-    if (filters?.releaseYear) params.releaseYear = filters.releaseYear;
-
-    const queryString = new URLSearchParams(params as any).toString();
-    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/phones?${queryString}`);
-    const data = await response.json();
-
+    const data = await this.invGet<{ populatedPhones?: Phone[]; pagination?: PaginationState }>(
+      'device.get_devices',
+      this.buildDeviceParams('phone', page, limit, filters)
+    );
     return {
-      populatedPhones: data.populatedPhones || [],
-      pagination: data.pagination || {},
+      populatedPhones: data?.populatedPhones || [],
+      pagination: data?.pagination || ({} as PaginationState),
     };
   }
 
@@ -324,9 +372,20 @@ class DeviceService {
     yearRange: [number, number];
   }> {
     try {
-      const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/${deviceType}s/filters`);
-      const data = await response.json();
-      return data;
+      const data = await this.invGet<{
+        statuses?: string[];
+        types?: string[];
+        manufacturers?: string[];
+        departments?: string[];
+        yearRange?: [number, number];
+      }>('device.get_device_filters', { device_type: deviceType });
+      return {
+        statuses: data?.statuses || [],
+        types: data?.types || [],
+        manufacturers: data?.manufacturers || [],
+        departments: data?.departments || [],
+        yearRange: data?.yearRange || [2015, 2024],
+      };
     } catch (error) {
       console.error('Error fetching filter options:', error);
       // Return fallback data if API fails
@@ -343,9 +402,11 @@ class DeviceService {
   // Get device by ID (updated endpoint)
   async getDeviceById(deviceType: DeviceType, id: string): Promise<Device | null> {
     try {
-      const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/${deviceType}s/${id}`);
-      const data = await response.json();
-      return data;
+      const data = await this.invGet<Device>('device.get_device_by_id', {
+        device_type: deviceType,
+        device_id: id,
+      });
+      return data || null;
     } catch (error) {
       console.error('Error fetching device by ID:', error);
       return null;
@@ -374,15 +435,10 @@ class DeviceService {
       };
     }
   ): Promise<Device> {
-    const response = await this.makeApiCall(
-      `${INVENTORY_API_BASE_URL}/api/inventory/${deviceType}s`,
-      {
-        method: 'POST',
-        body: JSON.stringify(deviceData),
-      }
-    );
-    const data = await response.json();
-    return data;
+    return this.invPost<Device>('device.create_device', {
+      device_type: deviceType,
+      ...deviceData,
+    });
   }
 
   // Get device statistics
@@ -393,9 +449,18 @@ class DeviceService {
     broken: number;
   }> {
     try {
-      const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/${deviceType}s/statistics`);
-      const data = await response.json();
-      return data;
+      const data = await this.invGet<{
+        total?: number;
+        active?: number;
+        standby?: number;
+        broken?: number;
+      }>('device.get_device_statistics', { device_type: deviceType });
+      return {
+        total: data?.total || 0,
+        active: data?.active || 0,
+        standby: data?.standby || 0,
+        broken: data?.broken || 0,
+      };
     } catch (error) {
       console.error('Error fetching device statistics:', error);
       return { total: 0, active: 0, standby: 0, broken: 0 };
@@ -405,9 +470,12 @@ class DeviceService {
   // Get device activities
   async getDeviceActivities(deviceType: DeviceType, deviceId: string): Promise<any[]> {
     try {
-      const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/activity/${deviceType}/${deviceId}`);
-      const data = await response.json();
-      return data || [];
+      const data = await this.invGet<any[] | { data?: any[] }>('activity.get_activities', {
+        entity_type: deviceType,
+        entity_id: deviceId,
+      });
+      if (Array.isArray(data)) return data;
+      return data?.data || [];
     } catch (error) {
       console.error('Error fetching device activities:', error);
       return [];
@@ -448,23 +516,17 @@ class DeviceService {
       updatedBy: updatedBy || 'Không xác định',
     };
 
-    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/activity`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-
-    const data = await response.json();
-    return data;
+    return this.invPost<any>('activity.add_activity', payload);
   }
 
   // Get device inspections
   async getDeviceInspections(deviceType: DeviceType, deviceId: string): Promise<any[]> {
     try {
-      const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/inspect`, {
-        method: 'GET',
+      const data = await this.invGet<any[] | { data?: any[] }>('inspection.get_inspections', {
+        deviceId,
       });
-      const data = await response.json();
-      return data.data?.filter((inspection: any) => inspection.deviceId === deviceId) || [];
+      const list = Array.isArray(data) ? data : data?.data || [];
+      return list.filter((inspection: any) => inspection.deviceId === deviceId);
     } catch (error) {
       console.error('Error fetching device inspections:', error);
       return [];
@@ -474,9 +536,9 @@ class DeviceService {
   // Get inspection by ID
   async getInspectionById(inspectionId: string): Promise<any> {
     try {
-      const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/inspect/${inspectionId}`);
-      const data = await response.json();
-      return data;
+      return await this.invGet<any>('inspection.get_inspection_by_id', {
+        inspection_id: inspectionId,
+      });
     } catch (error) {
       console.error('Error fetching inspection by ID:', error);
       return null;
@@ -493,32 +555,21 @@ class DeviceService {
       notes?: string;
     }
   ): Promise<any> {
-    const payload = {
+    return this.invPost<any>('inspection.create_inspection', {
       deviceId,
       deviceType,
       inspectionType: inspectionData.inspectionType,
       scheduledDate: inspectionData.scheduledDate,
       notes: inspectionData.notes || '',
-    };
-
-    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/inspect`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
     });
-
-    const data = await response.json();
-    return data;
   }
 
   // Update device inspection
   async updateDeviceInspection(inspectionId: string, updateData: any): Promise<any> {
-    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/inspect/${inspectionId}`, {
-      method: 'PUT',
-      body: JSON.stringify(updateData),
+    return this.invPost<any>('inspection.update_inspection', {
+      inspection_id: inspectionId,
+      ...updateData,
     });
-
-    const data = await response.json();
-    return data;
   }
 
   // Assign device to user
@@ -529,19 +580,16 @@ class DeviceService {
     userName?: string,
     reason?: string
   ): Promise<any> {
-    // Backend expects userId field for new user assignment
-    // Also send userName for display purposes
-    const payload: any = { userId };
+    // Frappe device.assign_device dùng field assignedTo (như web). userName gửi kèm để hiển thị (BE bỏ qua nếu không nhận).
+    const payload: Record<string, unknown> = {
+      device_type: deviceType,
+      device_id: deviceId,
+      assignedTo: userId,
+    };
     if (userName) payload.userName = userName;
     if (reason) payload.reason = reason;
 
-    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/${deviceType}s/${deviceId}/assign`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-
-    const data = await response.json();
-    return data;
+    return this.invPost<any>('device.assign_device', payload);
   }
 
   // Revoke device from user
@@ -551,15 +599,12 @@ class DeviceService {
     reasons: string[],
     status: string = 'Standby'
   ): Promise<any> {
-    const payload = { reasons, status };
-
-    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/${deviceType}s/${deviceId}/revoke`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
+    return this.invPost<any>('device.revoke_device', {
+      device_type: deviceType,
+      device_id: deviceId,
+      reasons,
+      status,
     });
-
-    const data = await response.json();
-    return data;
   }
 
   // Update device status
@@ -570,50 +615,44 @@ class DeviceService {
     brokenReason?: string,
     brokenDescription?: string
   ): Promise<any> {
-    const payload: any = { status };
+    const payload: Record<string, unknown> = {
+      device_type: deviceType,
+      device_id: deviceId,
+      status,
+    };
     if (brokenReason) payload.brokenReason = brokenReason;
     if (brokenDescription) payload.brokenDescription = brokenDescription;
 
-    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/${deviceType}s/${deviceId}/status`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    });
-
-    const data = await response.json();
-    return data;
+    return this.invPost<any>('device.update_device_status', payload);
   }
 
   // Get all rooms
   async getAllRooms(): Promise<any[]> {
     try {
-      const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/rooms`);
-      const data = await response.json();
-      return data.rooms || data.data || [];
+      const data = await this.invGet<{ rooms?: any[]; data?: any[] } | any[]>('room.get_all_rooms');
+      if (Array.isArray(data)) return data;
+      return data?.rooms || data?.data || [];
     } catch (error) {
       console.error('Error fetching rooms:', error);
       return [];
     }
   }
 
-  // Assign device to room
+  // Assign device to room (cập nhật field room qua device.update_device như web)
   async assignDeviceToRoom(deviceType: DeviceType, deviceId: string, roomId: string): Promise<any> {
-    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/${deviceType}s/${deviceId}`, {
-      method: 'PUT',
-      body: JSON.stringify({ room: roomId }),
+    return this.invPost<any>('device.update_device', {
+      device_type: deviceType,
+      device_id: deviceId,
+      room: roomId,
     });
-
-    const data = await response.json();
-    return data;
   }
 
   // Delete/Dispose device
   async deleteDevice(deviceType: DeviceType, deviceId: string): Promise<any> {
-    const response = await this.makeApiCall(`${INVENTORY_API_BASE_URL}/api/inventory/${deviceType}s/${deviceId}`, {
-      method: 'DELETE',
+    return this.invPost<any>('device.delete_device', {
+      device_type: deviceType,
+      device_id: deviceId,
     });
-
-    const data = await response.json();
-    return data;
   }
 
   // Get users for assignment with pagination and search
@@ -621,22 +660,24 @@ class DeviceService {
     page: number = 1,
     limit: number = 20,
     search?: string
-  ): Promise<{ users: any[]; pagination: { page: number; limit: number; total: number; hasNext: boolean } }> {
+  ): Promise<{
+    users: any[];
+    pagination: { page: number; limit: number; total: number; hasNext: boolean };
+  }> {
     try {
-      const params = new URLSearchParams();
-      params.append('page', page.toString());
-      params.append('limit', limit.toString());
-      if (search && search.trim()) {
-        params.append('search', search.trim());
-      }
+      const params: Record<string, unknown> = { page, limit, active: 1 };
+      if (search && search.trim()) params.search = search.trim();
 
-      const url = `${INVENTORY_API_BASE_URL}/api/inventory/user?${params.toString()}`;
-      const response = await this.makeApiCall(url);
-      const data = await response.json();
+      const data = await this.frappeGet<{
+        users?: any[];
+        data?: any[];
+        total?: number;
+        pagination?: { total?: number };
+      }>(`${USER_MGMT_METHOD}.get_users`, params);
 
       // Handle different response formats
-      const users = data.users || data.data || data || [];
-      const total = data.pagination?.total || data.total || users.length;
+      const users = data?.users || data?.data || [];
+      const total = data?.pagination?.total ?? data?.total ?? users.length;
       const hasNext = page * limit < total;
 
       return {
@@ -669,7 +710,11 @@ class DeviceService {
     page: number = 1,
     limit: number = 20
   ): Promise<{ devices: Device[]; pagination: any }> {
-    const result = await this.getDevicesByType(deviceType, {}, { page, limit, total: 0, hasNext: false, hasPrev: false, totalPages: 0, itemsPerPage: limit });
+    const result = await this.getDevicesByType(
+      deviceType,
+      {},
+      { page, limit, total: 0, hasNext: false, hasPrev: false, totalPages: 0, itemsPerPage: limit }
+    );
     return {
       devices: result.populatedLaptops,
       pagination: result.pagination,
@@ -704,10 +749,13 @@ class DeviceService {
 
       // Manufacturer filter - supports array of manufacturers
       if (filter.manufacturer && filter.manufacturer.length > 0) {
-        const manuArray = Array.isArray(filter.manufacturer) ? filter.manufacturer : [filter.manufacturer];
-        if (!device.manufacturer || !manuArray.some(m => 
-          device.manufacturer?.toLowerCase().includes(m.toLowerCase())
-        )) {
+        const manuArray = Array.isArray(filter.manufacturer)
+          ? filter.manufacturer
+          : [filter.manufacturer];
+        if (
+          !device.manufacturer ||
+          !manuArray.some((m) => device.manufacturer?.toLowerCase().includes(m.toLowerCase()))
+        ) {
           return false;
         }
       }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import {
   View,
   Text,
@@ -33,6 +34,7 @@ import {
   hasBookingConflict,
 } from '../../utils/eventTicketUtils';
 import { ADMIN_TICKET_MAX_IMAGES_UPLOAD } from '../../config/administrativeTicketConstants';
+import { API_BASE_URL } from '../../config/constants';
 import { isAxiosError } from 'axios';
 import {
   getAdminTicketCategories,
@@ -44,6 +46,7 @@ import {
   parseFrappeApiError,
   getRoomsByBuilding,
   getAllStudentsForTicket,
+  getAllStaffForTicket,
   getRoomEquipmentForTicket,
   getRoomEventBookings,
   type AdminTicketCategory,
@@ -51,6 +54,7 @@ import {
   type AdminRoomBooking,
   type AdminTicketEquipmentLine,
   type AdminTicketStudentOption,
+  type AdminTicketStaffOption,
 } from '../../services/administrativeTicketService';
 import { getAllBuildings, type Building } from '../../services/buildingService';
 import { getAllAdministrativeAssignments, type AdministrativeSupportAssignment } from '../../services/administrativeSupportService';
@@ -59,6 +63,8 @@ interface ImageItem {
   uri: string;
   type?: string;
   name?: string;
+  /** Tệp tài liệu (không phải ảnh) — hiển thị icon thay vì preview ảnh */
+  isDocument?: boolean;
 }
 
 const ProgressIndicator = ({ step }: { step: number }) => {
@@ -110,6 +116,7 @@ type PickerKey =
   | 'room'
   | 'equipment'
   | 'students'
+  | 'staff'
   | null;
 
 /** Chuẩn hóa chuỗi để tìm không phân biệt dấu (tiếng Việt) */
@@ -144,6 +151,22 @@ function studentMatchesSearch(query: string, item: AdminTicketStudentOption): bo
 /** Ghép thông tin phụ của học sinh (mã + lớp) giống web */
 function formatStudentMeta(item: AdminTicketStudentOption): string {
   return [item.student_code, item.class_title].filter(Boolean).join(' · ');
+}
+
+/** Lọc CBGVNV theo tên, email hoặc phòng ban */
+function staffMatchesSearch(query: string, item: AdminTicketStaffOption): boolean {
+  const q = normalizeSearchText(query);
+  if (!q) return true;
+  return (
+    normalizeSearchText(item.full_name).includes(q) ||
+    normalizeSearchText(item.email || '').includes(q) ||
+    normalizeSearchText(item.department_name || '').includes(q)
+  );
+}
+
+/** Thông tin phụ của CBGVNV: phòng ban (giống web — không hiện email) */
+function formatStaffMeta(item: AdminTicketStaffOption): string {
+  return (item.department_name || '').trim();
 }
 
 function toMysqlFromDate(d: Date): string {
@@ -242,8 +265,10 @@ const TicketCreate = () => {
   const [nonEventRooms, setNonEventRooms] = useState<AdminEventRoomOption[]>([]);
   const [ticketEquipment, setTicketEquipment] = useState<AdminTicketEquipmentLine[]>([]);
   const [ticketStudents, setTicketStudents] = useState<AdminTicketStudentOption[]>([]);
+  const [ticketStaff, setTicketStaff] = useState<AdminTicketStaffOption[]>([]);
   const [loadingRoomDeps, setLoadingRoomDeps] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(false);
+  const [loadingStaff, setLoadingStaff] = useState(false);
   const [loadingRoomBookings, setLoadingRoomBookings] = useState(false);
   const [roomBookings, setRoomBookings] = useState<AdminRoomBooking[]>([]);
   const [originCategory, setOriginCategory] = useState('');
@@ -254,6 +279,7 @@ const TicketCreate = () => {
   const [datetimeTarget, setDatetimeTarget] = useState<'start' | 'end' | null>(null);
   /** Sheet chọn ảnh đính kèm (thay react-native-actions-sheet) */
   const [attachmentSheetVisible, setAttachmentSheetVisible] = useState(false);
+  const [existingAttachmentUrls, setExistingAttachmentUrls] = useState<string[]>([]);
 
   const [ticketData, setTicketData] = useState({
     title: '',
@@ -271,6 +297,7 @@ const TicketCreate = () => {
     related_equipment_id: '',
     related_department_ids: [] as string[],
     related_student_ids: [] as string[],
+    related_staff_ids: [] as string[],
   });
 
   const insets = useSafeAreaInsets();
@@ -365,6 +392,12 @@ const TicketCreate = () => {
     return ticketStudents.filter((s) => studentMatchesSearch(pickerSheetQuery, s));
   }, [picker, ticketStudents, pickerSheetQuery]);
 
+  /** Danh sách CBGVNV trong sheet chọn */
+  const filteredStaffPickerRows = useMemo(() => {
+    if (picker !== 'staff') return [];
+    return ticketStaff.filter((s) => staffMatchesSearch(pickerSheetQuery, s));
+  }, [picker, ticketStaff, pickerSheetQuery]);
+
   useLayoutEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
@@ -410,6 +443,22 @@ const TicketCreate = () => {
             : typeof detail.related_student_ids === 'string' && detail.related_student_ids.trim()
               ? detail.related_student_ids.split(',').map((x) => x.trim()).filter(Boolean)
               : [];
+        const staffIds = (() => {
+          const raw = detail.related_staff_ids;
+          if (Array.isArray(raw)) return raw.map((x) => String(x).trim()).filter(Boolean);
+          if (typeof raw === 'string' && raw.trim()) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) return parsed.map((x) => String(x).trim()).filter(Boolean);
+            } catch {
+              return raw.split(',').map((x) => x.trim()).filter(Boolean);
+            }
+          }
+          if (Array.isArray(detail.related_staff)) {
+            return detail.related_staff.map((s) => String(s.user_id).trim()).filter(Boolean);
+          }
+          return [];
+        })();
         setOriginCategory(detail.category || '');
         setTicketData((prev) => ({
           ...prev,
@@ -428,7 +477,21 @@ const TicketCreate = () => {
             ? detail.related_department_ids
             : [],
           related_student_ids: studentIds,
+          related_staff_ids: staffIds,
         }));
+        {
+          const rawAttachments = (
+            detail as { attachments?: Array<string | { url?: string }> }
+          ).attachments;
+          const urls = Array.isArray(rawAttachments)
+            ? rawAttachments
+                .map((a) => (typeof a === 'string' ? a : a?.url || ''))
+                .filter((u): u is string => Boolean(u))
+            : [];
+          setExistingAttachmentUrls(
+            urls.length ? urls : detail.attachment ? [detail.attachment] : [],
+          );
+        }
       } catch (e) {
         console.error('load edit administrative ticket', e);
         Alert.alert('Lỗi', 'Không thể tải dữ liệu ticket để chỉnh sửa');
@@ -487,6 +550,26 @@ const TicketCreate = () => {
       }
     };
     loadAllStudents();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadAllStaff = async () => {
+      setLoadingStaff(true);
+      try {
+        const staff = await getAllStaffForTicket();
+        if (!cancelled) setTicketStaff(staff);
+      } catch (e) {
+        console.error('load all staff for ticket', e);
+        if (!cancelled) setTicketStaff([]);
+      } finally {
+        if (!cancelled) setLoadingStaff(false);
+      }
+    };
+    loadAllStaff();
     return () => {
       cancelled = true;
     };
@@ -647,18 +730,23 @@ const TicketCreate = () => {
     try {
       setLoading(true);
 
-      let attachmentUrl: string | undefined;
-      if (ticketData.images.length > 0) {
-        const img = ticketData.images[0];
-        const uriParts = img.uri.split('/');
-        const fileName = uriParts[uriParts.length - 1] || 'attach.jpg';
-        const ext = fileName.split('.').pop()?.toLowerCase();
-        const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
-        attachmentUrl = await uploadAdminTicketAttachment(img.uri, fileName, mime);
-        if (ticketData.images.length > 1) {
-          console.warn('[TicketCreate] Chỉ gửi file đầu tiên làm attachment ticket HC');
-        }
-      }
+      const newAttachmentUrls = await Promise.all(
+        ticketData.images.map((img) => {
+          const uriParts = img.uri.split('/');
+          const fileName = img.name || uriParts[uriParts.length - 1] || 'attach.jpg';
+          const ext = fileName.split('.').pop()?.toLowerCase();
+          const mime =
+            img.type ||
+            (ext === 'png'
+              ? 'image/png'
+              : ext === 'jpg' || ext === 'jpeg'
+                ? 'image/jpeg'
+                : 'application/octet-stream');
+          return uploadAdminTicketAttachment(img.uri, fileName, mime);
+        }),
+      );
+      const attachmentUrls = [...existingAttachmentUrls, ...newAttachmentUrls];
+      const attachmentUrl: string | undefined = attachmentUrls[0];
 
       const areaForPic = isEventCategory
         ? ticketData.event_building_id.trim()
@@ -670,6 +758,8 @@ const TicketCreate = () => {
         related_equipment_id: ticketData.related_equipment_id.trim() || undefined,
         related_student_ids:
           ticketData.related_student_ids.length > 0 ? ticketData.related_student_ids : undefined,
+        related_staff_ids:
+          ticketData.related_staff_ids.length > 0 ? ticketData.related_staff_ids : undefined,
       };
       if (isEditMode && editTicketId) {
         const updated = await updateAdminTicket({
@@ -680,6 +770,7 @@ const TicketCreate = () => {
           notes: ticketData.notes.trim(),
           area_title: areaForPic,
           attachment: attachmentUrl,
+          attachments: attachmentUrls,
           is_event_facility: isEventCategory,
           room_id: !isEventCategory ? ticketData.room_id.trim() : '',
           event_building_id: isEventCategory ? ticketData.event_building_id.trim() : '',
@@ -709,6 +800,7 @@ const TicketCreate = () => {
         area_title: areaForPic,
         priority: ticketData.priority || 'Medium',
         attachment: attachmentUrl,
+        attachments: attachmentUrls,
         is_event_facility: isEventCategory,
         event_building_id: isEventCategory ? ticketData.event_building_id.trim() : undefined,
         event_room_id: isEventCategory ? ticketData.event_room_id.trim() : undefined,
@@ -791,6 +883,18 @@ const TicketCreate = () => {
     });
   }, []);
 
+  const toggleStaff = useCallback((id: string) => {
+    setTicketData((prev) => {
+      const has = prev.related_staff_ids.includes(id);
+      return {
+        ...prev,
+        related_staff_ids: has
+          ? prev.related_staff_ids.filter((x) => x !== id)
+          : [...prev.related_staff_ids, id],
+      };
+    });
+  }, []);
+
   const pickFromCamera = async () => {
     try {
       setLoading(true);
@@ -856,6 +960,50 @@ const TicketCreate = () => {
     }
   };
 
+  const pickDocument = async () => {
+    try {
+      setAttachmentSheetVisible(false);
+      if (ticketData.images.length >= ADMIN_TICKET_MAX_IMAGES_UPLOAD) {
+        Alert.alert('Thông báo', `Tối đa ${ADMIN_TICKET_MAX_IMAGES_UPLOAD} tệp đính kèm`);
+        return;
+      }
+      setTimeout(async () => {
+        try {
+          const result = await DocumentPicker.getDocumentAsync({
+            copyToCacheDirectory: true,
+            multiple: true,
+          });
+          if ((result as { canceled?: boolean }).canceled) return;
+          const assets =
+            (result as { assets?: Array<{ uri: string; name?: string; mimeType?: string }> }).assets ||
+            [];
+          if (!assets.length) return;
+          const remaining = ADMIN_TICKET_MAX_IMAGES_UPLOAD - ticketData.images.length;
+          const newFiles: ImageItem[] = assets
+            .slice(0, Math.max(0, remaining))
+            .filter((a) => Boolean(a?.uri))
+            .map((a) => {
+              const mime = a.mimeType || 'application/octet-stream';
+              return {
+                uri: a.uri,
+                name: a.name || a.uri.split('/').pop() || 'file',
+                type: mime,
+                isDocument: !mime.startsWith('image/'),
+              };
+            });
+          if (newFiles.length) {
+            setTicketData((prev) => ({ ...prev, images: [...prev.images, ...newFiles] }));
+          }
+        } catch (e) {
+          console.error('pick document', e);
+          Alert.alert('Lỗi', 'Không thể chọn tệp');
+        }
+      }, 400);
+    } catch {
+      /* noop */
+    }
+  };
+
   const renderStepOne = () => (
     <View className="flex-1 items-center justify-center">
       <Text className="mb-2 w-[80%] text-center font-bold text-xl text-gray-800">
@@ -903,6 +1051,7 @@ const TicketCreate = () => {
                   related_equipment_id: '',
                   related_department_ids: [],
                   related_student_ids: [],
+                  related_staff_ids: [],
                 }));
               }}>
               <Text
@@ -1133,6 +1282,21 @@ const TicketCreate = () => {
           </Text>
         </TouchableOpacity>
       ) : null}
+      {!isEventCategory && ticketData.category ? (
+        <TouchableOpacity
+          className="mb-3 rounded-xl border border-gray-200 p-3"
+          onPress={() => setPicker('staff')}
+          disabled={loadingStaff}>
+          <Text className="text-gray-500">CBGVNV liên quan (tuỳ chọn)</Text>
+          <Text className="mt-1 font-medium">
+            {ticketData.related_staff_ids.length > 0
+              ? `${ticketData.related_staff_ids.length} CBGVNV`
+              : loadingStaff
+                ? 'Đang tải danh sách CBGVNV...'
+                : 'Chọn CBGVNV'}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
 
       <View className="mb-3 rounded-xl border border-gray-200 bg-white p-3">
         <Text className="mb-2 font-semibold text-[#002147]">Lịch đặt phòng</Text>
@@ -1255,22 +1419,66 @@ const TicketCreate = () => {
         className="mb-4 items-center justify-center rounded-xl border-2 border-dashed border-gray-300 p-6"
         onPress={() => setAttachmentSheetVisible(true)}>
         <Ionicons name="cloud-upload-outline" size={40} color="#999" />
-        <Text className="mt-3 text-base text-gray-600">Chọn ảnh đính kèm (tối đa 1 file dùng cho ticket)</Text>
+        <Text className="mt-3 text-base text-gray-600">Chọn tệp đính kèm (ảnh / tài liệu)</Text>
       </TouchableOpacity>
+      {existingAttachmentUrls.length > 0 && (
+        <ScrollView horizontal className="mb-4 flex-row">
+          {existingAttachmentUrls.map((url, index) => {
+            const fullUrl = url.startsWith('http')
+              ? url
+              : `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+            const isImage = /\.(jpg|jpeg|png|gif|webp|bmp|heic|heif)(\?|$)/i.test(url);
+            const fileName = decodeURIComponent(url.split('?')[0].split('/').pop() || 'file');
+            return (
+              <View key={`exist-${index}`} className="relative mr-2 h-[100px] w-[100px]">
+                {isImage ? (
+                  <Image source={{ uri: fullUrl }} className="h-full w-full rounded-lg" />
+                ) : (
+                  <View className="h-full w-full items-center justify-center rounded-lg bg-gray-100 p-1">
+                    <Ionicons name="document-outline" size={28} color="#757575" />
+                    <Text className="mt-1 text-center text-xs text-gray-600" numberOfLines={2}>
+                      {fileName}
+                    </Text>
+                  </View>
+                )}
+                <TouchableOpacity
+                  className="absolute right-1 top-1 rounded-full bg-black/60 p-1"
+                  onPress={() =>
+                    setExistingAttachmentUrls((prev) => prev.filter((u) => u !== url))
+                  }>
+                  <Ionicons name="close" size={16} color="white" />
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </ScrollView>
+      )}
       {ticketData.images.length > 0 && (
         <ScrollView horizontal className="mb-4 flex-row">
-          {ticketData.images.map((image, index) => (
-            <View key={index} className="relative mr-2 h-[100px] w-[100px]">
-              <Image source={{ uri: image.uri }} className="h-full w-full rounded-lg" />
-              <TouchableOpacity
-                className="absolute right-1 top-1 rounded-full bg-black/60 p-1"
-                onPress={() =>
-                  setTicketData((p) => ({ ...p, images: p.images.filter((_, i) => i !== index) }))
-                }>
-                <Ionicons name="close" size={16} color="white" />
-              </TouchableOpacity>
-            </View>
-          ))}
+          {ticketData.images.map((image, index) => {
+            const isImage = !image.isDocument && !(image.type && !image.type.startsWith('image/'));
+            return (
+              <View key={index} className="relative mr-2 h-[100px] w-[100px]">
+                {isImage ? (
+                  <Image source={{ uri: image.uri }} className="h-full w-full rounded-lg" />
+                ) : (
+                  <View className="h-full w-full items-center justify-center rounded-lg bg-gray-100 p-1">
+                    <Ionicons name="document-outline" size={28} color="#757575" />
+                    <Text className="mt-1 text-center text-xs text-gray-600" numberOfLines={2}>
+                      {image.name || 'Tệp'}
+                    </Text>
+                  </View>
+                )}
+                <TouchableOpacity
+                  className="absolute right-1 top-1 rounded-full bg-black/60 p-1"
+                  onPress={() =>
+                    setTicketData((p) => ({ ...p, images: p.images.filter((_, i) => i !== index) }))
+                  }>
+                  <Ionicons name="close" size={16} color="white" />
+                </TouchableOpacity>
+              </View>
+            );
+          })}
         </ScrollView>
       )}
     </View>
@@ -1339,7 +1547,17 @@ const TicketCreate = () => {
           {step === 5 && (
             <TouchableOpacity
               className="w-full rounded-full bg-[#FF5733] px-6 py-2.5"
-              onPress={() => navigation.navigate(ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST)}>
+              onPress={() =>
+                // Reset stack: bỏ màn tạo ticket khỏi lịch sử để nút back ở danh sách về Trang chủ,
+                // đồng thời remount danh sách (load lại để thấy ticket vừa tạo).
+                navigation.reset({
+                  index: 1,
+                  routes: [
+                    { name: ROUTES.SCREENS.MAIN },
+                    { name: ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST },
+                  ],
+                })
+              }>
               <Text className="text-center font-bold text-lg text-white">Về danh sách</Text>
             </TouchableOpacity>
           )}
@@ -1352,7 +1570,7 @@ const TicketCreate = () => {
           keyboardAvoiding={false}
           bottomPaddingExtra={8}>
           <View className="p-4">
-            <Text className="mb-3 text-center font-bold text-xl text-[#002147]">Ảnh đính kèm</Text>
+            <Text className="mb-3 text-center font-bold text-xl text-[#002147]">Tệp đính kèm</Text>
             <View className="mb-3 overflow-hidden rounded-xl border border-gray-200">
               <TouchableOpacity
                 className="flex-row items-center border-b border-gray-100 px-4 py-4"
@@ -1360,9 +1578,15 @@ const TicketCreate = () => {
                 <Ionicons name="camera-outline" size={26} color="#FF5733" />
                 <Text className="ml-3 text-base font-medium text-[#002147]">Chụp ảnh</Text>
               </TouchableOpacity>
-              <TouchableOpacity className="flex-row items-center px-4 py-4" onPress={pickFromLibrary}>
+              <TouchableOpacity
+                className="flex-row items-center border-b border-gray-100 px-4 py-4"
+                onPress={pickFromLibrary}>
                 <Ionicons name="images-outline" size={26} color="#FF5733" />
                 <Text className="ml-3 text-base font-medium text-[#002147]">Chọn từ thư viện</Text>
+              </TouchableOpacity>
+              <TouchableOpacity className="flex-row items-center px-4 py-4" onPress={pickDocument}>
+                <Ionicons name="document-attach-outline" size={26} color="#FF5733" />
+                <Text className="ml-3 text-base font-medium text-[#002147]">Chọn tệp (tài liệu)</Text>
               </TouchableOpacity>
             </View>
             <TouchableOpacity
@@ -1506,6 +1730,73 @@ const TicketCreate = () => {
                   {ticketStudents.length === 0
                     ? 'Không có học sinh'
                     : 'Không tìm thấy kết quả'}
+                </Text>
+              }
+            />
+          </View>
+          <TouchableOpacity className="rounded-full bg-gray-200 py-3" onPress={() => setPicker(null)}>
+            <Text className="text-center font-semibold text-lg text-[#757575]">Xong</Text>
+          </TouchableOpacity>
+        </View>
+      </BottomSheetModal>
+
+      <BottomSheetModal
+        visible={picker === 'staff'}
+        onClose={() => setPicker(null)}
+        maxHeightPercent={78}
+        keyboardAvoiding
+        bottomPaddingExtra={8}>
+        <View className="p-4">
+          <Text className="mb-3 text-center font-bold text-xl text-[#002147]">CBGVNV liên quan</Text>
+          <View className="mb-3 flex-row items-center rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+            <Ionicons name="search-outline" size={20} color="#9CA3AF" />
+            <TextInput
+              className="ml-2 flex-1 py-1 text-base text-[#002147]"
+              placeholder="Tìm theo tên hoặc phòng ban..."
+              placeholderTextColor="#9CA3AF"
+              value={pickerSheetQuery}
+              onChangeText={setPickerSheetQuery}
+              returnKeyType="search"
+            />
+            {pickerSheetQuery.length > 0 ? (
+              <TouchableOpacity onPress={() => setPickerSheetQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={22} color="#9CA3AF" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <View className="mb-3 overflow-hidden rounded-xl border border-gray-200">
+            <FlatList
+              data={filteredStaffPickerRows}
+              keyExtractor={(s) => s.user_id}
+              style={{ maxHeight: listMaxH }}
+              keyboardShouldPersistTaps="handled"
+              extraData={ticketData.related_staff_ids}
+              renderItem={({ item, index }) => {
+                const sel = ticketData.related_staff_ids.includes(item.user_id);
+                const meta = formatStaffMeta(item);
+                return (
+                  <TouchableOpacity
+                    className={`flex-row items-center px-3 py-3 ${
+                      index < filteredStaffPickerRows.length - 1 ? 'border-b border-gray-100' : ''
+                    }`}
+                    onPress={() => toggleStaff(item.user_id)}>
+                    <Ionicons
+                      name={sel ? 'checkbox' : 'square-outline'}
+                      size={22}
+                      color={sel ? '#FF5733' : '#999'}
+                    />
+                    <View className="ml-2 flex-1">
+                      <Text className="text-base font-medium text-[#002147]">
+                        {normalizeVietnameseName(item.full_name)}
+                      </Text>
+                      {meta ? <Text className="mt-0.5 text-sm text-gray-500">{meta}</Text> : null}
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+              ListEmptyComponent={
+                <Text className="px-3 py-4 text-center text-sm text-gray-500">
+                  {ticketStaff.length === 0 ? 'Không có CBGVNV' : 'Không tìm thấy kết quả'}
                 </Text>
               }
             />

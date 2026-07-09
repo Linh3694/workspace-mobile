@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Image, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, Image, RefreshControl, Linking } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { TouchableOpacity } from '../../../components/Common';
 import Modal from 'react-native-modal';
 
@@ -68,15 +69,37 @@ const TicketInformation: React.FC<TicketInformationProps> = ({ ticketId, activeT
     );
   }
 
-  const attachmentUrl = ticket.attachment
-    ? ticket.attachment.startsWith('http')
-      ? ticket.attachment
-      : `${API_BASE_URL}${ticket.attachment.startsWith('/') ? '' : '/'}${ticket.attachment}`
-    : '';
+  const resolveAttachmentUrl = (url: string) =>
+    url.startsWith('http') ? url : `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+
+  const attachmentList: { url: string; filename: string; isImage: boolean }[] = (() => {
+    const raw = ticket.attachments;
+    let urls: string[] = [];
+    if (Array.isArray(raw) && raw.length > 0) {
+      urls = raw.map((a) => a?.url || '').filter(Boolean);
+    } else if (ticket.attachment) {
+      urls = [ticket.attachment];
+    }
+    return urls.map((url) => ({
+      url: resolveAttachmentUrl(url),
+      filename: decodeURIComponent(url.split('?')[0].split('/').pop() || 'file'),
+      isImage: /\.(jpg|jpeg|png|gif|webp|bmp|heic|heif)(\?|$)/i.test(url),
+    }));
+  })();
   const isEventTicket = !!ticket.is_event_facility;
   const relatedStudentsText =
     ticket.related_students && ticket.related_students.length > 0
       ? ticket.related_students.map((s) => `${s.student_name} (${s.student_code})`).join(', ')
+      : 'Không có';
+  const relatedStaffText =
+    ticket.related_staff && ticket.related_staff.length > 0
+      ? ticket.related_staff
+          .map((s) =>
+            s.department_name
+              ? `${normalizeVietnameseName(s.full_name)} (${s.department_name})`
+              : normalizeVietnameseName(s.full_name),
+          )
+          .join(', ')
       : 'Không có';
 
   return (
@@ -175,18 +198,37 @@ const TicketInformation: React.FC<TicketInformationProps> = ({ ticketId, activeT
         </View>
 
         <View className="mb-3">
-          <Text className="font-semibold text-base text-[#002855]">Ảnh</Text>
+          <Text className="font-semibold text-base text-[#002855]">CBGVNV liên quan</Text>
+          <Text className="mt-1 font-medium text-base text-[#757575]">{relatedStaffText}</Text>
+        </View>
+
+        <View className="mb-3">
+          <Text className="font-semibold text-base text-[#002855]">Đính kèm</Text>
           <View className="mt-1 flex-row flex-wrap items-center gap-2">
-            {attachmentUrl ? (
-              <TouchableOpacity onPress={() => setPreviewImage(attachmentUrl)}>
-                <Image
-                  source={{ uri: attachmentUrl }}
-                  className="h-20 w-20 rounded-lg"
-                  onError={(e) => console.error('Lỗi tải ảnh:', e.nativeEvent.error)}
-                />
-              </TouchableOpacity>
+            {attachmentList.length > 0 ? (
+              attachmentList.map((file, index) =>
+                file.isImage ? (
+                  <TouchableOpacity key={index} onPress={() => setPreviewImage(file.url)}>
+                    <Image
+                      source={{ uri: file.url }}
+                      className="h-20 w-20 rounded-lg"
+                      onError={(e) => console.error('Lỗi tải ảnh:', e.nativeEvent.error)}
+                    />
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    key={index}
+                    onPress={() => Linking.openURL(file.url)}
+                    className="h-20 w-20 items-center justify-center rounded-lg bg-gray-100 p-1">
+                    <Ionicons name="document-outline" size={26} color="#757575" />
+                    <Text className="mt-1 text-center text-xs text-[#757575]" numberOfLines={2}>
+                      {file.filename}
+                    </Text>
+                  </TouchableOpacity>
+                ),
+              )
             ) : (
-              <Text className="font-medium text-sm text-[#757575]">Không có ảnh đính kèm</Text>
+              <Text className="font-medium text-sm text-[#757575]">Không có đính kèm</Text>
             )}
           </View>
         </View>

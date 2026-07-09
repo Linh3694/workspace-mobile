@@ -39,6 +39,12 @@ import { normalizeVietnameseName } from '../../../utils/nameFormatter';
 import { getAdminTicketStatusLabel } from '../../../config/administrativeTicketConstants';
 import { getFullImageUrl } from '../../../utils/imageUtils';
 
+// Auth
+import { useAuth } from '../../../context/AuthContext';
+
+// Components
+import SubTaskSection from './SubTaskSection';
+
 // Helper function để kiểm tra URL có phải là video không
 const isVideoUrl = (url: string): boolean => {
   if (!url) return false;
@@ -135,6 +141,13 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
   const { subTasks } = useAdministrativeTicketSubTasks();
   const { messages, messagesLoading } = useAdministrativeTicketMessages();
   const { refreshTicket, fetchMessages } = useAdministrativeTicketActions();
+
+  // CBNV hỗ trợ hành chính: được quản lý công việc con kể cả trên ticket mình tạo
+  // (khớp web — section subtask hiện theo VAI TRÒ chứ không theo người tạo ticket).
+  const { user } = useAuth();
+  const isAdminTicketStaff =
+    Array.isArray(user?.roles) &&
+    user.roles.some((r) => ['SIS Administrative', 'Mobile Administrative', 'SIS BOD'].includes(r));
 
   // Load messages when ticket changes
   useEffect(() => {
@@ -245,8 +258,10 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
   }
 
   const rawStatus = ticket.status?.toLowerCase().replace(/_/g, ' ') || '';
-  // "waiting for customer" được xem như "processing" để UI đồng nhất cho guest
-  const status = rawStatus === 'waiting for customer' ? 'processing' : rawStatus;
+  // Ticket HC (Frappe) dùng "In Progress"; "waiting for customer" cũng đang xử lý.
+  // Gom cả hai về "processing" để render đúng phần thân (trước đây bỏ trống với In Progress).
+  const status =
+    rawStatus === 'waiting for customer' || rawStatus === 'in progress' ? 'processing' : rawStatus;
   /** Web ERP: admin có thể để Done hoặc Resolved trước khi user đánh giá — cả hai đều cần form phản hồi */
   const isAwaitingUserFeedback = status === 'done' || status === 'resolved';
   const statusTextColor = getStatusTextColor(ticket.status);
@@ -402,7 +417,10 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
                 {renderTechnician()}
               </View>
 
-              {subTasks && subTasks.length > 0 ? (
+              {isAdminTicketStaff ? (
+                // CBNV hỗ trợ: quản lý công việc con (thêm/giao việc/đổi trạng thái/xoá)
+                <SubTaskSection />
+              ) : subTasks && subTasks.length > 0 ? (
                 <View className="mb-4 rounded-xl bg-[#f8f8f8] p-4">
                   <Text className="mb-3 text-base font-bold text-gray-700">
                     Ticket đang được xử lý. Vui lòng chờ kĩ thuật viên hoàn thành các hạng mục sau
@@ -514,9 +532,7 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
                               </TouchableOpacity>
                             ) : (
                               // Image
-                              <TouchableOpacity
-                                key={idx}
-                                onPress={() => setPreviewImage(fullUrl)}>
+                              <TouchableOpacity key={idx} onPress={() => setPreviewImage(fullUrl)}>
                                 <Image
                                   source={{ uri: fullUrl }}
                                   style={{

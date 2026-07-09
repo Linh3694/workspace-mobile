@@ -468,6 +468,13 @@ class PushNotificationService {
           case 'ticket_feedback_received':
             this.handleFeedbackReceivedNotification(data, wasOpened);
             break;
+          // Công việc con (subtask) ticket hành chính — điều hướng tới ticket detail
+          case 'subtask_assigned':
+            this.handleTicketAssignmentNotification(data, wasOpened);
+            break;
+          case 'subtask_status_changed':
+            this.handleTicketStatusChangeNotification(data, wasOpened);
+            break;
           // Parent Portal Feedback actions
           case 'new_feedback':
           case 'feedback_created':

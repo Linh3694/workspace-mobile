@@ -30,20 +30,16 @@ import {
 // Utils & Constants
 import { toast } from '../../../utils/toast';
 import { getAdminTicketStatusLabel } from '../../../config/administrativeTicketConstants';
-import { normalizeVietnameseName } from '../../../utils/nameFormatter';
 import { getFullImageUrl } from '../../../utils/imageUtils';
 
 // Services
 import { sendAdminTicketMessage } from '../../../services/administrativeTicketService';
 
 // Components
-import { TicketStatusSheet, SubTaskStatusSheet } from './TicketModals';
+import { TicketStatusSheet } from './TicketModals';
+import SubTaskSection from './SubTaskSection';
 
-import type { AdminSubTask } from '../../../services/administrativeTicketService';
-import type {
-  AdministrativeSubTaskStatusUi,
-  AdministrativeTicketStatusUi,
-} from '../../../hooks/useAdministrativeTicketStore';
+import type { AdministrativeTicketStatusUi } from '../../../hooks/useAdministrativeTicketStore';
 
 // Helper function để kiểm tra URL có phải là video không
 const isVideoUrl = (url: string): boolean => {
@@ -85,11 +81,7 @@ const ADMIN_STATUS_OPTIONS: AdministrativeTicketStatusUi[] = ['In Progress', 'Do
 
 const normalizeStatus = (status = '') => {
   const lower = status.toLowerCase().replace(/_/g, ' ');
-  if (
-    lower === 'in progress' ||
-    lower === 'processing' ||
-    lower === 'waiting for customer'
-  ) {
+  if (lower === 'in progress' || lower === 'processing' || lower === 'waiting for customer') {
     return 'In Progress';
   }
   if (lower === 'done' || lower === 'completed' || lower === 'resolved') return 'Done';
@@ -118,8 +110,6 @@ const getRatingText = (rating: number): string => {
 };
 
 const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
-  const [showAddSubTask, setShowAddSubTask] = useState(false);
-  const [newSubTaskTitle, setNewSubTaskTitle] = useState('');
   const [showCancelReasonInput, setShowCancelReasonInput] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<AdministrativeTicketStatusUi>('In Progress');
@@ -139,11 +129,9 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
   const { ticket, loading, refreshing } = useAdministrativeTicketData();
   const { subTasks, hasIncompleteSubTasks } = useAdministrativeTicketSubTasks();
   const { messages, messagesLoading } = useAdministrativeTicketMessages();
-  const { updateStatus, addSubTask, updateSubTaskStatus, refreshTicket, fetchMessages } =
-    useAdministrativeTicketActions();
-  const { openTicketStatusSheet, openSubTaskStatusModal } = useAdministrativeTicketUIActions();
+  const { updateStatus, refreshTicket, fetchMessages } = useAdministrativeTicketActions();
+  const { openTicketStatusSheet } = useAdministrativeTicketUIActions();
   const actionLoading = useAdministrativeTicketStore((state) => state.actionLoading);
-  const ui = useAdministrativeTicketStore((state) => state.ui);
 
   // Load messages when ticket changes
   useEffect(() => {
@@ -161,9 +149,7 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
 
   const ticketStatus = normalizeStatus(ticket?.status || '');
   const isTerminalStatus =
-    ticketStatus === 'Cancelled' ||
-    ticketStatus === 'Closed' ||
-    ticket?.status === 'Resolved';
+    ticketStatus === 'Cancelled' || ticketStatus === 'Closed' || ticket?.status === 'Resolved';
 
   // ============================================================================
   // Handlers
@@ -224,39 +210,6 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
     await updateStatusAPI('Cancelled', cancelReason.trim());
   };
 
-  const handleAddSubTask = async () => {
-    if (!newSubTaskTitle.trim()) {
-      toast.error('Tiêu đề không được để trống');
-      return;
-    }
-
-    const success = await addSubTask(newSubTaskTitle);
-    if (success) {
-      setNewSubTaskTitle('');
-      setShowAddSubTask(false);
-      toast.success('Thêm thành công!');
-    } else {
-      toast.error('Lỗi thêm subtask');
-    }
-  };
-
-  const handleUpdateSubTaskStatus = async (subTaskId: string, newStatus: string) => {
-    const success = await updateSubTaskStatus(
-      subTaskId,
-      newStatus as AdministrativeSubTaskStatusUi
-    );
-    if (success) {
-      toast.success('Cập nhật thành công!');
-    } else {
-      toast.error('Lỗi cập nhật subtask');
-    }
-  };
-
-  const handleSubTaskPress = (task: AdminSubTask) => {
-    if (isTerminalStatus) return;
-    openSubTaskStatusModal(task);
-  };
-
   // Quick reply handlers
   const handlePickImage = useCallback(async () => {
     try {
@@ -313,16 +266,11 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
 
   const st = (ticket?.status || '').toLowerCase().replace(/_/g, ' ');
   const canSendMessage =
-    st === 'in progress' ||
-    st === 'processing' ||
-    st === 'waiting for customer';
+    st === 'in progress' || st === 'processing' || st === 'waiting for customer';
 
   // Ticket IT dùng Processing/Done; ticket HC (Frappe) dùng In Progress/Done — phải khớp mới hiện luồng trao đổi
   const showMessageThread =
-    canSendMessage ||
-    st === 'done' ||
-    st === 'completed' ||
-    st === 'resolved';
+    canSendMessage || st === 'done' || st === 'completed' || st === 'resolved';
 
   // Handler để scroll đến ô input khi focus
   const handleReplyInputFocus = useCallback(() => {
@@ -441,71 +389,6 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
           </View>
         )}
       </View>
-    );
-  };
-
-  const renderSubTask = (task: SubTask) => {
-    const inProgressTasks = subTasks.filter((t) => t.status === 'In Progress');
-    const isFirstInProgress = inProgressTasks.length > 0 && inProgressTasks[0]._id === task._id;
-
-    // Style based on status
-    let bgColor = '#fff';
-    let textColor = '#222';
-    let textDecorationLine: 'none' | 'line-through' = 'none';
-
-    if (task.status === 'Completed') {
-      bgColor = '#E4EFE6';
-      textColor = '#009483';
-    } else if (task.status === 'Cancelled') {
-      bgColor = '#EBEBEB';
-      textColor = '#757575';
-      textDecorationLine = 'line-through';
-    } else if (task.status === 'In Progress') {
-      if (isFirstInProgress) {
-        bgColor = '#E6EEF6';
-        textColor = '#002855';
-      } else {
-        bgColor = '#EBEBEB';
-        textColor = '#757575';
-      }
-    }
-
-    const statusLabel =
-      task.status === 'In Progress'
-        ? isFirstInProgress
-          ? 'Đang xử lý'
-          : 'Chờ xử lý'
-        : task.status === 'Completed'
-          ? 'Hoàn thành'
-          : 'Đã huỷ';
-
-    return (
-      <TouchableOpacity
-        key={task._id}
-        onPress={() => handleSubTaskPress(task)}
-        disabled={isTerminalStatus}
-        style={{
-          marginBottom: 10,
-          borderRadius: 20,
-          paddingHorizontal: 16,
-          paddingVertical: 12,
-          backgroundColor: bgColor,
-          opacity: isTerminalStatus ? 0.5 : 1,
-        }}>
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}>
-          <Text className="text-lg font-semibold" style={{ color: textColor, textDecorationLine }}>
-            {task.title}
-          </Text>
-          <Text className="text-lg font-semibold" style={{ color: textColor }}>
-            {statusLabel}
-          </Text>
-        </View>
-      </TouchableOpacity>
     );
   };
 
@@ -840,55 +723,7 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
               </Text>
             </View>
           ) : (
-            <View className="mb-2 mt-6 rounded-2xl bg-[#f8f8f8] p-4">
-              <View className="mb-2 flex-row items-center justify-between">
-                <Text className="text-lg font-semibold">Danh sách công việc</Text>
-                <TouchableOpacity
-                  onPress={() => setShowAddSubTask(true)}
-                  className="rounded-lg px-4">
-                  <Text className="text-3xl font-medium text-primary">+</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Add subtask input */}
-              {showAddSubTask && (
-                <View className="mb-3 flex-row items-center">
-                  <TextInput
-                    value={newSubTaskTitle}
-                    onChangeText={setNewSubTaskTitle}
-                    placeholder="Nhập việc cần làm"
-                    className="mr-2 flex-1 rounded-lg bg-[#ebebeb] p-3"
-                  />
-                  <TouchableOpacity
-                    onPress={handleAddSubTask}
-                    disabled={actionLoading}
-                    className="mr-2 rounded-lg bg-[#009483] px-3 py-2">
-                    {actionLoading ? (
-                      <ActivityIndicator size="small" color="white" />
-                    ) : (
-                      <Text className="font-medium text-white">Thêm</Text>
-                    )}
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setShowAddSubTask(false);
-                      setNewSubTaskTitle('');
-                    }}
-                    className="rounded-lg bg-gray-400 px-3 py-2">
-                    <Text className="font-medium text-white">Huỷ</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {/* Subtask list */}
-              {subTasks.length > 0 ? (
-                subTasks.map(renderSubTask)
-              ) : (
-                <Text className="text-center text-sm font-medium text-gray-500">
-                  Không có subtask
-                </Text>
-              )}
-            </View>
+            <SubTaskSection />
           ))}
 
         {/* Action Sheets */}
@@ -897,16 +732,6 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
           onSelect={(value) => {
             handleUpdateStatus(value);
             setSelectedStatus(value);
-          }}
-        />
-
-        <SubTaskStatusSheet
-          subTask={ui.selectedSubTask}
-          allSubTasks={subTasks}
-          onSelect={(value) => {
-            if (ui.selectedSubTask) {
-              handleUpdateSubTaskStatus(ui.selectedSubTask._id, value);
-            }
           }}
         />
 
