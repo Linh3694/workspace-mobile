@@ -9,7 +9,6 @@ import * as Notifications from 'expo-notifications';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { notificationCenterService } from '../../services/notificationCenterService';
-import { postService } from '../../services/postService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ROUTES } from '../../constants/routes';
 import { NOTIFICATION_INBOX_REFRESH_EVENT } from '../../providers/NotificationInboxSocketProvider';
@@ -613,7 +612,9 @@ const NotificationsScreen = () => {
         return;
       }
 
-      // === WISLIFE — tab Social (ROUTES.MAIN.WISLIFE), mở PostDetail khi có postId ===
+      // === WISLIFE — module đã ẩn khỏi bottom tab (SIS-109) ===
+      // Không còn tab Social/Wislife: đang ở Trung tâm thông báo nên giữ nguyên,
+      // không điều hướng vào tab/màn không còn hiển thị. Giữ code để bật lại khi mở lại module.
       const wislifeTypes = [
         'wislife_new_post',
         'wislife_post_reaction',
@@ -624,23 +625,7 @@ const NotificationsScreen = () => {
       ];
 
       if (wislifeTypes.includes(data?.type)) {
-        if (data?.postId) {
-          try {
-            const post = await postService.getPostById(data.postId);
-            (navigation as any).navigate('PostDetail', { post });
-          } catch (e) {
-            console.warn('[Notifications] Wislife: không tải post, mở tab Social:', e);
-            (navigation as any).navigate(ROUTES.SCREENS.MAIN, {
-              screen: ROUTES.MAIN.WISLIFE,
-              params: { postId: data.postId, commentId: data.commentId },
-            });
-          }
-          return;
-        }
-        (navigation as any).navigate(ROUTES.SCREENS.MAIN, {
-          screen: ROUTES.MAIN.WISLIFE,
-          params: {},
-        });
+        console.log('[Notifications] Wislife đã ẩn — giữ nguyên ở Trung tâm thông báo');
         return;
       }
 

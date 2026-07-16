@@ -2,7 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { io, type Socket } from 'socket.io-client';
 
 import { BASE_URL } from '../config/constants';
+import { normalizeCampusIdForBackend } from '../utils/campusIdUtils';
 import type {
+  AddableTeacher,
   ChatAttachment,
   ChatConversation,
   ChatEmoji,
@@ -33,20 +35,34 @@ export function resolveChatAttachmentUrl(url: string): string {
 class ChatService {
   private socket: Socket | null = null;
 
+  /**
+   * Campus đang chọn — social-service relay sang Frappe (has_campus_permission).
+   * Thiếu campus → Frappe fallback theo campus role → 403 khi đọc SIS Class/chat scope.
+   * Web luôn gửi header này (X-Campus-Id); mobile phải gửi tương tự.
+   */
+  private async getCampusId(): Promise<string> {
+    const raw = (await AsyncStorage.getItem('currentCampusId')) || '';
+    return normalizeCampusIdForBackend(raw);
+  }
+
   private async getAuthHeaders(): Promise<Record<string, string>> {
     const token = await AsyncStorage.getItem('authToken');
+    const campusId = await this.getCampusId();
     const h: Record<string, string> = {
       Accept: 'application/json',
       'Content-Type': 'application/json',
     };
     if (token) h.Authorization = `Bearer ${token}`;
+    if (campusId) h['X-Campus-Id'] = campusId;
     return h;
   }
 
   private async getMultipartHeaders(): Promise<Record<string, string>> {
     const token = await AsyncStorage.getItem('authToken');
+    const campusId = await this.getCampusId();
     const h: Record<string, string> = { Accept: 'application/json' };
     if (token) h.Authorization = `Bearer ${token}`;
+    if (campusId) h['X-Campus-Id'] = campusId;
     return h;
   }
 
@@ -105,11 +121,13 @@ class ChatService {
     schoolYearId: string,
   ): Promise<ClassChatScopePayload | null> {
     const token = await AsyncStorage.getItem('authToken');
+    const campusId = await this.getCampusId();
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'Content-Type': 'application/json',
     };
     if (token) headers.Authorization = `Bearer ${token}`;
+    if (campusId) headers['X-Campus-Id'] = campusId;
     const res = await fetch(
       `${BASE_URL}/api/method/erp.api.erp_sis.chat_scope.get_class_chat_scope_for_teacher`,
       {
@@ -303,6 +321,44 @@ class ChatService {
     await this.parseJson(res);
   }
 
+  /** GV bộ môn có thể thêm vào nhóm (chỉ GVCN/Phó CN gọi được — BE tự chặn 403). */
+  async getAddableTeachers(conversationId: string): Promise<AddableTeacher[]> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(
+      `${BASE_URL}/api/social/chat/conversations/${encodeURIComponent(conversationId)}/members/addable`,
+      { headers }
+    );
+    return this.parseJson<AddableTeacher[]>(res);
+  }
+
+  /** Thêm 1 GV bộ môn vào nhóm — trả về conversation đã cập nhật. */
+  async addConversationTeacher(
+    conversationId: string,
+    teacherId: string
+  ): Promise<ChatConversation> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(
+      `${BASE_URL}/api/social/chat/conversations/${encodeURIComponent(conversationId)}/members`,
+      { method: 'POST', headers, body: JSON.stringify({ teacherId }) }
+    );
+    return this.parseJson<ChatConversation>(res);
+  }
+
+  /** Gỡ 1 GV bộ môn khỏi nhóm — trả về conversation đã cập nhật. */
+  async removeConversationTeacher(
+    conversationId: string,
+    teacherId: string
+  ): Promise<ChatConversation> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(
+      `${BASE_URL}/api/social/chat/conversations/${encodeURIComponent(
+        conversationId
+      )}/members/${encodeURIComponent(teacherId)}`,
+      { method: 'DELETE', headers }
+    );
+    return this.parseJson<ChatConversation>(res);
+  }
+
   async toggleReaction(
     messageId: string,
     emoji: ChatEmoji
@@ -357,12 +413,13 @@ class ChatService {
   async getSocket(): Promise<Socket | null> {
     const token = await AsyncStorage.getItem('authToken');
     if (!token) return null;
+    const campusId = await this.getCampusId();
     if (!this.socket) {
       this.socket = io(BASE_URL, {
         path: '/api/social/socket.io',
         transports: ['polling', 'websocket'],
-        auth: { token },
-        query: { token },
+        auth: { token, campusId },
+        query: { token, campusId },
         reconnection: true,
         reconnectionAttempts: 10,
         reconnectionDelay: 1000,

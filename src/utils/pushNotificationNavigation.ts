@@ -2,7 +2,6 @@ import type { NavigationContainerRef } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ROUTES } from '../constants/routes';
 import type { RootStackParamList } from '../navigation/AppNavigator';
-import { postService } from '../services/postService';
 
 /** Dữ liệu payload từ FCM/Expo (data của notification) */
 export type PushNotificationPayload = {
@@ -264,7 +263,9 @@ export async function navigateFromPushNotificationData(
     }
   }
 
-  // === WISLIFE — tab thực tế là ROUTES.MAIN.WISLIFE = 'Social' ===
+  // === WISLIFE — module đã ẩn khỏi bottom tab (SIS-109) ===
+  // Không còn tab Social/Wislife nên notification wislife_* rơi về Trung tâm thông báo
+  // thay vì điều hướng vào tab/màn không còn hiển thị. Giữ code để bật lại khi mở lại module.
   const wislifeTypes = [
     'wislife_new_post',
     'wislife_post_reaction',
@@ -273,19 +274,13 @@ export async function navigateFromPushNotificationData(
     'wislife_comment_reaction',
     'wislife_mention',
   ];
-  if (wislifeTypes.includes(data?.type || '') && data.postId) {
-    try {
-      const post = await postService.getPostById(data.postId);
-      nav('PostDetail', { post });
-      return;
-    } catch (e) {
-      console.warn('⚠️ Wislife: không tải được post, mở tab Social:', e);
-      nav(ROUTES.SCREENS.MAIN, {
-        screen: ROUTES.MAIN.WISLIFE,
-        params: { postId: data.postId, commentId: data.commentId },
-      });
-      return;
-    }
+  if (wislifeTypes.includes(data?.type || '')) {
+    console.log('📝 Wislife đã ẩn — mở Trung tâm thông báo thay vì tab Social');
+    nav(ROUTES.SCREENS.MAIN, {
+      screen: ROUTES.MAIN.NOTIFICATIONS,
+      params: data.notificationId ? { notificationId: data.notificationId } : undefined,
+    });
+    return;
   }
 
   // === DEFAULT ===

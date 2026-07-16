@@ -5,7 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
 import React, { useState } from 'react';
 import {
-  FlatList,
   Image,
   Linking,
   Modal,
@@ -20,6 +19,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { resolveChatAttachmentUrl } from '../../../services/chatService';
 import type { ChatAttachment } from '../../../types/chat';
 
+import { ChatImagePreviewModal } from './ChatImagePreviewModal';
+
 import { CHAT_BUBBLE_MAX_WIDTH_RATIO } from '../exchangeChatThreadUtils';
 
 function formatChatFileSize(bytes?: number): string {
@@ -32,9 +33,12 @@ function formatChatFileSize(bytes?: number): string {
 export function ExchangeMessageAttachments({
   attachments,
   isMine,
+  onLongPress,
 }: {
   attachments: ChatAttachment[];
   isMine: boolean;
+  /** Long-press attachment → mở overlay reaction/hành động (giống bubble text). */
+  onLongPress?: () => void;
 }) {
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -77,6 +81,8 @@ export function ExchangeMessageAttachments({
       {images.length === 1 ? (
         <Pressable
           onPress={() => openImage(0)}
+          onLongPress={onLongPress}
+          delayLongPress={420}
           className="overflow-hidden rounded-xl"
           style={{ width: imageMaxW }}>
           <Image
@@ -86,7 +92,12 @@ export function ExchangeMessageAttachments({
           />
         </Pressable>
       ) : images.length > 1 ? (
-        <Pressable onPress={() => openImage(0)} hitSlop={4} style={{ width: imageMaxW }}>
+        <Pressable
+          onPress={() => openImage(0)}
+          onLongPress={onLongPress}
+          delayLongPress={420}
+          hitSlop={4}
+          style={{ width: imageMaxW }}>
           {imageGridRows.map((row, rowIndex) => (
             <View
               key={`row-${rowIndex}`}
@@ -135,6 +146,8 @@ export function ExchangeMessageAttachments({
               ? void Linking.openURL(resolveChatAttachmentUrl(v.url))
               : setPreviewVideo(v)
           }
+          onLongPress={onLongPress}
+          delayLongPress={420}
           className="overflow-hidden rounded-xl"
           style={{ width: videoThumbW }}>
           <View className="relative bg-black/20" style={{ width: videoThumbW, height: videoThumbH }}>
@@ -183,6 +196,8 @@ export function ExchangeMessageAttachments({
         <Pressable
           key={f.url}
           onPress={() => void Linking.openURL(resolveChatAttachmentUrl(f.url))}
+          onLongPress={onLongPress}
+          delayLongPress={420}
           className={`flex-row items-center gap-2 rounded-xl px-3 py-2 ${
             isMine ? 'bg-white/15' : 'bg-white/85'
           }`}
@@ -203,52 +218,11 @@ export function ExchangeMessageAttachments({
       ))}
 
       {previewIndex != null ? (
-        <Modal visible animationType="fade" transparent={false} onRequestClose={() => setPreviewIndex(null)}>
-          <View
-            className="flex-1 bg-black"
-            style={{
-              paddingTop: Math.max(insets.top, 16),
-              paddingBottom: insets.bottom,
-            }}>
-            <View className="h-14 flex-row items-center justify-between px-4">
-              <Text className="font-mulish-semibold text-sm text-white/80">
-                {`${previewIndex + 1}/${images.length}`}
-              </Text>
-              <Pressable
-                onPress={() => setPreviewIndex(null)}
-                hitSlop={12}
-                className="size-11 items-center justify-center rounded-full bg-white/15">
-                <Ionicons name="close" size={22} color="#fff" />
-              </Pressable>
-            </View>
-            <FlatList
-              data={images}
-              horizontal
-              pagingEnabled
-              initialScrollIndex={previewIndex}
-              getItemLayout={(_, index) => ({
-                length: windowWidth,
-                offset: windowWidth * index,
-                index,
-              })}
-              keyExtractor={(item, index) => `${item.url}-${index}`}
-              showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={(event) => {
-                const next = Math.round(event.nativeEvent.contentOffset.x / windowWidth);
-                setPreviewIndex(next);
-              }}
-              renderItem={({ item }) => (
-                <View className="items-center justify-center" style={{ width: windowWidth }}>
-                  <Image
-                    source={{ uri: resolveChatAttachmentUrl(item.url) }}
-                    style={{ width: windowWidth, height: '88%' }}
-                    resizeMode="contain"
-                  />
-                </View>
-              )}
-            />
-          </View>
-        </Modal>
+        <ChatImagePreviewModal
+          images={images}
+          initialIndex={previewIndex}
+          onClose={() => setPreviewIndex(null)}
+        />
       ) : null}
     </View>
   );

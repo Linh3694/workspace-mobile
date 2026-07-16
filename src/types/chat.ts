@@ -60,10 +60,23 @@ export type ChatConversation = {
     avatarUrl?: string;
     /** Môn dạy (GVBM) — từ snapshot social-service. */
     subjects?: Array<{ id?: string; title?: string }>;
+    /** true = GV bộ môn được thêm thủ công (gỡ được); false/undefined = GVCN/Phó CN. */
+    manualAdd?: boolean;
+    /** Có giá trị = đã bị gỡ mềm khỏi nhóm (không hiển thị). */
+    removedAt?: string | null;
   }>;
   /** Tối đa 1 tin ghim trong hội thoại — null nếu không có. */
   pinnedMessage?: PinnedMessageSnapshot | null;
   updatedAt: string;
+};
+
+/** GV bộ môn có thể thêm vào nhóm (đang phân công dạy lớp, chưa ở trong nhóm). */
+export type AddableTeacher = {
+  teacherId: string;
+  name?: string;
+  email?: string;
+  avatarUrl?: string;
+  subjects?: Array<{ id?: string; title?: string }>;
 };
 
 export type ChatAttachmentKind = 'image' | 'file' | 'video';

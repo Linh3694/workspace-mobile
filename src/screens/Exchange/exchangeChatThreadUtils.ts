@@ -31,7 +31,7 @@ export type ChatListRow =
   | { kind: 'message'; key: string; message: ChatMessage }
   | { kind: 'separator'; key: string; label: string };
 
-export type MessageThreadMeta = { showAvatar: boolean; showTimestamp: boolean };
+export type MessageThreadMeta = { showName: boolean; showAvatar: boolean; showTimestamp: boolean };
 
 export function replyQuoteSnippet(m: ChatMessage): string {
   if (m.recalledAt) return 'Tin nhắn đã thu hồi';
@@ -183,6 +183,23 @@ export function senderKeyForThread(message: ChatMessage): string {
   return `n:${name}|${role}`;
 }
 
+/**
+ * Có chèn separator (dòng thời gian) giữa 2 tin liền kề không — cùng điều kiện với
+ * buildChatRows: cách nhau quá ngưỡng gap HOẶC khác ngày. Separator luôn tách nhóm.
+ */
+function hasSeparatorBetween(prev: ChatMessage, curr: ChatMessage): boolean {
+  const pd = new Date(prev.createdAt);
+  const cd = new Date(curr.createdAt);
+  const pm = pd.getTime();
+  const cm = cd.getTime();
+  if (!Number.isFinite(pm) || !Number.isFinite(cm)) return false;
+  const gapExceeded = cm - pm > CHAT_TIME_SEPARATOR_GAP_MS;
+  const pKey = calendarDayKeyVi(pd);
+  const cKey = calendarDayKeyVi(cd);
+  const diffDay = pKey !== '' && cKey !== '' && pKey !== cKey;
+  return gapExceeded || diffDay;
+}
+
 export function buildMessageThreadMeta(
   chronologicalMessages: ChatMessage[]
 ): Map<string, MessageThreadMeta> {
@@ -193,10 +210,15 @@ export function buildMessageThreadMeta(
     const prev = i > 0 ? chronologicalMessages[i - 1] : null;
     const next = i < n - 1 ? chronologicalMessages[i + 1] : null;
     const key = senderKeyForThread(m);
-    const samePrev = !!prev && senderKeyForThread(prev) === key;
-    const sameNext = !!next && senderKeyForThread(next) === key;
+    // Nhóm = các tin liền kề cùng người gửi và KHÔNG có separator xen giữa.
+    const samePrev =
+      !!prev && senderKeyForThread(prev) === key && !hasSeparatorBetween(prev, m);
+    const sameNext =
+      !!next && senderKeyForThread(next) === key && !hasSeparatorBetween(m, next);
     map.set(m._id, {
-      showAvatar: !samePrev,
+      // Tên người gửi ở ĐẦU nhóm; avatar + giờ ở CUỐI nhóm (avatar tin dưới cùng).
+      showName: !samePrev,
+      showAvatar: !sameNext,
       showTimestamp: !sameNext,
     });
   }

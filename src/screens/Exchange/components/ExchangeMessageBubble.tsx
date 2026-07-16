@@ -139,7 +139,7 @@ export const ExchangeMessageBubble = memo(
     );
 
     const rowMb = groupedNative ? (threadMeta.showTimestamp ? 'mb-3' : 'mb-1') : 'mb-3';
-    const showSenderName = !isMine && (!groupedNative || threadMeta.showAvatar);
+    const showSenderName = !isMine && (!groupedNative || threadMeta.showName);
     const showTimestamp = !groupedNative || threadMeta.showTimestamp;
 
     const reactionUniq = useMemo(() => {
@@ -159,15 +159,35 @@ export const ExchangeMessageBubble = memo(
     const hasReactions = reactionUniq.length > 0 || reactionTotal > 0;
     const bubbleAlign = isMine ? 'flex-end' : 'flex-start';
 
+    // Ảnh/video đơn thuần (không text/file/reply) → render KHÔNG khung bong bóng (giống web isFrameless).
+    const atts = message.attachments || [];
+    const isMediaOnly =
+      !recalled &&
+      !message.replyTo &&
+      atts.some((a) => a.kind === 'image' || a.kind === 'video') &&
+      !atts.some((a) => a.kind === 'file') &&
+      !(message.content || '').trim();
+    // Sticker Wislife đơn thuần (không đính kèm/reply) → cũng render KHÔNG khung.
+    const isStickerOnly =
+      !recalled &&
+      !message.replyTo &&
+      atts.length === 0 &&
+      !!parseChatWislifeStickerContent(message.content);
+    const isFrameless = isMediaOnly || isStickerOnly;
+
     const bubbleInner = (
       <View
-        className={`rounded-xl px-4 pt-3 ${isMine ? '' : 'bg-gray-100'} ${hasReactions ? 'pb-7' : 'pb-3'}`}
+        className={
+          isFrameless
+            ? `px-3 ${hasReactions ? 'pb-6' : ''}`
+            : `rounded-xl px-4 pt-3 ${isMine ? '' : 'bg-gray-100'} ${hasReactions ? 'pb-7' : 'pb-3'}`
+        }
         style={[
           {
             maxWidth: bubbleMaxWidth,
             alignSelf: bubbleAlign,
           },
-          isMine ? { backgroundColor: MY_MESSAGE_BUBBLE_BG } : {},
+          !isFrameless && isMine ? { backgroundColor: MY_MESSAGE_BUBBLE_BG } : {},
         ]}>
         {showSenderName && (
           <Text className="mb-1 font-mulish-bold text-sm text-[#002855]">{message.senderSnapshot?.name}</Text>
@@ -192,7 +212,11 @@ export const ExchangeMessageBubble = memo(
         ) : (
           <>
             {(message.attachments?.length ?? 0) > 0 ? (
-              <ExchangeMessageAttachments attachments={message.attachments!} isMine={isMine} />
+              <ExchangeMessageAttachments
+                attachments={message.attachments!}
+                isMine={isMine}
+                onLongPress={longPressMenuEnabled ? handleLongPress : undefined}
+              />
             ) : null}
             {(() => {
               const wl = parseChatWislifeStickerContent(message.content);
@@ -215,7 +239,10 @@ export const ExchangeMessageBubble = memo(
           </>
         )}
         {showTimestamp ? (
-          <Text className={`mt-2 font-mulish-medium text-xs ${isMine ? 'text-white/70' : 'text-gray-400'}`}>
+          <Text
+            className={`mt-2 font-mulish-medium text-xs ${
+              isMine && !isFrameless ? 'text-white/70' : 'text-gray-400'
+            }`}>
             {formatChatTimeVi(message.createdAt)}
           </Text>
         ) : null}
@@ -305,7 +332,7 @@ export const ExchangeMessageBubble = memo(
         {isMine ? (
           column
         ) : (
-          <View className="flex-row items-start gap-2 self-start">
+          <View className="flex-row items-end gap-2 self-start">
             <View style={{ width: CHAT_AVATAR_COLUMN_WIDTH }} className="shrink-0">
               {threadMeta.showAvatar ? <ChatAvatarCircle uri={avatarUri} /> : null}
             </View>
@@ -325,6 +352,7 @@ export const ExchangeMessageBubble = memo(
     chatReactionsKey(prev.message.reactions) === chatReactionsKey(next.message.reactions) &&
     prev.isMine === next.isMine &&
     prev.replyDisabled === next.replyDisabled &&
+    prev.threadMeta.showName === next.threadMeta.showName &&
     prev.threadMeta.showAvatar === next.threadMeta.showAvatar &&
     prev.threadMeta.showTimestamp === next.threadMeta.showTimestamp &&
     prev.avatarUri === next.avatarUri &&

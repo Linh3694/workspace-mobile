@@ -11,6 +11,7 @@ import {
   Pressable,
   RefreshControl,
   Text,
+  TextInput,
   View,
   TouchableOpacity,
 } from 'react-native';
@@ -48,6 +49,7 @@ import {
   type GuardianStudentRow,
 } from './components/NewConversationSheet';
 import { ExchangeGroupChatAvatar } from './components/ExchangeGroupChatAvatar';
+import { getPinnedIds } from './chatPinStore';
 import {
   conversationHeaderTitle,
   isMessageFromTeacherViewer,
@@ -57,6 +59,48 @@ import {
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, typeof ROUTES.SCREENS.EXCHANGE_LIST>;
+
+/** Bộ lọc danh sách hội thoại — giống web (Tất cả / Nhóm / Phụ huynh / Chưa đọc). */
+type ConversationFilter = 'all' | 'group' | 'parent' | 'unread';
+
+const FILTER_TABS: { key: ConversationFilter; labelKey: string }[] = [
+  { key: 'all', labelKey: 'exchange.filter_all' },
+  { key: 'group', labelKey: 'exchange.filter_group' },
+  { key: 'parent', labelKey: 'exchange.filter_parent' },
+  { key: 'unread', labelKey: 'exchange.filter_unread' },
+];
+
+/** Chuẩn hóa chuỗi để so khớp tìm kiếm (không phân biệt dấu, hoa thường) — giống web normalizeForSearch. */
+function normalizeForSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .trim();
+}
+
+/** Group (nhóm lớp / nhiều PH-HS) vs 1-1 — giống web isGroupConversation. */
+function isGroupConversation(c: ChatConversation): boolean {
+  return (
+    c.type === 'class_general' ||
+    (c.guardians?.length || 0) > 1 ||
+    (c.studentIds?.length || 0) > 1
+  );
+}
+
+/** Blob text để so khớp tìm kiếm 1 hội thoại (nhãn + title + lớp + tin cuối + type + tên PH). */
+function conversationSearchBlob(c: ChatConversation): string {
+  const guardianNames = (c.guardians || []).map((g) => g.name || '').join(' ');
+  const parts = [
+    conversationHeaderTitle(c) || '',
+    c.title || '',
+    c.className || '',
+    c.lastMessage?.content || '',
+    c.type || '',
+    guardianNames,
+  ];
+  return normalizeForSearch(parts.join(' '));
+}
 
 /** _id Mongo 24 hex — mới gọi được API ẩn / vuốt xóa khỏi danh sách. */
 function isPersistentConversationId(id: string): boolean {
@@ -230,6 +274,16 @@ export default function ExchangeListScreen() {
   const [callerTeacherId, setCallerTeacherId] = useState<string>('');
   const [openingGuardianId, setOpeningGuardianId] = useState<string | null>(null);
   const [showNewSheet, setShowNewSheet] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filter, setFilter] = useState<ConversationFilter>('all');
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+
+  // Nạp lại danh sách ghim mỗi khi màn được focus (vd sau khi ghim/bỏ ghim ở màn thông tin).
+  useFocusEffect(
+    useCallback(() => {
+      void getPinnedIds().then((ids) => setPinnedIds(new Set(ids)));
+    }, [])
+  );
   const listFocusCountRef = useRef(0);
   const socketChatMessageDedupeRef = useRef(new Set());
 
@@ -455,6 +509,10 @@ export default function ExchangeListScreen() {
       );
     }
     return list.sort((a, b) => {
+      // Ghim lên đầu (giống web), rồi chưa đọc, rồi mới nhất.
+      const pa = pinnedIds.has(String(a._id)) ? 1 : 0;
+      const pb = pinnedIds.has(String(b._id)) ? 1 : 0;
+      if (pa !== pb) return pb - pa;
       const ua = Number(a.unreadCount || 0) > 0 ? 1 : 0;
       const ub = Number(b.unreadCount || 0) > 0 ? 1 : 0;
       if (ua !== ub) return ub - ua;
@@ -462,7 +520,19 @@ export default function ExchangeListScreen() {
       const tb = new Date(b.updatedAt || b.lastMessage?.createdAt || 0).getTime();
       return tb - ta;
     });
-  }, [items, classId, schoolYearId]);
+  }, [items, classId, schoolYearId, pinnedIds]);
+
+  /** Áp filter tab + search (AND) lên danh sách đã sắp xếp — giống web. */
+  const filtered = useMemo(() => {
+    const needle = normalizeForSearch(searchQuery);
+    return sorted.filter((c) => {
+      if (filter === 'group' && !isGroupConversation(c)) return false;
+      if (filter === 'parent' && isGroupConversation(c)) return false;
+      if (filter === 'unread' && !(Number(c.unreadCount || 0) > 0)) return false;
+      if (needle && !conversationSearchBlob(c).includes(needle)) return false;
+      return true;
+    });
+  }, [sorted, filter, searchQuery]);
 
   const renderItem = ({ item }: { item: ChatConversation }) => {
     // Dòng phụ: chỉ tên người gửi + nội dung tin cuối (không lặp tên lớp/title).
@@ -559,6 +629,48 @@ export default function ExchangeListScreen() {
             </View>
           </View>
         ) : null}
+        {/* Thanh tìm kiếm — giống web */}
+        <View
+          className="mb-3 flex-row items-center rounded-xl px-3"
+          style={{ backgroundColor: '#F1F3F5', height: 44 }}>
+          <Ionicons name="search" size={18} color="#9CA3AF" />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder={t('exchange.search_placeholder')}
+            placeholderTextColor="#9CA3AF"
+            className="ml-2 flex-1 text-base text-[#0A2240]"
+            style={{ paddingVertical: 0 }}
+            returnKeyType="search"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 ? (
+            <TouchableOpacity
+              onPress={() => setSearchQuery('')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        {/* Bộ lọc — Tất cả / Nhóm / Phụ huynh / Chưa đọc */}
+        <View className="mb-2 flex-row" style={{ gap: 8 }}>
+          {FILTER_TABS.map((tab) => {
+            const active = filter === tab.key;
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                onPress={() => setFilter(tab.key)}
+                className="rounded-full px-3 py-1.5"
+                style={{ backgroundColor: active ? '#0A2240' : '#F1F3F5' }}>
+                <Text
+                  className="text-sm font-semibold"
+                  style={{ color: active ? '#FFFFFF' : '#6B7280' }}>
+                  {t(tab.labelKey)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
       {loading && items.length === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -571,11 +683,21 @@ export default function ExchangeListScreen() {
             {t('exchange.empty_list')}
           </Text>
         </View>
+      ) : filtered.length === 0 ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <Ionicons name="search-outline" size={48} color="#D1D5DB" />
+          <Text style={{ marginTop: 12, fontSize: 15, color: '#6B7280', textAlign: 'center' }}>
+            {searchQuery.trim()
+              ? t('exchange.search_no_match', { query: searchQuery.trim() })
+              : t('exchange.filter_no_match')}
+          </Text>
+        </View>
       ) : (
         <FlatList
-          data={sorted}
+          data={filtered}
           keyExtractor={(c) => c._id}
           renderItem={renderItem}
+          keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

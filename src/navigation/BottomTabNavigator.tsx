@@ -5,12 +5,15 @@ import HomeScreen from '../screens/Home/HomeScreen';
 import NotificationsScreen from '../screens/Notifications/NotificationsScreen';
 import ProfileScreen from '../screens/Profile/ProfileScreen';
 import WislifeScreen from '../screens/Wislife/WislifeScreen';
+import ExchangeListScreen from '../screens/Exchange/ExchangeListScreen';
 // @ts-ignore
 import { Text, View, StyleSheet, Platform, Pressable } from 'react-native';
 import MenuIcon from '../assets/menu.svg';
 import WislifeIcon from '../assets/wislife.svg';
+import ChatIcon from '../assets/chat.svg';
 import NotificationIcon from '../assets/notification.svg';
 import ProfileIcon from '../assets/profile.svg';
+import { useAuth } from '../context/AuthContext';
 // @ts-ignore
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -163,6 +166,8 @@ const TabBarButton = ({ route, isFocused, onPress, badgeCount }: any) => {
         return <MenuIcon width={iconSize} height={iconSize} color={iconColor} />;
       case ROUTES.MAIN.WISLIFE:
         return <WislifeIcon width={iconSize} height={iconSize} color={iconColor} />;
+      case ROUTES.MAIN.CHAT:
+        return <ChatIcon width={iconSize} height={iconSize} color={iconColor} />;
       case ROUTES.MAIN.NOTIFICATIONS:
         return <NotificationIcon width={iconSize} height={iconSize} color={iconColor} />;
       case ROUTES.MAIN.PROFILE:
@@ -178,6 +183,8 @@ const TabBarButton = ({ route, isFocused, onPress, badgeCount }: any) => {
         return 'Home';
       case ROUTES.MAIN.WISLIFE:
         return 'Wislife';
+      case ROUTES.MAIN.CHAT:
+        return 'Nhắn tin';
       case ROUTES.MAIN.NOTIFICATIONS:
         return 'Notifications';
       case ROUTES.MAIN.PROFILE:
@@ -222,6 +229,11 @@ const TabBarButton = ({ route, isFocused, onPress, badgeCount }: any) => {
 
 const BottomTabNavigator = ({ route }: { route: any }) => {
   const initialRouteName = route?.params?.screen || ROUTES.TABS.HOME;
+  const { user } = useAuth();
+
+  // Tab Nhắn tin (Exchange): chỉ hiện với Giáo viên & BOD
+  const roles: string[] = Array.isArray(user?.roles) ? (user?.roles as string[]) : [];
+  const showChatTab = roles.includes('Mobile Teacher') || roles.includes('Mobile BOD');
 
   return (
     <Tab.Navigator
@@ -232,7 +244,12 @@ const BottomTabNavigator = ({ route }: { route: any }) => {
       }}
       initialRouteName={initialRouteName}>
       <Tab.Screen name={ROUTES.MAIN.HOME} component={HomeScreen} />
-      <Tab.Screen name={ROUTES.MAIN.WISLIFE} component={WislifeScreen} />
+      {/* Ẩn module Wislife trên mobile - tạm thời bỏ khỏi bottom tab (giữ code để bật lại) */}
+      {/* <Tab.Screen name={ROUTES.MAIN.WISLIFE} component={WislifeScreen} /> */}
+      {/* Module Nhắn tin (Exchange) - thay slot Wislife, chỉ hiện với Giáo viên & BOD */}
+      {showChatTab && (
+        <Tab.Screen name={ROUTES.MAIN.CHAT} component={ExchangeListScreen} />
+      )}
       <Tab.Screen name={ROUTES.MAIN.NOTIFICATIONS} component={NotificationsScreen} />
       <Tab.Screen name={ROUTES.MAIN.PROFILE} component={ProfileScreen} />
     </Tab.Navigator>

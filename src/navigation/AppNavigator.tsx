@@ -63,6 +63,11 @@ import {
 import ClassActivityScreen from '../screens/ClassActivity/ClassActivityScreen';
 import ExchangeListScreen from '../screens/Exchange/ExchangeListScreen';
 import ExchangeChatScreen from '../screens/Exchange/ExchangeChatScreen';
+import ExchangeChatInfoScreen from '../screens/Exchange/ExchangeChatInfoScreen';
+import ExchangeChatMembersScreen from '../screens/Exchange/ExchangeChatMembersScreen';
+import ExchangeChatAttachmentsScreen from '../screens/Exchange/ExchangeChatAttachmentsScreen';
+import { RoomBookingScreen, RoomBookingCreateScreen } from '../screens/RoomBooking';
+import type { ChatConversation } from '../types/chat';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -105,6 +110,8 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST_DETAIL]: { ticketId: string };
   [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_ADMIN]: undefined;
   [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST]: undefined;
+  [ROUTES.SCREENS.ROOM_BOOKING]: undefined;
+  [ROUTES.SCREENS.ROOM_BOOKING_CREATE]: { roomId?: string; buildingId?: string } | undefined;
   [ROUTES.SCREENS.DEVICES]: { refresh?: boolean } | undefined;
   [ROUTES.SCREENS.DEVICE_DETAIL]: {
     deviceId: string;
@@ -210,6 +217,21 @@ export type RootStackParamList = {
     schoolYearId?: string;
     teacherId?: string;
     guardianId?: string;
+  };
+  [ROUTES.SCREENS.EXCHANGE_CHAT_INFO]: {
+    conversationId: string;
+    conversation?: ChatConversation;
+  };
+  [ROUTES.SCREENS.EXCHANGE_CHAT_MEMBERS]: {
+    conversationId: string;
+    conversation?: ChatConversation;
+    classId?: string;
+    schoolYearId?: string;
+  };
+  [ROUTES.SCREENS.EXCHANGE_CHAT_ATTACHMENTS]: {
+    conversationId: string;
+    kind: 'media' | 'files';
+    title?: string;
   };
 };
 
@@ -378,6 +400,16 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST}
             component={AdministrativeTicketGuestScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.ROOM_BOOKING}
+            component={RoomBookingScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.ROOM_BOOKING_CREATE}
+            component={RoomBookingCreateScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen
@@ -586,6 +618,21 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.EXCHANGE_CHAT}
             component={ExchangeChatScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.EXCHANGE_CHAT_INFO}
+            component={ExchangeChatInfoScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.EXCHANGE_CHAT_MEMBERS}
+            component={ExchangeChatMembersScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.EXCHANGE_CHAT_ATTACHMENTS}
+            component={ExchangeChatAttachmentsScreen}
             options={{ headerShown: false }}
           />
         </>

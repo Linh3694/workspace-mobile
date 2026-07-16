@@ -54,6 +54,7 @@ import DisciplineIcon from '../../assets/discipline.svg';
 // Icon tile module Vấn đề (CRM)
 import IssueIcon from '../../assets/issue.svg';
 import ClassActivitySvg from '../../assets/class_activity.svg';
+import RoomBookingIcon from '../../assets/room-booking.svg';
 import { hasCrmAccess } from '../../utils/crmIssuePermissions';
 import {
   applyMenuTap,
@@ -387,6 +388,10 @@ const HomeScreen = () => {
     navigation.navigate(ROUTES.SCREENS.CLASS_ACTIVITY as any);
   };
 
+  const navigateToRoomBooking = () => {
+    navigation.navigate(ROUTES.SCREENS.ROOM_BOOKING);
+  };
+
   // Role-based menu configuration
   const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
   const hasMobileTeacher = roles.includes('Mobile Teacher');
@@ -528,6 +533,14 @@ const HomeScreen = () => {
       onPress: navigateToClassActivity,
       key: 'class_activity',
     },
+    {
+      id: 17,
+      title: t('room_booking.tile_title'),
+      component: RoomBookingIcon,
+      description: t('room_booking.tile_desc'),
+      onPress: navigateToRoomBooking,
+      key: 'room_booking',
+    },
   ];
 
   // Thu thập tất cả các keys được phép dựa trên tất cả roles của user
@@ -548,9 +561,15 @@ const HomeScreen = () => {
 
   if (hasMobileIT) {
     // Mobile IT: Ticket Admin + Devices + Feedback + Menu + Calendar
-    ['tickets', 'administrative_tickets', 'devices', 'feedback', 'menu', 'calendar'].forEach((key) =>
-      allowedKeys.add(key)
-    );
+    [
+      'tickets',
+      'administrative_tickets',
+      'room_booking',
+      'devices',
+      'feedback',
+      'menu',
+      'calendar',
+    ].forEach((key) => allowedKeys.add(key));
   }
 
   if (hasMobileTeacher) {
@@ -558,6 +577,7 @@ const HomeScreen = () => {
     [
       'tickets',
       'administrative_tickets',
+      'room_booking',
       'attendance',
       'documents',
       'menu',
@@ -571,8 +591,8 @@ const HomeScreen = () => {
 
   if (hasMobileMedical) {
     // Mobile Medical: Daily Health + Tickets + Menu + Calendar
-    ['daily_health', 'tickets', 'administrative_tickets', 'menu', 'calendar'].forEach((key) =>
-      allowedKeys.add(key)
+    ['daily_health', 'tickets', 'administrative_tickets', 'room_booking', 'menu', 'calendar'].forEach(
+      (key) => allowedKeys.add(key)
     );
   }
 
@@ -583,7 +603,9 @@ const HomeScreen = () => {
 
   if (hasMobileUser) {
     // Mobile User: Ticket Guest + Menu + Calendar
-    ['tickets', 'administrative_tickets', 'menu', 'calendar'].forEach((key) => allowedKeys.add(key));
+    ['tickets', 'administrative_tickets', 'room_booking', 'menu', 'calendar'].forEach((key) =>
+      allowedKeys.add(key)
+    );
   }
 
   // Kỷ luật: chỉ menu khi có Mobile Supervisory (kể cả Mobile BOD — không có role này thì ẩn)
@@ -601,7 +623,9 @@ const HomeScreen = () => {
   // Nếu không có role nào hoặc chỉ có default role
   if (allowedKeys.size === 0) {
     // Default minimal access (Mobile User) + Menu + Calendar
-    ['tickets', 'administrative_tickets', 'menu', 'calendar'].forEach((key) => allowedKeys.add(key));
+    ['tickets', 'administrative_tickets', 'room_booking', 'menu', 'calendar'].forEach((key) =>
+      allowedKeys.add(key)
+    );
   }
 
   // Filter menu items dựa trên tất cả các keys được phép

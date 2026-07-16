@@ -561,6 +561,8 @@ export async function createAdminTicket(payload: {
   related_equipment_id?: string;
   related_student_ids?: string[];
   related_staff_ids?: string[];
+  /** Người tham dự (email) cho booking gắn ticket sự kiện — khớp web create_ticket */
+  attendees?: string[];
 }): Promise<AdministrativeTicket> {
   const config = await getAxiosConfig();
   const response = await axios.post(`${BASE}.create_ticket`, payload, {

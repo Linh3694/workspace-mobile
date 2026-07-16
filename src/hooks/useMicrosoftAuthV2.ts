@@ -56,10 +56,19 @@ export const useMicrosoftAuthV2 = (onSuccess: SuccessCb, onError: ErrorCb) => {
     discovery
   );
 
+  // Callers pass inline callbacks, so onSuccess/onError change identity on every
+  // render of the calling screen and re-run this effect with an already-consumed
+  // result. An authorization code is single-use: replaying it re-POSTs the same
+  // code and re-fires the callbacks. Each promptAsync() yields a new result
+  // object, so identity is the right key here.
+  const handledResultRef = React.useRef<AuthSession.AuthSessionResult | null>(null);
+
   // Handle authentication result
   useEffect(() => {
     const handleAuth = async () => {
       if (!result) return;
+      if (handledResultRef.current === result) return;
+      handledResultRef.current = result;
 
       console.log('🔐 [MicrosoftAuthV2] Auth Result:', result.type);
 

@@ -652,14 +652,15 @@ class PushNotificationService {
   }
 
   // Wislife notification handler
+  // Module Wislife đã ẩn khỏi bottom tab (SIS-109): không còn tab 'Social' nên
+  // chuyển hướng về tab Thông báo thay vì tab không còn hiển thị.
+  // Giữ handler để bật lại khi mở lại module.
   private handleWislifeNotification(data: PushNotificationData, wasOpened: boolean): void {
-    console.log('📱 Wislife notification:', data);
+    console.log('📱 Wislife notification (module đã ẩn):', data);
 
-    if (wasOpened && data.postId) {
-      // Tap được xử lý ở App.tsx (navigateFromPushNotificationData)
+    if (wasOpened) {
       this.navigateToScreen('Main', {
-        screen: 'Social',
-        params: { postId: data.postId, commentId: data.commentId },
+        screen: 'Notification',
       });
     }
   }

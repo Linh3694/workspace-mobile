@@ -22,8 +22,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import RevokeIcon from '../../../assets/revoke.svg';
 import ReactionEmoji from '../../../components/Wislife/ReactionEmoji';
+import { ExchangeMessageAttachments } from './ExchangeMessageAttachments';
 import type { ChatEmoji, ChatMessage } from '../../../types/chat';
-import { WISLIFE_EMOJIS } from '../../../utils/emojiUtils';
+import { parseChatWislifeStickerContent } from '../../../utils/chatWislifeSticker';
+import { resolveChatReactionCode, WISLIFE_EMOJIS } from '../../../utils/emojiUtils';
 
 const GAP = 10;
 const CARD_PAD_V = 24;
@@ -216,9 +218,30 @@ export function MessageActionOverlay({
           Tin nhắn đã thu hồi
         </Text>
       ) : (
-        <Text className={`font-mulish-medium text-base ${isMine ? 'text-white' : 'text-gray-900'}`}>
-          {message.content}
-        </Text>
+        <>
+          {(message.attachments?.length ?? 0) > 0 ? (
+            <ExchangeMessageAttachments attachments={message.attachments!} isMine={isMine} />
+          ) : null}
+          {(() => {
+          const wl = parseChatWislifeStickerContent(message.content);
+          if (wl) {
+            return (
+              <View className="items-center py-1">
+                <ReactionEmoji code={resolveChatReactionCode(wl)} size={56} loop={false} autoPlay />
+              </View>
+            );
+          }
+          if (message.content?.trim()) {
+            return (
+              <Text
+                className={`font-mulish-medium text-base ${isMine ? 'text-white' : 'text-gray-900'}`}>
+                {message.content}
+              </Text>
+            );
+          }
+          return null;
+          })()}
+        </>
       )}
       {showTimestamp ? (
         <Text

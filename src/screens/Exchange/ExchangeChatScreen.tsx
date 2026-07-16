@@ -60,7 +60,7 @@ import { useLanguage } from '../../hooks/useLanguage';
 const CHAT_THREAD_WALLPAPER = require('../../../assets/images/chat-background.png');
 
 /** Meta mặc định khi chưa có trong map gom nhóm bubble. */
-const DEFAULT_THREAD_META = { showAvatar: true, showTimestamp: true } as const;
+const DEFAULT_THREAD_META = { showName: true, showAvatar: true, showTimestamp: true } as const;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type R = RouteProp<RootStackParamList, typeof ROUTES.SCREENS.EXCHANGE_CHAT>;
@@ -73,6 +73,24 @@ function isMineMessage(msg: ChatMessage, email?: string | null): boolean {
   const e = String(email || '').trim().toLowerCase();
   const m = String(msg.senderSnapshot?.email || '').trim().toLowerCase();
   return msg.senderSnapshot?.role === 'teacher' && !!e && !!m && e === m;
+}
+
+/**
+ * Viewer chỉ-xem (observer) — giống cờ `readOnly` bên web (TeacherMessagingPage).
+ * App này là staff-only (GV/BOD): participant thực sự nằm trong `conversation.teachers[]`.
+ * BOD mở hội thoại của lớp không phải mình dạy → không có trong teachers[] → chỉ được xem.
+ * Backend cũng chặn write của observer (markRead/typing/send → 403 "Tài khoản chỉ có quyền xem").
+ * teachers[] rỗng/không rõ → KHÔNG khoá (tránh chặn nhầm participant thật khi snapshot thiếu).
+ */
+function isConversationObserver(
+  conversation: ChatConversation | null,
+  email?: string | null
+): boolean {
+  const e = String(email || '').trim().toLowerCase();
+  if (!e || !conversation) return false;
+  const teachers = conversation.teachers || [];
+  if (teachers.length === 0) return false;
+  return !teachers.some((tt) => String(tt.email || '').trim().toLowerCase() === e);
 }
 
 function resolveBubbleAvatarUri(
@@ -147,6 +165,12 @@ export default function ExchangeChatScreen() {
     [teacherEmail]
   );
 
+  /** Viewer chỉ-xem (observer/BOD không phải participant) — giống readOnly bên web. */
+  const viewerReadOnly = useMemo(
+    () => isConversationObserver(conversation, teacherEmail),
+    [conversation, teacherEmail]
+  );
+
   /** TTL typing đối phương — đồng bộ REMOTE_TYPING_TTL_MS phía Guardian. */
   const remoteTypingTtlTimersRef = useRef({});
 
@@ -192,7 +216,7 @@ export default function ExchangeChatScreen() {
   }, [overlayMessage, messageThreadMetaById]);
 
   const overlayShowSenderName =
-    !overlayIsMine && (Platform.OS === 'web' || overlayThreadMeta.showAvatar);
+    !overlayIsMine && (Platform.OS === 'web' || overlayThreadMeta.showName);
   const overlayShowTimestamp = Platform.OS === 'web' || overlayThreadMeta.showTimestamp;
 
   const overlayShowRecallButton = useMemo(() => {
@@ -269,6 +293,9 @@ export default function ExchangeChatScreen() {
     setMessagesPage(1);
     messagesPageRef.current = 1;
     setHasMoreMessages(false);
+
+    // CRITICAL: chỉ getMessages mới được phép bung lỗi "Không tải được lịch sử chat".
+    let loadedConversation: ChatConversation | null = null;
     try {
       const data = await chatService.getMessages(cid, 1, CHAT_INITIAL_PAGE_LIMIT);
       const sorted = [...(data.messages || [])].sort(
@@ -276,16 +303,34 @@ export default function ExchangeChatScreen() {
       );
       setMessages(sorted);
       setConversation(data.conversation);
-      const updated = await chatService.markRead(cid);
-      setConversation(updated);
+      loadedConversation = data.conversation;
       setHasMoreMessages(Boolean(data.pagination?.hasNext));
+    } catch (e) {
+      console.warn('[ExchangeChat] getMessages failed', e);
+      Alert.alert(t('common.error'), t('exchange.load_thread_error'));
+      setLoading(false);
+      return;
+    } finally {
+      setLoading(false);
+    }
+
+    // markRead: chỉ khi là participant thực sự. Observer/BOD gọi markRead → 403
+    // "Tài khoản chỉ có quyền xem" (giống web bỏ markRead khi readOnly). Best-effort.
+    if (!isConversationObserver(loadedConversation, teacherEmail)) {
+      try {
+        const updated = await chatService.markRead(cid);
+        setConversation(updated);
+      } catch (e) {
+        console.warn('[ExchangeChat] markRead (non-fatal)', e);
+      }
+    }
+
+    // socket join: best-effort, không được chặn việc hiển thị lịch sử chat.
+    try {
       const socket = await chatService.getSocket();
       socket?.emit(CHAT_EVENTS.JOIN, { conversationId: String(cid) });
     } catch (e) {
-      console.warn(e);
-      Alert.alert(t('common.error'), t('exchange.load_thread_error'));
-    } finally {
-      setLoading(false);
+      console.warn('[ExchangeChat] socket join (non-fatal)', e);
     }
   }, [
     isDraftTeacherGuardianThread,
@@ -294,6 +339,7 @@ export default function ExchangeChatScreen() {
     draftTeacherId,
     draftGuardianId,
     conversationIdFromRoute,
+    teacherEmail,
     navigation,
     t,
   ]);
@@ -503,6 +549,7 @@ export default function ExchangeChatScreen() {
   }, [mongoConversationIdForApi, conversationIdFromRoute, teacherEmail]);
 
   const sendTypingPulse = async () => {
+    if (viewerReadOnly) return;
     const cid = mongoConversationIdForApi;
     if (!cid) return;
     const socket = await chatService.getSocket();
@@ -773,6 +820,15 @@ export default function ExchangeChatScreen() {
   const headerSubtitle =
     conversation ? conversationSubtitle(conversation, locked) : '';
 
+  /** Mở màn thông tin hội thoại (thành viên / ảnh-video / tệp) — giống sidebar web. */
+  const openInfo = useCallback(() => {
+    if (!conversation?._id) return;
+    navigation.navigate(ROUTES.SCREENS.EXCHANGE_CHAT_INFO, {
+      conversationId: conversation._id,
+      conversation,
+    });
+  }, [conversation, navigation]);
+
   const typingLine = useMemo(() => {
     const vals = Object.values(typingNames)
       .map((n) => String(n || '').trim())
@@ -845,6 +901,15 @@ export default function ExchangeChatScreen() {
                   {headerSubtitle}
                 </Text>
               </View>
+              {conversation?._id ? (
+                <Pressable
+                  onPress={openInfo}
+                  className="p-2"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel={t('exchange.info_title')}>
+                  <Ionicons name="ellipsis-vertical" size={22} color="#002855" />
+                </Pressable>
+              ) : null}
             </View>
           </BlurView>
         ) : (
@@ -868,6 +933,15 @@ export default function ExchangeChatScreen() {
                   {headerSubtitle}
                 </Text>
               </View>
+              {conversation?._id ? (
+                <Pressable
+                  onPress={openInfo}
+                  className="p-2"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel={t('exchange.info_title')}>
+                  <Ionicons name="ellipsis-vertical" size={22} color="#002855" />
+                </Pressable>
+              ) : null}
             </View>
           </View>
         )}
@@ -918,7 +992,13 @@ export default function ExchangeChatScreen() {
             />
           ) : null}
 
-          {chatChromeIntensity > 0 ? (
+          {viewerReadOnly ? (
+            <View className="border-t border-white/45 bg-[#FFF9F3]/88 px-5 py-4">
+              <Text className="text-center font-mulish text-sm text-[#6B7280]">
+                {t('exchange.read_only_notice')}
+              </Text>
+            </View>
+          ) : chatChromeIntensity > 0 ? (
             <BlurView
               intensity={chatChromeIntensity + 8}
               tint="light"

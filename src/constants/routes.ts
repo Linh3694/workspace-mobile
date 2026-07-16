@@ -68,11 +68,22 @@ export const ROUTES = {
     /** Trao đổi realtime với PH */
     EXCHANGE_LIST: 'ExchangeList',
     EXCHANGE_CHAT: 'ExchangeChat',
+    /** Thông tin hội thoại (thành viên / ảnh-video / tệp) — giống sidebar web */
+    EXCHANGE_CHAT_INFO: 'ExchangeChatInfo',
+    /** Danh sách đầy đủ thành viên + tìm kiếm */
+    EXCHANGE_CHAT_MEMBERS: 'ExchangeChatMembers',
+    /** Danh sách đầy đủ Ảnh & Video / Tệp — chia theo ngày gửi */
+    EXCHANGE_CHAT_ATTACHMENTS: 'ExchangeChatAttachments',
+    /** Đặt phòng (ERP Room Booking) */
+    ROOM_BOOKING: 'RoomBooking',
+    ROOM_BOOKING_CREATE: 'RoomBookingCreate',
   },
   // Tab names trong bottom navigation
   TABS: {
     HOME: 'Home',
     WISLIFE: 'Social',
+    /** Tab Nhắn tin (Exchange) — chỉ hiện với Giáo viên & BOD */
+    CHAT: 'ChatTab',
     TICKET: 'Ticket',
     NOTIFICATION: 'Notification',
     PROFILE: 'Profile',
@@ -86,6 +97,8 @@ export const ROUTES = {
   MAIN: {
     HOME: 'Home',
     WISLIFE: 'Social',
+    /** Tab Nhắn tin (Exchange) — chỉ hiện với Giáo viên & BOD */
+    CHAT: 'ChatTab',
     NOTIFICATIONS: 'Notification',
     PROFILE: 'Profile',
     TICKET: 'Ticket',
