@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Video as VideoCompressor } from 'react-native-compressor';
 import {
   ActivityIndicator,
   Alert,
@@ -96,6 +97,21 @@ function localPickFromMediaAsset(
       asset.mimeType || (isVideo ? 'video/mp4' : guessMimeFromName(name || fallbackName)),
     kind: isVideo ? 'video' : 'image',
   };
+}
+
+/**
+ * SIS-125: nén video trước khi upload để tránh vượt giới hạn dung lượng server và timeout.
+ * Nếu native module chưa sẵn sàng (app chưa build lại sau khi thêm react-native-compressor),
+ * fallback dùng file gốc — KHÔNG crash.
+ */
+async function compressVideoUri(uri: string): Promise<string> {
+  try {
+    const out = await VideoCompressor.compress(uri, { compressionMethod: 'auto' });
+    return typeof out === 'string' && out.length > 0 ? out : uri;
+  } catch (err) {
+    console.warn('[ChatComposerExchange] nén video không khả dụng, dùng file gốc', err);
+    return uri;
+  }
 }
 
 export function ChatComposerExchange({
@@ -224,21 +240,33 @@ export function ChatComposerExchange({
 
   const openFile = useCallback(async () => {
     if (locked) return;
+    // SIS-126: cho chọn NHIỀU tệp và CỘNG DỒN (trước đây chỉ 1 tệp và thay thế tệp cũ).
     const result = await DocumentPicker.getDocumentAsync({
-      multiple: false,
+      multiple: true,
       copyToCacheDirectory: true,
     });
-    if (result.canceled || !result.assets?.[0]) return;
-    const a = result.assets[0];
-    setLocalPicks([
-      {
+    if (result.canceled || !result.assets?.length) return;
+    setLocalPicks((prev) => {
+      const blockedByMedia = prev.some((p) => p.kind === 'image' || p.kind === 'video');
+      if (blockedByMedia) {
+        Alert.alert('Đính kèm', 'Đã chọn ảnh/video; xóa để thêm tệp.');
+        return prev;
+      }
+      const files = prev.filter((p) => p.kind === 'file');
+      const remaining = 10 - files.length;
+      if (remaining <= 0) {
+        Alert.alert('Giới hạn', 'Tối đa 10 tệp.');
+        return prev;
+      }
+      const add: LocalPick[] = result.assets!.slice(0, remaining).map((a) => ({
         id: newPickId(),
         uri: a.uri,
         name: a.name || 'file',
         mimeType: a.mimeType || guessMimeFromName(a.name || ''),
         kind: 'file',
-      },
-    ]);
+      }));
+      return [...files, ...add].slice(-10);
+    });
   }, [locked]);
 
   const removePick = (id: string) => {
@@ -262,12 +290,24 @@ export function ChatComposerExchange({
     const text = value.trim();
     try {
       setSending(true);
+      // SIS-125: nén video (nếu có) trước khi upload để giảm dung lượng. Chạy trong lúc `sending`
+      // (spinner nút gửi hiển thị như bình thường) — KHÔNG hiện trạng thái nén riêng cho người dùng.
+      let picks: LocalPick[] = localPicks;
+      if (localPicks.some((p) => p.kind === 'video')) {
+        const processed: LocalPick[] = [];
+        for (const p of localPicks) {
+          processed.push(
+            p.kind === 'video' ? { ...p, uri: await compressVideoUri(p.uri) } : p
+          );
+        }
+        picks = processed;
+      }
       let attachments: ChatAttachment[] | undefined;
-      if (localPicks.length) {
+      if (picks.length) {
         if (conversationId) {
           attachments = await chatService.uploadAttachments(
             conversationId,
-            localPicks.map((p) => ({
+            picks.map((p) => ({
               uri: p.uri,
               name: p.name,
               mimeType: p.mimeType,
@@ -276,7 +316,7 @@ export function ChatComposerExchange({
         } else if (teacherGuardianUploadContext) {
           attachments = await chatService.uploadTeacherGuardianAttachments(
             teacherGuardianUploadContext,
-            localPicks.map((p) => ({
+            picks.map((p) => ({
               uri: p.uri,
               name: p.name,
               mimeType: p.mimeType,
@@ -295,7 +335,13 @@ export function ChatComposerExchange({
       void onTypingStop();
     } catch (e) {
       console.error('[ChatComposerExchange] send', e);
-      Alert.alert('Lỗi', 'Không thể gửi tin nhắn.');
+      // SIS-125: ưu tiên thông báo cụ thể từ server (vd "Video quá lớn (tối đa 100MB)").
+      const raw = e instanceof Error ? e.message : '';
+      const friendly =
+        raw && !raw.startsWith('HTTP ') && !raw.startsWith('Invalid JSON')
+          ? raw
+          : 'Không thể gửi tin nhắn.';
+      Alert.alert('Lỗi', friendly);
     } finally {
       setSending(false);
     }

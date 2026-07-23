@@ -51,6 +51,14 @@
             "ndkVersion": "27.0.12077973"
           }
         }
+      ],
+      "react-native-compressor",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Ứng dụng cần quyền truy cập thư viện ảnh để lưu ảnh chat.",
+          "savePhotosPermission": "Ứng dụng cần quyền lưu ảnh chat vào album của bạn."
+        }
       ]
     ],
     "orientation": "portrait",
