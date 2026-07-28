@@ -7,11 +7,15 @@ import type {
   AddableTeacher,
   ChatAttachment,
   ChatConversation,
+  ChatConversationWriteMode,
   ChatEmoji,
   ChatMessage,
   ChatMessagesData,
+  ChatPoll,
+  ChatPollVotersData,
   ChatReaction,
   ClassChatScopePayload,
+  CreateChatPollPayload,
   PinnedMessageSnapshot,
   SendChatMessageInput,
 } from '../types/chat';
@@ -21,6 +25,9 @@ type ApiResponse<T> = {
   data: T;
   message?: string;
 };
+
+/** Lỗi HTTP của chat kèm status + mã nghiệp vụ backend trả về. */
+export type ChatServiceError = Error & { status?: number; code?: string };
 
 /** URL đầy đủ để tải/xem file chat (`/uploads/chat/...`). */
 export function resolveChatAttachmentUrl(url: string): string {
@@ -66,24 +73,38 @@ class ChatService {
     return h;
   }
 
+  /** Lỗi kèm status + mã nghiệp vụ backend trả về (vd 'TEACHERS_ONLY', 'POLL_CLOSED'). */
+  private buildError(message: string, status: number, code?: unknown): ChatServiceError {
+    const err = new Error(message) as ChatServiceError;
+    err.status = status;
+    if (typeof code === 'string') err.code = code;
+    return err;
+  }
+
   private async parseJson<T>(res: Response): Promise<T> {
     const text = await res.text();
     let body: ApiResponse<T> | T | Record<string, unknown> = {};
     try {
       body = text ? (JSON.parse(text) as ApiResponse<T>) : {};
     } catch {
-      throw new Error(`Invalid JSON (${res.status})`);
+      throw this.buildError(`Invalid JSON (${res.status})`, res.status);
     }
     if (!res.ok) {
-      throw new Error(
+      throw this.buildError(
         typeof (body as ApiResponse<T>)?.message === 'string'
-          ? (body as ApiResponse<T>).message
-          : `HTTP ${res.status}`
+          ? ((body as ApiResponse<T>).message as string)
+          : `HTTP ${res.status}`,
+        res.status,
+        (body as Record<string, unknown>)?.code
       );
     }
     const wrapped = body as ApiResponse<T>;
     if (wrapped && typeof wrapped === 'object' && 'success' in wrapped && wrapped.success === false) {
-      throw new Error(wrapped.message || 'Request failed');
+      throw this.buildError(
+        wrapped.message || 'Request failed',
+        res.status,
+        (body as Record<string, unknown>)?.code
+      );
     }
     if (wrapped && typeof wrapped === 'object' && 'data' in wrapped) {
       return wrapped.data as T;
@@ -359,6 +380,19 @@ class ChatService {
     return this.parseJson<ChatConversation>(res);
   }
 
+  /** GVCN/phó bật/tắt chế độ "chỉ GV được nhắn" — trả về conversation đã cập nhật. */
+  async setConversationWriteMode(
+    conversationId: string,
+    writeMode: ChatConversationWriteMode
+  ): Promise<ChatConversation> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(
+      `${BASE_URL}/api/social/chat/conversations/${encodeURIComponent(conversationId)}/write-mode`,
+      { method: 'PATCH', headers, body: JSON.stringify({ writeMode }) }
+    );
+    return this.parseJson<ChatConversation>(res);
+  }
+
   async toggleReaction(
     messageId: string,
     emoji: ChatEmoji
@@ -380,6 +414,66 @@ class ChatService {
       method: 'POST',
       headers,
       body: '{}',
+    });
+    return this.parseJson(res);
+  }
+
+  // ===== Bình chọn =====
+
+  /** Tạo bình chọn trong nhóm lớp — chỉ GVCN/phó (backend kiểm lại theo scope Frappe). */
+  async createPoll(
+    conversationId: string,
+    payload: CreateChatPollPayload
+  ): Promise<{ message: ChatMessage; conversation: ChatConversation }> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(
+      `${BASE_URL}/api/social/chat/conversations/${encodeURIComponent(conversationId)}/polls`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          question: payload.question,
+          options: payload.options,
+          allowMultiple: Boolean(payload.allowMultiple),
+          anonymous: Boolean(payload.anonymous),
+          closesAt: payload.closesAt ?? null,
+          remindBeforeMinutes: payload.remindBeforeMinutes ?? null,
+        }),
+      }
+    );
+    return this.parseJson(res);
+  }
+
+  /** Bỏ/đổi phiếu. Mảng rỗng = rút phiếu. */
+  async votePoll(
+    messageId: string,
+    optionIds: string[]
+  ): Promise<{ messageId: string; poll: ChatPoll }> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`${BASE_URL}/api/social/chat/messages/${messageId}/poll/vote`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ optionIds }),
+    });
+    return this.parseJson(res);
+  }
+
+  /** Kết thúc bình chọn sớm — người tạo hoặc GVCN/phó. */
+  async closePoll(messageId: string): Promise<{ messageId: string; poll: ChatPoll }> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`${BASE_URL}/api/social/chat/messages/${messageId}/poll/close`, {
+      method: 'POST',
+      headers,
+      body: '{}',
+    });
+    return this.parseJson(res);
+  }
+
+  /** Danh sách người bầu theo phương án — PH nhận 403 khi bình chọn ẩn danh. */
+  async getPollVoters(messageId: string): Promise<ChatPollVotersData> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`${BASE_URL}/api/social/chat/messages/${messageId}/poll/voters`, {
+      headers,
     });
     return this.parseJson(res);
   }

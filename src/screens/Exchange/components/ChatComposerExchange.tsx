@@ -5,7 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Video as VideoCompressor } from 'react-native-compressor';
 import {
   ActivityIndicator,
   Alert,
@@ -61,6 +60,9 @@ export type ChatComposerExchangeProps = {
     attachments?: ChatAttachment[];
     replyToMessageId?: string;
   }) => Promise<void>;
+  /** Viewer là GVCN/phó của nhóm lớp → hiện nút tạo bình chọn. */
+  canCreatePoll?: boolean;
+  onCreatePoll?: () => void;
 };
 
 function guessMimeFromName(name: string): string {
@@ -101,11 +103,13 @@ function localPickFromMediaAsset(
 
 /**
  * SIS-125: nén video trước khi upload để tránh vượt giới hạn dung lượng server và timeout.
- * Nếu native module chưa sẵn sàng (app chưa build lại sau khi thêm react-native-compressor),
- * fallback dùng file gốc — KHÔNG crash.
+ * react-native-compressor là native module → không có trong Expo Go, và nó tạo
+ * NativeEventEmitter ngay lúc load module nên import tĩnh sẽ crash cả bundle.
+ * Vì vậy require() lười trong try/catch: thiếu native module thì dùng file gốc — KHÔNG crash.
  */
 async function compressVideoUri(uri: string): Promise<string> {
   try {
+    const { Video: VideoCompressor } = require('react-native-compressor');
     const out = await VideoCompressor.compress(uri, { compressionMethod: 'auto' });
     return typeof out === 'string' && out.length > 0 ? out : uri;
   } catch (err) {
@@ -125,6 +129,8 @@ export function ChatComposerExchange({
   onTypingStop,
   onEmojiOpenChange,
   onSend,
+  canCreatePoll,
+  onCreatePoll,
 }: ChatComposerExchangeProps) {
   const inputRef = useRef<TextInput>(null);
   const closeEmojiAfterKeyboardShowRef = useRef(false);
@@ -484,6 +490,15 @@ export function ChatComposerExchange({
                 className="size-10 items-center justify-center rounded-full active:bg-gray-100">
                 <Ionicons name="attach-outline" size={24} color={TEAL_ICON} />
               </Pressable>
+              {/* Bình chọn — chỉ GVCN/phó của nhóm lớp (backend kiểm lại theo scope Frappe). */}
+              {canCreatePoll ? (
+                <Pressable
+                  disabled={locked}
+                  onPress={onCreatePoll}
+                  className="size-10 items-center justify-center rounded-full active:bg-gray-100">
+                  <Ionicons name="stats-chart-outline" size={22} color={TEAL_ICON} />
+                </Pressable>
+              ) : null}
             </View>
           ) : showSend ? (
             <Pressable

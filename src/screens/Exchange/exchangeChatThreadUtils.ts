@@ -1,7 +1,7 @@
 /**
  * Hàng FlatList thread chat — tin hoặc chip thời gian (đồng bộ GuardianChatScreen).
  */
-import type { ChatConversation, ChatEmoji, ChatMessage } from '../../types/chat';
+import type { ChatConversation, ChatEmoji, ChatMessage, ChatPoll } from '../../types/chat';
 import {
   humanizeChatWislifeStickerForPreview,
   parseChatWislifeStickerContent,
@@ -299,6 +299,8 @@ export function conversationHeaderTitle(c: ChatConversation | null): string {
 
 export function conversationSubtitle(c: ChatConversation, locked: boolean): string {
   if (locked) return 'Chỉ đọc lịch sử';
+  // GVCN/phó đã khóa nhóm — GV vẫn nhắn được, PH chỉ đọc.
+  if (c.writeMode === 'teachers_only') return 'Đang khóa — chỉ GV được nhắn';
   // Chat 1-1 GV↔PH: subtitle theo tên HS (BE snapshot `studentNames`), không lặp tên PH.
   if (String(c.type || '').startsWith('teacher_guardian')) {
     const raw = (c.guardians || [])
@@ -335,6 +337,25 @@ export function chatReactionsKey(reactions: ChatMessage['reactions'] | undefined
 export function chatAttachmentsKey(attachments: ChatMessage['attachments'] | undefined): string {
   if (!attachments?.length) return '';
   return attachments.map((a) => `${a.kind}:${a.url}`).join('|');
+}
+
+/**
+ * Hòa giải cập nhật bình chọn.
+ * Broadcast socket KHÔNG kèm `myVote` (một payload cho mọi người xem) nên phải giữ lại lựa chọn
+ * đang có; `rev` tăng dần ở BE nên payload đến trễ bị bỏ.
+ * LƯU Ý: hàm này được nhân bản y hệt ở frappe-sis-frontend / parent-portal /
+ * parent-portal-mobile — sửa một nơi thì phải sửa cả bốn.
+ */
+export function applyPollUpdate(cur: ChatPoll | null | undefined, next: ChatPoll): ChatPoll {
+  if (!cur) return next;
+  if (next.rev <= cur.rev) return cur;
+  return { ...next, myVote: next.myVote ?? cur.myVote };
+}
+
+/** Khóa so sánh trạng thái bình chọn (dùng cho memo/deps). */
+export function pollStateKey(poll?: ChatPoll | null): string {
+  if (!poll) return '';
+  return `${poll.rev}|${(poll.myVote ?? []).join(',')}|${poll.isClosed ? 1 : 0}`;
 }
 
 /** Nội dản sao chép / preview overlay — hỗ trợ sticker wire. */

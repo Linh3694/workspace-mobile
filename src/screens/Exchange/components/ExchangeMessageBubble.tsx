@@ -27,10 +27,12 @@ import {
   chatAttachmentsKey,
   chatReactionsKey,
   formatChatTimeVi,
+  pollStateKey,
   type MessageThreadMeta,
 } from '../exchangeChatThreadUtils';
 
 import { ExchangeMessageAttachments } from './ExchangeMessageAttachments';
+import { ExchangePollCard } from './ExchangePollCard';
 import type { MessageActionAnchor } from './MessageActionOverlay';
 
 const CHAT_AVATAR_SIZE = 40;
@@ -47,6 +49,15 @@ type Props = {
   avatarUri: string;
   replyQuoteContent?: string;
   onOpenActionMenu?: (payload: { message: ChatMessage; anchor: MessageActionAnchor }) => void;
+  /** Bình chọn đang chờ server phản hồi. */
+  pollPending?: boolean;
+  /** Nhóm khóa → không bỏ phiếu được. */
+  pollReadOnly?: boolean;
+  /** Viewer là GVCN/phó → được kết thúc bình chọn của người khác. */
+  viewerIsHomeroom?: boolean;
+  onTogglePollOption?: (message: ChatMessage, optionId: string) => void;
+  onOpenPollVoters?: (message: ChatMessage) => void;
+  onClosePoll?: (message: ChatMessage) => void;
 };
 
 function ChatAvatarCircle({ uri }: { uri: string }) {
@@ -76,6 +87,12 @@ export const ExchangeMessageBubble = memo(
     avatarUri,
     replyQuoteContent,
     onOpenActionMenu,
+    pollPending,
+    pollReadOnly,
+    viewerIsHomeroom,
+    onTogglePollOption,
+    onOpenPollVoters,
+    onClosePoll,
   }: Props) {
     const bubbleWrapRef = useRef<View>(null);
     const translateX = useRef(new Animated.Value(0)).current;
@@ -173,7 +190,10 @@ export const ExchangeMessageBubble = memo(
       !message.replyTo &&
       atts.length === 0 &&
       !!parseChatWislifeStickerContent(message.content);
-    const isFrameless = isMediaOnly || isStickerOnly;
+    // Bình chọn cũng render KHÔNG khung: bubble "của mình" nền teal chữ trắng sẽ nuốt mất thanh
+    // phần trăm. `content` ("[Bình chọn] …") chỉ để preview/bản app cũ nên không in ra.
+    const poll = !recalled ? (message.poll ?? null) : null;
+    const isFrameless = isMediaOnly || isStickerOnly || !!poll;
 
     const bubbleInner = (
       <View
@@ -219,6 +239,20 @@ export const ExchangeMessageBubble = memo(
               />
             ) : null}
             {(() => {
+              if (poll) {
+                return (
+                  <ExchangePollCard
+                    poll={poll}
+                    pending={pollPending}
+                    canClose={isMine || viewerIsHomeroom}
+                    readOnly={pollReadOnly}
+                    maxWidth={bubbleMaxWidth}
+                    onToggleOption={(optionId) => onTogglePollOption?.(message, optionId)}
+                    onOpenVoters={() => onOpenPollVoters?.(message)}
+                    onClose={() => onClosePoll?.(message)}
+                  />
+                );
+              }
               const wl = parseChatWislifeStickerContent(message.content);
               if (wl) {
                 return (
@@ -350,6 +384,15 @@ export const ExchangeMessageBubble = memo(
     prev.highlighted === next.highlighted &&
     chatAttachmentsKey(prev.message.attachments) === chatAttachmentsKey(next.message.attachments) &&
     chatReactionsKey(prev.message.reactions) === chatReactionsKey(next.message.reactions) &&
+    // Thiếu dòng này thì mọi cập nhật phiếu bị memo nuốt (rev/myVote/isClosed không nằm trong
+    // content/attachments/reactions).
+    pollStateKey(prev.message.poll) === pollStateKey(next.message.poll) &&
+    prev.pollPending === next.pollPending &&
+    prev.pollReadOnly === next.pollReadOnly &&
+    prev.viewerIsHomeroom === next.viewerIsHomeroom &&
+    prev.onTogglePollOption === next.onTogglePollOption &&
+    prev.onOpenPollVoters === next.onOpenPollVoters &&
+    prev.onClosePoll === next.onClosePoll &&
     prev.isMine === next.isMine &&
     prev.replyDisabled === next.replyDisabled &&
     prev.threadMeta.showName === next.threadMeta.showName &&

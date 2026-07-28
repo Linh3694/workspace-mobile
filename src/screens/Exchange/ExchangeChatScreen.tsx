@@ -28,7 +28,15 @@ import { ROUTES } from '../../constants/routes';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { CHAT_EVENTS } from '../../realtime/chatEvents';
 import { chatService } from '../../services/chatService';
-import type { ChatAttachment, ChatConversation, ChatEmoji, ChatMessage, PinnedMessageSnapshot } from '../../types/chat';
+import type {
+  ChatAttachment,
+  ChatConversation,
+  ChatEmoji,
+  ChatMessage,
+  ChatPoll,
+  CreateChatPollPayload,
+  PinnedMessageSnapshot,
+} from '../../types/chat';
 
 import {
   CHAT_BUBBLE_MAX_WIDTH_RATIO,
@@ -37,6 +45,7 @@ import {
   RECALL_WINDOW_MS,
   REMOTE_TYPING_TTL_MS,
   applyLocalReactionToggleViewer,
+  applyPollUpdate,
   buildChatRows,
   buildMessageThreadMeta,
   conversationHeaderTitle,
@@ -49,11 +58,14 @@ import {
   type ChatListRow,
 } from './exchangeChatThreadUtils';
 import { ChatComposerExchange } from './components/ChatComposerExchange';
+import { CreatePollSheet } from './components/CreatePollSheet';
+import { PollVotersSheet } from './components/PollVotersSheet';
 import { ExchangeGroupChatAvatar } from './components/ExchangeGroupChatAvatar';
 import { TypingDotsLine } from './components/TypingDotsLine';
 import { ExchangeMessageBubble } from './components/ExchangeMessageBubble';
 import { MessageActionOverlay, type MessageActionAnchor } from './components/MessageActionOverlay';
 import { PinnedMessageBanner } from './components/PinnedMessageBanner';
+import { isViewerHomeroom } from './exchangeInfoUtils';
 import { resolveParticipantAvatarUrl } from './lib/chatMemberAvatar';
 import { useLanguage } from '../../hooks/useLanguage';
 
@@ -170,6 +182,18 @@ export default function ExchangeChatScreen() {
     () => isConversationObserver(conversation, teacherEmail),
     [conversation, teacherEmail]
   );
+
+  /** GVCN/phó của nhóm lớp → được tạo/kết thúc bình chọn (backend kiểm lại theo scope Frappe). */
+  const viewerIsHomeroom = useMemo(
+    () => isViewerHomeroom(conversation, teacherEmail),
+    [conversation, teacherEmail]
+  );
+
+  /** Bình chọn: sheet tạo, sheet danh sách người bầu, và các tin đang chờ server phản hồi. */
+  const [pollSheetOpen, setPollSheetOpen] = useState(false);
+  const [creatingPoll, setCreatingPoll] = useState(false);
+  const [votersSheetFor, setVotersSheetFor] = useState<string | null>(null);
+  const [pendingPollIds, setPendingPollIds] = useState<Set<string>>(new Set());
 
   /** TTL typing đối phương — đồng bộ REMOTE_TYPING_TTL_MS phía Guardian. */
   const remoteTypingTtlTimersRef = useRef({});
@@ -435,6 +459,26 @@ export default function ExchangeChatScreen() {
         );
       };
 
+      // Ai đó bỏ phiếu / kết thúc bình chọn. Payload broadcast KHÔNG kèm myVote (một payload cho
+      // mọi người xem) nên applyPollUpdate giữ lại lựa chọn của chính mình.
+      const onPoll = (payload: {
+        conversationId?: string;
+        messageId?: string;
+        poll: ChatPoll;
+      }) => {
+        if (normalizeMongoId(payload?.conversationId) !== normalizeMongoId(convIdRef.current)) {
+          return;
+        }
+        const mid = normalizeMongoId(payload?.messageId);
+        setMessages((prev) =>
+          prev.map((m) =>
+            normalizeMongoId(m._id) === mid
+              ? { ...m, poll: applyPollUpdate(m.poll, payload.poll) }
+              : m
+          )
+        );
+      };
+
       const onConversationPinned = (payload: {
         conversationId?: string;
         pinnedMessage: PinnedMessageSnapshot | null;
@@ -483,6 +527,19 @@ export default function ExchangeChatScreen() {
         }
       };
 
+      /** GVCN/phó khóa/mở khóa nhóm ở thiết bị khác — cập nhật subtitle ngay. */
+      const onConversationWriteMode = (payload: {
+        conversationId?: string;
+        writeMode: ChatConversation['writeMode'];
+      }) => {
+        if (
+          normalizeMongoId(payload?.conversationId) !== normalizeMongoId(convIdRef.current)
+        ) {
+          return;
+        }
+        setConversation((prev) => (prev ? { ...prev, writeMode: payload.writeMode } : prev));
+      };
+
       const onConnect = () => {
         const raw = String(convIdRef.current || '').trim();
         if (!isLikelyMongoObjectId(raw)) return;
@@ -516,7 +573,9 @@ export default function ExchangeChatScreen() {
       socket.on(CHAT_EVENTS.MESSAGE, onMsg);
       socket.on(CHAT_EVENTS.REACTION, onReaction);
       socket.on(CHAT_EVENTS.RECALLED, onRecall);
+      socket.on(CHAT_EVENTS.POLL, onPoll);
       socket.on(CHAT_EVENTS.PINNED, onConversationPinned);
+      socket.on(CHAT_EVENTS.WRITE_MODE, onConversationWriteMode);
       socket.on(CHAT_EVENTS.TYPING, onTyping);
       socket.on('connect', onConnect);
       socket.on('chat:joined', onChatJoined);
@@ -525,7 +584,9 @@ export default function ExchangeChatScreen() {
         socket.off(CHAT_EVENTS.MESSAGE, onMsg);
         socket.off(CHAT_EVENTS.REACTION, onReaction);
         socket.off(CHAT_EVENTS.RECALLED, onRecall);
+        socket.off(CHAT_EVENTS.POLL, onPoll);
         socket.off(CHAT_EVENTS.PINNED, onConversationPinned);
+        socket.off(CHAT_EVENTS.WRITE_MODE, onConversationWriteMode);
         socket.off(CHAT_EVENTS.TYPING, onTyping);
         socket.off('connect', onConnect);
         socket.off('chat:joined', onChatJoined);
@@ -571,6 +632,148 @@ export default function ExchangeChatScreen() {
       senderEmail: teacherEmail,
     });
   };
+
+  // ===== Bình chọn =====
+
+  const markPollPending = useCallback((messageId: string, pending: boolean) => {
+    setPendingPollIds((prev) => {
+      if (pending === prev.has(messageId)) return prev;
+      const next = new Set(prev);
+      if (pending) next.add(messageId);
+      else next.delete(messageId);
+      return next;
+    });
+  }, []);
+
+  const patchPollFromServer = useCallback((messageId: string, poll: ChatPoll) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        normalizeMongoId(m._id) === normalizeMongoId(messageId)
+          ? { ...m, poll: applyPollUpdate(m.poll, poll) }
+          : m
+      )
+    );
+  }, []);
+
+  const handleCreatePoll = useCallback(
+    async (payload: CreateChatPollPayload) => {
+      const cid = mongoConversationIdForApi;
+      if (!cid) return;
+      try {
+        setCreatingPoll(true);
+        const data = await chatService.createPoll(String(cid), payload);
+        if (data.message) {
+          setMessages((prev) => mergeIncomingMessagesPage([data.message], prev));
+        }
+        if (data.conversation) setConversation(data.conversation);
+        setPollSheetOpen(false);
+      } catch (error) {
+        console.warn('[ExchangeChat] createPoll error:', error);
+        const status = (error as { status?: number })?.status;
+        Alert.alert(
+          t('common.error'),
+          status === 403 ? t('exchange.poll_create_forbidden') : t('exchange.poll_create_failed')
+        );
+      } finally {
+        setCreatingPoll(false);
+      }
+    },
+    [mongoConversationIdForApi, t]
+  );
+
+  /**
+   * Bấm một phương án: cập nhật lạc quan (KHÔNG đụng `rev` để broadcast của người khác vẫn
+   * thắng), gọi API rồi áp kết quả server; lỗi thì trả lại trạng thái trước đó.
+   */
+  const handleTogglePollOption = useCallback(
+    async (message: ChatMessage, optionId: string) => {
+      const poll = message.poll;
+      if (!poll || poll.isClosed) return;
+      const messageId = normalizeMongoId(message._id);
+      if (!messageId) return;
+
+      const current = poll.myVote ?? [];
+      const nextVote = current.includes(optionId)
+        ? current.filter((id) => id !== optionId)
+        : poll.allowMultiple
+          ? [...current, optionId]
+          : [optionId];
+
+      const optimistic: ChatPoll = {
+        ...poll,
+        myVote: nextVote,
+        options: poll.options.map((o) => {
+          const had = current.includes(o.id);
+          const has = nextVote.includes(o.id);
+          if (had === has) return o;
+          return { ...o, voteCount: Math.max(0, o.voteCount + (has ? 1 : -1)) };
+        }),
+        totalVoters:
+          current.length === 0 && nextVote.length > 0
+            ? poll.totalVoters + 1
+            : current.length > 0 && nextVote.length === 0
+              ? Math.max(0, poll.totalVoters - 1)
+              : poll.totalVoters,
+      };
+
+      setMessages((prev) =>
+        prev.map((m) => (normalizeMongoId(m._id) === messageId ? { ...m, poll: optimistic } : m))
+      );
+      markPollPending(messageId, true);
+      try {
+        const data = await chatService.votePoll(messageId, nextVote);
+        patchPollFromServer(messageId, data.poll);
+      } catch (error) {
+        console.warn('[ExchangeChat] votePoll error:', error);
+        const code = (error as { code?: string })?.code;
+        setMessages((prev) =>
+          prev.map((m) =>
+            normalizeMongoId(m._id) === messageId
+              ? { ...m, poll: code === 'POLL_CLOSED' ? { ...poll, isClosed: true } : poll }
+              : m
+          )
+        );
+        Alert.alert(
+          t('common.error'),
+          code === 'POLL_CLOSED' ? t('exchange.poll_closed_toast') : t('exchange.poll_vote_failed')
+        );
+      } finally {
+        markPollPending(messageId, false);
+      }
+    },
+    [markPollPending, patchPollFromServer, t]
+  );
+
+  const handleClosePoll = useCallback(
+    async (message: ChatMessage) => {
+      const messageId = normalizeMongoId(message._id);
+      if (!messageId) return;
+      markPollPending(messageId, true);
+      try {
+        const data = await chatService.closePoll(messageId);
+        patchPollFromServer(messageId, data.poll);
+      } catch (error) {
+        console.warn('[ExchangeChat] closePoll error:', error);
+        Alert.alert(t('common.error'), t('exchange.poll_close_failed'));
+      } finally {
+        markPollPending(messageId, false);
+      }
+    },
+    [markPollPending, patchPollFromServer, t]
+  );
+
+  const handleOpenPollVoters = useCallback((message: ChatMessage) => {
+    setVotersSheetFor(normalizeMongoId(message._id));
+  }, []);
+
+  /** Tin đang mở sheet người bầu — lấy từ state để poll luôn là bản mới nhất. */
+  const votersPollTarget = useMemo(
+    () =>
+      votersSheetFor
+        ? messages.find((m) => normalizeMongoId(m._id) === votersSheetFor) ?? null
+        : null,
+    [votersSheetFor, messages]
+  );
 
   const handleSend = async ({
     content,
@@ -791,6 +994,12 @@ export default function ExchangeChatScreen() {
           avatarUri={avatarUri}
           replyQuoteContent={replyQuoteContent}
           onOpenActionMenu={handleOpenActionMenu}
+          pollPending={pendingPollIds.has(normalizeMongoId(msgItem._id))}
+          pollReadOnly={locked || viewerReadOnly}
+          viewerIsHomeroom={viewerIsHomeroom}
+          onTogglePollOption={handleTogglePollOption}
+          onOpenPollVoters={handleOpenPollVoters}
+          onClosePoll={handleClosePoll}
           onReply={() => !locked && setReplyTo(msgItem)}
         />
       );
@@ -801,6 +1010,12 @@ export default function ExchangeChatScreen() {
       messages,
       teacherAvatar,
       locked,
+      viewerReadOnly,
+      viewerIsHomeroom,
+      pendingPollIds,
+      handleTogglePollOption,
+      handleOpenPollVoters,
+      handleClosePoll,
       handleOpenActionMenu,
       highlightedMessageId,
     ]
@@ -1013,6 +1228,8 @@ export default function ExchangeChatScreen() {
                 onTyping={() => void sendTypingPulse()}
                 onTypingStop={() => void sendTypingStop()}
                 onSend={handleSend}
+                canCreatePoll={viewerIsHomeroom}
+                onCreatePoll={() => setPollSheetOpen(true)}
               />
             </BlurView>
           ) : (
@@ -1026,6 +1243,8 @@ export default function ExchangeChatScreen() {
                 onTyping={() => void sendTypingPulse()}
                 onTypingStop={() => void sendTypingStop()}
                 onSend={handleSend}
+                canCreatePoll={viewerIsHomeroom}
+                onCreatePoll={() => setPollSheetOpen(true)}
               />
             </View>
           )}
@@ -1052,6 +1271,23 @@ export default function ExchangeChatScreen() {
             onCopy={handleOverlayCopy}
             onReact={handleOverlayReact}
             onRecall={handleOverlayRecall}
+          />
+        ) : null}
+
+        {viewerIsHomeroom ? (
+          <CreatePollSheet
+            visible={pollSheetOpen}
+            submitting={creatingPoll}
+            onSubmit={(payload) => void handleCreatePoll(payload)}
+            onClose={() => setPollSheetOpen(false)}
+          />
+        ) : null}
+        {votersPollTarget?.poll ? (
+          <PollVotersSheet
+            visible
+            messageId={normalizeMongoId(votersPollTarget._id)}
+            poll={votersPollTarget.poll}
+            onClose={() => setVotersSheetFor(null)}
           />
         ) : null}
       </SafeAreaView>

@@ -3,6 +3,11 @@
  */
 
 export type ChatConversationStatus = 'active' | 'locked';
+/**
+ * Chế độ ghi nhóm lớp do GVCN/phó bật: `teachers_only` = chỉ GV được nhắn (PH chỉ đọc).
+ * Khác `status = 'locked'` — nhóm lớp/năm học cũ, khóa cứng với cả GV.
+ */
+export type ChatConversationWriteMode = 'all' | 'teachers_only';
 export type ChatConversationType = string;
 
 /** Snapshot tin ghim — đồng bộ social-service `ChatConversation.pinnedMessage`. */
@@ -29,6 +34,8 @@ export type ChatConversation = {
   studentIds?: string[];
   status: ChatConversationStatus;
   lockedReason?: string;
+  /** Vắng mặt = `all` (hội thoại tạo trước tính năng khóa). */
+  writeMode?: ChatConversationWriteMode;
   unreadCount?: number;
   isDraft?: boolean;
   draft?: {
@@ -91,6 +98,63 @@ export type ChatAttachment = {
   height?: number;
 };
 
+/** Đồng bộ social-service `ChatMessage.poll` — bình chọn trong nhóm lớp. */
+export type ChatPollVoter = {
+  userId: string;
+  name: string;
+  email?: string;
+  avatarUrl?: string;
+  role: 'teacher' | 'guardian';
+  votedAt: string;
+};
+
+export type ChatPollOption = {
+  id: string;
+  text: string;
+  voteCount: number;
+  /** Chỉ có khi người xem được phép thấy danh tính (GV luôn thấy, PH không thấy nếu ẩn danh). */
+  voters?: ChatPollVoter[];
+};
+
+export type ChatPoll = {
+  question: string;
+  options: ChatPollOption[];
+  allowMultiple: boolean;
+  /** Ẩn danh với phụ huynh; giáo viên vẫn xem được ai bầu gì. */
+  anonymous: boolean;
+  closesAt?: string | null;
+  closedAt?: string | null;
+  /** Server tính: đã đóng tay hoặc đã quá `closesAt`. */
+  isClosed: boolean;
+  /** Số NGƯỜI đã bầu (không phải số phiếu) — mẫu số cho %. */
+  totalVoters: number;
+  canSeeVoters: boolean;
+  /**
+   * CHỈ có trong REST/getMessages — broadcast socket không kèm. `ChatMessage` ở app này không có
+   * field `sender`, nên "mình đã bầu chưa" bắt buộc lấy từ đây chứ không so id ở client.
+   */
+  myVote?: string[];
+  rev: number;
+};
+
+export type ChatPollVotersData = {
+  messageId: string;
+  rev: number;
+  totalVoters: number;
+  options: { id: string; voters: ChatPollVoter[] }[];
+};
+
+export type CreateChatPollPayload = {
+  question: string;
+  options: string[];
+  allowMultiple?: boolean;
+  anonymous?: boolean;
+  /** ISO string; bỏ trống = mở tới khi kết thúc thủ công. */
+  closesAt?: string | null;
+  /** Nhắc thành viên chưa bình chọn trước hạn N phút. Chỉ hợp lệ khi có `closesAt`. */
+  remindBeforeMinutes?: number | null;
+};
+
 export type ChatMessage = {
   _id: string;
   conversation: string;
@@ -111,6 +175,8 @@ export type ChatMessage = {
   reactions?: ChatReaction[];
   recalledAt?: string;
   recalledBy?: string;
+  /** Tin bình chọn — `content` vẫn giữ "[Bình chọn] <câu hỏi>" cho preview/bản app cũ. */
+  poll?: ChatPoll | null;
 };
 
 export type ChatEmoji = 'like' | 'love' | 'haha' | 'wow' | 'sad' | 'angry';

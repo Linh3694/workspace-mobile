@@ -149,6 +149,33 @@ export const normalizeVietnameseName = (
 };
 
 /**
+ * Tên người để hiển thị: chuẩn hoá Họ Đệm Tên (VN), fallback local-part email.
+ *
+ * Dùng khi BE trả tên theo thứ tự AD "Tên + Họ đệm" (VD: "An Nguyễn Hà") — tên nước
+ * ngoài không khớp họ VN sẽ được giữ nguyên.
+ *
+ * @example
+ * formatPersonDisplayName('An Nguyễn Hà')                       // → 'Nguyễn Hà An'
+ * formatPersonDisplayName('Amyleigh Van Rooyen')                // → 'Amyleigh Van Rooyen'
+ * formatPersonDisplayName('', 'an.nguyenha@wellspring.edu.vn')  // → 'An Nguyenha'
+ */
+export const formatPersonDisplayName = (
+  fullName?: string | null,
+  email?: string | null
+): string => {
+  const normalized = normalizeVietnameseName(fullName);
+  if (normalized) return normalized;
+
+  const local = (email || '').trim().split('@')[0];
+  if (!local) return '';
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+    .join(' ');
+};
+
+/**
  * Normalize user data từ backend API
  */
 export const normalizeUserData = (userData: any): any => {

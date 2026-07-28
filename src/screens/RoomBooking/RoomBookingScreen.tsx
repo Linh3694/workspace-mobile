@@ -14,18 +14,21 @@ import ConfirmModal from '../../components/ConfirmModal';
 import { toast } from '../../utils/toast';
 import { getBookableRooms, getRoomBookings, cancelRoomBooking } from '../../services/roomBookingService';
 import type { BookableRoom, RoomBooking } from '../../types/roomBooking';
-import { groupBookingsByDay, formatTimeRange, getOpenHoursLabel } from './roomBookingUtils';
+import {
+  groupBookingsByDay,
+  formatTimeRange,
+  getOpenHoursLabel,
+  getRoomLabel,
+  getRoomCode,
+  getRoomBuildingLabel,
+  matchesRoomQuery,
+  getPersonLabel,
+} from './roomBookingUtils';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const PRIMARY = '#002855';
 const SECONDARY = '#F05023';
-
-/** Nhãn hiển thị của phòng / toà nhà */
-const roomLabel = (r: BookableRoom): string =>
-  (r.title_vn || r.short_title || r.name || '').trim();
-const buildingLabel = (r: BookableRoom): string =>
-  (r.building_title_vn || r.building_title_en || '').trim();
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const toMysql = (d: Date) =>
@@ -91,16 +94,10 @@ export default function RoomBookingScreen() {
 
   const groups = useMemo(() => groupBookingsByDay(bookings), [bookings]);
 
-  const filteredRooms = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rooms;
-    return rooms.filter(
-      (r) =>
-        roomLabel(r).toLowerCase().includes(q) ||
-        buildingLabel(r).toLowerCase().includes(q) ||
-        (r.title_en || '').toLowerCase().includes(q)
-    );
-  }, [rooms, search]);
+  const filteredRooms = useMemo(
+    () => rooms.filter((r) => matchesRoomQuery(r, search)),
+    [rooms, search]
+  );
 
   const canCancel = useCallback(
     (b: RoomBooking): boolean =>
@@ -156,10 +153,14 @@ export default function RoomBookingScreen() {
           {selectedRoom ? (
             <>
               <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
-                {roomLabel(selectedRoom)}
+                {getRoomLabel(selectedRoom)}
               </Text>
               <Text className="text-xs text-gray-500" numberOfLines={1}>
-                {[buildingLabel(selectedRoom), openHoursToday ? `Hôm nay: ${openHoursToday}` : '']
+                {[
+                  getRoomCode(selectedRoom),
+                  getRoomBuildingLabel(selectedRoom),
+                  openHoursToday ? `Hôm nay: ${openHoursToday}` : '',
+                ]
                   .filter(Boolean)
                   .join(' · ')}
               </Text>
@@ -217,9 +218,12 @@ export default function RoomBookingScreen() {
                         {b.title || '(Không tiêu đề)'}
                       </Text>
                       <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={1}>
-                        {[b.booked_by, b.booked_by_department].filter(Boolean).join(' · ') ||
-                          b.booked_by_email ||
-                          ''}
+                        {[
+                          getPersonLabel({ full_name: b.booked_by, email: b.booked_by_email }),
+                          b.booked_by_department,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
                         {b.source_ticket ? '  ·  Gắn ticket' : ''}
                       </Text>
                     </View>
@@ -301,10 +305,14 @@ export default function RoomBookingScreen() {
                   className="flex-row items-center border-b border-gray-100 py-3">
                   <View className="flex-1">
                     <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
-                      {roomLabel(item)}
+                      {getRoomLabel(item)}
                     </Text>
                     <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={1}>
-                      {[buildingLabel(item), item.capacity ? `${item.capacity} chỗ` : '']
+                      {[
+                        getRoomCode(item),
+                        getRoomBuildingLabel(item),
+                        item.capacity ? `${item.capacity} chỗ` : '',
+                      ]
                         .filter(Boolean)
                         .join(' · ')}
                     </Text>

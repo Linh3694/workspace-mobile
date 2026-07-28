@@ -33,6 +33,12 @@ import {
   timeToInputValue,
   getWeekdayName,
   formatDayHeader,
+  getRoomLabel,
+  getRoomCode,
+  getRoomBuildingLabel,
+  matchesRoomQuery,
+  getPersonLabel,
+  matchesPersonQuery,
 } from './roomBookingUtils';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -50,10 +56,6 @@ const addMinutesToHHMM = (hhmm: string, mins: number) => {
   let total = ((h * 60 + m + mins) % 1440 + 1440) % 1440;
   return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
 };
-
-const roomLabel = (r: BookableRoom): string => (r.title_vn || r.short_title || r.name || '').trim();
-const buildingLabel = (r: BookableRoom): string =>
-  (r.building_title_vn || r.building_title_en || '').trim();
 
 export default function RoomBookingCreateScreen() {
   const navigation = useNavigation<Nav>();
@@ -156,27 +158,15 @@ export default function RoomBookingCreateScreen() {
 
   const openHoursLabel = selectedRoom ? getOpenHoursLabel(date, selectedRoom.availability) : '';
 
-  const filteredRooms = useMemo(() => {
-    const q = roomSearch.trim().toLowerCase();
-    if (!q) return rooms;
-    return rooms.filter(
-      (r) =>
-        roomLabel(r).toLowerCase().includes(q) ||
-        buildingLabel(r).toLowerCase().includes(q) ||
-        (r.title_en || '').toLowerCase().includes(q)
-    );
-  }, [rooms, roomSearch]);
+  const filteredRooms = useMemo(
+    () => rooms.filter((r) => matchesRoomQuery(r, roomSearch)),
+    [rooms, roomSearch]
+  );
 
-  const filteredStaff = useMemo(() => {
-    const q = staffSearch.trim().toLowerCase();
-    if (!q) return staff;
-    return staff.filter(
-      (s) =>
-        s.full_name.toLowerCase().includes(q) ||
-        (s.email || '').toLowerCase().includes(q) ||
-        (s.department_name || '').toLowerCase().includes(q)
-    );
-  }, [staff, staffSearch]);
+  const filteredStaff = useMemo(
+    () => staff.filter((s) => matchesPersonQuery(s, staffSearch)),
+    [staff, staffSearch]
+  );
 
   const selectedStaff = useMemo(
     () => staff.filter((s) => selectedStaffIds.has(s.user_id)),
@@ -311,10 +301,12 @@ export default function RoomBookingCreateScreen() {
             {selectedRoom ? (
               <>
                 <Text className="text-base font-medium text-gray-900" numberOfLines={1}>
-                  {roomLabel(selectedRoom)}
+                  {getRoomLabel(selectedRoom)}
                 </Text>
                 <Text className="text-xs text-gray-500" numberOfLines={1}>
-                  {buildingLabel(selectedRoom)}
+                  {[getRoomCode(selectedRoom), getRoomBuildingLabel(selectedRoom)]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </Text>
               </>
             ) : (
@@ -382,7 +374,7 @@ export default function RoomBookingCreateScreen() {
               <View
                 key={s.user_id}
                 className="mb-1.5 mr-1.5 flex-row items-center rounded-full bg-blue-50 py-1 pl-3 pr-1.5">
-                <Text className="text-xs text-gray-700">{s.full_name}</Text>
+                <Text className="text-xs text-gray-700">{getPersonLabel(s)}</Text>
                 <TouchableOpacity onPress={() => toggleStaff(s.user_id)} className="ml-1">
                   <Ionicons name="close-circle" size={16} color="#6B7280" />
                 </TouchableOpacity>
@@ -521,10 +513,14 @@ export default function RoomBookingCreateScreen() {
                   className="flex-row items-center border-b border-gray-100 py-3">
                   <View className="flex-1">
                     <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
-                      {roomLabel(item)}
+                      {getRoomLabel(item)}
                     </Text>
                     <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={1}>
-                      {[buildingLabel(item), item.capacity ? `${item.capacity} chỗ` : '']
+                      {[
+                        getRoomCode(item),
+                        getRoomBuildingLabel(item),
+                        item.capacity ? `${item.capacity} chỗ` : '',
+                      ]
                         .filter(Boolean)
                         .join(' · ')}
                     </Text>
@@ -587,7 +583,7 @@ export default function RoomBookingCreateScreen() {
                   className="flex-row items-center border-b border-gray-100 py-3">
                   <View className="flex-1">
                     <Text className="text-base font-medium text-gray-900" numberOfLines={1}>
-                      {item.full_name}
+                      {getPersonLabel(item)}
                     </Text>
                     <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={1}>
                       {[item.department_name, item.email].filter(Boolean).join(' · ')}

@@ -3,7 +3,13 @@
  * frappe-sis-frontend/packages/core/src/services/roomBookingConfigService.ts
  * (availability / weekday / time) + tiện ích nhóm & sắp xếp lịch cho UI danh sách.
  */
-import type { RoomAvailabilityDay, RoomBooking, RoomBookingWeekday } from '../../types/roomBooking';
+import type {
+  BookableRoom,
+  RoomAvailabilityDay,
+  RoomBooking,
+  RoomBookingWeekday,
+} from '../../types/roomBooking';
+import { formatPersonDisplayName } from '../../utils/nameFormatter';
 
 export const ROOM_BOOKING_WEEKDAYS: RoomBookingWeekday[] = [
   'Monday',
@@ -24,6 +30,84 @@ export const WEEKDAY_LABELS_VI: Record<RoomBookingWeekday, string> = {
   Saturday: 'Thứ 7',
   Sunday: 'Chủ nhật',
 };
+
+/** Chuẩn hoá chuỗi để so sánh/tìm không phân biệt dấu (tiếng Việt) */
+function normalizeSearchText(s?: string | null): string {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Tên phòng để hiển thị — ưu tiên tên theo năm học (yearly assignment) giống web,
+ * vì title_vn của ERP Administrative Room chỉ là mã phòng (legacy/display fallback).
+ */
+export function getRoomLabel(r: BookableRoom): string {
+  const candidates = [
+    r.yearly_assignment_display,
+    r.yearly_assignment_display_en,
+    r.title_vn,
+    r.short_title,
+    r.name,
+  ];
+  return (candidates.find((v) => String(v || '').trim()) || '').toString().trim();
+}
+
+/** Mã phòng hiển thị kèm tên (bỏ qua khi trùng chính tên đang hiển thị) */
+export function getRoomCode(r: BookableRoom): string {
+  const code = (r.short_title || r.title_vn || '').trim();
+  if (!code) return '';
+  return normalizeSearchText(code) === normalizeSearchText(getRoomLabel(r)) ? '' : code;
+}
+
+/** Nhãn toà nhà của phòng */
+export function getRoomBuildingLabel(r: BookableRoom): string {
+  return (r.building_title_vn || r.building_title_en || '').trim();
+}
+
+/** Khớp phòng với từ khoá tìm kiếm (theo tên, mã phòng, toà nhà — không phân biệt dấu) */
+export function matchesRoomQuery(r: BookableRoom, query: string): boolean {
+  const q = normalizeSearchText(query);
+  if (!q) return true;
+  return [
+    getRoomLabel(r),
+    r.yearly_assignment_display,
+    r.yearly_assignment_display_en,
+    r.title_vn,
+    r.title_en,
+    r.short_title,
+    r.building_title_vn,
+    r.building_title_en,
+  ].some((v) => normalizeSearchText(v).includes(q));
+}
+
+/** Dữ liệu tối thiểu để hiển thị/tìm một CBGVNV (người tham dự, người đặt phòng) */
+export interface RoomBookingPerson {
+  full_name?: string | null;
+  email?: string | null;
+  department_name?: string | null;
+}
+
+/** Tên CBGVNV hiển thị — chuẩn hoá Họ Đệm Tên tiếng Việt, fallback local-part email */
+export function getPersonLabel(p: RoomBookingPerson): string {
+  return formatPersonDisplayName(p.full_name, p.email);
+}
+
+/**
+ * Khớp CBGVNV với từ khoá (tên gốc + tên đã chuẩn hoá + email + phòng ban,
+ * không phân biệt dấu) — để tìm được cả khi gõ theo tên đang hiển thị.
+ */
+export function matchesPersonQuery(p: RoomBookingPerson, query: string): boolean {
+  const q = normalizeSearchText(query);
+  if (!q) return true;
+  return [getPersonLabel(p), p.full_name, p.email, p.department_name].some((v) =>
+    normalizeSearchText(v).includes(q)
+  );
+}
 
 /** Index thứ (0=Monday) từ Date */
 export function getWeekdayIndex(date: Date): number {
