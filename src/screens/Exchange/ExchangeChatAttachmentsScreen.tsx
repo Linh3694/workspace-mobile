@@ -24,6 +24,7 @@ import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { chatService, resolveChatAttachmentUrl } from '../../services/chatService';
 
 import { ChatImagePreviewModal } from './components/ChatImagePreviewModal';
+import { ChatVideoThumbnail } from './components/ChatVideoThumbnail';
 import {
   collectDatedAttachments,
   groupAttachmentsByDay,
@@ -148,16 +149,21 @@ export default function ExchangeChatAttachmentsScreen() {
                       onPress={() => onTapMedia(a)}
                       className="relative overflow-hidden rounded-lg bg-black/10"
                       style={{ width: mediaTile, height: mediaTile }}>
-                      <Image
-                        source={{ uri: resolveChatAttachmentUrl(a.url) }}
-                        style={{ width: mediaTile, height: mediaTile }}
-                        resizeMode="cover"
-                      />
                       {a.kind === 'video' ? (
-                        <View className="absolute inset-0 items-center justify-center">
-                          <Ionicons name="play-circle" size={30} color="#fff" />
-                        </View>
-                      ) : null}
+                        <ChatVideoThumbnail
+                          uri={resolveChatAttachmentUrl(a.url)}
+                          width={mediaTile}
+                          height={mediaTile}
+                          playIconSize={30}
+                          dimmed={false}
+                        />
+                      ) : (
+                        <Image
+                          source={{ uri: resolveChatAttachmentUrl(a.url) }}
+                          style={{ width: mediaTile, height: mediaTile }}
+                          resizeMode="cover"
+                        />
+                      )}
                     </Pressable>
                   ))}
                 </View>

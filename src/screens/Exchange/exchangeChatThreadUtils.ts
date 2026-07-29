@@ -7,6 +7,7 @@ import {
   parseChatWislifeStickerContent,
 } from '../../utils/chatWislifeSticker';
 import { getEmojiFallbackText } from '../../utils/emojiUtils';
+import { normalizeVietnameseName } from '../../utils/nameFormatter';
 
 /** Trang đầu khi mở thread. */
 export const CHAT_INITIAL_PAGE_LIMIT = 30;
@@ -225,6 +226,19 @@ export function buildMessageThreadMeta(
   return map;
 }
 
+/**
+ * Chuẩn hóa họ tên hiển thị trong Trao đổi về dạng Họ Đệm Tên.
+ * Dùng cho MỌI tên người trong chat (người gửi bubble, trích dẫn trả lời, xem trước tin cuối,
+ * đang soạn tin, thành viên, người bầu) — Frappe User đồng bộ từ Microsoft/AD nên hay trả
+ * "Lệ Vũ Thị Nhật" thay vì "Vũ Thị Nhật Lệ". Chuỗi dạng email giữ nguyên (fallback khi thiếu tên).
+ * Đồng bộ với parent-portal-mobile `formatChatDisplayName`.
+ */
+export function formatChatDisplayName(raw: string | undefined | null): string {
+  const s = String(raw ?? '').trim();
+  if (!s || s.includes('@')) return s;
+  return normalizeVietnameseName(s) || s;
+}
+
 export function formatChatTimeVi(iso?: string): string {
   if (!iso) return '';
   const date = new Date(iso);
@@ -242,7 +256,7 @@ export function classShortName(className?: string) {
 /** Tên phụ huynh (đối phương) cho cuộc GV↔PH — danh sách & header WIS. */
 export function teacherGuardianChatCounterpartTitle(c: ChatConversation): string {
   for (const g of c.guardians || []) {
-    const n = String(g?.name || '').trim();
+    const n = formatChatDisplayName(g?.name);
     if (n) return n;
   }
   const t = c.title?.trim() || '';
@@ -323,7 +337,9 @@ export function conversationSubtitle(c: ChatConversation, locked: boolean): stri
     const cn = classShortName(c.className);
     return cn ? `Lớp ${cn}` : '';
   }
-  const guardians = c.guardians?.map((g) => g.name).filter(Boolean) as string[];
+  const guardians = c.guardians
+    ?.map((g) => formatChatDisplayName(g.name))
+    .filter(Boolean) as string[];
   if (guardians.length) return guardians.join(', ');
   const cn = classShortName(c.className);
   return cn ? `Lớp ${cn}` : '';

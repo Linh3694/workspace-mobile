@@ -14,7 +14,7 @@ import { useLanguage } from '../../../hooks/useLanguage';
 import { CHAT_EVENTS } from '../../../realtime/chatEvents';
 import { chatService } from '../../../services/chatService';
 import type { ChatPoll, ChatPollVotersData } from '../../../types/chat';
-import { MY_MESSAGE_BUBBLE_BG } from '../exchangeChatThreadUtils';
+import { formatChatDisplayName, MY_MESSAGE_BUBBLE_BG } from '../exchangeChatThreadUtils';
 
 const ACCENT = MY_MESSAGE_BUBBLE_BG;
 
@@ -119,38 +119,41 @@ export function PollVotersSheet({
                   <Text className="font-mulish-medium text-sm text-gray-500">{voters.length}</Text>
                 </View>
                 {voters.length ? (
-                  voters.map((voter) => (
-                    <View
-                      key={`${option.id}-${voter.userId || voter.email || voter.name}`}
-                      className="flex-row items-center gap-2 py-1.5"
-                    >
-                      {voter.avatarUrl ? (
-                        <Image
-                          source={{ uri: voter.avatarUrl }}
-                          style={{
-                            width: 28,
-                            height: 28,
-                            borderRadius: 14,
-                            backgroundColor: '#E5E7EB',
-                          }}
-                        />
-                      ) : (
-                        <View className="h-7 w-7 items-center justify-center rounded-full bg-gray-200">
-                          <Text className="font-mulish-bold text-[11px] text-gray-600">
-                            {(voter.name || '?').trim().charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
-                      )}
-                      <Text className="flex-1 font-mulish-medium text-sm text-gray-900">
-                        {voter.name}
-                      </Text>
-                      <Text className="font-mulish-medium text-[11px] text-gray-500">
-                        {voter.role === 'teacher'
-                          ? t('exchange.poll_role_teacher')
-                          : t('exchange.poll_role_guardian')}
-                      </Text>
-                    </View>
-                  ))
+                  voters.map((voter) => {
+                    const voterName = formatChatDisplayName(voter.name);
+                    return (
+                      <View
+                        key={`${option.id}-${voter.userId || voter.email || voter.name}`}
+                        className="flex-row items-center gap-2 py-1.5"
+                      >
+                        {voter.avatarUrl ? (
+                          <Image
+                            source={{ uri: voter.avatarUrl }}
+                            style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: 14,
+                              backgroundColor: '#E5E7EB',
+                            }}
+                          />
+                        ) : (
+                          <View className="h-7 w-7 items-center justify-center rounded-full bg-gray-200">
+                            <Text className="font-mulish-bold text-[11px] text-gray-600">
+                              {(voterName || '?').trim().charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+                        <Text className="flex-1 font-mulish-medium text-sm text-gray-900">
+                          {voterName}
+                        </Text>
+                        <Text className="font-mulish-medium text-[11px] text-gray-500">
+                          {voter.role === 'teacher'
+                            ? t('exchange.poll_role_teacher')
+                            : t('exchange.poll_role_guardian')}
+                        </Text>
+                      </View>
+                    );
+                  })
                 ) : (
                   <Text className="font-mulish-medium text-[11px] text-gray-400">
                     {t('exchange.poll_no_voters')}

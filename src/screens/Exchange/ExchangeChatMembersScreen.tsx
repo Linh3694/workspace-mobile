@@ -14,7 +14,6 @@ import {
   Image,
   Modal,
   ScrollView,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -30,6 +29,7 @@ import { chatService } from '../../services/chatService';
 import type { AddableTeacher, ChatConversation } from '../../types/chat';
 
 import { InfoMemberRow } from './components/InfoMemberRow';
+import { formatChatDisplayName } from './exchangeChatThreadUtils';
 import {
   buildConversationMembers,
   isViewerHomeroom,
@@ -65,7 +65,6 @@ export default function ExchangeChatMembersScreen() {
   const [loadingAddable, setLoadingAddable] = useState(false);
   const [selectedAddIds, setSelectedAddIds] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
-  const [writeModeBusy, setWriteModeBusy] = useState(false);
 
   const roleLabels = useMemo(
     () => ({
@@ -111,27 +110,6 @@ export default function ExchangeChatMembersScreen() {
     if (!needle) return members;
     return members.filter((m) => normalizeForSearch(`${m.name} ${m.role}`).includes(needle));
   }, [members, searchQuery]);
-
-  // Khóa nhóm "chỉ GV được nhắn" — chỉ nhóm lớp và chỉ GVCN/phó (backend check lại theo scope).
-  const canManageWriteMode = viewerIsHomeroom && conversation?.type === 'class_general';
-  const teachersOnly = conversation?.writeMode === 'teachers_only';
-
-  const toggleWriteMode = async (next: boolean) => {
-    if (!conversation || writeModeBusy) return;
-    setWriteModeBusy(true);
-    try {
-      const updated = await chatService.setConversationWriteMode(
-        conversationId,
-        next ? 'teachers_only' : 'all'
-      );
-      setConversation(updated);
-    } catch (e) {
-      console.warn('[ExchangeChatMembers] setConversationWriteMode failed', e);
-      Alert.alert(t('common.error'), t('exchange.info_write_mode_error'));
-    } finally {
-      setWriteModeBusy(false);
-    }
-  };
 
   const openOneToOne = (guardianId?: string) => {
     if (!canOpenOneToOne || !guardianId || !conversation) return;
@@ -259,24 +237,6 @@ export default function ExchangeChatMembersScreen() {
         </View>
       </View>
 
-      {canManageWriteMode ? (
-        <View className="mx-4 mt-3 flex-row items-center rounded-xl bg-[#F1F3F5] px-3 py-3">
-          <View className="mr-3 flex-1">
-            <Text className="text-base font-semibold text-[#0A2240]">
-              {t('exchange.info_teachers_only_title')}
-            </Text>
-            <Text className="mt-0.5 text-xs text-[#6B7280]">
-              {t('exchange.info_teachers_only_hint')}
-            </Text>
-          </View>
-          <Switch
-            value={teachersOnly}
-            disabled={writeModeBusy}
-            onValueChange={(next) => void toggleWriteMode(next)}
-          />
-        </View>
-      ) : null}
-
       <FlatList
         data={filtered}
         keyExtractor={(m) => m.key}
@@ -357,7 +317,7 @@ export default function ExchangeChatMembersScreen() {
                       />
                       <View className="ml-3 min-w-0 flex-1">
                         <Text className="text-base font-semibold text-[#0A2240]" numberOfLines={1}>
-                          {tt.name || tt.email}
+                          {formatChatDisplayName(tt.name) || tt.email}
                         </Text>
                         {subjects ? (
                           <Text className="text-xs text-[#6B7280]" numberOfLines={1}>

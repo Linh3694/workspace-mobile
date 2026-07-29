@@ -3,6 +3,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ROUTES } from '../constants/routes';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
+/**
+ * `data.type` của thông báo cần mở màn Trao đổi.
+ * NGUỒN DUY NHẤT — thêm loại thông báo chat mới thì sửa ở đây, đừng viết lại danh sách chỗ khác
+ * (pushNotificationService.ts và NotificationsScreen.tsx cùng dùng hằng này).
+ * Giá trị phải khớp `data.type` backend gửi ở erp/api/notification/exchange.py.
+ */
+export const CHAT_NOTIFICATION_TYPES: readonly string[] = [
+  'chat_message',
+  'chat',
+  'chat_poll_reminder',
+  'chat_poll_closed',
+  // Thả cảm xúc có bản ghi trong hộp thư (không có push) — bấm vào phải mở đúng hội thoại.
+  'chat_message_reaction',
+];
+
 /** Dữ liệu payload từ FCM/Expo (data của notification) */
 export type PushNotificationPayload = {
   ticketId?: string;
@@ -191,8 +206,7 @@ export async function navigateFromPushNotificationData(
   }
 
   // === CHAT — Trao đổi (Socket / push) ===
-  const chatTypes = ['chat_message', 'chat'];
-  if (chatTypes.includes(data?.type || '')) {
+  if (CHAT_NOTIFICATION_TYPES.includes(data?.type || '')) {
     const convId = data.conversationId || data.conversation_id || data.chatId;
     if (convId) {
       nav(ROUTES.SCREENS.EXCHANGE_CHAT, {

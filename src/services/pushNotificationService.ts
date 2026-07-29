@@ -3,6 +3,7 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ROUTES } from '../constants/routes';
+import { CHAT_NOTIFICATION_TYPES } from '../utils/pushNotificationNavigation';
 import { soundService } from './soundService';
 
 interface PushNotificationData {
@@ -375,6 +376,13 @@ class PushNotificationService {
       wasOpened,
     });
 
+    // Chat/Trao đổi tách ra trước switch để dùng chung CHAT_NOTIFICATION_TYPES — tránh việc
+    // thêm loại thông báo chat mới lại quên một danh sách nào đó (bình chọn đã dính lỗi này).
+    if (CHAT_NOTIFICATION_TYPES.includes(data?.type || '')) {
+      this.handleChatNotification(data, wasOpened);
+      return;
+    }
+
     // Handle different notification types
     switch (data?.type) {
       case 'attendance':
@@ -383,10 +391,6 @@ class PushNotificationService {
       case 'ticket_created':
       case 'ticket_updated':
         this.handleTicketNotification(data, wasOpened);
-        break;
-      case 'chat_message':
-      case 'chat':
-        this.handleChatNotification(data, wasOpened);
         break;
       // Feedback notifications
       case 'feedback_created':

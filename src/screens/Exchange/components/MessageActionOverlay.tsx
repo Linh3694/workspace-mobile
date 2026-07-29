@@ -25,7 +25,8 @@ import ReactionEmoji from '../../../components/Wislife/ReactionEmoji';
 import { ExchangeMessageAttachments } from './ExchangeMessageAttachments';
 import type { ChatEmoji, ChatMessage } from '../../../types/chat';
 import { parseChatWislifeStickerContent } from '../../../utils/chatWislifeSticker';
-import { resolveChatReactionCode, WISLIFE_EMOJIS } from '../../../utils/emojiUtils';
+import { CHAT_REACTION_EMOJIS, resolveChatReactionCode } from '../../../utils/emojiUtils';
+import { formatChatDisplayName } from '../exchangeChatThreadUtils';
 
 const GAP = 10;
 const CARD_PAD_V = 24;
@@ -35,7 +36,7 @@ const ACTION_ROW_H = 148;
 const EMOJI_PICKER_SIZE = 28;
 /** Chiều ngang pill vừa 6 emoji một hàng (size + vùng bấm + padding viên thuốc). */
 const EMOJI_PILL_INTRINSIC_WIDTH =
-  WISLIFE_EMOJIS.length * (EMOJI_PICKER_SIZE + 12) + 20;
+  CHAT_REACTION_EMOJIS.length * (EMOJI_PICKER_SIZE + 12) + 20;
 
 export type MessageActionAnchor = {
   x: number;
@@ -196,14 +197,14 @@ export function MessageActionOverlay({
       ]}>
       {showSenderName && !isMine ? (
         <Text className="mb-1 font-mulish-bold text-sm text-[#002855]">
-          {message.senderSnapshot?.name}
+          {formatChatDisplayName(message.senderSnapshot?.name)}
         </Text>
       ) : null}
       {message.replyTo && replyQuoteContent && !recalled ? (
         <View
           className={`mb-2 rounded-lg border-l-4 px-3 py-2 ${isMine ? 'border-white/70 bg-white/10' : 'border-[#F97316] bg-white'}`}>
           <Text className={`font-mulish-bold text-sm ${isMine ? 'text-white' : 'text-[#002855]'}`}>
-            {message.replyTo.senderName}
+            {formatChatDisplayName(message.replyTo.senderName)}
           </Text>
           <Text
             numberOfLines={1}
@@ -315,7 +316,7 @@ export function MessageActionOverlay({
                     keyboardShouldPersistTaps="handled"
                     style={styles.emojiPillScroll}
                     contentContainerStyle={styles.emojiPillScrollContent}>
-                    {WISLIFE_EMOJIS.map((item, idx) => (
+                    {CHAT_REACTION_EMOJIS.map((item, idx) => (
                       <Pressable
                         key={item.code}
                         onPress={() => {

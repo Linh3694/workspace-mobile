@@ -23,8 +23,9 @@ import { chatService } from '../../../services/chatService';
 import type { ChatAttachment, ChatMessage } from '../../../types/chat';
 import { formatChatWislifeStickerContent } from '../../../utils/chatWislifeSticker';
 
-import { replyQuoteSnippet } from '../exchangeChatThreadUtils';
+import { formatChatDisplayName, replyQuoteSnippet } from '../exchangeChatThreadUtils';
 import { ChatEmojiPickerPanel } from './ChatEmojiPickerPanel';
+import { ChatVideoThumbnail } from './ChatVideoThumbnail';
 
 const ORANGE_CAMERA = '#F05023';
 const TEAL_ICON = '#0d9488';
@@ -385,7 +386,7 @@ export function ChatComposerExchange({
         <View className="mb-2 flex-row items-center rounded-xl border border-[#0d9488]/25 bg-[#0d9488]/08 px-3 py-2">
           <View className="min-w-0 flex-1 border-l-4 border-[#0d9488] pl-2">
             <Text className="font-mulish-bold text-xs text-[#002855]/80">
-              Trả lời {replyTo.senderSnapshot?.name || '…'}
+              Trả lời {formatChatDisplayName(replyTo.senderSnapshot?.name) || '…'}
             </Text>
             <Text className="mt-0.5 font-mulish-medium text-sm text-[#002855]" numberOfLines={2}>
               {replySnippet}
@@ -410,9 +411,8 @@ export function ChatComposerExchange({
               {p.kind === 'image' ? (
                 <Image source={{ uri: p.uri }} className="size-14 rounded-xl" />
               ) : p.kind === 'video' ? (
-                <View className="size-14 items-center justify-center rounded-xl bg-gray-800">
-                  <Ionicons name="play-circle" size={26} color="#fff" />
-                  <Text className="mt-0.5 font-mulish-bold text-[9px] text-white">Video</Text>
+                <View className="overflow-hidden rounded-xl">
+                  <ChatVideoThumbnail uri={p.uri} width={56} height={56} playIconSize={26} />
                 </View>
               ) : (
                 <View className="h-14 min-w-[120px] max-w-[200px] justify-center rounded-xl bg-gray-200 px-2">

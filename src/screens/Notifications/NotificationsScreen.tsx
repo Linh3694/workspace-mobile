@@ -11,6 +11,7 @@ import { vi } from 'date-fns/locale';
 import { notificationCenterService } from '../../services/notificationCenterService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ROUTES } from '../../constants/routes';
+import { CHAT_NOTIFICATION_TYPES } from '../../utils/pushNotificationNavigation';
 import { NOTIFICATION_INBOX_REFRESH_EVENT } from '../../providers/NotificationInboxSocketProvider';
 
 // Custom Mark As Read Icon component (giống parent-portal)
@@ -603,8 +604,17 @@ const NotificationsScreen = () => {
         }
       }
 
-      // === CHAT — stack Chat chưa gắn vào Main: mở tab thông báo ===
-      if (data?.type === 'chat_message') {
+      // === CHAT — Trao đổi: mở thẳng hội thoại khi payload có conversationId ===
+      if (CHAT_NOTIFICATION_TYPES.includes(data?.type || '')) {
+        const convId = data.conversationId || data.conversation_id || data.chatId;
+        if (convId) {
+          (navigation as any).navigate(ROUTES.SCREENS.EXCHANGE_CHAT, {
+            conversationId: String(convId),
+            classId: data.classId || data.class_id,
+          });
+          return;
+        }
+        // Không có conversationId thì ở lại tab thông báo (hành vi cũ).
         (navigation as any).navigate(ROUTES.SCREENS.MAIN, {
           screen: ROUTES.MAIN.NOTIFICATIONS,
           params: data.notificationId ? { notificationId: data.notificationId } : undefined,

@@ -7,6 +7,7 @@ import { Image, Pressable, Text, View } from 'react-native';
 
 import { resolveChatAttachmentUrl } from '../../../services/chatService';
 import type { PinnedMessageSnapshot } from '../../../types/chat';
+import { formatChatDisplayName } from '../exchangeChatThreadUtils';
 
 const AVATAR = 40;
 
@@ -73,7 +74,7 @@ export function PinnedMessageBanner({ pinnedMessage, onPress, showClose = true, 
               <Image source={{ uri: fullUri }} style={{ width: AVATAR, height: AVATAR }} resizeMode="cover" />
             ) : (
               <Text className="font-mulish-bold text-sm text-[#002855]/70">
-                {initialsFromName(pinnedMessage.senderName)}
+                {initialsFromName(formatChatDisplayName(pinnedMessage.senderName))}
               </Text>
             )}
           </View>

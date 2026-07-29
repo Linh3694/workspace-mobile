@@ -8,6 +8,8 @@ import type { ChatConversation } from '../../../types/chat';
 
 import { getGroupAvatarDisplay } from '../lib/groupChatAvatarLayout';
 import { memberToAvatarUri } from '../lib/chatMemberAvatar';
+import { classAvatarColor, classAvatarFontSize, classAvatarLabel } from '../lib/classAvatar';
+import { useClassPhoto } from '../lib/useClassPhoto';
 
 const RING_COLOR = '#E5E7EB';
 
@@ -38,6 +40,13 @@ export function ExchangeGroupChatAvatar({ conversation, viewerEmails, size = 44 
     [conversation, viewerNorm]
   );
 
+  const isClassGroup = conversation.type === 'class_general';
+  const classPhotoUrl = useClassPhoto(
+    conversation.classId,
+    conversation.schoolYearId,
+    isClassGroup
+  );
+
   const borderW = 1.5;
 
   const ring = {
@@ -45,6 +54,54 @@ export function ExchangeGroupChatAvatar({ conversation, viewerEmails, size = 44 
     borderColor: RING_COLOR,
     backgroundColor: '#fff',
   } as const;
+
+  // Nhóm lớp → ảnh lớp theo năm (SIS Photo); chưa có ảnh thì rơi về vòng tròn màu + mã lớp.
+  if (isClassGroup) {
+    const r = size / 2;
+    if (classPhotoUrl) {
+      return (
+        <View
+          style={{
+            width: size,
+            height: size,
+            borderRadius: r,
+            overflow: 'hidden',
+            ...ring,
+          }}>
+          <Image
+            source={{ uri: classPhotoUrl }}
+            style={{ width: size, height: size }}
+            resizeMode="cover"
+          />
+        </View>
+      );
+    }
+    const label = classAvatarLabel(conversation.className);
+    const bg = classAvatarColor(conversation.classId || conversation.className || label);
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: r,
+          borderWidth: borderW,
+          borderColor: 'rgba(255,255,255,0.7)',
+          backgroundColor: bg,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+        <Text
+          style={{
+            fontFamily: 'Mulish-Bold',
+            fontSize: classAvatarFontSize(size, label),
+            color: '#fff',
+          }}
+          numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+    );
+  }
 
   if (display.kind === 'single') {
     const m = display.members[0];

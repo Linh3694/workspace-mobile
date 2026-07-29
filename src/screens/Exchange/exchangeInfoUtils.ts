@@ -2,6 +2,7 @@
  * Helper dùng chung cho các màn Thông tin hội thoại (info / members / attachments).
  */
 import type { ChatAttachment, ChatConversation, ChatMessage } from '../../types/chat';
+import { formatChatDisplayName } from './exchangeChatThreadUtils';
 import { resolveParticipantAvatarUrl } from './lib/chatMemberAvatar';
 
 export type InfoMember = {
@@ -37,7 +38,7 @@ export function buildConversationMembers(
         .join(', ');
       return {
         key: `t:${tt.teacherId || tt.email || tt.name || i}`,
-        name: tt.name || tt.email || labels.teacher,
+        name: formatChatDisplayName(tt.name) || tt.email || labels.teacher,
         avatar: resolveParticipantAvatarUrl(tt.avatarUrl, tt.email || tt.name || 'gv'),
         role: subjects ? `${labels.subjectTeacher} • ${subjects}` : labels.teacher,
         pill: 'GV' as const,
@@ -46,15 +47,17 @@ export function buildConversationMembers(
         removable: Boolean(tt.manualAdd),
       };
     });
-  const guardians = (conversation?.guardians || []).map((g, i) => ({
-    key: `g:${g.guardianId || g.email || g.name || i}`,
-    name: g.name || g.email || labels.parent,
-    avatar: resolveParticipantAvatarUrl(g.avatarUrl, g.email || g.name || 'ph'),
-    role: labels.parent,
-    pill: null,
-    isGuardian: true,
-    guardianId: g.guardianId,
-  }));
+  const guardians = (conversation?.guardians || [])
+    .filter((g) => !g.removedAt) // PH đã rời nhóm → không hiển thị (giống web)
+    .map((g, i) => ({
+      key: `g:${g.guardianId || g.email || g.name || i}`,
+      name: formatChatDisplayName(g.name) || g.email || labels.parent,
+      avatar: resolveParticipantAvatarUrl(g.avatarUrl, g.email || g.name || 'ph'),
+      role: labels.parent,
+      pill: null,
+      isGuardian: true,
+      guardianId: g.guardianId,
+    }));
   return [...teachers, ...guardians];
 }
 

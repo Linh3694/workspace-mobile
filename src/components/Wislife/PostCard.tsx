@@ -29,7 +29,14 @@ import { formatRelativeTime } from '../../utils/dateUtils';
 import LikeSkeletonSvg from '../../assets/like-skeleton.svg';
 import { MentionRichText } from './MentionInput';
 import { getAvatar } from '../../utils/avatar';
-import { getEmojiByCode, isFallbackEmoji, hasLottieAnimation } from '../../utils/emojiUtils';
+import {
+  FEED_REACTION_CODE,
+  getEmojiByCode,
+  hasLottieAnimation,
+  isFallbackEmoji,
+  JOURNAL_COMMENTS_ENABLED,
+  JOURNAL_MULTI_REACTION_ENABLED,
+} from '../../utils/emojiUtils';
 import { normalizeVietnameseName } from '../../utils/nameFormatter';
 import ReactionPicker from './ReactionPicker';
 import ReactionsListModal from './ReactionsListModal';
@@ -278,8 +285,12 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   const userRoles = (user as any)?.roles || [];
   const canDeletePost = userRoles.some((role: string) => role === 'Mobile BOD');
 
-  // Mở modal chọn reaction khi tap vào nút Thích
+  // Bật đa cảm xúc thì mở modal chọn; tắt thì bấm là thả tim luôn.
   const handleLikeButtonPress = (event?: GestureResponderEvent) => {
+    if (!JOURNAL_MULTI_REACTION_ENABLED) {
+      void handleReaction(FEED_REACTION_CODE);
+      return;
+    }
     // Lấy vị trí để hiển thị modal gần nút bấm
     if (event?.nativeEvent) {
       setReactionPickerPosition({
@@ -436,7 +447,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
       )}
 
       {/* Reactions & Comments Summary - Hiển thị khi có reaction HOẶC comment */}
-      {(totalReactions > 0 || commentCount > 0) && (
+      {(totalReactions > 0 || (JOURNAL_COMMENTS_ENABLED && commentCount > 0)) && (
         <View className="px-4 pb-2">
           <View className="flex-row items-center justify-between">
             {/* Ấn vào để xem danh sách người thích */}
@@ -446,7 +457,11 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
                 onPress={() => setReactionsListVisible(true)}
                 activeOpacity={0.7}>
                 <View className="flex-row items-center">
-                  {Object.entries(reactionCounts).map(([emojiCode, count]) => {
+                  {/* Tắt đa cảm xúc ⇒ gộp mọi mã cũ về 1 icon tim. */}
+                  {(JOURNAL_MULTI_REACTION_ENABLED
+                    ? Object.entries(reactionCounts)
+                    : ([[FEED_REACTION_CODE, totalReactions]] as Array<[string, number]>)
+                  ).map(([emojiCode, count]) => {
                     const emoji = getEmojiByCode(emojiCode);
                     if (!emoji || count === 0) return null;
                     return (
@@ -472,7 +487,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
             ) : (
               <View />
             )}
-            {commentCount > 0 && (
+            {JOURNAL_COMMENTS_ENABLED && commentCount > 0 && (
               <TouchableOpacity onPress={() => (onCommentPress ? onCommentPress(post) : undefined)}>
                 <Text className="text-sm text-gray-600">{commentCount} bình luận</Text>
               </TouchableOpacity>
@@ -491,7 +506,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
               {userReaction ? (
                 // Hiển thị emoji đã chọn
                 (() => {
-                  const emoji = getEmojiByCode(userReaction.type);
+                  const emoji = getEmojiByCode(
+                    JOURNAL_MULTI_REACTION_ENABLED ? userReaction.type : FEED_REACTION_CODE,
+                  );
                   if (emoji && hasLottieAnimation(emoji)) {
                     return (
                       <LottieView
@@ -514,19 +531,27 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
               className="font-medium"
               style={{
                 color: userReaction
-                  ? getEmojiByCode(userReaction.type)?.color || '#F05023'
+                  ? getEmojiByCode(
+                      JOURNAL_MULTI_REACTION_ENABLED ? userReaction.type : FEED_REACTION_CODE,
+                    )?.color || '#F05023'
                   : '#6B7280',
               }}>
-              {userReaction ? getEmojiByCode(userReaction.type)?.name || 'Đã thích' : 'Thích'}
+              {userReaction
+                ? (JOURNAL_MULTI_REACTION_ENABLED
+                    ? getEmojiByCode(userReaction.type)?.name || 'Đã thích'
+                    : 'Đã thích')
+                : 'Thích'}
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => (onCommentPress ? onCommentPress(post) : undefined)}
-            className="flex-row items-center rounded-full px-4 py-2">
-            <Ionicons name="chatbubble-outline" size={24} color="#6B7280" />
-            <Text className="ml-2 text-base font-medium text-gray-600">Bình luận</Text>
-          </TouchableOpacity>
+          {JOURNAL_COMMENTS_ENABLED && (
+            <TouchableOpacity
+              onPress={() => (onCommentPress ? onCommentPress(post) : undefined)}
+              className="flex-row items-center rounded-full px-4 py-2">
+              <Ionicons name="chatbubble-outline" size={24} color="#6B7280" />
+              <Text className="ml-2 text-base font-medium text-gray-600">Bình luận</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -644,7 +669,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
 
       {/* Reaction Picker Modal */}
       <ReactionPicker
-        visible={reactionPickerVisible}
+        visible={JOURNAL_MULTI_REACTION_ENABLED && reactionPickerVisible}
         onClose={() => setReactionPickerVisible(false)}
         onSelect={handleReaction}
         currentReaction={userReaction?.type}

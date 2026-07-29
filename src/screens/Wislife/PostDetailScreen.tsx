@@ -27,7 +27,13 @@ import { getAvatar } from '../../utils/avatar';
 import { formatRelativeTime } from '../../utils/dateUtils';
 import { API_BASE_URL } from '../../config/constants';
 import LikeSkeletonSvg from '../../assets/like-skeleton.svg';
-import { getEmojiByCode, hasLottieAnimation } from '../../utils/emojiUtils';
+import {
+  FEED_REACTION_CODE,
+  getEmojiByCode,
+  hasLottieAnimation,
+  JOURNAL_COMMENTS_ENABLED,
+  JOURNAL_MULTI_REACTION_ENABLED,
+} from '../../utils/emojiUtils';
 import { normalizeVietnameseName } from '../../utils/nameFormatter';
 import ReactionPicker from '../../components/Wislife/ReactionPicker';
 import ReactionsListModal from '../../components/Wislife/ReactionsListModal';
@@ -590,23 +596,32 @@ const PostDetailScreen = () => {
                   className="ml-2 font-medium"
                   style={{
                     color: userReaction
-                      ? getEmojiByCode(userReaction.type)?.color || '#F05023'
+                      ? getEmojiByCode(
+                          JOURNAL_MULTI_REACTION_ENABLED ? userReaction.type : FEED_REACTION_CODE,
+                        )?.color || '#F05023'
                       : '#6B7280',
                   }}>
-                  {userReaction ? getEmojiByCode(userReaction.type)?.name || 'Đã thích' : 'Thích'}
+                  {userReaction
+                    ? (JOURNAL_MULTI_REACTION_ENABLED
+                        ? getEmojiByCode(userReaction.type)?.name || 'Đã thích'
+                        : 'Đã thích')
+                    : 'Thích'}
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={() => inputRef.current?.focus()}
-                className="flex-1 flex-row items-center justify-center py-1.5">
-                <Ionicons name="chatbubble-outline" size={20} color="#6B7280" />
-                <Text className="ml-2 font-medium text-gray-600">Bình luận</Text>
-              </TouchableOpacity>
+              {JOURNAL_COMMENTS_ENABLED && (
+                <TouchableOpacity
+                  onPress={() => inputRef.current?.focus()}
+                  className="flex-1 flex-row items-center justify-center py-1.5">
+                  <Ionicons name="chatbubble-outline" size={20} color="#6B7280" />
+                  <Text className="ml-2 font-medium text-gray-600">Bình luận</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
-          {/* Comments Section */}
+          {/* Comments Section — ẩn theo cờ JOURNAL_COMMENTS_ENABLED, code giữ nguyên */}
+          {JOURNAL_COMMENTS_ENABLED && (<>
           <View className="px-4 py-4">
             <Text className="mb-4 text-base font-semibold text-gray-900">
               Bình luận ({displayCommentCount})
@@ -844,12 +859,14 @@ const PostDetailScreen = () => {
               </View>
             )}
           </View>
+          </>)}
 
           {/* Bottom spacing */}
           <View style={{ height: 100 }} />
         </ScrollView>
 
-        {/* Comment Input */}
+        {/* Comment Input — ẩn theo cờ */}
+        {JOURNAL_COMMENTS_ENABLED && (<>
         <View
           className="border-t border-gray-200 bg-white px-4 py-3"
           style={{ paddingBottom: insets.bottom + 12 }}>
@@ -917,6 +934,7 @@ const PostDetailScreen = () => {
             </View>
           </View>
         </View>
+        </>)}
       </KeyboardAvoidingView>
 
       {/* Post Reaction Picker */}

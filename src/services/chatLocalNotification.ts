@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import type { ChatConversation, ChatMessage } from '../types/chat';
+import { normalizeVietnameseName } from '../utils/nameFormatter';
 
 const DEBOUNCE_MS = 2600;
 const lastPresentedAtByConversation = new Map<string, number>();
@@ -35,7 +36,9 @@ export async function presentChatMessageLocalNotification(
   const { status } = await Notifications.getPermissionsAsync();
   if (status !== 'granted') return;
 
-  const senderName = (message.senderSnapshot?.name || 'Người gửi').trim();
+  // Tên khớp bubble trong thread (`formatChatDisplayName`) — Frappe User đồng bộ AD hay đảo họ tên.
+  const rawSenderName = (message.senderSnapshot?.name || '').trim();
+  const senderName = normalizeVietnameseName(rawSenderName) || rawSenderName || 'Người gửi';
   const preview = (message.content || '').trim().slice(0, 180);
   const title = (conversation.title || 'Trao đổi').trim();
   const body =

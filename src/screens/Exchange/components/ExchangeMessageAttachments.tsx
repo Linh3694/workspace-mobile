@@ -20,6 +20,7 @@ import { resolveChatAttachmentUrl } from '../../../services/chatService';
 import type { ChatAttachment } from '../../../types/chat';
 
 import { ChatImagePreviewModal } from './ChatImagePreviewModal';
+import { ChatVideoThumbnail } from './ChatVideoThumbnail';
 
 import { CHAT_BUBBLE_MAX_WIDTH_RATIO } from '../exchangeChatThreadUtils';
 
@@ -150,16 +151,11 @@ export function ExchangeMessageAttachments({
           delayLongPress={420}
           className="overflow-hidden rounded-xl"
           style={{ width: videoThumbW }}>
-          <View className="relative bg-black/20" style={{ width: videoThumbW, height: videoThumbH }}>
-            <Image
-              source={{ uri: resolveChatAttachmentUrl(v.url) }}
-              style={{ width: videoThumbW, height: videoThumbH }}
-              resizeMode="cover"
-            />
-            <View className="absolute inset-0 items-center justify-center bg-black/25">
-              <Ionicons name="play-circle" size={48} color="#fff" />
-            </View>
-          </View>
+          <ChatVideoThumbnail
+            uri={resolveChatAttachmentUrl(v.url)}
+            width={videoThumbW}
+            height={videoThumbH}
+          />
         </Pressable>
       ))}
 

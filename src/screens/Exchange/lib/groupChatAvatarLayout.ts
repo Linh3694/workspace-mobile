@@ -25,10 +25,15 @@ function memberKey(
   return `n:${(m.name || '').trim()}|${role}`;
 }
 
+/**
+ * Gom thành viên nhóm để vẽ avatar — bỏ người đã gỡ mềm (`removedAt`) đúng như danh sách
+ * thành viên ở `buildConversationMembers`, tránh lệch giữa "N thành viên" và cụm avatar.
+ */
 export function listGroupChatMembers(conversation: ChatConversation): GroupChatMember[] {
   const map = new Map<string, GroupChatMember>();
 
   for (const t of conversation.teachers || []) {
+    if (t.removedAt) continue;
     const role = 'teacher' as const;
     const key = memberKey(t, role);
     if (map.has(key)) continue;
@@ -42,6 +47,7 @@ export function listGroupChatMembers(conversation: ChatConversation): GroupChatM
   }
 
   for (const g of conversation.guardians || []) {
+    if (g.removedAt) continue;
     const role = 'guardian' as const;
     const key = memberKey(g, role);
     if (map.has(key)) continue;

@@ -85,6 +85,28 @@ export const WISLIFE_EMOJIS: WislifeEmoji[] = [
   },
 ];
 
+/**
+ * Bộ reaction dùng trong CHAT — đã gỡ 'angry' (phẫn nộ), không thả mới được nữa.
+ * `WISLIFE_EMOJIS` vẫn giữ đủ 6 mã để render reaction cũ đã lưu trong DB.
+ */
+export const CHAT_REACTION_EMOJIS: WislifeEmoji[] = WISLIFE_EMOJIS.filter(
+  (e) => e.code !== 'angry',
+);
+
+/** Mã cảm xúc duy nhất của bảng tin khi tắt đa cảm xúc. */
+export const FEED_REACTION_CODE = 'love';
+
+/**
+ * Cờ ẩn bình luận trên bảng tin. Code bình luận KHÔNG bị xoá — đổi lại `true` là hiện lại.
+ */
+export const JOURNAL_COMMENTS_ENABLED = false;
+
+/**
+ * Cờ bật bảng chọn nhiều cảm xúc. `false` = bấm thích thả tim luôn,
+ * mọi cảm xúc cũ hiển thị bằng tim.
+ */
+export const JOURNAL_MULTI_REACTION_ENABLED = false;
+
 // Map code -> emoji object để lookup nhanh
 const emojiMap = new Map<string, WislifeEmoji>();
 WISLIFE_EMOJIS.forEach((emoji) => emojiMap.set(emoji.code, emoji));
@@ -186,4 +208,8 @@ export default {
   resolveChatReactionCode,
   getChatReactionGlyph,
   WISLIFE_EMOJIS,
+  CHAT_REACTION_EMOJIS,
+  FEED_REACTION_CODE,
+  JOURNAL_COMMENTS_ENABLED,
+  JOURNAL_MULTI_REACTION_ENABLED,
 };

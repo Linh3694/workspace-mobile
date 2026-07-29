@@ -52,6 +52,7 @@ import { ExchangeGroupChatAvatar } from './components/ExchangeGroupChatAvatar';
 import { getPinnedIds } from './chatPinStore';
 import {
   conversationHeaderTitle,
+  formatChatDisplayName,
   isMessageFromTeacherViewer,
   mergeUnreadCountOnSocketMessage,
   normalizeMongoId,
@@ -90,7 +91,10 @@ function isGroupConversation(c: ChatConversation): boolean {
 
 /** Blob text để so khớp tìm kiếm 1 hội thoại (nhãn + title + lớp + tin cuối + type + tên PH). */
 function conversationSearchBlob(c: ChatConversation): string {
-  const guardianNames = (c.guardians || []).map((g) => g.name || '').join(' ');
+  // Cả tên gốc (thứ tự AD) lẫn tên đã chuẩn hóa — GV gõ theo tên đang thấy trên màn hình.
+  const guardianNames = (c.guardians || [])
+    .flatMap((g) => [g.name || '', formatChatDisplayName(g.name)])
+    .join(' ');
   const parts = [
     conversationHeaderTitle(c) || '',
     c.title || '',
@@ -204,7 +208,7 @@ function ExchangeConversationSwipeRow({
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={{ fontFamily: 'Mulish-Bold', fontSize: 16, color: '#111' }} numberOfLines={1}>
-          {conversationTitle || g?.name || guardianFallbackTitle}
+          {conversationTitle || formatChatDisplayName(g?.name) || guardianFallbackTitle}
         </Text>
         <Text style={{ marginTop: 4, fontSize: 13, color: '#6B7280' }} numberOfLines={2}>
           {subtitle}
@@ -537,7 +541,7 @@ export default function ExchangeListScreen() {
   const renderItem = ({ item }: { item: ChatConversation }) => {
     // Dòng phụ: chỉ tên người gửi + nội dung tin cuối (không lặp tên lớp/title).
     const lastContent = item.lastMessage?.content?.trim() || '';
-    const lastSender = item.lastMessage?.senderName?.trim() || '';
+    const lastSender = formatChatDisplayName(item.lastMessage?.senderName);
     const subtitle = lastContent
       ? lastSender
         ? `${lastSender}: ${lastContent}`

@@ -24,6 +24,7 @@ import BottomSheetModal from '../../../components/Common/BottomSheetModal';
 
 import { resolveChatAttachmentUrl } from '../../../services/chatService';
 import type { ClassChatScopeGuardian, ClassChatScopeStudent } from '../../../types/chat';
+import { formatChatDisplayName } from '../exchangeChatThreadUtils';
 
 const ROW_AVATAR = 48;
 
@@ -80,7 +81,8 @@ export function NewConversationSheet({
     guardians.forEach((g) => {
       const gid = String(g.guardian_id || g.name || '').trim();
       if (!gid) return;
-      const gname = g.guardian_name || g.name || gid;
+      // Tên PH đồng bộ từ AD/Microsoft hay bị đảo — chuẩn hóa cho khớp danh sách thành viên.
+      const gname = formatChatDisplayName(g.guardian_name || g.name) || gid;
       const gavatar = g.guardian_image || '';
       (g.students || []).forEach((s) => {
         // Chỉ lấy Người liên hệ chính.

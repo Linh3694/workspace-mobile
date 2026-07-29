@@ -4,7 +4,7 @@ import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
 
 import { useLanguage } from '../../../hooks/useLanguage';
 import type { ChatPoll, ChatPollVoter } from '../../../types/chat';
-import { MY_MESSAGE_BUBBLE_BG } from '../exchangeChatThreadUtils';
+import { formatChatDisplayName, MY_MESSAGE_BUBBLE_BG } from '../exchangeChatThreadUtils';
 
 const MAX_INLINE_VOTERS = 3;
 const ACCENT = MY_MESSAGE_BUBBLE_BG;
@@ -48,7 +48,7 @@ function VoterAvatars({ voters }: { voters: ChatPollVoter[] }) {
           ) : (
             <View className="h-5 w-5 items-center justify-center rounded-full border border-white bg-gray-200">
               <Text className="font-mulish-bold text-[9px] text-gray-600">
-                {(v.name || '?').trim().charAt(0).toUpperCase()}
+                {(formatChatDisplayName(v.name) || '?').trim().charAt(0).toUpperCase()}
               </Text>
             </View>
           )}

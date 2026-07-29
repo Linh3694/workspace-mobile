@@ -39,14 +39,29 @@ const removeVietnameseTones = (str: string): string => {
 };
 
 /**
+ * Từ có mang dấu tiếng Việt (hoặc chữ đ) hay không.
+ */
+const hasVietnameseDiacritics = (word: string): boolean =>
+  removeVietnameseTones(word) !== word.toLowerCase();
+
+/**
  * Lấy độ ưu tiên của họ (số càng nhỏ = càng phổ biến)
  * @returns -1 nếu không phải họ VN
+ *
+ * So khớp CÓ DẤU trước. Nếu bỏ dấu cả hai vế thì TÊN cũng đụng họ — "Lệ" thành
+ * "le" khớp họ "Lê", "Hạ" thành "ha" khớp họ "Hà" — khiến "Vũ Thị Nhật Lệ" bị coi
+ * là tên kiểu Tây (họ đứng cuối) rồi đảo thành "Lệ Vũ Thị Nhật".
+ * Chỉ khi người dùng gõ KHÔNG DẤU mới so khớp bỏ dấu (vd "Nguyen", "Vu"); danh sách
+ * họ đã có sẵn cả biến thể không dấu nên nhánh này không mất trường hợp nào.
  */
 const getSurnamePriority = (word: string): number => {
   if (!word) return -1;
-  const normalized = removeVietnameseTones(word.toLowerCase());
-  return VIETNAMESE_SURNAMES_PRIORITY.findIndex(surname => 
-    normalized === removeVietnameseTones(surname)
+  const lower = word.toLowerCase();
+  const exact = VIETNAMESE_SURNAMES_PRIORITY.indexOf(lower);
+  if (exact >= 0) return exact;
+  if (hasVietnameseDiacritics(word)) return -1;
+  return VIETNAMESE_SURNAMES_PRIORITY.findIndex(
+    surname => lower === removeVietnameseTones(surname)
   );
 };
 

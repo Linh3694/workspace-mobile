@@ -10,6 +10,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Linking,
   Pressable,
@@ -29,11 +30,16 @@ import { chatService, resolveChatAttachmentUrl } from '../../services/chatServic
 import type { ChatAttachment, ChatConversation } from '../../types/chat';
 
 import { ChatImagePreviewModal } from './components/ChatImagePreviewModal';
+import { ChatVideoThumbnail } from './components/ChatVideoThumbnail';
 import { ExchangeGroupChatAvatar } from './components/ExchangeGroupChatAvatar';
 import { InfoMemberRow } from './components/InfoMemberRow';
 import { conversationHeaderTitle } from './exchangeChatThreadUtils';
 import { isConversationPinned, togglePinned } from './chatPinStore';
-import { buildConversationMembers, resolveCallerTeacherId } from './exchangeInfoUtils';
+import {
+  buildConversationMembers,
+  isViewerHomeroom,
+  resolveCallerTeacherId,
+} from './exchangeInfoUtils';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, typeof ROUTES.SCREENS.EXCHANGE_CHAT_INFO>;
@@ -61,6 +67,7 @@ export default function ExchangeChatInfoScreen() {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [pinned, setPinned] = useState(false);
+  const [writeModeBusy, setWriteModeBusy] = useState(false);
 
   const viewerEmails = useMemo(
     () => [String(user?.email || '').trim()].filter(Boolean),
@@ -128,6 +135,28 @@ export default function ExchangeChatInfoScreen() {
   const onTogglePin = async () => {
     const p = await togglePinned(conversationId);
     setPinned(p);
+  };
+
+  // Khóa nhóm về "chỉ GV được nhắn" — chỉ nhóm lớp và chỉ GVCN/phó (backend check lại theo scope).
+  const canManageWriteMode =
+    isViewerHomeroom(conversation, user?.email) && conversation?.type === 'class_general';
+  const teachersOnly = conversation?.writeMode === 'teachers_only';
+
+  const onToggleWriteMode = async () => {
+    if (!conversation || writeModeBusy) return;
+    setWriteModeBusy(true);
+    try {
+      const updated = await chatService.setConversationWriteMode(
+        conversationId,
+        teachersOnly ? 'all' : 'teachers_only'
+      );
+      setConversation(updated);
+    } catch (e) {
+      console.warn('[ExchangeChatInfo] setConversationWriteMode failed', e);
+      Alert.alert(t('common.error'), t('exchange.info_write_mode_error'));
+    } finally {
+      setWriteModeBusy(false);
+    }
   };
 
   const openAttachment = (url?: string) => {
@@ -220,7 +249,7 @@ export default function ExchangeChatInfoScreen() {
             <Text className="mt-1 text-center text-sm text-[#6B7280]">{subtitle}</Text>
           ) : null}
 
-          {/* Quick actions: Ghim / Thành viên */}
+          {/* Quick actions: Ghim / Thành viên / Khóa nhóm (GVCN-phó, nhóm lớp) */}
           <View className="mt-4 w-full flex-row" style={{ gap: 12 }}>
             <TouchableOpacity
               onPress={onTogglePin}
@@ -244,6 +273,25 @@ export default function ExchangeChatInfoScreen() {
                 {t('exchange.info_members')}
               </Text>
             </TouchableOpacity>
+            {canManageWriteMode ? (
+              <TouchableOpacity
+                onPress={() => void onToggleWriteMode()}
+                disabled={writeModeBusy}
+                className="flex-1 items-center rounded-2xl border border-gray-100 py-3"
+                style={{
+                  backgroundColor: teachersOnly ? '#FFF4E5' : '#F9FAFB',
+                  opacity: writeModeBusy ? 0.5 : 1,
+                }}>
+                <Ionicons
+                  name={teachersOnly ? 'lock-closed' : 'lock-open-outline'}
+                  size={20}
+                  color={teachersOnly ? '#F97316' : '#0A2240'}
+                />
+                <Text className="mt-1 text-sm font-semibold text-[#0A2240]">
+                  {teachersOnly ? t('exchange.info_unlock_group') : t('exchange.info_lock_group')}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
 
@@ -288,16 +336,21 @@ export default function ExchangeChatInfoScreen() {
                     onPress={() => onTapMedia(a)}
                     className="relative overflow-hidden rounded-lg bg-black/10"
                     style={{ width: mediaTile, height: mediaTile }}>
-                    <Image
-                      source={{ uri: resolveChatAttachmentUrl(a.url) }}
-                      style={{ width: mediaTile, height: mediaTile }}
-                      resizeMode="cover"
-                    />
                     {a.kind === 'video' ? (
-                      <View className="absolute inset-0 items-center justify-center">
-                        <Ionicons name="play-circle" size={30} color="#fff" />
-                      </View>
-                    ) : null}
+                      <ChatVideoThumbnail
+                        uri={resolveChatAttachmentUrl(a.url)}
+                        width={mediaTile}
+                        height={mediaTile}
+                        playIconSize={30}
+                        dimmed={false}
+                      />
+                    ) : (
+                      <Image
+                        source={{ uri: resolveChatAttachmentUrl(a.url) }}
+                        style={{ width: mediaTile, height: mediaTile }}
+                        resizeMode="cover"
+                      />
+                    )}
                   </Pressable>
                 ))}
               </View>

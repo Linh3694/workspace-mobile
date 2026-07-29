@@ -59,6 +59,8 @@ export type ChatConversation = {
     /** Từ snapshot social-service — hiển thị subtitle GV */
     studentNames?: string[];
     avatarUrl?: string;
+    /** Có giá trị = đã bị gỡ mềm khỏi nhóm (không hiển thị). */
+    removedAt?: string | null;
   }>;
   teachers?: Array<{
     name?: string;

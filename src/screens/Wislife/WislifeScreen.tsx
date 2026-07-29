@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import PostCard from '../../components/Wislife/PostCard';
 import CreatePostModal from '../../components/Wislife/CreatePostModal';
 import CommentsModal from '../../components/Wislife/CommentsModal';
+import { JOURNAL_COMMENTS_ENABLED } from '../../utils/emojiUtils';
 import PostSkeleton from '../../components/Wislife/PostSkeleton';
 import { postService } from '../../services/postService';
 import { useAuth } from '../../context/AuthContext';
@@ -139,6 +140,7 @@ const WislifeScreen = () => {
   }, []);
 
   const handleCommentPress = useCallback((post: Post) => {
+    if (!JOURNAL_COMMENTS_ENABLED) return;
     setSelectedPost(post);
     setIsCommentsModalVisible(true);
   }, []);

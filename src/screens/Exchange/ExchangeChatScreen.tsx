@@ -10,6 +10,7 @@ import {
   Alert,
   FlatList,
   ImageBackground,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -50,6 +51,7 @@ import {
   buildMessageThreadMeta,
   conversationHeaderTitle,
   conversationSubtitle,
+  formatChatDisplayName,
   mergeIncomingMessagesPage,
   mergeOlderMessagesDeduped,
   normalizeMongoId,
@@ -170,7 +172,7 @@ export default function ExchangeChatScreen() {
 
   const teacherEmail = user?.email;
   const teacherAvatar = user?.avatar;
-  const teacherDisplayName = user?.fullname || user?.email || 'Bạn';
+  const teacherDisplayName = formatChatDisplayName(user?.fullname) || user?.email || 'Bạn';
 
   const chatViewerEmails = useMemo(
     () => [String(teacherEmail || '').trim()].filter(Boolean),
@@ -194,6 +196,29 @@ export default function ExchangeChatScreen() {
   const [creatingPoll, setCreatingPoll] = useState(false);
   const [votersSheetFor, setVotersSheetFor] = useState<string | null>(null);
   const [pendingPollIds, setPendingPollIds] = useState<Set<string>>(new Set());
+
+  /**
+   * Chiều cao bàn phím trên Android — Expo SDK 54 bật edge-to-edge (`edgeToEdgeEnabled=true`) nên
+   * `windowSoftInputMode=adjustResize` KHÔNG còn thu nhỏ cửa sổ: bàn phím phủ lên UI và che mất
+   * thanh soạn tin. `KeyboardAvoidingView` tính chồng lấn theo `screenY` của sự kiện bàn phím —
+   * ở chế độ này screenY vẫn là đáy màn hình nên ra 0, không nâng gì cả; phải tự đệm theo chiều cao.
+   * RN báo `height` = insets bàn phím ĐÃ TRỪ thanh điều hướng, mà SafeAreaView `edges=['bottom']`
+   * cũng đã chừa đúng phần đó → đệm bằng `height` là khớp mép bàn phím (giống BottomSheetModal,
+   * AIAssistantScreen). iOS giữ nguyên `KeyboardAvoidingView behavior="padding"`.
+   */
+  const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      setAndroidKeyboardHeight(Math.max(0, Math.round(e.endCoordinates?.height ?? 0)));
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => setAndroidKeyboardHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   /** TTL typing đối phương — đồng bộ REMOTE_TYPING_TTL_MS phía Guardian. */
   const remoteTypingTtlTimersRef = useRef({});
@@ -507,7 +532,7 @@ export default function ExchangeChatScreen() {
         const key = userId || sender || name || 'peer';
         if (isTyping) {
           clearRemoteTypingTtl(key);
-          const displayName = (name || sender || 'Phụ huynh').trim();
+          const displayName = formatChatDisplayName(name) || sender || 'Phụ huynh';
           setTypingNames((prev) => ({ ...prev, [key]: displayName }));
           remoteTypingTtlTimersRef.current[key] = setTimeout(() => {
             delete remoteTypingTtlTimersRef.current[key];
@@ -1163,6 +1188,7 @@ export default function ExchangeChatScreen() {
 
         <KeyboardAvoidingView
           className="flex-1"
+          style={androidKeyboardHeight > 0 ? { paddingBottom: androidKeyboardHeight } : undefined}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           {!loading && conversation?.pinnedMessage ? (
             <PinnedMessageBanner
