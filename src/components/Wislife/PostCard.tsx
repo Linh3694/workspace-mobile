@@ -26,6 +26,7 @@ import { postService } from '../../services/postService';
 import { useAuth } from '../../context/AuthContext';
 import { API_BASE_URL } from '../../config/constants';
 import { formatRelativeTime } from '../../utils/dateUtils';
+import { resolveSocialMediaUrl } from '../../utils/resolveSocialMediaUrl';
 import LikeSkeletonSvg from '../../assets/like-skeleton.svg';
 import { MentionRichText } from './MentionInput';
 import { getAvatar } from '../../utils/avatar';
@@ -421,7 +422,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
                   className="w-full overflow-hidden bg-black"
                   style={{ aspectRatio: 16 / 9 }}>
                   <Video
-                    source={{ uri: `${API_BASE_URL}${video}` }}
+                    source={{ uri: resolveSocialMediaUrl(video, API_BASE_URL) }}
                     style={{ width: '100%', height: '100%' }}
                     useNativeControls
                     resizeMode={ResizeMode.CONTAIN}
@@ -605,7 +606,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
               {post.images.map((image, index) => (
                 <View key={index} className="items-center justify-center" style={{ width }}>
                   <Image
-                    source={{ uri: `${API_BASE_URL}${image}` }}
+                    source={{ uri: resolveSocialMediaUrl(image, API_BASE_URL) }}
                     className="h-full w-full"
                     resizeMode="contain"
                   />
