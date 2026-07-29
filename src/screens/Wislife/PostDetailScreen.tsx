@@ -26,6 +26,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getAvatar } from '../../utils/avatar';
 import { formatRelativeTime } from '../../utils/dateUtils';
 import { API_BASE_URL } from '../../config/constants';
+import { resolveSocialMediaUrl } from '../../utils/resolveSocialMediaUrl';
 import LikeSkeletonSvg from '../../assets/like-skeleton.svg';
 import {
   FEED_REACTION_CODE,
@@ -490,7 +491,7 @@ const PostDetailScreen = () => {
                         } ${index > 0 ? 'pl-1' : ''} ${index > 1 ? 'pt-1' : ''}`}
                         style={{ aspectRatio: post.images.length === 1 ? 16 / 9 : 1 }}>
                         <Image
-                          source={{ uri: `${API_BASE_URL}${image}` }}
+                          source={{ uri: resolveSocialMediaUrl(image, API_BASE_URL) }}
                           className="h-full w-full"
                           resizeMode="cover"
                         />
@@ -508,7 +509,7 @@ const PostDetailScreen = () => {
                         className="w-full overflow-hidden rounded-lg bg-black"
                         style={{ aspectRatio: 16 / 9 }}>
                         <Video
-                          source={{ uri: `${API_BASE_URL}${video}` }}
+                          source={{ uri: resolveSocialMediaUrl(video, API_BASE_URL) }}
                           style={{ width: '100%', height: '100%' }}
                           useNativeControls
                           resizeMode={ResizeMode.CONTAIN}
