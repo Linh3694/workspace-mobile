@@ -622,6 +622,8 @@
     "info_media": "Ảnh & Video",
     "info_files": "Tệp",
     "info_role_teacher": "Giáo viên",
+    "info_role_homeroom": "GVCN",
+    "info_role_vice_homeroom": "Phó GVCN",
     "info_role_subject_teacher": "GV bộ môn",
     "info_role_parent": "Phụ huynh",
     "info_no_media": "Chưa có ảnh/video",

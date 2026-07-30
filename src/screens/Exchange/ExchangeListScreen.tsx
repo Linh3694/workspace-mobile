@@ -2,7 +2,7 @@
  * Trao đổi — danh sách hội thoại GV ↔ PH (lọc theo lớp nếu có param)
  */
 // @ts-nocheck
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -64,6 +64,12 @@ type Route = RouteProp<RootStackParamList, typeof ROUTES.SCREENS.EXCHANGE_LIST>;
 /** Bộ lọc danh sách hội thoại — giống web (Tất cả / Nhóm / Phụ huynh / Chưa đọc). */
 type ConversationFilter = 'all' | 'group' | 'parent' | 'unread';
 
+/** Số hội thoại mỗi trang — cuộn tới đáy thì tải tiếp. */
+const CONVERSATION_PAGE_SIZE = 50;
+
+/** Chờ gõ xong rồi mới gọi server (ms). */
+const SEARCH_DEBOUNCE_MS = 300;
+
 const FILTER_TABS: { key: ConversationFilter; labelKey: string }[] = [
   { key: 'all', labelKey: 'exchange.filter_all' },
   { key: 'group', labelKey: 'exchange.filter_group' },
@@ -71,40 +77,8 @@ const FILTER_TABS: { key: ConversationFilter; labelKey: string }[] = [
   { key: 'unread', labelKey: 'exchange.filter_unread' },
 ];
 
-/** Chuẩn hóa chuỗi để so khớp tìm kiếm (không phân biệt dấu, hoa thường) — giống web normalizeForSearch. */
-function normalizeForSearch(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .trim();
-}
-
-/** Group (nhóm lớp / nhiều PH-HS) vs 1-1 — giống web isGroupConversation. */
-function isGroupConversation(c: ChatConversation): boolean {
-  return (
-    c.type === 'class_general' ||
-    (c.guardians?.length || 0) > 1 ||
-    (c.studentIds?.length || 0) > 1
-  );
-}
-
-/** Blob text để so khớp tìm kiếm 1 hội thoại (nhãn + title + lớp + tin cuối + type + tên PH). */
-function conversationSearchBlob(c: ChatConversation): string {
-  // Cả tên gốc (thứ tự AD) lẫn tên đã chuẩn hóa — GV gõ theo tên đang thấy trên màn hình.
-  const guardianNames = (c.guardians || [])
-    .flatMap((g) => [g.name || '', formatChatDisplayName(g.name)])
-    .join(' ');
-  const parts = [
-    conversationHeaderTitle(c) || '',
-    c.title || '',
-    c.className || '',
-    c.lastMessage?.content || '',
-    c.type || '',
-    guardianNames,
-  ];
-  return normalizeForSearch(parts.join(' '));
-}
+// Tìm kiếm + pill lọc đã chuyển xuống SERVER (xem chatService.getConversationsPage): lọc trên
+// mảng đã tải bỏ sót hội thoại chưa tải tới, đúng bug BOD không thấy nhóm lớp (SIS-166).
 
 /** _id Mongo 24 hex — mới gọi được API ẩn / vuốt xóa khỏi danh sách. */
 function isPersistentConversationId(id: string): boolean {
@@ -279,8 +253,21 @@ export default function ExchangeListScreen() {
   const [openingGuardianId, setOpeningGuardianId] = useState<string | null>(null);
   const [showNewSheet, setShowNewSheet] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [filter, setFilter] = useState<ConversationFilter>('all');
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+  /** Trang đã tải tới. */
+  const pageRef = useRef(1);
+  /** Số thứ tự request — bỏ qua phản hồi cũ khi đổi từ khoá/pill giữa chừng. */
+  const requestSeqRef = useRef(0);
+
+  // Chờ gõ xong rồi mới hỏi server (server lọc nên mỗi ký tự là một round-trip).
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(searchQuery.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [searchQuery]);
 
   // Nạp lại danh sách ghim mỗi khi màn được focus (vd sau khi ghim/bỏ ghim ở màn thông tin).
   useFocusEffect(
@@ -305,24 +292,63 @@ export default function ExchangeListScreen() {
     return /^lớp\s/i.test(name) ? name : `Lớp ${name}`;
   }, [classTitleParam, classId, items]);
 
+  const queryParams = useMemo(
+    () => ({
+      ...(classId ? { classId, schoolYearId } : {}),
+      q: debouncedQuery,
+      filter,
+      limit: CONVERSATION_PAGE_SIZE,
+    }),
+    [classId, schoolYearId, debouncedQuery, filter]
+  );
+
   const load = useCallback(
     async (silent = false) => {
+      const seq = requestSeqRef.current + 1;
+      requestSeqRef.current = seq;
       try {
         if (!silent) setLoading(true);
-        const list = await chatService.getConversations(
-          classId ? { classId, schoolYearId } : undefined
-        );
-        setItems(list || []);
+        const res = await chatService.getConversationsPage({ ...queryParams, page: 1 });
+        if (seq !== requestSeqRef.current) return;
+        pageRef.current = 1;
+        setItems(res.items || []);
+        setHasMore(res.hasMore);
       } catch (e) {
+        if (seq !== requestSeqRef.current) return;
         console.warn(e);
         setItems([]);
+        setHasMore(false);
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (seq === requestSeqRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
-    [classId, schoolYearId]
+    [queryParams]
   );
+
+  /** Cuộn tới đáy → tải trang kế và nối vào cuối. */
+  const loadMore = useCallback(async () => {
+    if (loading || loadingMore || !hasMore) return;
+    const seq = requestSeqRef.current;
+    const nextPage = pageRef.current + 1;
+    try {
+      setLoadingMore(true);
+      const res = await chatService.getConversationsPage({ ...queryParams, page: nextPage });
+      if (seq !== requestSeqRef.current) return;
+      pageRef.current = nextPage;
+      setItems((prev) => {
+        const seen = new Set(prev.map((c) => String(c._id)));
+        return [...prev, ...(res.items || []).filter((c) => !seen.has(String(c._id)))];
+      });
+      setHasMore(res.hasMore);
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [queryParams, loading, loadingMore, hasMore]);
 
   useFocusEffect(
     useCallback(() => {
@@ -526,17 +552,8 @@ export default function ExchangeListScreen() {
     });
   }, [items, classId, schoolYearId, pinnedIds]);
 
-  /** Áp filter tab + search (AND) lên danh sách đã sắp xếp — giống web. */
-  const filtered = useMemo(() => {
-    const needle = normalizeForSearch(searchQuery);
-    return sorted.filter((c) => {
-      if (filter === 'group' && !isGroupConversation(c)) return false;
-      if (filter === 'parent' && isGroupConversation(c)) return false;
-      if (filter === 'unread' && !(Number(c.unreadCount || 0) > 0)) return false;
-      if (needle && !conversationSearchBlob(c).includes(needle)) return false;
-      return true;
-    });
-  }, [sorted, filter, searchQuery]);
+  /** Server đã lọc theo từ khoá + pill; ở đây chỉ còn thứ tự (ghim → chưa đọc → mới nhất). */
+  const filtered = sorted;
 
   const renderItem = ({ item }: { item: ChatConversation }) => {
     // Dòng phụ: chỉ tên người gửi + nội dung tin cuối (không lặp tên lớp/title).
@@ -702,6 +719,11 @@ export default function ExchangeListScreen() {
           keyExtractor={(c) => c._id}
           renderItem={renderItem}
           keyboardShouldPersistTaps="handled"
+          onEndReached={() => void loadMore()}
+          onEndReachedThreshold={0.35}
+          ListFooterComponent={
+            loadingMore ? <ActivityIndicator style={{ paddingVertical: 16 }} color="#FF7A00" /> : null
+          }
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

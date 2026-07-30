@@ -26,6 +26,14 @@ type ApiResponse<T> = {
   message?: string;
 };
 
+/** Thông tin phân trang social-service trả kèm danh sách hội thoại. */
+export type ChatPageMeta = {
+  page: number;
+  limit: number;
+  hasMore: boolean;
+  total: number;
+};
+
 /** Lỗi HTTP của chat kèm status + mã nghiệp vụ backend trả về. */
 export type ChatServiceError = Error & { status?: number; code?: string };
 
@@ -81,7 +89,11 @@ class ChatService {
     return err;
   }
 
-  private async parseJson<T>(res: Response): Promise<T> {
+  /**
+   * Bóc envelope `{ success, data, meta }` nhưng GIỮ nguyên `meta` — cần cho phân trang
+   * danh sách hội thoại. `parseJson` bọc lại hàm này nên mọi caller cũ không đổi hành vi.
+   */
+  private async parseEnvelope<T>(res: Response): Promise<{ data: T; meta?: ChatPageMeta }> {
     const text = await res.text();
     let body: ApiResponse<T> | T | Record<string, unknown> = {};
     try {
@@ -107,9 +119,17 @@ class ChatService {
       );
     }
     if (wrapped && typeof wrapped === 'object' && 'data' in wrapped) {
-      return wrapped.data as T;
+      return {
+        data: wrapped.data as T,
+        meta: (wrapped as { meta?: ChatPageMeta }).meta,
+      };
     }
-    return body as T;
+    return { data: body as T };
+  }
+
+  private async parseJson<T>(res: Response): Promise<T> {
+    const envelope = await this.parseEnvelope<T>(res);
+    return envelope.data;
   }
 
   /**
@@ -121,16 +141,47 @@ class ChatService {
     classId?: string;
     schoolYearId?: string;
   }): Promise<ChatConversation[]> {
+    const page = await this.getConversationsPage(params);
+    return page.items;
+  }
+
+  /**
+   * Một TRANG danh sách hội thoại. Từ khoá và pill lọc chạy SERVER-SIDE trên toàn bộ hội thoại —
+   * lọc trên mảng đã tải sẽ bỏ sót phần chưa tải tới (SIS-166).
+   * Không truyền `page`/`limit` ⇒ backend trả full list như hợp đồng cũ.
+   */
+  async getConversationsPage(params?: {
+    classId?: string;
+    schoolYearId?: string;
+    /** Backend khớp không dấu trên tên nhóm/lớp và tên PH/GV. */
+    q?: string;
+    /** `parent` là alias của `direct` phía backend — giữ nguyên nhãn pill hiện có. */
+    filter?: 'all' | 'group' | 'parent' | 'unread';
+    page?: number;
+    limit?: number;
+  }): Promise<{ items: ChatConversation[]; hasMore: boolean; total: number }> {
     const headers = await this.getAuthHeaders();
     const q = new URLSearchParams();
     const cid = String(params?.classId || '').trim();
     const syid = String(params?.schoolYearId || '').trim();
+    const needle = String(params?.q || '').trim();
     if (cid) q.set('classId', cid);
     if (syid) q.set('schoolYearId', syid);
+    if (needle) q.set('q', needle);
+    if (params?.filter && params.filter !== 'all') q.set('filter', params.filter);
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.limit) q.set('limit', String(params.limit));
     const qs = q.toString();
     const url = `${BASE_URL}/api/social/chat/conversations${qs ? `?${qs}` : ''}`;
     const res = await fetch(url, { headers });
-    return this.parseJson<ChatConversation[]>(res);
+    const envelope = await this.parseEnvelope<ChatConversation[]>(res);
+    const items = envelope.data || [];
+    return {
+      items,
+      // Backend cũ chưa trả `meta` ⇒ coi như đã nhận đủ, tránh onEndReached gọi lặp vô hạn.
+      hasMore: Boolean(envelope.meta?.hasMore),
+      total: envelope.meta?.total ?? items.length,
+    };
   }
 
   /**

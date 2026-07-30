@@ -609,6 +609,8 @@
     "info_media": "Photos & Videos",
     "info_files": "Files",
     "info_role_teacher": "Teacher",
+    "info_role_homeroom": "HR",
+    "info_role_vice_homeroom": "Vice HR",
     "info_role_subject_teacher": "Subject teacher",
     "info_role_parent": "Parent",
     "info_no_media": "No photos/videos yet",

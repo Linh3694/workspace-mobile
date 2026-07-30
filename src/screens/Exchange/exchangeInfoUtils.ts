@@ -22,7 +22,26 @@ export type MemberRoleLabels = {
   teacher: string;
   subjectTeacher: string;
   parent: string;
+  /** Nhãn GVCN — thiếu (bản dịch cũ) thì rơi về `teacher`. */
+  homeroom?: string;
+  /** Nhãn Phó GVCN — trước đây phó CN bị hiển thị chung nhãn với GVCN. */
+  viceHomeroom?: string;
 };
+
+/**
+ * Nhãn vai trò một GV: ưu tiên `homeroomRole` từ snapshot backend (nguồn sự thật
+ * SIS Class.homeroom_teacher / vice_homeroom_teacher). Hội thoại cũ chưa sync lại không có
+ * field này ⇒ giữ hành vi cũ (có môn dạy ⇒ "GV bộ môn • <môn>", còn lại ⇒ nhãn chung).
+ */
+function teacherRoleText(
+  teacher: NonNullable<ChatConversation['teachers']>[number],
+  subjects: string,
+  labels: MemberRoleLabels,
+): string {
+  if (teacher.homeroomRole === 'vice_homeroom') return labels.viceHomeroom || labels.teacher;
+  if (teacher.homeroomRole === 'homeroom') return labels.homeroom || labels.teacher;
+  return subjects ? `${labels.subjectTeacher} • ${subjects}` : labels.homeroom || labels.teacher;
+}
 
 /** Danh sách thành viên từ conversation.teachers[] + guardians[] (GV trước, PH sau). */
 export function buildConversationMembers(
@@ -40,7 +59,7 @@ export function buildConversationMembers(
         key: `t:${tt.teacherId || tt.email || tt.name || i}`,
         name: formatChatDisplayName(tt.name) || tt.email || labels.teacher,
         avatar: resolveParticipantAvatarUrl(tt.avatarUrl, tt.email || tt.name || 'gv'),
-        role: subjects ? `${labels.subjectTeacher} • ${subjects}` : labels.teacher,
+        role: teacherRoleText(tt, subjects, labels),
         pill: 'GV' as const,
         isGuardian: false,
         teacherId: tt.teacherId,

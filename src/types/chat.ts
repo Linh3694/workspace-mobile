@@ -71,6 +71,11 @@ export type ChatConversation = {
     subjects?: Array<{ id?: string; title?: string }>;
     /** true = GV bộ môn được thêm thủ công (gỡ được); false/undefined = GVCN/Phó CN. */
     manualAdd?: boolean;
+    /**
+     * Vai trò chủ nhiệm: `homeroom` = GVCN, `vice_homeroom` = Phó GVCN, rỗng/thiếu = GVBM
+     * hoặc snapshot cũ chưa sync lại. KHÔNG suy vai trò từ thứ tự mảng `teachers`.
+     */
+    homeroomRole?: 'homeroom' | 'vice_homeroom' | '';
     /** Có giá trị = đã bị gỡ mềm khỏi nhóm (không hiển thị). */
     removedAt?: string | null;
   }>;

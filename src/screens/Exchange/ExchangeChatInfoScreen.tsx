@@ -79,6 +79,8 @@ export default function ExchangeChatInfoScreen() {
       teacher: t('exchange.info_role_teacher'),
       subjectTeacher: t('exchange.info_role_subject_teacher'),
       parent: t('exchange.info_role_parent'),
+      homeroom: t('exchange.info_role_homeroom'),
+      viceHomeroom: t('exchange.info_role_vice_homeroom'),
     }),
     [t]
   );
