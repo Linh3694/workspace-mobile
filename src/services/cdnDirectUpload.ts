@@ -7,13 +7,35 @@
  * KHÁC BIỆT SO VỚI BẢN WEB — quan trọng:
  *
  *   • RN không có đối tượng `File`. Ảnh/video từ thư viện là `{ uri, type, name }`,
- *     byte nằm trong hệ thống tệp của máy. Muốn PUT lên phải đọc ra blob trước.
- *   • `fetch` của RN gửi blob được, nhưng phải để RN tự đặt `Content-Type` khớp
- *     với lúc ký, nếu không SigV4 hỏng.
+ *     byte nằm trong hệ thống tệp của máy.
+ *   • Gửi bằng `FileSystem.uploadAsync` chứ KHÔNG bằng `fetch(uri).blob()`.
+ *     Xem ghi chú ngay dưới — đây là khác biệt về độ an toàn, không phải khẩu vị.
+ *
+ * ⚠️ VÌ SAO KHÔNG DÙNG `fetch(uri).blob()`
+ *
+ * Cách đó nạp TRỌN tệp vào heap JavaScript trước khi gửi. Trần dung lượng là
+ * 100 MB, nên một video dài trên máy Android tầm trung là đủ để app chết vì hết
+ * bộ nhớ — mà video lại chính là thứ Phase 3 sinh ra để giải quyết. `uploadAsync`
+ * với `BINARY_CONTENT` đọc từ đĩa và đẩy đi, byte không đi qua heap.
+ *
+ * Thêm một lợi ích: `fetch` với body là Blob có thể tự đặt lại `Content-Type`
+ * theo `blob.type`. Chỉ cần lệch một ký tự so với lúc ký là MinIO trả 403
+ * `SignatureDoesNotMatch` — và vì ta có đường quay về multipart, lỗi đó sẽ IM
+ * LẶNG: người dùng không thấy gì, đường trực tiếp đơn giản không bao giờ chạy.
+ * `uploadAsync` gửi đúng header ta truyền vào.
+ *
+ * ⚠️ Phải import từ `expo-file-system/legacy`. Trong SDK 54, `uploadAsync` của
+ * entry mới đã deprecated và **throw lúc chạy**.
+ *
+ * ⚠️ `uploadAsync` KHÔNG throw khi server trả 4xx/5xx — nó trả về `{ status }`.
+ * Quên kiểm `status` là coi mọi lần PUT thất bại như thành công, rồi `complete`
+ * mới báo 404 ở tận bước sau và rất khó truy.
  *
  * TỰ QUAY VỀ ĐƯỜNG CŨ khi server chưa bật cờ — nhờ vậy phát hành app trước, bật
  * cờ sau, và tắt cờ là mọi máy quay lại multipart ngay mà không cần cập nhật app.
  */
+
+import * as FileSystem from 'expo-file-system/legacy';
 
 import { BASE_URL } from '../config/constants';
 
@@ -94,11 +116,20 @@ export function resetCapabilityCache(): void {
   cachedCapability = null;
 }
 
-/** Đọc file trong máy thành blob để PUT lên. */
-async function docFileThanhBlob(file: RNFile): Promise<Blob> {
-  const res = await fetch(file.uri);
-  if (!res.ok) throw new Error(`Không đọc được tệp: ${file.name || file.uri}`);
-  return res.blob();
+/**
+ * Kích thước tệp, hoặc `null` khi không đọc được.
+ *
+ * Chỉ để kiểm trần SỚM cho người dùng đỡ chờ. Không đọc được cũng cứ gửi: server
+ * hậu kiểm bằng `HeadObject` lúc promote rồi xoá nếu vượt, nên đây là tiện lợi
+ * chứ không phải ranh giới bảo mật.
+ */
+async function kichThuoc(uri: string): Promise<number | null> {
+  try {
+    const info = await FileSystem.getInfoAsync(uri);
+    return info.exists && typeof info.size === 'number' ? info.size : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function uploadFiles(
@@ -126,20 +157,22 @@ export async function uploadFiles(
   for (let i = 0; i < files.length; i += 1) {
     const file = files[i];
     const item = uploads[i];
-    const blob = await docFileThanhBlob(file);
 
-    if (item.maxBytes && blob.size > item.maxBytes) {
+    const size = await kichThuoc(file.uri);
+    if (item.maxBytes && size !== null && size > item.maxBytes) {
       const mb = Math.round(item.maxBytes / 1024 / 1024);
       throw new Error(`"${file.name || 'tệp'}" vượt quá ${mb}MB`);
     }
 
-    const res = await fetch(item.putUrl, {
-      method: 'PUT',
+    const res = await FileSystem.uploadAsync(item.putUrl, file.uri, {
+      httpMethod: 'PUT',
+      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
       // KHÔNG kèm Authorization — chữ ký nằm trong URL, thêm header lạ là hỏng.
+      // Gửi ĐÚNG requiredHeaders server trả về, không thêm không bớt.
       headers: item.requiredHeaders,
-      body: blob,
     });
-    if (!res.ok) {
+    // uploadAsync không throw khi HTTP lỗi — phải tự kiểm.
+    if (res.status < 200 || res.status >= 300) {
       throw new Error(`Tải "${file.name || 'tệp'}" lên CDN thất bại (HTTP ${res.status})`);
     }
     done += 1;
