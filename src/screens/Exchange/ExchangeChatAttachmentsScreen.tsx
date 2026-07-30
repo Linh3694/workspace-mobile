@@ -30,6 +30,7 @@ import {
   groupAttachmentsByDay,
   type DatedAttachment,
 } from './exchangeInfoUtils';
+import { useChatAttachmentDownload } from './lib/chatAttachmentDownload';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, typeof ROUTES.SCREENS.EXCHANGE_CHAT_ATTACHMENTS>;
@@ -87,6 +88,9 @@ export default function ExchangeChatAttachmentsScreen() {
   );
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
+  const { downloadingUrl, download } = useChatAttachmentDownload();
+
+  /** Chỉ dùng cho video (xem ngoài app); tệp thì phải tải để giữ tên gốc. */
   const openAttachment = (url?: string) => {
     const u = resolveChatAttachmentUrl(url || '');
     if (u) void Linking.openURL(u).catch(() => undefined);
@@ -168,15 +172,22 @@ export default function ExchangeChatAttachmentsScreen() {
                   ))}
                 </View>
               ) : (
+                // Tải về rồi mở bảng chia sẻ để GIỮ TÊN GỐC — mở URL trực tiếp thì
+                // tệp lưu ra mang tên hash của CDN.
                 g.items.map((f, i) => (
                   <TouchableOpacity
                     key={`${f.url}-${i}`}
-                    onPress={() => openAttachment(f.url)}
+                    onPress={() => void download(f)}
+                    disabled={downloadingUrl === f.url}
                     className="flex-row items-center gap-3 rounded-xl py-2">
                     <View
                       className="items-center justify-center rounded-lg"
                       style={{ width: 40, height: 40, backgroundColor: '#FEF2F2' }}>
-                      <Ionicons name="document-text-outline" size={22} color="#EF4444" />
+                      {downloadingUrl === f.url ? (
+                        <ActivityIndicator size="small" color="#EF4444" />
+                      ) : (
+                        <Ionicons name="document-text-outline" size={22} color="#EF4444" />
+                      )}
                     </View>
                     <View className="min-w-0 flex-1">
                       <Text className="text-sm font-semibold text-[#0A2240]" numberOfLines={1}>

@@ -35,6 +35,7 @@ import type {
   ChatEmoji,
   ChatMessage,
   ChatPoll,
+  ChatPollVotersData,
   CreateChatPollPayload,
   PinnedMessageSnapshot,
 } from '../../types/chat';
@@ -53,6 +54,7 @@ import {
   conversationSubtitle,
   formatChatDisplayName,
   mergeIncomingMessagesPage,
+  mergePollVoters,
   mergeOlderMessagesDeduped,
   normalizeMongoId,
   overlayPreviewPlainText,
@@ -504,6 +506,18 @@ export default function ExchangeChatScreen() {
         );
       };
 
+      // Poll ẩn danh: danh tính người bầu đi riêng bằng event chỉ-GV, không nằm trong broadcast
+      // chung. Trộn vào thẻ để avatar dưới từng phương án không bị mất sau mỗi lượt bỏ phiếu.
+      const onPollVoters = (payload: ChatPollVotersData) => {
+        const mid = normalizeMongoId(payload?.messageId);
+        if (!mid) return;
+        setMessages((prev) =>
+          prev.map((m) =>
+            normalizeMongoId(m._id) === mid ? { ...m, poll: mergePollVoters(m.poll, payload) } : m
+          )
+        );
+      };
+
       const onConversationPinned = (payload: {
         conversationId?: string;
         pinnedMessage: PinnedMessageSnapshot | null;
@@ -599,6 +613,7 @@ export default function ExchangeChatScreen() {
       socket.on(CHAT_EVENTS.REACTION, onReaction);
       socket.on(CHAT_EVENTS.RECALLED, onRecall);
       socket.on(CHAT_EVENTS.POLL, onPoll);
+      socket.on(CHAT_EVENTS.POLL_VOTERS, onPollVoters);
       socket.on(CHAT_EVENTS.PINNED, onConversationPinned);
       socket.on(CHAT_EVENTS.WRITE_MODE, onConversationWriteMode);
       socket.on(CHAT_EVENTS.TYPING, onTyping);
@@ -610,6 +625,7 @@ export default function ExchangeChatScreen() {
         socket.off(CHAT_EVENTS.REACTION, onReaction);
         socket.off(CHAT_EVENTS.RECALLED, onRecall);
         socket.off(CHAT_EVENTS.POLL, onPoll);
+        socket.off(CHAT_EVENTS.POLL_VOTERS, onPollVoters);
         socket.off(CHAT_EVENTS.PINNED, onConversationPinned);
         socket.off(CHAT_EVENTS.WRITE_MODE, onConversationWriteMode);
         socket.off(CHAT_EVENTS.TYPING, onTyping);

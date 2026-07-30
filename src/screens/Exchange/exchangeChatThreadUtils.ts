@@ -1,7 +1,13 @@
 /**
  * Hàng FlatList thread chat — tin hoặc chip thời gian (đồng bộ GuardianChatScreen).
  */
-import type { ChatConversation, ChatEmoji, ChatMessage, ChatPoll } from '../../types/chat';
+import type {
+  ChatConversation,
+  ChatEmoji,
+  ChatMessage,
+  ChatPoll,
+  ChatPollVoter,
+} from '../../types/chat';
 import {
   humanizeChatWislifeStickerForPreview,
   parseChatWislifeStickerContent,
@@ -365,7 +371,41 @@ export function chatAttachmentsKey(attachments: ChatMessage['attachments'] | und
 export function applyPollUpdate(cur: ChatPoll | null | undefined, next: ChatPoll): ChatPoll {
   if (!cur) return next;
   if (next.rev <= cur.rev) return cur;
-  return { ...next, myVote: next.myVote ?? cur.myVote };
+  // REST/getMessages: payload đầy đủ theo người xem → dùng nguyên.
+  if (next.viewerScoped) return next;
+  // Broadcast: đã lược trường phụ thuộc người xem. Giữ lại từ trạng thái cũ, nếu không GV sẽ mất
+  // quyền xem người bầu (canSeeVoters) và danh sách avatar ngay khi có người bỏ phiếu poll ẩn danh.
+  return {
+    ...next,
+    myVote: cur.myVote,
+    canSeeVoters: cur.canSeeVoters,
+    options: next.options.map((option) => {
+      if (option.voters) return option;
+      const prev = cur.options.find((o) => o.id === option.id);
+      return prev?.voters ? { ...option, voters: prev.voters } : option;
+    }),
+  };
+}
+
+/**
+ * Trộn danh sách người bầu từ event `chat:message:poll:voters` (chỉ GV nhận, poll ẩn danh) vào
+ * poll đang hiển thị. Bỏ payload đến trễ theo `rev`.
+ */
+export function mergePollVoters(
+  cur: ChatPoll | null | undefined,
+  payload: { rev: number; totalVoters: number; options: { id: string; voters: ChatPollVoter[] }[] }
+): ChatPoll | null | undefined {
+  if (!cur) return cur;
+  if (payload.rev < cur.rev) return cur;
+  return {
+    ...cur,
+    totalVoters: payload.totalVoters,
+    canSeeVoters: true,
+    options: cur.options.map((option) => {
+      const row = payload.options.find((o) => o.id === option.id);
+      return row ? { ...option, voters: row.voters } : option;
+    }),
+  };
 }
 
 /** Khóa so sánh trạng thái bình chọn (dùng cho memo/deps). */

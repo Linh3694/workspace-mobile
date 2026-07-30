@@ -633,6 +633,9 @@
     "load_thread_error": "Could not load messages.",
     "read_only_notice": "Your account can only view this conversation.",
     "message_recalled": "Message recalled",
-    "typing": "{{name}} is typing…"
+    "typing": "{{name}} is typing…",
+    "attachment_download_error_title": "Download file",
+    "attachment_download_error": "Couldn't download the file. You can open it in your browser instead.",
+    "attachment_open_in_browser": "Open in browser"
   }
 }

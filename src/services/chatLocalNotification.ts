@@ -36,9 +36,13 @@ export async function presentChatMessageLocalNotification(
   const { status } = await Notifications.getPermissionsAsync();
   if (status !== 'granted') return;
 
-  // Tên khớp bubble trong thread (`formatChatDisplayName`) — Frappe User đồng bộ AD hay đảo họ tên.
+  // Chỉ chuẩn hoá tên GV (Frappe User đồng bộ AD hay đảo họ tên); tên PHHS do ERP nhập
+  // sẵn đúng thứ tự VN nên giữ nguyên, đảo lại là làm sai (SIS-170).
   const rawSenderName = (message.senderSnapshot?.name || '').trim();
-  const senderName = normalizeVietnameseName(rawSenderName) || rawSenderName || 'Người gửi';
+  const senderName =
+    (message.senderSnapshot?.role === 'guardian'
+      ? rawSenderName
+      : normalizeVietnameseName(rawSenderName) || rawSenderName) || 'Người gửi';
   const preview = (message.content || '').trim().slice(0, 180);
   const title = (conversation.title || 'Trao đổi').trim();
   const body =

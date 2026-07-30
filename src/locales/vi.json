@@ -646,6 +646,9 @@
     "load_thread_error": "Không tải được lịch sử chat.",
     "read_only_notice": "Tài khoản chỉ có quyền xem cuộc trò chuyện này.",
     "message_recalled": "Đã thu hồi tin nhắn",
-    "typing": "{{name}} đang nhập…"
+    "typing": "{{name}} đang nhập…",
+    "attachment_download_error_title": "Tải tệp",
+    "attachment_download_error": "Không tải được tệp về máy. Bạn có thể mở tệp trên trình duyệt.",
+    "attachment_open_in_browser": "Mở trên trình duyệt"
   }
 }

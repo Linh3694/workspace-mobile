@@ -141,6 +141,11 @@ export type ChatPoll = {
    * field `sender`, nên "mình đã bầu chưa" bắt buộc lấy từ đây chứ không so id ở client.
    */
   myVote?: string[];
+  /**
+   * false = payload broadcast, đã lược `myVote` và (với poll ẩn danh) `voters` + `canSeeVoters`.
+   * applyPollUpdate dựa vào cờ này để giữ lại trường cũ thay vì ghi đè.
+   */
+  viewerScoped?: boolean;
   rev: number;
 };
 

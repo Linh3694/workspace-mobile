@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Linking,
   Modal,
@@ -23,6 +24,7 @@ import { ChatImagePreviewModal } from './ChatImagePreviewModal';
 import { ChatVideoThumbnail } from './ChatVideoThumbnail';
 
 import { CHAT_BUBBLE_MAX_WIDTH_RATIO } from '../exchangeChatThreadUtils';
+import { useChatAttachmentDownload } from '../lib/chatAttachmentDownload';
 
 function formatChatFileSize(bytes?: number): string {
   if (bytes == null || bytes < 0) return '';
@@ -45,6 +47,7 @@ export function ExchangeMessageAttachments({
   const insets = useSafeAreaInsets();
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [previewVideo, setPreviewVideo] = useState<ChatAttachment | null>(null);
+  const { downloadingUrl, download } = useChatAttachmentDownload();
 
   const images = attachments.filter((a) => a.kind === 'image');
   const videos = attachments.filter((a) => a.kind === 'video');
@@ -188,17 +191,24 @@ export function ExchangeMessageAttachments({
         </Modal>
       ) : null}
 
+      {/* Tải về rồi mở bảng chia sẻ để GIỮ TÊN GỐC — mở URL trực tiếp thì tệp lưu
+          ra mang tên hash của CDN. */}
       {files.map((f) => (
         <Pressable
           key={f.url}
-          onPress={() => void Linking.openURL(resolveChatAttachmentUrl(f.url))}
+          onPress={() => void download(f)}
+          disabled={downloadingUrl === f.url}
           onLongPress={onLongPress}
           delayLongPress={420}
           className={`flex-row items-center gap-2 rounded-xl px-3 py-2 ${
             isMine ? 'bg-white/15' : 'bg-white/85'
           }`}
           style={{ width: fileCardW }}>
-          <Ionicons name="document-outline" size={22} color={isMine ? '#fff' : '#0f766e'} />
+          {downloadingUrl === f.url ? (
+            <ActivityIndicator size="small" color={isMine ? '#fff' : '#0f766e'} />
+          ) : (
+            <Ionicons name="document-outline" size={22} color={isMine ? '#fff' : '#0f766e'} />
+          )}
           <View className="min-w-0" style={{ flexShrink: 1, width: fileCardW - 56 }}>
             <Text
               numberOfLines={1}
