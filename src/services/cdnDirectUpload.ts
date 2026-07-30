@@ -18,11 +18,11 @@
  * bộ nhớ — mà video lại chính là thứ Phase 3 sinh ra để giải quyết. `uploadAsync`
  * với `BINARY_CONTENT` đọc từ đĩa và đẩy đi, byte không đi qua heap.
  *
- * Thêm một lợi ích: `fetch` với body là Blob có thể tự đặt lại `Content-Type`
- * theo `blob.type`. Chỉ cần lệch một ký tự so với lúc ký là MinIO trả 403
- * `SignatureDoesNotMatch` — và vì ta có đường quay về multipart, lỗi đó sẽ IM
- * LẶNG: người dùng không thấy gì, đường trực tiếp đơn giản không bao giờ chạy.
- * `uploadAsync` gửi đúng header ta truyền vào.
+ * Về `Content-Type`: đo trên prod 30/07 cho thấy chữ ký chỉ phủ `host`
+ * (`X-Amz-SignedHeaders=host`), nên gửi lệch KHÔNG làm MinIO trả 403 như trực
+ * giác ban đầu. Dù vậy vẫn gửi đúng header server trả về, vì `promote()` ở server
+ * dùng Content-Type đã lưu để chọn nhánh ảnh/video của pipeline. `uploadAsync`
+ * gửi đúng header ta truyền vào, không tự đặt lại như `fetch` với Blob.
  *
  * ⚠️ Phải import từ `expo-file-system/legacy`. Trong SDK 54, `uploadAsync` của
  * entry mới đã deprecated và **throw lúc chạy**.
