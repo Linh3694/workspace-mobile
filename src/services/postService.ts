@@ -157,8 +157,24 @@ class PostService {
       formData.append('badgeInfo', JSON.stringify(postData.badgeInfo));
     }
 
-    // Add files
+    // Phase 3 — thử tải thẳng lên CDN trước; `uploadForPost` trả null khi server
+    // chưa bật cờ, khi đó rơi về multipart như cũ. Lỗi tải thẳng cũng rơi về
+    // multipart thay vì bắt người dùng soạn lại bài.
+    let mediaKeys: Array<{ stored: string; kind: string }> | null = null;
     if (postData.files && postData.files.length > 0) {
+      try {
+        const { uploadForPost, configureAuth } = await import('./cdnDirectUpload');
+        configureAuth(() => this.getMultipartHeaders());
+        mediaKeys = await uploadForPost(postData.files as any);
+      } catch (error) {
+        console.warn('[PostService] tải thẳng lên CDN thất bại, dùng lại multipart:', error);
+        mediaKeys = null;
+      }
+    }
+
+    if (mediaKeys) {
+      if (mediaKeys.length) formData.append('mediaKeys', JSON.stringify(mediaKeys));
+    } else if (postData.files && postData.files.length > 0) {
       postData.files.forEach((file) => {
         formData.append('files', {
           uri: file.uri,
