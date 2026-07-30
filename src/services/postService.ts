@@ -48,6 +48,31 @@ class PostService {
     }
   }
 
+  /**
+   * Phase 3 — thử tải thẳng lên CDN. Trả `null` nghĩa là "hãy dùng multipart".
+   *
+   * Hai luồng đăng bài (cá nhân và theo lớp) đều gọi hàm này thay vì tự lặp lại
+   * logic: chỉ một chỗ quyết định khi nào đi đường trực tiếp thì hai luồng không
+   * thể lệch nhau — đúng loại lệch mà bản trước đã mắc, khi chỉ `createPost` có
+   * đường mới còn bài đăng theo lớp thì không.
+   *
+   * MỌI lỗi đều rơi về multipart. Không được để một sự cố CDN bắt người dùng
+   * soạn lại bài — và với mobile thì càng không, vì không hotfix được.
+   */
+  private async thuTaiThangLenCdn(
+    files?: MediaFile[]
+  ): Promise<Array<{ stored: string; kind: string }> | null> {
+    if (!files || files.length === 0) return null;
+    try {
+      const { uploadForPost, configureAuth } = await import('./cdnDirectUpload');
+      configureAuth(() => this.getMultipartHeaders());
+      return await uploadForPost(files as any);
+    } catch (error) {
+      console.warn('[PostService] tải thẳng lên CDN thất bại, dùng lại multipart:', error);
+      return null;
+    }
+  }
+
   async createClassPost(payload: {
     classId: string;
     schoolYearId: string;
@@ -71,13 +96,21 @@ class PostService {
     if (payload.tags?.length) {
       formData.append('tags', JSON.stringify(payload.tags));
     }
-    (payload.files || []).forEach((file) => {
-      formData.append('files', {
-        uri: file.uri,
-        type: file.type,
-        name: file.name,
-      } as unknown as Blob);
-    });
+
+    // Phase 3 — giống createPost. Bài đăng theo lớp là luồng GVCN dùng nhiều
+    // nhất, nên nếu bỏ qua đây thì bật cờ lên gần như không đổi gì trong thực tế.
+    const mediaKeys = await this.thuTaiThangLenCdn(payload.files);
+    if (mediaKeys) {
+      if (mediaKeys.length) formData.append('mediaKeys', JSON.stringify(mediaKeys));
+    } else {
+      (payload.files || []).forEach((file) => {
+        formData.append('files', {
+          uri: file.uri,
+          type: file.type,
+          name: file.name,
+        } as unknown as Blob);
+      });
+    }
     const response = await fetch(`${BASE_URL}/api/social/`, {
       method: 'POST',
       headers,
@@ -157,20 +190,7 @@ class PostService {
       formData.append('badgeInfo', JSON.stringify(postData.badgeInfo));
     }
 
-    // Phase 3 — thử tải thẳng lên CDN trước; `uploadForPost` trả null khi server
-    // chưa bật cờ, khi đó rơi về multipart như cũ. Lỗi tải thẳng cũng rơi về
-    // multipart thay vì bắt người dùng soạn lại bài.
-    let mediaKeys: Array<{ stored: string; kind: string }> | null = null;
-    if (postData.files && postData.files.length > 0) {
-      try {
-        const { uploadForPost, configureAuth } = await import('./cdnDirectUpload');
-        configureAuth(() => this.getMultipartHeaders());
-        mediaKeys = await uploadForPost(postData.files as any);
-      } catch (error) {
-        console.warn('[PostService] tải thẳng lên CDN thất bại, dùng lại multipart:', error);
-        mediaKeys = null;
-      }
-    }
+    const mediaKeys = await this.thuTaiThangLenCdn(postData.files);
 
     if (mediaKeys) {
       if (mediaKeys.length) formData.append('mediaKeys', JSON.stringify(mediaKeys));
