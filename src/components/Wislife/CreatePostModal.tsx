@@ -135,12 +135,12 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
           size: asset.fileSize,
         }));
 
-        // Limit to 10 files total
+        // Trần media bài đăng — khớp social-service (30).
         const totalFiles = selectedFiles.length + newFiles.length;
-        if (totalFiles > 10) {
+        if (totalFiles > 30) {
           Alert.alert(
             'Giới hạn file',
-            'Chỉ có thể chọn tối đa 10 file cho một bài viết'
+            'Chỉ có thể chọn tối đa 30 file cho một bài viết'
           );
           return;
         }
@@ -180,10 +180,10 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
           size: asset.fileSize,
         };
 
-        if (selectedFiles.length >= 10) {
+        if (selectedFiles.length >= 30) {
           Alert.alert(
             'Giới hạn file',
-            'Chỉ có thể chọn tối đa 10 file cho một bài viết'
+            'Chỉ có thể chọn tối đa 30 file cho một bài viết'
           );
           return;
         }
