@@ -450,7 +450,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
             
             {selectedFiles.length > 0 && (
               <Text className="text-sm text-gray-500">
-                {selectedFiles.length}/10
+                {selectedFiles.length}/30
               </Text>
             )}
           </View>
