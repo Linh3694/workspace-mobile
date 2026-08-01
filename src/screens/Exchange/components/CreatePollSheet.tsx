@@ -8,9 +8,10 @@
  * Header/footer cố định, chỉ phần giữa cuộn để nút tạo luôn với tới được.
  */
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -20,6 +21,7 @@ import {
 } from 'react-native';
 
 import BottomSheetModal from '../../../components/Common/BottomSheetModal';
+import { SheetHeader } from '../../../components/Common/SheetHeader';
 import DatePickerModal from '../../../components/DatePickerModal';
 import TimePickerModal from '../../../components/TimePickerModal';
 import { useLanguage } from '../../../hooks/useLanguage';
@@ -114,6 +116,8 @@ export function CreatePollSheet({
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [draftDate, setDraftDate] = useState<Date | null>(null);
+  /** iOS: chọn ngày xong rồi, đang đợi modal lịch đóng hẳn mới mở được modal giờ. */
+  const waitingForTimeRef = useRef(false);
 
   // Mở lại luôn là form trắng — tránh sót dữ liệu của lần tạo trước.
   useEffect(() => {
@@ -128,6 +132,7 @@ export function CreatePollSheet({
     setDatePickerOpen(false);
     setTimePickerOpen(false);
     setDraftDate(null);
+    waitingForTimeRef.current = false;
   }, [visible]);
 
   const cleanedOptions = useMemo(() => {
@@ -182,10 +187,25 @@ export function CreatePollSheet({
     });
   };
 
-  /** Ngày xong → mở tiếp chọn giờ; ghép lại thành mốc đầy đủ. */
+  /**
+   * Ngày xong → mở tiếp chọn giờ; ghép lại thành mốc đầy đủ.
+   * iOS: bật modal giờ ngay ở đây là present trong lúc modal lịch còn đang dismiss — iOS bỏ qua lệnh
+   * present, để lại lớp phủ vô hình nuốt hết touch (app như treo). Phải đợi onDismiss của lịch.
+   * Android xếp chồng Dialog thoải mái nên mở thẳng.
+   */
   const handlePickDate = (date: Date) => {
     setDraftDate(date);
     setDatePickerOpen(false);
+    if (Platform.OS === 'ios') {
+      waitingForTimeRef.current = true;
+    } else {
+      setTimePickerOpen(true);
+    }
+  };
+
+  const handleDatePickerDismissed = () => {
+    if (!waitingForTimeRef.current) return;
+    waitingForTimeRef.current = false;
     setTimePickerOpen(true);
   };
 
@@ -223,15 +243,13 @@ export function CreatePollSheet({
         */}
         <View style={{ flexShrink: 1 }}>
           {/* Header cố định */}
-          <View className="flex-row items-center gap-2 px-4 pb-3 pt-5">
-            <Ionicons name="stats-chart-outline" size={18} color={ACCENT} />
-            <Text className="flex-1 font-mulish-bold text-lg text-gray-900">
-              {t('exchange.poll_create_title')}
-            </Text>
-            <Pressable onPress={onClose} hitSlop={10}>
-              <Ionicons name="close" size={22} color="#6B7280" />
-            </Pressable>
-          </View>
+          <SheetHeader
+            icon="stats-chart-outline"
+            iconColor={ACCENT}
+            title={t('exchange.poll_create_title')}
+            closeLabel={t('common.close')}
+            onClose={onClose}
+          />
 
           {/* Thân cuộn */}
           {/* flexShrink thay vì flex-1: vừa nội dung thì cao bằng nội dung, quá trần thì co lại và cuộn. */}
@@ -411,22 +429,29 @@ export function CreatePollSheet({
             </Pressable>
           </View>
         </View>
-      </BottomSheetModal>
 
-      {/* Để NGOÀI bottom sheet: lồng Modal trong Modal hay vỡ animation/z-index trên iOS. */}
-      <DatePickerModal
-        visible={datePickerOpen}
-        value={draftDate ?? new Date()}
-        minimumDate={new Date()}
-        onSelect={handlePickDate}
-        onClose={() => setDatePickerOpen(false)}
-      />
-      <TimePickerModal
-        visible={timePickerOpen}
-        value={formatTimeValue(draftDate ?? customAt)}
-        onSelect={handlePickTime}
-        onClose={() => setTimePickerOpen(false)}
-      />
+        {/*
+          Phải nằm TRONG bottom sheet. Trên iOS mỗi Modal là một UIViewController, present từ VC gần
+          nhất: để ngoài thì hai picker cùng present từ VC gốc — mà VC gốc đang bận present chính
+          bottom sheet → iOS từ chối, picker không hiện và lớp phủ chết nuốt hết touch. Nằm trong thì
+          chúng present từ VC của sheet nên xếp chồng đúng. (Android Modal là Dialog nên kiểu nào
+          cũng chạy — vì vậy bug chỉ thấy ở iOS.)
+        */}
+        <DatePickerModal
+          visible={datePickerOpen}
+          value={draftDate ?? new Date()}
+          minimumDate={new Date()}
+          onSelect={handlePickDate}
+          onClose={() => setDatePickerOpen(false)}
+          onDismiss={handleDatePickerDismissed}
+        />
+        <TimePickerModal
+          visible={timePickerOpen}
+          value={formatTimeValue(draftDate ?? customAt)}
+          onSelect={handlePickTime}
+          onClose={() => setTimePickerOpen(false)}
+        />
+      </BottomSheetModal>
     </>
   );
 }

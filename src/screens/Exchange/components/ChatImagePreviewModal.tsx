@@ -3,12 +3,9 @@
  * Vuốt ngang chuyển ảnh, đếm "n/total", nút đóng. (Tách từ ExchangeMessageAttachments.)
  */
 import { Ionicons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system';
-import * as MediaLibrary from 'expo-media-library';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Modal,
@@ -19,9 +16,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { InlineToast, useInlineToast } from '../../../components/Common';
 import { resolveChatAttachmentUrl } from '../../../services/chatService';
+import { saveMediaToDevice } from '../../../utils/mediaDownload';
 
-export type PreviewImage = { url: string };
+export type PreviewImage = { url: string; name?: string; mimeType?: string };
 
 export function ChatImagePreviewModal({
   images,
@@ -37,8 +36,9 @@ export function ChatImagePreviewModal({
   const { width: windowWidth } = useWindowDimensions();
   const [index, setIndex] = useState(initialIndex);
   const [downloading, setDownloading] = useState(false);
+  const { toast, showToast, hideToast } = useInlineToast();
 
-  // SIS-129: tải/lưu ảnh đang xem vào album của máy.
+  // SIS-129: tải/lưu ảnh đang xem vào album của máy (thiếu quyền/module → bảng chia sẻ).
   const handleDownload = async () => {
     const current = images[index];
     if (!current || downloading) return;
@@ -46,20 +46,16 @@ export function ChatImagePreviewModal({
     if (!url) return;
     try {
       setDownloading(true);
-      const permission = await MediaLibrary.requestPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('Cần quyền lưu ảnh', 'Cho phép truy cập thư viện để lưu ảnh vào máy.');
-        return;
-      }
-      const baseName =
-        current.url.split('/').pop()?.split('?')[0] || `chat-image-${Date.now()}.jpg`;
-      const file = new FileSystem.File(FileSystem.Paths.cache, `${Date.now()}-${baseName}`);
-      const result = await FileSystem.File.downloadFileAsync(url, file, { idempotent: true });
-      await MediaLibrary.saveToLibraryAsync(result.uri);
-      Alert.alert('Đã lưu', 'Ảnh đã được lưu vào album.');
+      const result = await saveMediaToDevice({
+        url,
+        name: current.name,
+        mimeType: current.mimeType,
+        kind: 'image',
+      });
+      if (result === 'saved-to-library') showToast('Đã lưu ảnh vào album');
     } catch (error) {
       console.error('[ChatImagePreviewModal] download', error);
-      Alert.alert('Tải ảnh', 'Không thể tải hoặc lưu ảnh.');
+      showToast('Không thể tải hoặc lưu ảnh', 'error');
     } finally {
       setDownloading(false);
     }
@@ -116,6 +112,16 @@ export function ChatImagePreviewModal({
             </View>
           )}
         />
+        {toast ? (
+          <InlineToast
+            key={toast.id}
+            message={toast.message}
+            type={toast.type}
+            floating
+            bottomOffset={insets.bottom + 32}
+            onHide={hideToast}
+          />
+        ) : null}
       </View>
     </Modal>
   );

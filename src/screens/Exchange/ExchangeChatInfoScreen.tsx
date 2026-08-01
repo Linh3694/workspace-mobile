@@ -32,11 +32,15 @@ import type { ChatAttachment, ChatConversation } from '../../types/chat';
 import { ChatImagePreviewModal } from './components/ChatImagePreviewModal';
 import { ChatVideoThumbnail } from './components/ChatVideoThumbnail';
 import { ExchangeGroupChatAvatar } from './components/ExchangeGroupChatAvatar';
+import { makeRelationshipTranslator } from '../../utils/relationshipLabels';
+
 import { InfoMemberRow } from './components/InfoMemberRow';
+import { MemberProfileSheet } from './components/MemberProfileSheet';
 import { conversationHeaderTitle } from './exchangeChatThreadUtils';
 import { isConversationPinned, togglePinned } from './chatPinStore';
 import {
   buildConversationMembers,
+  type InfoMember,
   isViewerHomeroom,
   resolveCallerTeacherId,
 } from './exchangeInfoUtils';
@@ -107,9 +111,10 @@ export default function ExchangeChatInfoScreen() {
     };
   }, [conversationId]);
 
+  const translateRelationship = useMemo(() => makeRelationshipTranslator(t), [t]);
   const members = useMemo(
-    () => buildConversationMembers(conversation, roleLabels),
-    [conversation, roleLabels]
+    () => buildConversationMembers(conversation, roleLabels, translateRelationship),
+    [conversation, roleLabels, translateRelationship]
   );
   const callerTeacherId = useMemo(
     () => resolveCallerTeacherId(conversation, user?.email),
@@ -125,6 +130,8 @@ export default function ExchangeChatInfoScreen() {
   const files = useMemo(() => attachments.filter((a) => a.kind === 'file'), [attachments]);
 
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  /** PH đang mở sheet thông tin — null là đóng. */
+  const [profileMember, setProfileMember] = useState<InfoMember | null>(null);
 
   const title = conversationHeaderTitle(conversation) || t('exchange.title_detail');
   const subtitle = [
@@ -180,6 +187,7 @@ export default function ExchangeChatInfoScreen() {
   /** Mở đoạn chat 1-1 GV↔PH (draft get-or-create) — chỉ khi GV có quyền chat. */
   const openOneToOne = (guardianId?: string) => {
     if (!canOpenOneToOne || !guardianId || !conversation) return;
+    setProfileMember(null);
     navigation.navigate(ROUTES.SCREENS.EXCHANGE_CHAT, {
       conversationId: 'new',
       classId: conversation.classId,
@@ -312,11 +320,7 @@ export default function ExchangeChatInfoScreen() {
             <InfoMemberRow
               key={m.key}
               member={m}
-              onPress={
-                m.isGuardian && canOpenOneToOne && m.guardianId
-                  ? () => openOneToOne(m.guardianId)
-                  : undefined
-              }
+              onPress={m.isGuardian ? () => setProfileMember(m) : undefined}
             />
           ))}
           {members.length > PREVIEW_COUNT ? <SeeMore onPress={openMembersScreen} /> : null}
@@ -400,6 +404,18 @@ export default function ExchangeChatInfoScreen() {
           )}
         </View>
       </ScrollView>
+
+      <MemberProfileSheet
+        member={profileMember}
+        visible={Boolean(profileMember)}
+        onClose={() => setProfileMember(null)}
+        studentMeta={conversation?.className}
+        onMessage={
+          canOpenOneToOne && profileMember?.guardianId
+            ? () => openOneToOne(profileMember.guardianId)
+            : undefined
+        }
+      />
 
       {previewIndex != null ? (
         <ChatImagePreviewModal

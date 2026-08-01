@@ -21,6 +21,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import BottomSheetModal from '../../../components/Common/BottomSheetModal';
+import { SheetHeader } from '../../../components/Common/SheetHeader';
 
 import { resolveChatAttachmentUrl } from '../../../services/chatService';
 import type { ClassChatScopeGuardian, ClassChatScopeStudent } from '../../../types/chat';
@@ -121,29 +122,13 @@ export function NewConversationSheet({
       keyboardAvoiding>
       <View style={{ flex: 1, minHeight: 0 }}>
         {/* Header */}
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingHorizontal: 16,
-            paddingTop: 14,
-            paddingBottom: 8,
-          }}>
-          <View style={{ flex: 1, paddingRight: 8 }}>
-            <Text
-              style={{
-                fontFamily: 'Mulish-Bold',
-                fontSize: 16,
-                color: '#0A2240',
-              }}>
-              Tạo cuộc trò chuyện mới
-            </Text>
-          </View>
-          <TouchableOpacity onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={22} color="#374151" />
-          </TouchableOpacity>
-        </View>
+        <SheetHeader
+          icon="chatbubble-ellipses-outline"
+          iconColor="#FF7A00"
+          title="Tạo cuộc trò chuyện mới"
+          closeLabel="Đóng"
+          onClose={onClose}
+        />
 
         {/* Search */}
         <View

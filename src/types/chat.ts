@@ -53,11 +53,26 @@ export type ChatConversation = {
   };
   guardians?: Array<{
     name?: string;
+    /** Email ĐỊNH DANH (khớp participant) — có thể là địa chỉ portal sinh tự động, đừng hiển thị. */
     email?: string;
+    /** Email LIÊN LẠC để hiển thị — bảng con `CRM Guardian Email` (ưu tiên email chính). */
+    contactEmail?: string;
     guardianId?: string;
     studentIds?: string[];
     /** Từ snapshot social-service — hiển thị subtitle GV */
     studentNames?: string[];
+    /**
+     * Liên kết HS↔PH: quan hệ + cờ PH chính thuộc về LIÊN KẾT, không thuộc về người
+     * (một PH có thể là PH chính của HS này và PH phụ của HS khác).
+     */
+    studentLinks?: Array<{
+      studentId?: string;
+      studentName?: string;
+      relationship?: string;
+      keyPerson?: boolean;
+    }>;
+    /** SĐT PH (CRM Guardian.phone_number). */
+    phoneNumber?: string;
     avatarUrl?: string;
     /** Có giá trị = đã bị gỡ mềm khỏi nhóm (không hiển thị). */
     removedAt?: string | null;
@@ -67,6 +82,8 @@ export type ChatConversation = {
     email?: string;
     teacherId?: string;
     avatarUrl?: string;
+    /** SĐT GV (User.mobile_no / phone). */
+    phoneNumber?: string;
     /** Môn dạy (GVBM) — từ snapshot social-service. */
     subjects?: Array<{ id?: string; title?: string }>;
     /** true = GV bộ môn được thêm thủ công (gỡ được); false/undefined = GVCN/Phó CN. */

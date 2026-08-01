@@ -309,7 +309,7 @@ const TimetableScreen: React.FC = () => {
   };
   
   const currentRole = currentClass ? getTeacherRole(currentClass) : null;
-  const roleLabel = currentRole === 'homeroom' ? 'Chủ nhiệm' : currentRole === 'vice_homeroom' ? 'Phó CN' : '';
+  const roleLabel = currentRole === 'homeroom' ? 'GVCN' : currentRole === 'vice_homeroom' ? 'Phó GVCN' : '';
   const hasMultipleClasses = teacherClasses.length > 1;
 
   // Check if today
@@ -417,7 +417,7 @@ const TimetableScreen: React.FC = () => {
                 {teacherClasses.map((cls) => {
                   const isSelected = cls.name === selectedClassId;
                   const role = getTeacherRole(cls);
-                  const roleBadge = role === 'homeroom' ? 'Chủ nhiệm' : role === 'vice_homeroom' ? 'Phó Chủ nhiệm' : '';
+                  const roleBadge = role === 'homeroom' ? 'GVCN' : role === 'vice_homeroom' ? 'Phó GVCN' : '';
                   
                   return (
                     <TouchableOpacity

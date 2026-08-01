@@ -22,6 +22,7 @@ import {
 import { TouchableOpacity } from '../Common';
 import { postService } from '../../services/postService';
 import { getAvatar } from '../../utils/avatar';
+import { linkedChildren } from '../Common/LinkedText';
 
 // Kiểu dữ liệu cho user được mention
 export interface MentionUser {
@@ -481,18 +482,22 @@ export const MentionRichText: React.FC<{
   mentionClassName = 'font-bold text-[#F97316]',
 }) => {
   const normalized = getMentionPlainText(content);
-  const parts = normalized.split(/(@[^\s@]+(?:\s+[^\s@]+){0,2})/g);
+  // Tách link TRƯỚC rồi mới tách @mention trong phần chữ còn lại: URL có thể chứa '@'
+  // (vd link Google Maps), tách mention trước sẽ cắt vụn đường dẫn.
   return (
     <Text className={className}>
-      {parts.map((part, index) =>
-        part.startsWith('@') && part.trim().length > 1 ? (
-          <Text key={`m-${index}`} className={mentionClassName}>
-            {part.trim()}
-          </Text>
-        ) : (
-          part
-        ),
-      )}
+      {linkedChildren(normalized, {
+        renderPlain: (chunk, key) =>
+          chunk.split(/(@[^\s@]+(?:\s+[^\s@]+){0,2})/g).map((part, index) =>
+            part.startsWith('@') && part.trim().length > 1 ? (
+              <Text key={`${key}-m-${index}`} className={mentionClassName}>
+                {part.trim()}
+              </Text>
+            ) : (
+              <Text key={`${key}-${index}`}>{part}</Text>
+            ),
+          ),
+      })}
     </Text>
   );
 };

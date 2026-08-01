@@ -341,7 +341,7 @@ export function MessageActionOverlay({
 
               <View style={styles.actionCard}>
                 {!locked ? (
-                  <View className="flex-row flex-wrap items-center justify-center gap-1">
+                  <View className="flex-row items-stretch">
                     <ActionCell
                       icon="arrow-undo"
                       label="Trả lời"
@@ -388,7 +388,7 @@ export function MessageActionOverlay({
                     ) : null}
                   </View>
                 ) : (
-                  <View className="flex-row flex-wrap items-center justify-center gap-1">
+                  <View className="flex-row items-stretch">
                     <ActionCell
                       icon="copy-outline"
                       label="Sao chép"
@@ -423,9 +423,13 @@ function ActionCell({
   return (
     <Pressable
       onPress={onPress}
-      className="min-h-[68px] min-w-[72px] items-center justify-center px-2 py-2 active:opacity-75">
+      className="min-h-[68px] flex-1 items-center justify-center px-1 py-2 active:opacity-75">
       <Ionicons name={icon} size={24} color={color} />
-      <Text className="mt-1 text-center font-mulish-semibold text-sm text-[#002855]">{label}</Text>
+      <Text
+        numberOfLines={1}
+        className="mt-1 text-center font-mulish-semibold text-sm text-[#002855]">
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -452,10 +456,11 @@ function RecallActionCell({
         }
         onRecall();
       }}
-      className="min-h-[68px] min-w-[72px] items-center justify-center px-2 py-2 active:opacity-75"
+      className="min-h-[68px] flex-1 items-center justify-center px-1 py-2 active:opacity-75"
       style={{ opacity: recallAllowed ? 1 : 0.45 }}>
       <RevokeIcon width={24} height={24} fill={recallAllowed ? '#F05023' : '#9CA3AF'} />
       <Text
+        numberOfLines={1}
         className={`mt-1 text-center font-mulish-semibold text-sm ${recallAllowed ? 'text-[#002855]' : 'text-gray-400'}`}>
         Thu hồi
       </Text>

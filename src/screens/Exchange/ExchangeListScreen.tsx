@@ -17,12 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
-import {
-  useFocusEffect,
-  useNavigation,
-  useRoute,
-  RouteProp,
-} from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -44,10 +39,8 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useLanguage } from '../../hooks/useLanguage';
 
-import {
-  NewConversationSheet,
-  type GuardianStudentRow,
-} from './components/NewConversationSheet';
+import { NewConversationSheet, type GuardianStudentRow } from './components/NewConversationSheet';
+import { NewParentChatSheet, type ParentChatCandidate } from './components/NewParentChatSheet';
 import { ExchangeGroupChatAvatar } from './components/ExchangeGroupChatAvatar';
 import { getPinnedIds } from './chatPinStore';
 import {
@@ -87,15 +80,19 @@ function isPersistentConversationId(id: string): boolean {
 
 /**
  * Hàng danh sách Trao đổi — vuốt (native) lộ nút xóa: chỉ ẩn khỏi danh sách user, không hard delete.
+ *
+ * `memo` là bắt buộc chứ không phải tối ưu cho vui: mỗi ký tự gõ trong ô tìm kiếm và mỗi tin
+ * nhắn realtime đều re-render màn, mà mỗi hàng dựng lại một `Swipeable` (gesture handler) —
+ * danh sách của BOD dài nên đó là phần giật thấy được.
  */
-function ExchangeConversationSwipeRow({
+const ExchangeConversationSwipeRow = React.memo(function ExchangeConversationSwipeRow({
   item,
   chatViewerEmails,
   conversationTitle,
   subtitle,
   timeLabel,
   guardianFallbackTitle,
-  onPress,
+  onOpen,
   onHiddenFromList,
 }: {
   item: ChatConversation;
@@ -104,10 +101,12 @@ function ExchangeConversationSwipeRow({
   subtitle: string;
   timeLabel: string;
   guardianFallbackTitle: string;
-  onPress: () => void;
+  /** Nhận `item` thay vì closure sẵn: prop giữ nguyên tham chiếu giữa các lần render ⇒ `memo` mới ăn. */
+  onOpen: (item: ChatConversation) => void;
   onHiddenFromList?: () => void;
 }) {
   const swipeRef = useRef(null);
+  const handlePress = useCallback(() => onOpen(item), [item, onOpen]);
   const persistId = String(item._id || '').trim();
   const swipeEnabled = Platform.OS !== 'web' && isPersistentConversationId(persistId);
   const g = item.guardians?.[0];
@@ -128,14 +127,11 @@ function ExchangeConversationSwipeRow({
               onHiddenFromList?.();
             } catch (e) {
               swipeRef.current?.close?.();
-              Alert.alert(
-                'Lỗi',
-                e instanceof Error ? e.message : 'Không thể ẩn cuộc trò chuyện.',
-              );
+              Alert.alert('Lỗi', e instanceof Error ? e.message : 'Không thể ẩn cuộc trò chuyện.');
             }
           },
         },
-      ],
+      ]
     );
   }, [onHiddenFromList, persistId]);
 
@@ -172,13 +168,9 @@ function ExchangeConversationSwipeRow({
         backgroundColor: '#fff',
       }}
       activeOpacity={0.7}
-      onPress={onPress}>
+      onPress={handlePress}>
       <View style={{ marginRight: 12 }}>
-        <ExchangeGroupChatAvatar
-          conversation={item}
-          viewerEmails={chatViewerEmails}
-          size={44}
-        />
+        <ExchangeGroupChatAvatar conversation={item} viewerEmails={chatViewerEmails} size={44} />
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={{ fontFamily: 'Mulish-Bold', fontSize: 16, color: '#111' }} numberOfLines={1}>
@@ -225,7 +217,7 @@ function ExchangeConversationSwipeRow({
       {rowInner}
     </Swipeable>
   );
-}
+});
 
 export default function ExchangeListScreen() {
   const navigation = useNavigation<Nav>();
@@ -235,7 +227,7 @@ export default function ExchangeListScreen() {
 
   const chatViewerEmails = useMemo(
     () => [String(user?.email || '').trim()].filter(Boolean),
-    [user?.email],
+    [user?.email]
   );
 
   const classId = route.params?.classId;
@@ -252,6 +244,7 @@ export default function ExchangeListScreen() {
   const [callerTeacherId, setCallerTeacherId] = useState<string>('');
   const [openingGuardianId, setOpeningGuardianId] = useState<string | null>(null);
   const [showNewSheet, setShowNewSheet] = useState(false);
+  const [showAllClassesSheet, setShowAllClassesSheet] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [filter, setFilter] = useState<ConversationFilter>('all');
@@ -275,7 +268,8 @@ export default function ExchangeListScreen() {
       void getPinnedIds().then((ids) => setPinnedIds(new Set(ids)));
     }, [])
   );
-  const listFocusCountRef = useRef(0);
+  /** Hội thoại vừa mở — quay lại thì trừ badge tại chỗ thay vì tải lại cả trang. */
+  const lastOpenedIdRef = useRef<string>('');
   const socketChatMessageDedupeRef = useRef(new Set());
 
   /** Nhãn pill lớp — giống ClassActivity / Đơn từ (tránh lặp "Lớp Lớp"). */
@@ -284,9 +278,7 @@ export default function ExchangeListScreen() {
       return /^lớp\s/i.test(classTitleParam) ? classTitleParam : `Lớp ${classTitleParam}`;
     }
     if (!classId) return '';
-    const conv = items.find(
-      (c) => String(c.classId || '').trim() === String(classId).trim()
-    );
+    const conv = items.find((c) => String(c.classId || '').trim() === String(classId).trim());
     const name = conv?.className?.trim();
     if (!name) return '';
     return /^lớp\s/i.test(name) ? name : `Lớp ${name}`;
@@ -298,6 +290,10 @@ export default function ExchangeListScreen() {
       q: debouncedQuery,
       filter,
       limit: CONVERSATION_PAGE_SIZE,
+      // Danh sách chỉ vẽ tiêu đề + cụm avatar + tin cuối; roster chi tiết (SĐT, quan hệ HS↔PH,
+      // môn dạy) để màn thread tự nạp. Với BOD — một trang toàn nhóm lớp ~40–65 người — đây là
+      // khác biệt vài MB mỗi lần tải.
+      fields: 'list' as const,
     }),
     [classId, schoolYearId, debouncedQuery, filter]
   );
@@ -350,117 +346,134 @@ export default function ExchangeListScreen() {
     }
   }, [queryParams, loading, loadingMore, hasMore]);
 
+  // Tải khi vào màn và khi ĐỔI từ khoá/pill — giống hệt web GV. Trước đây hook này là
+  // `useFocusEffect` nên mỗi lần thoát thread quay lại là một lượt tải trang-1 nữa; với BOD
+  // (danh sách toàn nhóm lớp) đó là phần "load khá nhiều" thấy rõ nhất.
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  /** Quay lại từ một thread: badge của đúng hội thoại đó về 0, khỏi phải tải lại danh sách. */
   useFocusEffect(
     useCallback(() => {
-      listFocusCountRef.current += 1;
-      const silent = listFocusCountRef.current > 1;
-      void load(silent);
-    }, [load]),
+      const openedId = lastOpenedIdRef.current;
+      if (!openedId) return;
+      lastOpenedIdRef.current = '';
+      setItems((prev) =>
+        prev.map((c) =>
+          String(c._id) === openedId && Number(c.unreadCount || 0) > 0
+            ? { ...c, unreadCount: 0 }
+            : c
+        )
+      );
+    }, [])
   );
 
-  /** Realtime cập nhật preview/ unread danh sách (parent GuardianChatScreen). */
-  useFocusEffect(
-    useCallback(() => {
-      let mounted = true;
-      /** @type {null | (() => void)} */
-      let removeListeners = null;
+  /**
+   * Realtime cập nhật preview/unread danh sách (parent GuardianChatScreen).
+   *
+   * Gắn theo VÒNG ĐỜI MÀN chứ không theo focus: đang ở trong thread mà listener bị gỡ thì tin
+   * nhắn của hội thoại khác không vào được danh sách, và đó chính là lý do trước đây phải tải
+   * lại toàn bộ trang-1 mỗi lần quay ra.
+   */
+  useEffect(() => {
+    let mounted = true;
+    /** @type {null | (() => void)} */
+    let removeListeners = null;
 
-      const setup = async () => {
-        const socket = await chatService.getSocket();
-        if (!socket || !mounted) return;
+    const setup = async () => {
+      const socket = await chatService.getSocket();
+      if (!socket || !mounted) return;
 
-        const handleMessage = ({ conversation, message }) => {
-          const conversationId = normalizeMongoId(conversation._id);
-          const msgId = normalizeMongoId(message._id);
-          const dupKey = msgId ? `${conversationId}:${msgId}` : '';
-          let duplicateEvent = false;
-          if (dupKey) {
-            if (socketChatMessageDedupeRef.current.has(dupKey)) {
-              duplicateEvent = true;
-            } else {
-              socketChatMessageDedupeRef.current.add(dupKey);
-              if (socketChatMessageDedupeRef.current.size > 500) {
-                socketChatMessageDedupeRef.current.clear();
-              }
+      const handleMessage = ({ conversation, message }) => {
+        const conversationId = normalizeMongoId(conversation._id);
+        const msgId = normalizeMongoId(message._id);
+        const dupKey = msgId ? `${conversationId}:${msgId}` : '';
+        let duplicateEvent = false;
+        if (dupKey) {
+          if (socketChatMessageDedupeRef.current.has(dupKey)) {
+            duplicateEvent = true;
+          } else {
+            socketChatMessageDedupeRef.current.add(dupKey);
+            if (socketChatMessageDedupeRef.current.size > 500) {
+              socketChatMessageDedupeRef.current.clear();
             }
           }
-
-          const openConvId = normalizeMongoId(getFocusedChatConversationId());
-          const viewingThisThread = openConvId === conversationId;
-          const fromTeacherSelf = isMessageFromTeacherViewer(message, user?.email);
-
-          const matchesScope =
-            (!classId ||
-              String(conversation.classId || '').trim() === String(classId).trim()) &&
-            (!schoolYearId ||
-              String(conversation.schoolYearId || '').trim() ===
-                String(schoolYearId).trim());
-
-          setItems((prev) => {
-            const idx = prev.findIndex((x) => normalizeMongoId(x._id) === conversationId);
-            if (idx < 0) {
-              if (!matchesScope) return prev;
-              if (duplicateEvent) return prev;
-              const unreadCount = mergeUnreadCountOnSocketMessage(
-                    conversation,
-                    null,
-                    fromTeacherSelf,
-                    viewingThisThread,
-                  );
-              return [{ ...conversation, unreadCount }, ...prev];
-            }
-            return prev.map((item) => {
-              if (normalizeMongoId(item._id) !== conversationId) return item;
-              const unreadCount = duplicateEvent
-                ? Math.max(0, Number(item.unreadCount ?? 0))
-                : mergeUnreadCountOnSocketMessage(
-                    conversation,
-                    item,
-                    fromTeacherSelf,
-                    viewingThisThread,
-                  );
-              return { ...conversation, unreadCount };
-            });
-          });
-        };
-
-        const handleMessageRecalled = ({ conversationId, messageId }) => {
-          const cid = normalizeMongoId(conversationId);
-          const mid = normalizeMongoId(messageId);
-          setItems((prev) =>
-            prev.map((c) => {
-              if (normalizeMongoId(c._id) !== cid) return c;
-              const lastMid = c.lastMessage?.messageId;
-              if (lastMid && normalizeMongoId(lastMid) === mid) {
-                return {
-                  ...c,
-                  lastMessage: { ...c.lastMessage, content: '' },
-                };
-              }
-              return c;
-            }),
-          );
-        };
-
-        socket.on(CHAT_EVENTS.MESSAGE, handleMessage);
-        socket.on(CHAT_EVENTS.RECALLED, handleMessageRecalled);
-        removeListeners = () => {
-          socket.off(CHAT_EVENTS.MESSAGE, handleMessage);
-          socket.off(CHAT_EVENTS.RECALLED, handleMessageRecalled);
-        };
-        if (!mounted) {
-          removeListeners();
         }
+
+        const openConvId = normalizeMongoId(getFocusedChatConversationId());
+        const viewingThisThread = openConvId === conversationId;
+        const fromTeacherSelf = isMessageFromTeacherViewer(message, user?.email);
+
+        const matchesScope =
+          (!classId || String(conversation.classId || '').trim() === String(classId).trim()) &&
+          (!schoolYearId ||
+            String(conversation.schoolYearId || '').trim() === String(schoolYearId).trim());
+
+        setItems((prev) => {
+          const idx = prev.findIndex((x) => normalizeMongoId(x._id) === conversationId);
+          if (idx < 0) {
+            if (!matchesScope) return prev;
+            if (duplicateEvent) return prev;
+            const unreadCount = mergeUnreadCountOnSocketMessage(
+              conversation,
+              null,
+              fromTeacherSelf,
+              viewingThisThread
+            );
+            return [{ ...conversation, unreadCount }, ...prev];
+          }
+          return prev.map((item) => {
+            if (normalizeMongoId(item._id) !== conversationId) return item;
+            const unreadCount = duplicateEvent
+              ? Math.max(0, Number(item.unreadCount ?? 0))
+              : mergeUnreadCountOnSocketMessage(
+                  conversation,
+                  item,
+                  fromTeacherSelf,
+                  viewingThisThread
+                );
+            return { ...conversation, unreadCount };
+          });
+        });
       };
 
-      void setup();
-
-      return () => {
-        mounted = false;
-        removeListeners?.();
+      const handleMessageRecalled = ({ conversationId, messageId }) => {
+        const cid = normalizeMongoId(conversationId);
+        const mid = normalizeMongoId(messageId);
+        setItems((prev) =>
+          prev.map((c) => {
+            if (normalizeMongoId(c._id) !== cid) return c;
+            const lastMid = c.lastMessage?.messageId;
+            if (lastMid && normalizeMongoId(lastMid) === mid) {
+              return {
+                ...c,
+                lastMessage: { ...c.lastMessage, content: '' },
+              };
+            }
+            return c;
+          })
+        );
       };
-    }, [classId, schoolYearId, user?.email]),
-  );
+
+      socket.on(CHAT_EVENTS.MESSAGE, handleMessage);
+      socket.on(CHAT_EVENTS.RECALLED, handleMessageRecalled);
+      removeListeners = () => {
+        socket.off(CHAT_EVENTS.MESSAGE, handleMessage);
+        socket.off(CHAT_EVENTS.RECALLED, handleMessageRecalled);
+      };
+      if (!mounted) {
+        removeListeners();
+      }
+    };
+
+    void setup();
+
+    return () => {
+      mounted = false;
+      removeListeners?.();
+    };
+  }, [classId, schoolYearId, user?.email]);
 
   /** Load scope (HS + guardian) khi GV mở sheet — gọi 1 lần / phiên bottom sheet. */
   const loadScope = useCallback(async () => {
@@ -489,19 +502,40 @@ export default function ExchangeListScreen() {
     }
   }, [classId, schoolYearId]);
 
+  /**
+   * Vào Trao đổi từ MỘT LỚP ⇒ sheet cũ dựng từ `getClassChatScope` (lọc PH chính, có tên HS).
+   * Vào từ hộp thư gộp (không có classId) ⇒ sheet mới dựng từ các nhóm lớp GV là thành viên,
+   * để vẫn tạo được chat 1-1 mà không phải mở nhóm lớp trước (đồng bộ bản GV web).
+   */
   const handleOpenNewSheet = useCallback(() => {
+    if (!classId || !schoolYearId) {
+      setShowAllClassesSheet(true);
+      return;
+    }
     setShowNewSheet(true);
     void loadScope();
-  }, [loadScope]);
+  }, [classId, schoolYearId, loadScope]);
+
+  const handleSelectParentCandidate = useCallback(
+    (candidate: ParentChatCandidate) => {
+      setShowAllClassesSheet(false);
+      navigation.navigate(ROUTES.SCREENS.EXCHANGE_CHAT, {
+        conversationId: 'new',
+        classId: candidate.classId,
+        schoolYearId: candidate.schoolYearId,
+        teacherId: candidate.teacherId,
+        guardianId: candidate.guardianId,
+      });
+      void load(true);
+    },
+    [load, navigation]
+  );
 
   const handleSelectGuardian = useCallback(
     async (row: GuardianStudentRow) => {
       if (!classId || !schoolYearId) return;
       if (!callerTeacherId) {
-        Alert.alert(
-          t('exchange.title'),
-          'Không xác định được giáo viên — vui lòng tải lại.',
-        );
+        Alert.alert(t('exchange.title'), 'Không xác định được giáo viên — vui lòng tải lại.');
         return;
       }
       try {
@@ -516,16 +550,13 @@ export default function ExchangeListScreen() {
         });
         void load(true);
       } catch (e: unknown) {
-        const msg =
-          e instanceof Error
-            ? e.message
-            : 'Không thể mở chat với phụ huynh này.';
+        const msg = e instanceof Error ? e.message : 'Không thể mở chat với phụ huynh này.';
         Alert.alert(t('exchange.title'), msg);
       } finally {
         setOpeningGuardianId(null);
       }
     },
-    [callerTeacherId, classId, schoolYearId, load, navigation, t],
+    [callerTeacherId, classId, schoolYearId, load, navigation, t]
   );
 
   const sorted = useMemo(() => {
@@ -535,67 +566,73 @@ export default function ExchangeListScreen() {
     }
     if (schoolYearId) {
       list = list.filter(
-        (c) => String(c.schoolYearId || '').trim() === String(schoolYearId).trim(),
+        (c) => String(c.schoolYearId || '').trim() === String(schoolYearId).trim()
       );
     }
-    return list.sort((a, b) => {
-      // Ghim lên đầu (giống web), rồi chưa đọc, rồi mới nhất.
-      const pa = pinnedIds.has(String(a._id)) ? 1 : 0;
-      const pb = pinnedIds.has(String(b._id)) ? 1 : 0;
-      if (pa !== pb) return pb - pa;
-      const ua = Number(a.unreadCount || 0) > 0 ? 1 : 0;
-      const ub = Number(b.unreadCount || 0) > 0 ? 1 : 0;
-      if (ua !== ub) return ub - ua;
-      const ta = new Date(a.updatedAt || a.lastMessage?.createdAt || 0).getTime();
-      const tb = new Date(b.updatedAt || b.lastMessage?.createdAt || 0).getTime();
-      return tb - ta;
-    });
+    // Khớp web ChatConversationList: server đã sort (chưa đọc → lastMessage.createdAt → updatedAt);
+    // client chỉ đẩy hội thoại đã ghim lên đầu, giữ thứ tự tương đối còn lại.
+    return list.sort(
+      (a, b) => Number(pinnedIds.has(String(b._id))) - Number(pinnedIds.has(String(a._id)))
+    );
   }, [items, classId, schoolYearId, pinnedIds]);
 
-  /** Server đã lọc theo từ khoá + pill; ở đây chỉ còn thứ tự (ghim → chưa đọc → mới nhất). */
+  /** Server đã lọc theo từ khoá + pill; ở đây chỉ còn đẩy ghim lên đầu. */
   const filtered = sorted;
 
-  const renderItem = ({ item }: { item: ChatConversation }) => {
-    // Dòng phụ: chỉ tên người gửi + nội dung tin cuối (không lặp tên lớp/title).
-    const lastContent = item.lastMessage?.content?.trim() || '';
-    const lastSender = formatChatDisplayName(item.lastMessage?.senderName);
-    const subtitle = lastContent
-      ? lastSender
-        ? `${lastSender}: ${lastContent}`
-        : lastContent
-      : 'Chưa có tin nhắn';
+  const openConversation = useCallback(
+    (item: ChatConversation) => {
+      lastOpenedIdRef.current = String(item._id);
+      navigation.navigate(ROUTES.SCREENS.EXCHANGE_CHAT, {
+        conversationId: item._id,
+        classId: item.classId,
+        schoolYearId: item.schoolYearId || schoolYearId || '',
+      });
+    },
+    [navigation, schoolYearId]
+  );
 
-    let timeLabel = '';
-    try {
-      if (item.lastMessage?.createdAt) {
-        timeLabel = formatDistanceToNow(new Date(item.lastMessage.createdAt), {
-          addSuffix: true,
-          locale: vi,
-        });
-      }
-    } catch {
-      timeLabel = '';
-    }
+  const handleHiddenFromList = useCallback(() => void load(true), [load]);
 
-    return (
-      <ExchangeConversationSwipeRow
-        item={item}
-        chatViewerEmails={chatViewerEmails}
-        conversationTitle={conversationHeaderTitle(item) || ''}
-        subtitle={subtitle}
-        timeLabel={timeLabel}
-        guardianFallbackTitle={t('exchange.conversation_fallback')}
-        onPress={() =>
-          navigation.navigate(ROUTES.SCREENS.EXCHANGE_CHAT, {
-            conversationId: item._id,
-            classId: item.classId,
-            schoolYearId: item.schoolYearId || schoolYearId || '',
-          })
+  // `useCallback` để FlatList không coi mọi lần render là "renderItem mới" rồi dựng lại toàn bộ
+  // hàng đang mount — mỗi ký tự gõ trong ô tìm kiếm là một lần render như vậy.
+  const renderItem = useCallback(
+    ({ item }: { item: ChatConversation }) => {
+      // Dòng phụ: chỉ tên người gửi + nội dung tin cuối (không lặp tên lớp/title).
+      const lastContent = item.lastMessage?.content?.trim() || '';
+      const lastSender = formatChatDisplayName(item.lastMessage?.senderName);
+      const subtitle = lastContent
+        ? lastSender
+          ? `${lastSender}: ${lastContent}`
+          : lastContent
+        : 'Chưa có tin nhắn';
+
+      let timeLabel = '';
+      try {
+        if (item.lastMessage?.createdAt) {
+          timeLabel = formatDistanceToNow(new Date(item.lastMessage.createdAt), {
+            addSuffix: true,
+            locale: vi,
+          });
         }
-        onHiddenFromList={() => void load(true)}
-      />
-    );
-  };
+      } catch {
+        timeLabel = '';
+      }
+
+      return (
+        <ExchangeConversationSwipeRow
+          item={item}
+          chatViewerEmails={chatViewerEmails}
+          conversationTitle={conversationHeaderTitle(item) || ''}
+          subtitle={subtitle}
+          timeLabel={timeLabel}
+          guardianFallbackTitle={t('exchange.conversation_fallback')}
+          onOpen={openConversation}
+          onHiddenFromList={handleHiddenFromList}
+        />
+      );
+    },
+    [chatViewerEmails, handleHiddenFromList, openConversation, t]
+  );
 
   const showClassPill = Boolean(classId && classPillLabel);
 
@@ -619,29 +656,12 @@ export default function ExchangeListScreen() {
           <Text className="flex-1 text-center text-2xl font-bold text-[#0A2240]" numberOfLines={1}>
             {t('exchange.title')}
           </Text>
-          {classId && schoolYearId ? (
-            <TouchableOpacity
-              onPress={handleOpenNewSheet}
-              style={{
-                width: 44,
-                height: 44,
-                justifyContent: 'center',
-                alignItems: 'center',
-                marginRight: -8,
-              }}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityLabel="Tạo cuộc trò chuyện mới">
-              <Ionicons name="create-outline" size={24} color="#0A2240" />
-            </TouchableOpacity>
-          ) : (
-            <View style={{ width: 44 }} />
-          )}
+          {/* Nút tạo mới đã chuyển xuống cuối thanh tìm kiếm (đồng bộ bản GV web). */}
+          <View style={{ width: 44 }} />
         </View>
         {showClassPill ? (
           <View className="mb-2 items-center px-4">
-            <View
-              className="rounded-full px-4 py-2"
-              style={{ backgroundColor: '#E5EAF0' }}>
+            <View className="rounded-full px-4 py-2" style={{ backgroundColor: '#E5EAF0' }}>
               <Text
                 className="max-w-[280px] text-base font-semibold text-[#002855]"
                 numberOfLines={1}>
@@ -650,28 +670,39 @@ export default function ExchangeListScreen() {
             </View>
           </View>
         ) : null}
-        {/* Thanh tìm kiếm — giống web */}
-        <View
-          className="mb-3 flex-row items-center rounded-xl px-3"
-          style={{ backgroundColor: '#F1F3F5', height: 44 }}>
-          <Ionicons name="search" size={18} color="#9CA3AF" />
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder={t('exchange.search_placeholder')}
-            placeholderTextColor="#9CA3AF"
-            className="ml-2 flex-1 text-base text-[#0A2240]"
-            style={{ paddingVertical: 0 }}
-            returnKeyType="search"
-            autoCorrect={false}
-          />
-          {searchQuery.length > 0 ? (
-            <TouchableOpacity
-              onPress={() => setSearchQuery('')}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
-            </TouchableOpacity>
-          ) : null}
+        {/* Thanh tìm kiếm + nút tạo mới ở cuối — giống web */}
+        <View className="mb-3 flex-row items-center">
+          <View
+            className="flex-1 flex-row items-center rounded-xl px-3"
+            style={{ backgroundColor: '#F1F3F5', height: 44 }}>
+            <Ionicons name="search" size={18} color="#9CA3AF" />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder={t('exchange.search_placeholder')}
+              placeholderTextColor="#9CA3AF"
+              className="ml-2 flex-1 text-base text-[#0A2240]"
+              style={{ paddingVertical: 0 }}
+              returnKeyType="search"
+              autoCorrect={false}
+            />
+            {searchQuery.length > 0 ? (
+              <TouchableOpacity
+                onPress={() => setSearchQuery('')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          {/* Lối tắt tạo chat 1-1 với PH — khỏi phải mở nhóm lớp rồi bấm tên PH. */}
+          <TouchableOpacity
+            onPress={handleOpenNewSheet}
+            className="ml-2 items-center justify-center rounded-full"
+            style={{ width: 44, height: 44, backgroundColor: '#FF7A00' }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Chat riêng với phụ huynh">
+            <Ionicons name="create-outline" size={20} color="#fff" />
+          </TouchableOpacity>
         </View>
         {/* Bộ lọc — Tất cả / Nhóm / Phụ huynh / Chưa đọc */}
         <View className="mb-2 flex-row" style={{ gap: 8 }}>
@@ -721,8 +752,16 @@ export default function ExchangeListScreen() {
           keyboardShouldPersistTaps="handled"
           onEndReached={() => void loadMore()}
           onEndReachedThreshold={0.35}
+          // Mặc định của FlatList giữ ~21 màn hình hàng trong cây — với 50 hàng mỗi hàng một
+          // `Swipeable` thì gần như không ảo hoá gì. Bó lại quanh vùng nhìn thấy.
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS === 'android'}
           ListFooterComponent={
-            loadingMore ? <ActivityIndicator style={{ paddingVertical: 16 }} color="#FF7A00" /> : null
+            loadingMore ? (
+              <ActivityIndicator style={{ paddingVertical: 16 }} color="#FF7A00" />
+            ) : null
           }
           refreshControl={
             <RefreshControl
@@ -736,6 +775,12 @@ export default function ExchangeListScreen() {
           }
         />
       )}
+      <NewParentChatSheet
+        visible={showAllClassesSheet}
+        viewerEmail={user?.email}
+        onSelect={handleSelectParentCandidate}
+        onClose={() => setShowAllClassesSheet(false)}
+      />
       <NewConversationSheet
         visible={showNewSheet}
         loading={loadingScope}

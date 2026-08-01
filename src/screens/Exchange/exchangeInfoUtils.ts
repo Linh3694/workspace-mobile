@@ -5,12 +5,27 @@ import type { ChatAttachment, ChatConversation, ChatMessage } from '../../types/
 import { formatChatDisplayName } from './exchangeChatThreadUtils';
 import { resolveParticipantAvatarUrl } from './lib/chatMemberAvatar';
 
+/** Một liên kết HS↔PH: "PH chính" thuộc về liên kết chứ không thuộc về con người. */
+export type InfoMemberStudent = {
+  studentId?: string;
+  name: string;
+  keyPerson: boolean;
+};
+
 export type InfoMember = {
   key: string;
   name: string;
   avatar: string;
   role: string;
   pill: string | null;
+  /** Chip quan hệ cạnh tên PH (Mẹ / Bố / Người giám hộ…) — GV không có. */
+  relationPill?: string;
+  /** SĐT liên hệ — GV lẫn PH đều có thể có (snapshot backend). */
+  phone?: string;
+  /** Email liên lạc hiển thị được (đã loại địa chỉ portal sinh tự động). */
+  email?: string;
+  /** Các con của PH kèm cờ PH chính; GV luôn rỗng. */
+  students: InfoMemberStudent[];
   isGuardian: boolean;
   guardianId?: string;
   teacherId?: string;
@@ -43,10 +58,67 @@ function teacherRoleText(
   return subjects ? `${labels.subjectTeacher} • ${subjects}` : labels.homeroom || labels.teacher;
 }
 
-/** Danh sách thành viên từ conversation.teachers[] + guardians[] (GV trước, PH sau). */
+/** Chữ cái đầu cho avatar chữ của học sinh (họ + tên gọi), giống `getInitials` bên web. */
+export function memberInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  const last = parts[parts.length - 1]?.[0] || '';
+  const first = parts.length > 1 ? parts[0]?.[0] || '' : '';
+  return `${first}${last}`.toUpperCase() || '?';
+}
+
+type ChatGuardian = NonNullable<ChatConversation['guardians']>[number];
+
+/** Địa chỉ portal sinh tự động khi PH chưa khai email — không phải email thật, không hiển thị. */
+const PORTAL_EMAIL_DOMAIN = '@parent.wellspring.edu.vn';
+
+/**
+ * Email hiển thị: lấy từ bảng con `CRM Guardian Email` (`contactEmail`).
+ * `guardian.email` chỉ là email định danh nên chỉ dùng khi KHÔNG phải địa chỉ portal.
+ */
+export function displayGuardianEmail(guardian?: ChatGuardian): string {
+  const contact = String(guardian?.contactEmail || '').trim();
+  if (contact) return contact;
+  const identity = String(guardian?.email || '').trim();
+  return identity.toLowerCase().endsWith(PORTAL_EMAIL_DOMAIN) ? '' : identity;
+}
+
+/**
+ * Các con của một PH: ưu tiên `studentLinks` (có quan hệ + cờ PH chính theo từng HS);
+ * snapshot cũ chỉ có `studentNames` thì vẫn hiện tên, không có cờ PH chính.
+ */
+function studentLinksOf(guardian: ChatGuardian): InfoMemberStudent[] {
+  const links = guardian.studentLinks || [];
+  if (links.length) {
+    return links
+      .map((l) => ({
+        // Tên HS lấy từ hồ sơ SIS (đã đúng thứ tự tiếng Việt) → KHÔNG chuẩn hoá lại như tên AD.
+        studentId: l.studentId,
+        name: String(l.studentName || '').trim(),
+        keyPerson: Boolean(l.keyPerson),
+      }))
+      .filter((l) => l.name);
+  }
+  return (guardian.studentNames || [])
+    .map((n) => ({ name: String(n || '').trim(), keyPerson: false }))
+    .filter((l) => l.name);
+}
+
+/** Quan hệ hiển thị cạnh tên PH — quan hệ đầu tiên khác rỗng trong các liên kết. */
+function relationshipCodeOf(guardian: ChatGuardian): string {
+  return (guardian.studentLinks || []).map((l) => String(l.relationship || '').trim()).find(Boolean) || '';
+}
+
+/**
+ * Danh sách thành viên từ conversation.teachers[] + guardians[] (GV trước, PH sau).
+ *
+ * `translateRelationship` dịch mã quan hệ ('mother') sang nhãn hiển thị — truyền từ màn hình
+ * để dùng đúng ngôn ngữ đang chọn; thiếu thì bỏ chip quan hệ chứ không in mã EN ra UI.
+ */
 export function buildConversationMembers(
   conversation: ChatConversation | null,
-  labels: MemberRoleLabels
+  labels: MemberRoleLabels,
+  translateRelationship?: (raw: string) => string
 ): InfoMember[] {
   const teachers = (conversation?.teachers || [])
     .filter((tt) => !tt.removedAt) // GV đã gỡ mềm → không hiển thị (giống web)
@@ -61,6 +133,8 @@ export function buildConversationMembers(
         avatar: resolveParticipantAvatarUrl(tt.avatarUrl, tt.email || tt.name || 'gv'),
         role: teacherRoleText(tt, subjects, labels),
         pill: 'GV' as const,
+        phone: String(tt.phoneNumber || '').trim() || undefined,
+        students: [] as InfoMemberStudent[],
         isGuardian: false,
         teacherId: tt.teacherId,
         removable: Boolean(tt.manualAdd),
@@ -68,16 +142,46 @@ export function buildConversationMembers(
     });
   const guardians = (conversation?.guardians || [])
     .filter((g) => !g.removedAt) // PH đã rời nhóm → không hiển thị (giống web)
-    .map((g, i) => ({
-      key: `g:${g.guardianId || g.email || g.name || i}`,
-      name: formatChatDisplayName(g.name) || g.email || labels.parent,
-      avatar: resolveParticipantAvatarUrl(g.avatarUrl, g.email || g.name || 'ph'),
-      role: labels.parent,
-      pill: null,
-      isGuardian: true,
-      guardianId: g.guardianId,
-    }));
+    .map((g, i) => {
+      const relationCode = relationshipCodeOf(g);
+      return {
+        key: `g:${g.guardianId || g.email || g.name || i}`,
+        name: formatChatDisplayName(g.name) || g.email || labels.parent,
+        avatar: resolveParticipantAvatarUrl(g.avatarUrl, g.email || g.name || 'ph'),
+        role: labels.parent,
+        pill: null,
+        relationPill: (relationCode && translateRelationship?.(relationCode)) || undefined,
+        phone: String(g.phoneNumber || '').trim() || undefined,
+        email: displayGuardianEmail(g) || undefined,
+        students: studentLinksOf(g),
+        isGuardian: true,
+        guardianId: g.guardianId,
+      };
+    });
   return [...teachers, ...guardians];
+}
+
+/** Chuẩn hoá chuỗi tìm kiếm: bỏ dấu + thường hoá. */
+function searchNormalize(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/đ/gi, 'd')
+    .toLowerCase()
+    .trim();
+}
+
+/** Lọc thành viên theo tên GV/PH, vai trò, quan hệ, tên học sinh hoặc số điện thoại (giống web). */
+export function filterInfoMembers(members: InfoMember[], keyword: string): InfoMember[] {
+  const needle = searchNormalize(keyword);
+  if (!needle) return members;
+  const digits = needle.replace(/\D/g, '');
+  return members.filter((m) => {
+    if (searchNormalize(`${m.name} ${m.role} ${m.relationPill || ''}`).includes(needle)) return true;
+    if (m.students.some((s) => searchNormalize(s.name).includes(needle))) return true;
+    const phoneDigits = (m.phone || '').replace(/\D/g, '');
+    return Boolean(digits) && phoneDigits.includes(digits);
+  });
 }
 
 /**

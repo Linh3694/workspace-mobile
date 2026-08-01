@@ -28,25 +28,22 @@ import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { chatService } from '../../services/chatService';
 import type { AddableTeacher, ChatConversation } from '../../types/chat';
 
+import { makeRelationshipTranslator } from '../../utils/relationshipLabels';
+
 import { InfoMemberRow } from './components/InfoMemberRow';
+import { MemberProfileSheet } from './components/MemberProfileSheet';
 import { formatChatDisplayName } from './exchangeChatThreadUtils';
 import {
   buildConversationMembers,
+  filterInfoMembers,
   isViewerHomeroom,
   resolveCallerTeacherId,
+  type InfoMember,
 } from './exchangeInfoUtils';
 import { resolveParticipantAvatarUrl } from './lib/chatMemberAvatar';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, typeof ROUTES.SCREENS.EXCHANGE_CHAT_MEMBERS>;
-
-function normalizeForSearch(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .trim();
-}
 
 export default function ExchangeChatMembersScreen() {
   const navigation = useNavigation<Nav>();
@@ -59,6 +56,8 @@ export default function ExchangeChatMembersScreen() {
     route.params?.conversation ?? null
   );
   const [searchQuery, setSearchQuery] = useState('');
+  /** PH đang mở sheet thông tin — null là đóng. */
+  const [profileMember, setProfileMember] = useState<InfoMember | null>(null);
 
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [addable, setAddable] = useState<AddableTeacher[]>([]);
@@ -93,9 +92,10 @@ export default function ExchangeChatMembersScreen() {
     };
   }, [conversation, conversationId]);
 
+  const translateRelationship = useMemo(() => makeRelationshipTranslator(t), [t]);
   const members = useMemo(
-    () => buildConversationMembers(conversation, roleLabels),
-    [conversation, roleLabels]
+    () => buildConversationMembers(conversation, roleLabels, translateRelationship),
+    [conversation, roleLabels, translateRelationship]
   );
   const callerTeacherId = useMemo(
     () => resolveCallerTeacherId(conversation, user?.email),
@@ -107,14 +107,11 @@ export default function ExchangeChatMembersScreen() {
     [conversation, user?.email]
   );
 
-  const filtered = useMemo(() => {
-    const needle = normalizeForSearch(searchQuery);
-    if (!needle) return members;
-    return members.filter((m) => normalizeForSearch(`${m.name} ${m.role}`).includes(needle));
-  }, [members, searchQuery]);
+  const filtered = useMemo(() => filterInfoMembers(members, searchQuery), [members, searchQuery]);
 
   const openOneToOne = (guardianId?: string) => {
     if (!canOpenOneToOne || !guardianId || !conversation) return;
+    setProfileMember(null);
     navigation.navigate(ROUTES.SCREENS.EXCHANGE_CHAT, {
       conversationId: 'new',
       classId: conversation.classId,
@@ -247,11 +244,7 @@ export default function ExchangeChatMembersScreen() {
         renderItem={({ item }) => (
           <InfoMemberRow
             member={item}
-            onPress={
-              item.isGuardian && canOpenOneToOne && item.guardianId
-                ? () => openOneToOne(item.guardianId)
-                : undefined
-            }
+            onPress={item.isGuardian ? () => setProfileMember(item) : undefined}
             onRemove={
               viewerIsHomeroom && item.removable && item.teacherId
                 ? () => confirmRemove(item.teacherId, item.name)
@@ -268,6 +261,18 @@ export default function ExchangeChatMembersScreen() {
           <Text className="mt-8 text-center text-sm text-[#9CA3AF]">
             {t('exchange.info_members_no_match')}
           </Text>
+        }
+      />
+
+      <MemberProfileSheet
+        member={profileMember}
+        visible={Boolean(profileMember)}
+        onClose={() => setProfileMember(null)}
+        studentMeta={conversation?.className}
+        onMessage={
+          canOpenOneToOne && profileMember?.guardianId
+            ? () => openOneToOne(profileMember.guardianId)
+            : undefined
         }
       />
 

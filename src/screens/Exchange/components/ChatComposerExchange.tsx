@@ -32,6 +32,8 @@ const TEAL_ICON = '#0d9488';
 const EMOJI_PANEL_GAP = 8;
 const KEYBOARD_VERTICAL_OFFSET = 12;
 const INPUT_PLACEHOLDER_HEX = '#64748B';
+/** Trần đính kèm mỗi tin — tính chung ảnh + video + tệp (upload gửi 1 lượt). */
+const MAX_LOCAL_PICKS = 10;
 
 type LocalPick = {
   id: string;
@@ -206,11 +208,11 @@ export function ChatComposerExchange({
     if (result.canceled || !result.assets?.[0]) return;
     const a = result.assets[0];
     setLocalPicks((prev) => {
-      const blockedByFile = prev.some((p) => p.kind === 'file');
-      const media = blockedByFile
-        ? []
-        : prev.filter((p) => p.kind === 'image' || p.kind === 'video');
-      return [...media, localPickFromMediaAsset(a, 'camera')].slice(-10);
+      if (prev.length >= MAX_LOCAL_PICKS) {
+        Alert.alert('Giới hạn', `Tối đa ${MAX_LOCAL_PICKS} tệp đính kèm.`);
+        return prev;
+      }
+      return [...prev, localPickFromMediaAsset(a, 'camera')];
     });
   }, [locked]);
 
@@ -229,19 +231,15 @@ export function ChatComposerExchange({
     });
     if (result.canceled || !result.assets?.length) return;
     setLocalPicks((prev) => {
-      const blockedByFile = prev.some((p) => p.kind === 'file');
-      if (blockedByFile) {
-        Alert.alert('Đính kèm', 'Đã chọn tệp; xóa tệp để thêm ảnh/video.');
-        return prev;
-      }
-      const media = prev.filter((p) => p.kind === 'image' || p.kind === 'video');
-      const remaining = 10 - media.length;
+      const remaining = MAX_LOCAL_PICKS - prev.length;
       if (remaining <= 0) {
-        Alert.alert('Giới hạn', 'Tối đa 10 ảnh/video.');
+        Alert.alert('Giới hạn', `Tối đa ${MAX_LOCAL_PICKS} tệp đính kèm.`);
         return prev;
       }
-      const add = result.assets!.slice(0, remaining).map((asset) => localPickFromMediaAsset(asset, 'media'));
-      return [...media, ...add].slice(-10);
+      const add = result
+        .assets!.slice(0, remaining)
+        .map((asset) => localPickFromMediaAsset(asset, 'media'));
+      return [...prev, ...add];
     });
   }, [locked]);
 
@@ -254,15 +252,9 @@ export function ChatComposerExchange({
     });
     if (result.canceled || !result.assets?.length) return;
     setLocalPicks((prev) => {
-      const blockedByMedia = prev.some((p) => p.kind === 'image' || p.kind === 'video');
-      if (blockedByMedia) {
-        Alert.alert('Đính kèm', 'Đã chọn ảnh/video; xóa để thêm tệp.');
-        return prev;
-      }
-      const files = prev.filter((p) => p.kind === 'file');
-      const remaining = 10 - files.length;
+      const remaining = MAX_LOCAL_PICKS - prev.length;
       if (remaining <= 0) {
-        Alert.alert('Giới hạn', 'Tối đa 10 tệp.');
+        Alert.alert('Giới hạn', `Tối đa ${MAX_LOCAL_PICKS} tệp đính kèm.`);
         return prev;
       }
       const add: LocalPick[] = result.assets!.slice(0, remaining).map((a) => ({
@@ -272,7 +264,7 @@ export function ChatComposerExchange({
         mimeType: a.mimeType || guessMimeFromName(a.name || ''),
         kind: 'file',
       }));
-      return [...files, ...add].slice(-10);
+      return [...prev, ...add];
     });
   }, [locked]);
 
@@ -373,10 +365,15 @@ export function ChatComposerExchange({
     [canWire, locked, onSend, sending, setEmojiPanelOpen, replyTo?._id, onTypingStop]
   );
 
-  const showAttachToolbar =
-    !locked && canWire && !value.trim() && localPicks.length === 0;
-
   const showSend = !locked && canWire && (value.trim().length > 0 || localPicks.length > 0);
+
+  /**
+   * Toolbar đính kèm luôn hiện: chọn xong 1 tệp/ảnh vẫn phải bấm thêm được cái
+   * nữa (trước đây toolbar bị thay hẳn bằng nút Gửi nên hết đường thêm).
+   * Nút bình chọn nhường chỗ cho nút Gửi để pill không bị chật.
+   */
+  const showAttachToolbar = !locked && canWire;
+  const showPoll = canCreatePoll && !showSend;
 
   const replySnippet = replyTo ? replyQuoteSnippet(replyTo) : '';
 
@@ -491,7 +488,7 @@ export function ChatComposerExchange({
                 <Ionicons name="attach-outline" size={24} color={TEAL_ICON} />
               </Pressable>
               {/* Bình chọn — chỉ GVCN/phó của nhóm lớp (backend kiểm lại theo scope Frappe). */}
-              {canCreatePoll ? (
+              {showPoll ? (
                 <Pressable
                   disabled={locked}
                   onPress={onCreatePoll}
@@ -500,7 +497,9 @@ export function ChatComposerExchange({
                 </Pressable>
               ) : null}
             </View>
-          ) : showSend ? (
+          ) : null}
+
+          {showSend ? (
             <Pressable
               disabled={sending || !canSend}
               onPress={() => void handleSend()}

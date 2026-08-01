@@ -35,6 +35,7 @@ import {
 import { ExchangeMessageAttachments } from './ExchangeMessageAttachments';
 import { ExchangePollCard } from './ExchangePollCard';
 import type { MessageActionAnchor } from './MessageActionOverlay';
+import { LinkedText } from '../../../components/Common/LinkedText';
 
 const CHAT_AVATAR_SIZE = 40;
 const CHAT_AVATAR_COLUMN_WIDTH = CHAT_AVATAR_SIZE;
@@ -50,6 +51,8 @@ type Props = {
   avatarUri: string;
   replyQuoteContent?: string;
   onOpenActionMenu?: (payload: { message: ChatMessage; anchor: MessageActionAnchor }) => void;
+  /** Chạm chip cảm xúc → mở danh sách người đã bày tỏ. */
+  onOpenReactions?: (message: ChatMessage) => void;
   /** Bình chọn đang chờ server phản hồi. */
   pollPending?: boolean;
   /** Nhóm khóa → không bỏ phiếu được. */
@@ -88,6 +91,7 @@ export const ExchangeMessageBubble = memo(
     avatarUri,
     replyQuoteContent,
     onOpenActionMenu,
+    onOpenReactions,
     pollPending,
     pollReadOnly,
     viewerIsHomeroom,
@@ -156,7 +160,7 @@ export const ExchangeMessageBubble = memo(
       [swipeReplyEnabled, onReply, translateX]
     );
 
-    const rowMb = groupedNative ? (threadMeta.showTimestamp ? 'mb-3' : 'mb-1') : 'mb-3';
+    const baseRowMb = groupedNative ? (threadMeta.showTimestamp ? 'mb-3' : 'mb-1') : 'mb-3';
     const showSenderName = !isMine && (!groupedNative || threadMeta.showName);
     const showTimestamp = !groupedNative || threadMeta.showTimestamp;
 
@@ -175,6 +179,9 @@ export const ExchangeMessageBubble = memo(
 
     const reactionTotal = message.reactions?.length ?? 0;
     const hasReactions = reactionUniq.length > 0 || reactionTotal > 0;
+    // Chip cảm xúc nổi ở `bottom: -8` (thò 8px xuống dưới bong bóng) nên `mb-1` không đủ chỗ
+    // — tin kế tiếp đè lên chip. Có chip thì nới đáy ra (đồng bộ 3 app còn lại).
+    const rowMb = hasReactions ? 'mb-4' : baseRowMb;
     const bubbleAlign = isMine ? 'flex-end' : 'flex-start';
 
     // Ảnh/video đơn thuần (không text/file/reply) → render KHÔNG khung bong bóng (giống web isFrameless).
@@ -200,12 +207,13 @@ export const ExchangeMessageBubble = memo(
       <View
         className={
           isFrameless
-            ? `px-3 ${hasReactions ? 'pb-6' : ''}`
+            ? `${poll ? '' : 'px-3 '}${hasReactions ? 'pb-6' : ''}`
             : `rounded-xl px-4 pt-3 ${isMine ? '' : 'bg-gray-100'} ${hasReactions ? 'pb-7' : 'pb-3'}`
         }
         style={[
           {
             maxWidth: bubbleMaxWidth,
+            ...(poll ? { width: bubbleMaxWidth } : {}),
             alignSelf: bubbleAlign,
           },
           !isFrameless && isMine ? { backgroundColor: MY_MESSAGE_BUBBLE_BG } : {},
@@ -250,6 +258,7 @@ export const ExchangeMessageBubble = memo(
                     canClose={isMine || viewerIsHomeroom}
                     readOnly={pollReadOnly}
                     maxWidth={bubbleMaxWidth}
+                    timeLabel={showTimestamp ? formatChatTimeVi(message.createdAt) : undefined}
                     onToggleOption={(optionId) => onTogglePollOption?.(message, optionId)}
                     onOpenVoters={() => onOpenPollVoters?.(message)}
                     onClose={() => onClosePoll?.(message)}
@@ -266,16 +275,20 @@ export const ExchangeMessageBubble = memo(
               }
               if (message.content?.trim()) {
                 return (
-                  <Text className={`font-mulish-medium text-base ${isMine ? 'text-white' : 'text-gray-900'}`}>
-                    {message.content}
-                  </Text>
+                  <LinkedText
+                    text={message.content}
+                    className={`font-mulish-medium text-base ${isMine ? 'text-white' : 'text-gray-900'}`}
+                    // Bong bóng của mình nền đậm ⇒ link phải sáng mới đọc được.
+                    linkClassName={`underline ${isMine ? 'text-white' : 'text-[#0B63CE]'}`}
+                  />
                 );
               }
               return null;
             })()}
           </>
         )}
-        {showTimestamp ? (
+        {/* Tin bình chọn: giờ nằm trên hàng "BÌNH CHỌN" trong thẻ nên bỏ dòng giờ dưới bong bóng. */}
+        {showTimestamp && !poll ? (
           <Text
             className={`mt-2 font-mulish-medium text-xs ${
               isMine && !isFrameless ? 'text-white/70' : 'text-gray-400'
@@ -293,12 +306,17 @@ export const ExchangeMessageBubble = memo(
         style={{
           position: 'relative',
           maxWidth: bubbleMaxWidth,
+          ...(poll ? { width: bubbleMaxWidth } : {}),
           alignSelf: bubbleAlign,
         }}>
         {bubbleInner}
         {hasReactions ? (
-          <View
-            pointerEvents="none"
+          <Pressable
+            // Chip đè lên bong bóng: `Pressable` này ăn chạm trước nên nhấn giữ để mở bảng hành
+            // động vẫn hoạt động ở phần còn lại của bong bóng.
+            onPress={onOpenReactions ? () => onOpenReactions(message) : undefined}
+            disabled={!onOpenReactions}
+            hitSlop={6}
             style={{
               position: 'absolute',
               ...(isMine ? { left: 6 } : { right: 6 }),
@@ -326,7 +344,7 @@ export const ExchangeMessageBubble = memo(
                 {reactionTotal > 99 ? '99+' : reactionTotal}
               </Text>
             ) : null}
-          </View>
+          </Pressable>
         ) : null}
       </View>
     );
@@ -404,5 +422,6 @@ export const ExchangeMessageBubble = memo(
     prev.avatarUri === next.avatarUri &&
     prev.replyQuoteContent === next.replyQuoteContent &&
     prev.onReply === next.onReply &&
-    prev.onOpenActionMenu === next.onOpenActionMenu
+    prev.onOpenActionMenu === next.onOpenActionMenu &&
+    prev.onOpenReactions === next.onOpenReactions
 );

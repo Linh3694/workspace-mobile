@@ -77,6 +77,7 @@ export function ExchangePollCard({
   canClose,
   readOnly,
   maxWidth,
+  timeLabel,
   onToggleOption,
   onOpenVoters,
   onClose,
@@ -89,6 +90,11 @@ export function ExchangePollCard({
   /** Nhóm khóa → không bỏ phiếu được. */
   readOnly?: boolean;
   maxWidth?: number;
+  /**
+   * Giờ gửi tin, hiển thị ngay trên hàng "BÌNH CHỌN" thay vì dòng riêng dưới thẻ.
+   * Bỏ trống khi tin không ở cuối cụm (bubble tự quyết theo `showTimestamp`).
+   */
+  timeLabel?: string;
   onToggleOption: (optionId: string) => void;
   onOpenVoters: () => void;
   onClose: () => void;
@@ -100,8 +106,12 @@ export function ExchangePollCard({
 
   return (
     <View
-      style={{ maxWidth, borderColor: '#E5E7EB' }}
-      className="w-full overflow-hidden rounded-2xl border bg-white"
+      style={{
+        width: maxWidth,
+        maxWidth,
+        borderColor: '#E5E7EB',
+      }}
+      className="overflow-hidden rounded-2xl border bg-white"
     >
       <View className="flex-row items-center gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2">
         <Ionicons name="stats-chart-outline" size={14} color={ACCENT} />
@@ -111,7 +121,23 @@ export function ExchangePollCard({
         {pending ? <ActivityIndicator size="small" color="#9CA3AF" /> : null}
         <View className="ml-auto flex-row items-center gap-1">
           {poll.isClosed ? <Ionicons name="lock-closed" size={11} color="#6B7280" /> : null}
-          <Text className="font-mulish-medium text-[11px] text-gray-500">{remaining}</Text>
+          {remaining ? (
+            <Text className="font-mulish-medium text-[11px] text-gray-500">{remaining}</Text>
+          ) : null}
+          {timeLabel ? (
+            <Text className="font-mulish-medium text-[11px] text-gray-400">
+              {remaining ? `· ${timeLabel}` : timeLabel}
+            </Text>
+          ) : null}
+          {/* Nhãn ngắn "Kết thúc" (không lặp lại chữ "bình chọn" đã có ở đầu hàng) — hàng chỉ
+              rộng 0.7 bề ngang màn hình, để nhãn dài sẽ cắt chữ như khi còn nằm ở chân thẻ. */}
+          {canClose && !poll.isClosed ? (
+            <Pressable onPress={onClose} hitSlop={8} className="ml-1">
+              <Text numberOfLines={1} className="font-mulish-bold text-[11px] text-gray-500">
+                {t('exchange.poll_close_action')}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
 
@@ -180,13 +206,6 @@ export function ExchangePollCard({
           <Pressable onPress={onOpenVoters}>
             <Text style={{ color: ACCENT }} className="font-mulish-bold text-[11px]">
               {t('exchange.poll_view_voters')}
-            </Text>
-          </Pressable>
-        ) : null}
-        {canClose && !poll.isClosed ? (
-          <Pressable onPress={onClose} className="ml-auto">
-            <Text className="font-mulish-bold text-[11px] text-gray-500">
-              {t('exchange.poll_close_action')}
             </Text>
           </Pressable>
         ) : null}

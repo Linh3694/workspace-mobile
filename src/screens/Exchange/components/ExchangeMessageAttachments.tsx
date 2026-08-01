@@ -17,8 +17,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { InlineToast, useInlineToast } from '../../../components/Common';
 import { resolveChatAttachmentUrl } from '../../../services/chatService';
 import type { ChatAttachment } from '../../../types/chat';
+import { saveMediaToDevice } from '../../../utils/mediaDownload';
 
 import { ChatImagePreviewModal } from './ChatImagePreviewModal';
 import { ChatVideoThumbnail } from './ChatVideoThumbnail';
@@ -47,7 +49,31 @@ export function ExchangeMessageAttachments({
   const insets = useSafeAreaInsets();
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [previewVideo, setPreviewVideo] = useState<ChatAttachment | null>(null);
+  const [savingVideo, setSavingVideo] = useState(false);
+  const { toast, showToast, hideToast } = useInlineToast();
   const { downloadingUrl, download } = useChatAttachmentDownload();
+
+  /** Lưu video đang xem vào album (không được thì mở bảng chia sẻ). */
+  const handleSaveVideo = async () => {
+    if (!previewVideo || savingVideo) return;
+    const url = resolveChatAttachmentUrl(previewVideo.url);
+    if (!url) return;
+    try {
+      setSavingVideo(true);
+      const result = await saveMediaToDevice({
+        url,
+        name: previewVideo.name,
+        mimeType: previewVideo.mimeType,
+        kind: 'video',
+      });
+      if (result === 'saved-to-library') showToast('Đã lưu video vào album');
+    } catch (error) {
+      console.error('[ExchangeMessageAttachments] save video', error);
+      showToast('Không thể tải hoặc lưu video', 'error');
+    } finally {
+      setSavingVideo(false);
+    }
+  };
 
   const images = attachments.filter((a) => a.kind === 'image');
   const videos = attachments.filter((a) => a.kind === 'video');
@@ -170,7 +196,18 @@ export function ExchangeMessageAttachments({
               paddingTop: Math.max(insets.top, 16),
               paddingBottom: insets.bottom,
             }}>
-            <View className="h-14 flex-row items-center justify-end px-4">
+            <View className="h-14 flex-row items-center justify-end gap-2 px-4">
+              <Pressable
+                disabled={savingVideo}
+                onPress={() => void handleSaveVideo()}
+                hitSlop={12}
+                className="size-11 items-center justify-center rounded-full bg-white/15">
+                {savingVideo ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Ionicons name="download-outline" size={22} color="#fff" />
+                )}
+              </Pressable>
               <Pressable
                 onPress={() => setPreviewVideo(null)}
                 hitSlop={12}
@@ -187,6 +224,16 @@ export function ExchangeMessageAttachments({
                 shouldPlay
               />
             </View>
+            {toast ? (
+              <InlineToast
+                key={toast.id}
+                message={toast.message}
+                type={toast.type}
+                floating
+                bottomOffset={insets.bottom + 32}
+                onHide={hideToast}
+              />
+            ) : null}
           </View>
         </Modal>
       ) : null}

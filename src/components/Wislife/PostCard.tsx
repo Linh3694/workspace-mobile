@@ -5,6 +5,7 @@ import {
   View,
   Text,
   Image,
+  ActivityIndicator,
   Alert,
   Dimensions,
   Modal,
@@ -27,6 +28,8 @@ import { useAuth } from '../../context/AuthContext';
 import { API_BASE_URL } from '../../config/constants';
 import { formatRelativeTime } from '../../utils/dateUtils';
 import { resolveSocialMediaUrl } from '../../utils/resolveSocialMediaUrl';
+import { saveMediaToDevice } from '../../utils/mediaDownload';
+import { InlineToast, useInlineToast } from '../Common';
 import LikeSkeletonSvg from '../../assets/like-skeleton.svg';
 import { MentionRichText } from './MentionInput';
 import { getAvatar } from '../../utils/avatar';
@@ -150,6 +153,26 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
     setSelectedImageIndex(index);
     setCurrentImageIndex(index);
     setImageModalVisible(true);
+  };
+
+  // Tải ảnh/video của bài viết về máy (không lưu được album → bảng chia sẻ).
+  const [savingMedia, setSavingMedia] = useState(false);
+  const { toast, showToast, hideToast } = useInlineToast();
+  const saveMedia = async (rawUrl: string, kind: 'image' | 'video') => {
+    const url = resolveSocialMediaUrl(rawUrl, API_BASE_URL);
+    if (!url || savingMedia) return;
+    try {
+      setSavingMedia(true);
+      const result = await saveMediaToDevice({ url, kind });
+      if (result === 'saved-to-library') {
+        showToast(kind === 'video' ? 'Đã lưu video vào album' : 'Đã lưu ảnh vào album');
+      }
+    } catch (error) {
+      console.error('[PostCard] save media', error);
+      showToast('Không thể tải hoặc lưu tệp này', 'error');
+    } finally {
+      setSavingMedia(false);
+    }
   };
 
   const getUserReaction = (): Reaction | null => {
@@ -440,6 +463,28 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
                     shouldPlay={false}
                     isLooping={false}
                   />
+                  {/* Tải video về máy */}
+                  <TouchableOpacity
+                    disabled={savingMedia}
+                    onPress={() => void saveMedia(video, 'video')}
+                    className="absolute right-2 top-2 h-9 w-9 items-center justify-center rounded-full bg-black/60">
+                    {savingMedia ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <Ionicons name="download-outline" size={20} color="white" />
+                    )}
+                  </TouchableOpacity>
+                  {/* Toast tải video khi đang xem trên feed (không có modal để chèn) */}
+                  {!imageModalVisible && toast ? (
+                    <InlineToast
+                      key={toast.id}
+                      message={toast.message}
+                      type={toast.type}
+                      floating
+                      bottomOffset={12}
+                      onHide={hideToast}
+                    />
+                  ) : null}
                 </View>
               ))}
             </View>
@@ -604,12 +649,24 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
                   </View>
                 </View>
 
-                {/* Nút đóng */}
-                <TouchableOpacity
-                  onPress={() => setImageModalVisible(false)}
-                  className="h-10 w-10 items-center justify-center rounded-full bg-black/50">
-                  <Ionicons name="close" size={24} color="white" />
-                </TouchableOpacity>
+                {/* Nút tải ảnh + đóng */}
+                <View className="flex-row items-center">
+                  <TouchableOpacity
+                    disabled={savingMedia}
+                    onPress={() => void saveMedia(post.images[currentImageIndex], 'image')}
+                    className="mr-2 h-10 w-10 items-center justify-center rounded-full bg-black/50">
+                    {savingMedia ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <Ionicons name="download-outline" size={22} color="white" />
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setImageModalVisible(false)}
+                    className="h-10 w-10 items-center justify-center rounded-full bg-black/50">
+                    <Ionicons name="close" size={24} color="white" />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {/* Thanh kéo indicator */}
@@ -665,6 +722,16 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
               </View>
             )}
           </Animated.View>
+          {toast ? (
+            <InlineToast
+              key={toast.id}
+              message={toast.message}
+              type={toast.type}
+              floating
+              bottomOffset={insets.bottom + 32}
+              onHide={hideToast}
+            />
+          ) : null}
         </Animated.View>
       </Modal>
 

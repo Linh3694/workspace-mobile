@@ -5,11 +5,11 @@
  * `chat:message:poll:voters` chỉ phát cho room giáo viên — nên sheet này vừa fetch REST vừa
  * nghe event đó để cập nhật realtime.
  */
-import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, Text, View } from 'react-native';
 
 import BottomSheetModal from '../../../components/Common/BottomSheetModal';
+import { SheetHeader } from '../../../components/Common/SheetHeader';
 import { useLanguage } from '../../../hooks/useLanguage';
 import { CHAT_EVENTS } from '../../../realtime/chatEvents';
 import { chatService } from '../../../services/chatService';
@@ -83,20 +83,14 @@ export function PollVotersSheet({
 
   return (
     <BottomSheetModal visible={visible} onClose={onClose} maxHeightPercent={80}>
-      <View className="flex-row items-center gap-2 px-4 pb-3">
-        <Ionicons name="people-outline" size={18} color={ACCENT} />
-        <View className="flex-1">
-          <Text className="font-mulish-bold text-lg text-gray-900">
-            {t('exchange.poll_voters_title')}
-          </Text>
-          <Text numberOfLines={1} className="font-mulish-medium text-[11px] text-gray-500">
-            {poll.question}
-          </Text>
-        </View>
-        <Pressable onPress={onClose} hitSlop={8}>
-          <Ionicons name="close" size={22} color="#6B7280" />
-        </Pressable>
-      </View>
+      <SheetHeader
+        icon="people-outline"
+        iconColor={ACCENT}
+        title={t('exchange.poll_voters_title')}
+        subtitle={poll.question}
+        closeLabel={t('common.close')}
+        onClose={onClose}
+      />
 
       {loading && !data ? (
         <View className="items-center py-10">

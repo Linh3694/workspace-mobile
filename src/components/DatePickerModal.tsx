@@ -10,6 +10,12 @@ interface DatePickerModalProps {
   onClose: () => void;
   maximumDate?: Date;
   minimumDate?: Date;
+  /**
+   * iOS: chạy sau khi modal đã đóng HẲN. Cần khi chọn xong còn phải mở tiếp một modal khác —
+   * present lúc modal cũ đang dismiss thì iOS bỏ qua lệnh present và nuốt luôn touch.
+   * Android không gọi prop này (Modal = Dialog, xếp chồng thoải mái).
+   */
+  onDismiss?: () => void;
 }
 
 const WEEKDAY_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
@@ -32,6 +38,7 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({
   onClose,
   maximumDate,
   minimumDate,
+  onDismiss,
 }) => {
   const [viewDate, setViewDate] = useState(() => new Date(value));
 
@@ -113,7 +120,7 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({
   }, [viewDate, maximumDate]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose} onDismiss={onDismiss}>
       <View className="flex-1 items-center justify-center bg-black/50">
         <Pressable className="absolute bottom-0 left-0 right-0 top-0" onPress={onClose} />
 

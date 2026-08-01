@@ -23,6 +23,7 @@ import { StackActions, useNavigation, useRoute, RouteProp } from '@react-navigat
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 
+import { InlineToast, useInlineToast } from '../../components/Common';
 import { useAuth } from '../../context/AuthContext';
 import { setFocusedChatConversationId } from '../../lib/chatNotificationFocus';
 import { ROUTES } from '../../constants/routes';
@@ -64,6 +65,8 @@ import {
 import { ChatComposerExchange } from './components/ChatComposerExchange';
 import { CreatePollSheet } from './components/CreatePollSheet';
 import { PollVotersSheet } from './components/PollVotersSheet';
+import { ReactionViewersSheet } from './components/ReactionViewersSheet';
+import { listMessageReactionViewers } from './reactionViewerModel';
 import { ExchangeGroupChatAvatar } from './components/ExchangeGroupChatAvatar';
 import { TypingDotsLine } from './components/TypingDotsLine';
 import { ExchangeMessageBubble } from './components/ExchangeMessageBubble';
@@ -141,6 +144,8 @@ export default function ExchangeChatScreen() {
   const draftSchoolYearId = String(route.params?.schoolYearId ?? '').trim();
   const draftTeacherId = String(route.params?.teacherId ?? '').trim();
   const draftGuardianId = String(route.params?.guardianId ?? '').trim();
+  /** Định danh cặp GV↔PH của lần mở này — dùng để không mở lại chính nó lần thứ hai. */
+  const draftKey = `${draftClassId}|${draftSchoolYearId}|${draftTeacherId}|${draftGuardianId}`;
 
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -152,6 +157,8 @@ export default function ExchangeChatScreen() {
   /** Nháy viền bubble khi cuộn tới tin ghim. */
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  /** Toast trong màn, hiện ngay trên thanh soạn tin. */
+  const { toast, showToast, hideToast } = useInlineToast();
 
   const [actionTarget, setActionTarget] = useState<{
     message: ChatMessage;
@@ -197,6 +204,8 @@ export default function ExchangeChatScreen() {
   const [pollSheetOpen, setPollSheetOpen] = useState(false);
   const [creatingPoll, setCreatingPoll] = useState(false);
   const [votersSheetFor, setVotersSheetFor] = useState<string | null>(null);
+  /** Tin đang mở sheet "Ai đã bày tỏ cảm xúc" (chạm chip dưới bong bóng). */
+  const [reactionsSheetFor, setReactionsSheetFor] = useState<string | null>(null);
   const [pendingPollIds, setPendingPollIds] = useState<Set<string>>(new Set());
 
   /**
@@ -228,6 +237,8 @@ export default function ExchangeChatScreen() {
   const messagesPageRef = useRef(1);
   const loadOlderLockRef = useRef(false);
   const selectedIdRef = useRef(mongoConversationIdForApi);
+  /** Cặp GV↔PH đã mở xong — chặn effect chạy lại (do `_id` vừa resolve) mở lại từ đầu. */
+  const openedDraftKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     messagesPageRef.current = messagesPage;
@@ -300,6 +311,59 @@ export default function ExchangeChatScreen() {
     }
   }, [conversationIdFromRoute]);
 
+  /**
+   * Nạp lịch sử + markRead + join phòng cho hội thoại ĐÃ có trên server.
+   * Dùng chung cho thread mở thẳng theo id và cho chat 1-1 vừa resolve được từ nháp.
+   */
+  const loadExistingThread = useCallback(
+    async (cid: string) => {
+      setLoading(true);
+      setMessagesPage(1);
+      messagesPageRef.current = 1;
+      setHasMoreMessages(false);
+
+      // CRITICAL: chỉ getMessages mới được phép bung lỗi "Không tải được lịch sử chat".
+      let loadedConversation: ChatConversation | null = null;
+      try {
+        const data = await chatService.getMessages(cid, 1, CHAT_INITIAL_PAGE_LIMIT);
+        const sorted = [...(data.messages || [])].sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+        setMessages(sorted);
+        setConversation(data.conversation);
+        loadedConversation = data.conversation;
+        setHasMoreMessages(Boolean(data.pagination?.hasNext));
+      } catch (e) {
+        console.warn('[ExchangeChat] getMessages failed', e);
+        Alert.alert(t('common.error'), t('exchange.load_thread_error'));
+        setLoading(false);
+        return;
+      } finally {
+        setLoading(false);
+      }
+
+      // markRead: chỉ khi là participant thực sự. Observer/BOD gọi markRead → 403
+      // "Tài khoản chỉ có quyền xem" (giống web bỏ markRead khi readOnly). Best-effort.
+      if (!isConversationObserver(loadedConversation, teacherEmail)) {
+        try {
+          const updated = await chatService.markRead(cid);
+          setConversation(updated);
+        } catch (e) {
+          console.warn('[ExchangeChat] markRead (non-fatal)', e);
+        }
+      }
+
+      // socket join: best-effort, không được chặn việc hiển thị lịch sử chat.
+      try {
+        const socket = await chatService.getSocket();
+        socket?.emit(CHAT_EVENTS.JOIN, { conversationId: String(cid) });
+      } catch (e) {
+        console.warn('[ExchangeChat] socket join (non-fatal)', e);
+      }
+    },
+    [teacherEmail, t]
+  );
+
   const openThread = useCallback(async () => {
     if (isDraftTeacherGuardianThread) {
       if (!draftClassId || !draftSchoolYearId || !draftTeacherId || !draftGuardianId) {
@@ -308,25 +372,42 @@ export default function ExchangeChatScreen() {
         navigation.goBack();
         return;
       }
+      // Resolve xong là `_id` có giá trị → effect chạy lại. Cặp này mở rồi thì thôi, khỏi làm lại.
+      if (openedDraftKeyRef.current === draftKey) return;
+      openedDraftKeyRef.current = draftKey;
+
       setLoading(true);
       setMessagesPage(1);
       messagesPageRef.current = 1;
+      setMessages([]);
       setHasMoreMessages(false);
+
+      let conv: ChatConversation | null = null;
       try {
-        const conv = await chatService.openTeacherGuardianChat({
+        conv = await chatService.openTeacherGuardianChat({
           teacherId: draftTeacherId,
           guardianId: draftGuardianId,
           classId: draftClassId,
           schoolYearId: draftSchoolYearId,
         });
         setConversation(conv);
-        setMessages([]);
-        setHasMoreMessages(false);
       } catch (e) {
         console.warn(e);
+        openedDraftKeyRef.current = null;
+        setLoading(false);
         Alert.alert(t('common.error'), t('exchange.load_thread_error'));
         navigation.goBack();
-      } finally {
+        return;
+      }
+
+      // Endpoint là get-or-create: cặp đã từng chat thì server trả về hội thoại CŨ, phải nạp lịch sử
+      // của nó — bỏ qua bước này là màn trắng trơn dù đoạn chat đầy tin. Điều kiện bám theo id Mongo
+      // (giống mongoConversationIdForApi) chứ không theo cờ isDraft: có id thật thì getMessages chạy
+      // được, và nháp thật thì không có id nên rơi xuống nhánh dưới, rỗng là đúng.
+      const existingId = normalizeMongoId(conv?._id);
+      if (isLikelyMongoObjectId(existingId)) {
+        await loadExistingThread(existingId);
+      } else {
         setLoading(false);
       }
       return;
@@ -340,57 +421,16 @@ export default function ExchangeChatScreen() {
       return;
     }
 
-    setLoading(true);
-    setMessagesPage(1);
-    messagesPageRef.current = 1;
-    setHasMoreMessages(false);
-
-    // CRITICAL: chỉ getMessages mới được phép bung lỗi "Không tải được lịch sử chat".
-    let loadedConversation: ChatConversation | null = null;
-    try {
-      const data = await chatService.getMessages(cid, 1, CHAT_INITIAL_PAGE_LIMIT);
-      const sorted = [...(data.messages || [])].sort(
-        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      );
-      setMessages(sorted);
-      setConversation(data.conversation);
-      loadedConversation = data.conversation;
-      setHasMoreMessages(Boolean(data.pagination?.hasNext));
-    } catch (e) {
-      console.warn('[ExchangeChat] getMessages failed', e);
-      Alert.alert(t('common.error'), t('exchange.load_thread_error'));
-      setLoading(false);
-      return;
-    } finally {
-      setLoading(false);
-    }
-
-    // markRead: chỉ khi là participant thực sự. Observer/BOD gọi markRead → 403
-    // "Tài khoản chỉ có quyền xem" (giống web bỏ markRead khi readOnly). Best-effort.
-    if (!isConversationObserver(loadedConversation, teacherEmail)) {
-      try {
-        const updated = await chatService.markRead(cid);
-        setConversation(updated);
-      } catch (e) {
-        console.warn('[ExchangeChat] markRead (non-fatal)', e);
-      }
-    }
-
-    // socket join: best-effort, không được chặn việc hiển thị lịch sử chat.
-    try {
-      const socket = await chatService.getSocket();
-      socket?.emit(CHAT_EVENTS.JOIN, { conversationId: String(cid) });
-    } catch (e) {
-      console.warn('[ExchangeChat] socket join (non-fatal)', e);
-    }
+    await loadExistingThread(cid);
   }, [
     isDraftTeacherGuardianThread,
     draftClassId,
     draftSchoolYearId,
     draftTeacherId,
     draftGuardianId,
+    draftKey,
     conversationIdFromRoute,
-    teacherEmail,
+    loadExistingThread,
     navigation,
     t,
   ]);
@@ -807,6 +847,26 @@ export default function ExchangeChatScreen() {
     setVotersSheetFor(normalizeMongoId(message._id));
   }, []);
 
+  const handleOpenReactions = useCallback((message: ChatMessage) => {
+    setReactionsSheetFor(normalizeMongoId(message._id));
+  }, []);
+
+  /**
+   * Người đã bày tỏ cảm xúc trên tin đang mở sheet. Bám theo `messages` nên ai thả/gỡ cảm xúc
+   * lúc sheet đang mở thì danh sách tự cập nhật, và tự đóng khi cảm xúc cuối cùng bị gỡ.
+   */
+  const reactionViewers = useMemo(
+    () =>
+      reactionsSheetFor
+        ? listMessageReactionViewers(
+            messages.find((m) => normalizeMongoId(m._id) === reactionsSheetFor),
+            conversation,
+            teacherEmail
+          )
+        : [],
+    [reactionsSheetFor, messages, conversation, teacherEmail]
+  );
+
   /** Tin đang mở sheet người bầu — lấy từ state để poll luôn là bản mới nhất. */
   const votersPollTarget = useMemo(
     () =>
@@ -920,12 +980,13 @@ export default function ExchangeChatScreen() {
     const text = overlayPreviewPlainText(overlayMessage.content, overlayMessage.recalledAt);
     try {
       await Clipboard.setStringAsync(text);
-      Alert.alert('Đã sao chép', 'Nội dung đã vào bảng nhớ.');
+      // Toast trong màn (trên thanh soạn tin) — sao chép không đáng để chặn bằng Alert.
+      showToast('Đã sao chép');
     } catch {
-      Alert.alert('Lỗi', 'Không thể sao chép.');
+      showToast('Không thể sao chép', 'error');
     }
     closeActionOverlay();
-  }, [overlayMessage, closeActionOverlay]);
+  }, [overlayMessage, closeActionOverlay, showToast]);
 
   const viewerEmailSet = useMemo(
     () => new Set([String(teacherEmail || '').toLowerCase().trim()].filter(Boolean)),
@@ -1040,6 +1101,7 @@ export default function ExchangeChatScreen() {
           viewerIsHomeroom={viewerIsHomeroom}
           onTogglePollOption={handleTogglePollOption}
           onOpenPollVoters={handleOpenPollVoters}
+          onOpenReactions={handleOpenReactions}
           onClosePoll={handleClosePoll}
           onReply={() => !locked && setReplyTo(msgItem)}
         />
@@ -1249,6 +1311,15 @@ export default function ExchangeChatScreen() {
             />
           ) : null}
 
+          {toast ? (
+            <InlineToast
+              key={toast.id}
+              message={toast.message}
+              type={toast.type}
+              onHide={hideToast}
+            />
+          ) : null}
+
           {viewerReadOnly ? (
             <View className="border-t border-white/45 bg-[#FFF9F3]/88 px-5 py-4">
               <Text className="text-center font-mulish text-sm text-[#6B7280]">
@@ -1332,6 +1403,11 @@ export default function ExchangeChatScreen() {
             onClose={() => setVotersSheetFor(null)}
           />
         ) : null}
+        <ReactionViewersSheet
+          visible={reactionViewers.length > 0}
+          viewers={reactionViewers}
+          onClose={() => setReactionsSheetFor(null)}
+        />
       </SafeAreaView>
     </ImageBackground>
   );

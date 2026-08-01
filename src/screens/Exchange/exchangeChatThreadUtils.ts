@@ -314,7 +314,7 @@ export function conversationHeaderTitle(c: ChatConversation | null): string {
     if (counterpart) return counterpart;
   }
   if (c.title?.trim()) return c.title.trim();
-  return `GVCN lớp ${classShortName(c.className)}`;
+  return `GVCN Lớp ${classShortName(c.className)}`;
 }
 
 export function conversationSubtitle(c: ChatConversation, locked: boolean): string {

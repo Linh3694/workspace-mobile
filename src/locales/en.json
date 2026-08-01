@@ -527,6 +527,23 @@
     "parent_conversation_section": "Conversation with parent",
     "no_parent_replies": "No messages in this thread yet"
   },
+  "family_relationship": {
+    "father": "Father",
+    "mother": "Mother",
+    "grandfather": "Grandfather",
+    "grandmother": "Grandmother",
+    "uncle": "Uncle",
+    "aunt": "Aunt",
+    "brother": "Brother",
+    "sister": "Sister",
+    "guardian": "Guardian",
+    "foster_parent": "Foster parent",
+    "relative": "Relative",
+    "other": "Other",
+    "grandparent": "Grandparent",
+    "sibling": "Sibling",
+    "uncle_aunt": "Uncle/Aunt"
+  },
   "room_booking": {
     "tile_title": "Room booking",
     "tile_desc": "Book a meeting / function room"
@@ -539,14 +556,14 @@
     "no_homeroom": "No homeroom class assigned",
     "no_homeroom_desc": "Only homeroom / vice-homeroom teachers (as set in Frappe) can use this feature.",
     "pick_class": "Choose homeroom class",
-    "badge_homeroom": "Homeroom",
-    "badge_vice": "Vice homeroom",
+    "badge_homeroom": "HR",
+    "badge_vice": "Vice HR",
     "tap_switch_class": "Tap to switch class",
     "composer_placeholder": "Share a class activity…",
     "empty_feed_title": "No posts yet",
     "empty_feed_sub": "Share a moment or announcement for your class parents.",
-    "sheet_role_homeroom": "Homeroom",
-    "sheet_role_vice": "Vice homeroom"
+    "sheet_role_homeroom": "HR",
+    "sheet_role_vice": "Vice HR"
   },
   "exchange": {
     "poll_deadline_custom": "Pick date & time",
@@ -580,7 +597,7 @@
     "poll_remaining_days": "{{count}} days left",
     "poll_total_voters": "{{count}} people voted",
     "poll_view_voters": "See who voted",
-    "poll_close_action": "Close poll",
+    "poll_close_action": "End",
     "poll_voters_title": "Voters",
     "poll_no_voters": "No votes yet",
     "poll_role_teacher": "Teacher",
@@ -626,6 +643,15 @@
     "info_add_error": "Could not add subject teacher.",
     "info_remove_error": "Could not remove teacher from group.",
     "info_manage_note": "Homeroom teachers and parents belong to the class roster — not removable here.",
+    "member_key_guardian": "Primary",
+    "member_secondary_guardian": "Secondary",
+    "member_profile_phone": "Phone number",
+    "member_profile_email": "Email",
+    "member_profile_students": "Students & roles",
+    "member_profile_no_students": "No student linked yet.",
+    "member_profile_not_updated": "Not updated",
+    "member_profile_copy": "Copy",
+    "member_profile_message": "Message",
     "info_lock_group": "Lock group",
     "info_unlock_group": "Unlock",
     "info_write_mode_error": "Could not change the group's posting mode.",
@@ -636,6 +662,11 @@
     "typing": "{{name}} is typing…",
     "attachment_download_error_title": "Download file",
     "attachment_download_error": "Couldn't download the file. You can open it in your browser instead.",
-    "attachment_open_in_browser": "Open in browser"
+    "attachment_open_in_browser": "Open in browser",
+    "reaction_tab_all": "All",
+    "reaction_viewers_title": "Who reacted",
+    "reaction_viewers_total": "{{count}} reacted",
+    "reaction_self_name": "{{name}} (You)",
+    "reaction_unknown_member": "Member"
   }
 }

@@ -18,10 +18,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { InlineToast, useInlineToast } from '../../components/Common';
 import { ROUTES } from '../../constants/routes';
 import { useLanguage } from '../../hooks/useLanguage';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import { chatService, resolveChatAttachmentUrl } from '../../services/chatService';
+import { saveMediaToDevice } from '../../utils/mediaDownload';
 
 import { ChatImagePreviewModal } from './components/ChatImagePreviewModal';
 import { ChatVideoThumbnail } from './components/ChatVideoThumbnail';
@@ -107,6 +109,31 @@ export default function ExchangeChatAttachmentsScreen() {
     else openAttachment(att.url);
   };
 
+  /** Giữ 1 media (ảnh hoặc video) → tải về máy. */
+  const [savingUrl, setSavingUrl] = useState<string | null>(null);
+  const { toast, showToast, hideToast } = useInlineToast();
+  const onLongPressMedia = async (att: DatedAttachment) => {
+    const url = resolveChatAttachmentUrl(att.url);
+    if (!url || savingUrl) return;
+    try {
+      setSavingUrl(att.url);
+      const result = await saveMediaToDevice({
+        url,
+        name: att.name,
+        mimeType: att.mimeType,
+        kind: att.kind === 'video' ? 'video' : 'image',
+      });
+      if (result === 'saved-to-library') {
+        showToast(att.kind === 'video' ? 'Đã lưu video vào album' : 'Đã lưu ảnh vào album');
+      }
+    } catch (error) {
+      console.error('[ExchangeChatAttachments] save media', error);
+      showToast('Không thể tải hoặc lưu tệp này', 'error');
+    } finally {
+      setSavingUrl(null);
+    }
+  };
+
   const mediaTile = Math.floor((windowWidth - 32 - 16) / 3); // px-4 (32) + 2 gaps (8*2)
   const isEmpty = !loading && groups.length === 0;
 
@@ -151,6 +178,8 @@ export default function ExchangeChatAttachmentsScreen() {
                     <Pressable
                       key={`${a.url}-${i}`}
                       onPress={() => onTapMedia(a)}
+                      onLongPress={() => void onLongPressMedia(a)}
+                      delayLongPress={420}
                       className="relative overflow-hidden rounded-lg bg-black/10"
                       style={{ width: mediaTile, height: mediaTile }}>
                       {a.kind === 'video' ? (
@@ -168,6 +197,13 @@ export default function ExchangeChatAttachmentsScreen() {
                           resizeMode="cover"
                         />
                       )}
+                      {savingUrl === a.url ? (
+                        <View
+                          pointerEvents="none"
+                          className="absolute inset-0 items-center justify-center bg-black/40">
+                          <ActivityIndicator size="small" color="#fff" />
+                        </View>
+                      ) : null}
                     </Pressable>
                   ))}
                 </View>
@@ -205,6 +241,16 @@ export default function ExchangeChatAttachmentsScreen() {
           ))}
         </ScrollView>
       )}
+
+      {toast ? (
+        <InlineToast
+          key={toast.id}
+          message={toast.message}
+          type={toast.type}
+          floating
+          onHide={hideToast}
+        />
+      ) : null}
 
       {previewIndex != null ? (
         <ChatImagePreviewModal

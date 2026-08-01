@@ -159,6 +159,17 @@ class ChatService {
     filter?: 'all' | 'group' | 'parent' | 'unread';
     page?: number;
     limit?: number;
+    /**
+     * `list` ⇒ payload rút gọn: bỏ roster chi tiết (SĐT, quan hệ HS↔PH, môn dạy) mà danh sách
+     * không vẽ tới. Với BOD một trang toàn nhóm lớp nên khác biệt là vài MB. Màn nào cần bản
+     * đầy đủ thì gọi `getMessages`/`getConversation` cho đúng hội thoại đang mở.
+     */
+    fields?: 'list';
+    /**
+     * `member` ⇒ chỉ hội thoại người gọi là thành viên. Bắt buộc cho các màn dựng dữ liệu từ
+     * nhóm lớp CỦA CHÍNH GV: BOD mặc định được trả toàn trường, tải về rồi loại sạch ở client.
+     */
+    scope?: 'member';
   }): Promise<{ items: ChatConversation[]; hasMore: boolean; total: number }> {
     const headers = await this.getAuthHeaders();
     const q = new URLSearchParams();
@@ -171,6 +182,8 @@ class ChatService {
     if (params?.filter && params.filter !== 'all') q.set('filter', params.filter);
     if (params?.page) q.set('page', String(params.page));
     if (params?.limit) q.set('limit', String(params.limit));
+    if (params?.fields) q.set('fields', params.fields);
+    if (params?.scope) q.set('scope', params.scope);
     const qs = q.toString();
     const url = `${BASE_URL}/api/social/chat/conversations${qs ? `?${qs}` : ''}`;
     const res = await fetch(url, { headers });

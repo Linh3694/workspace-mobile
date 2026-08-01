@@ -540,6 +540,23 @@
     "parent_conversation_section": "Lịch sử trao đổi với phụ huynh",
     "no_parent_replies": "Chưa có phản hồi trong cuộc trao đổi"
   },
+  "family_relationship": {
+    "father": "Bố",
+    "mother": "Mẹ",
+    "grandfather": "Ông",
+    "grandmother": "Bà",
+    "uncle": "Chú/Bác",
+    "aunt": "Cô/Dì",
+    "brother": "Anh/Em trai",
+    "sister": "Chị/Em gái",
+    "guardian": "Người giám hộ",
+    "foster_parent": "Bố/Mẹ nuôi",
+    "relative": "Người thân",
+    "other": "Khác",
+    "grandparent": "Ông/Bà",
+    "sibling": "Anh/Chị/Em",
+    "uncle_aunt": "Cô/Chú/Bác/Dì"
+  },
   "room_booking": {
     "tile_title": "Đặt phòng",
     "tile_desc": "Đặt phòng họp / phòng chức năng"
@@ -552,14 +569,14 @@
     "no_homeroom": "Chưa có lớp chủ nhiệm/phó chủ nhiệm",
     "no_homeroom_desc": "Chỉ giáo viên được gán làm GVCN hoặc Phó chủ nhiệm trên Frappe mới dùng được mục này.",
     "pick_class": "Chọn lớp chủ nhiệm",
-    "badge_homeroom": "Chủ nhiệm",
-    "badge_vice": "Phó chủ nhiệm",
+    "badge_homeroom": "GVCN",
+    "badge_vice": "Phó GVCN",
     "tap_switch_class": "Chạm để đổi lớp",
     "composer_placeholder": "Chia sẻ hoạt động lớp…",
     "empty_feed_title": "Chưa có hoạt động",
     "empty_feed_sub": "Hãy chia sẻ khoảnh khắc hoặc thông báo cho phụ huynh lớp bạn.",
-    "sheet_role_homeroom": "Chủ nhiệm",
-    "sheet_role_vice": "Phó chủ nhiệm"
+    "sheet_role_homeroom": "GVCN",
+    "sheet_role_vice": "Phó GVCN"
   },
   "exchange": {
     "poll_deadline_custom": "Chọn ngày giờ",
@@ -593,7 +610,7 @@
     "poll_remaining_days": "Còn {{count}} ngày",
     "poll_total_voters": "{{count}} người đã bình chọn",
     "poll_view_voters": "Xem người bình chọn",
-    "poll_close_action": "Kết thúc bình chọn",
+    "poll_close_action": "Kết thúc",
     "poll_voters_title": "Người bình chọn",
     "poll_no_voters": "Chưa có ai chọn",
     "poll_role_teacher": "Giáo viên",
@@ -639,6 +656,15 @@
     "info_add_error": "Không thêm được GV bộ môn.",
     "info_remove_error": "Không gỡ được GV khỏi nhóm.",
     "info_manage_note": "GVCN/Phó CN và Phụ huynh thuộc danh sách lớp — không gỡ tại đây.",
+    "member_key_guardian": "PH chính",
+    "member_secondary_guardian": "PH phụ",
+    "member_profile_phone": "Số điện thoại",
+    "member_profile_email": "Email",
+    "member_profile_students": "Học sinh & vai trò",
+    "member_profile_no_students": "Chưa gắn học sinh nào.",
+    "member_profile_not_updated": "Chưa cập nhật",
+    "member_profile_copy": "Sao chép",
+    "member_profile_message": "Nhắn tin",
     "info_lock_group": "Khóa nhóm",
     "info_unlock_group": "Mở khóa",
     "info_write_mode_error": "Không đổi được chế độ nhắn tin của nhóm.",
@@ -649,6 +675,11 @@
     "typing": "{{name}} đang nhập…",
     "attachment_download_error_title": "Tải tệp",
     "attachment_download_error": "Không tải được tệp về máy. Bạn có thể mở tệp trên trình duyệt.",
-    "attachment_open_in_browser": "Mở trên trình duyệt"
+    "attachment_open_in_browser": "Mở trên trình duyệt",
+    "reaction_tab_all": "Tất cả",
+    "reaction_viewers_title": "Người đã bày tỏ cảm xúc",
+    "reaction_viewers_total": "{{count}} người đã bày tỏ",
+    "reaction_self_name": "{{name}} (Bạn)",
+    "reaction_unknown_member": "Thành viên"
   }
 }

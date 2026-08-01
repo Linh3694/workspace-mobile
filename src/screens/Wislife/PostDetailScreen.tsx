@@ -27,6 +27,8 @@ import { getAvatar } from '../../utils/avatar';
 import { formatRelativeTime } from '../../utils/dateUtils';
 import { API_BASE_URL } from '../../config/constants';
 import { resolveSocialMediaUrl } from '../../utils/resolveSocialMediaUrl';
+import { saveMediaToDevice } from '../../utils/mediaDownload';
+import { InlineToast, useInlineToast } from '../../components/Common';
 import LikeSkeletonSvg from '../../assets/like-skeleton.svg';
 import {
   FEED_REACTION_CODE,
@@ -87,6 +89,26 @@ const PostDetailScreen = () => {
   // State cho image modal
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+
+  // Tải ảnh/video bài viết về máy (giữ ảnh để lưu, video có nút tải riêng).
+  const [savingMedia, setSavingMedia] = useState(false);
+  const { toast, showToast, hideToast } = useInlineToast();
+  const saveMedia = async (rawUrl: string, kind: 'image' | 'video') => {
+    const url = resolveSocialMediaUrl(rawUrl, API_BASE_URL);
+    if (!url || savingMedia) return;
+    try {
+      setSavingMedia(true);
+      const result = await saveMediaToDevice({ url, kind });
+      if (result === 'saved-to-library') {
+        showToast(kind === 'video' ? 'Đã lưu video vào album' : 'Đã lưu ảnh vào album');
+      }
+    } catch (error) {
+      console.error('[PostDetail] save media', error);
+      showToast('Không thể tải hoặc lưu tệp này', 'error');
+    } finally {
+      setSavingMedia(false);
+    }
+  };
 
   const inputRef = useRef<TextInput>(null);
 
@@ -486,6 +508,8 @@ const PostDetailScreen = () => {
                           setSelectedImageIndex(index);
                           setImageModalVisible(true);
                         }}
+                        onLongPress={() => void saveMedia(image, 'image')}
+                        delayLongPress={420}
                         className={`relative ${
                           post.images.length === 1 ? 'w-full' : 'w-1/2'
                         } ${index > 0 ? 'pl-1' : ''} ${index > 1 ? 'pt-1' : ''}`}
@@ -516,6 +540,17 @@ const PostDetailScreen = () => {
                           shouldPlay={false}
                           isLooping={false}
                         />
+                        {/* Tải video về máy */}
+                        <TouchableOpacity
+                          disabled={savingMedia}
+                          onPress={() => void saveMedia(video, 'video')}
+                          className="absolute right-2 top-2 h-9 w-9 items-center justify-center rounded-full bg-black/60">
+                          {savingMedia ? (
+                            <ActivityIndicator size="small" color="white" />
+                          ) : (
+                            <Ionicons name="download-outline" size={20} color="white" />
+                          )}
+                        </TouchableOpacity>
                       </View>
                     ))}
                   </View>
@@ -937,6 +972,17 @@ const PostDetailScreen = () => {
         </View>
         </>)}
       </KeyboardAvoidingView>
+
+      {toast ? (
+        <InlineToast
+          key={toast.id}
+          message={toast.message}
+          type={toast.type}
+          floating
+          bottomOffset={insets.bottom + 88}
+          onHide={hideToast}
+        />
+      ) : null}
 
       {/* Post Reaction Picker */}
       <ReactionPicker
