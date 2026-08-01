@@ -107,7 +107,7 @@ export async function isAvailable(): Promise<boolean> {
     return cachedCapability.directUpload;
   } catch {
     // Server cũ chưa có endpoint ⇒ coi như tắt, dùng multipart.
-    cachedCapability = { directUpload: false, maxFiles: 10, maxBytes: 0 };
+    cachedCapability = { directUpload: false, maxFiles: 30, maxBytes: 0 };
     return false;
   }
 }
