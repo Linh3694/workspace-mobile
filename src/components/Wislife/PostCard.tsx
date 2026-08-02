@@ -29,7 +29,8 @@ import { API_BASE_URL } from '../../config/constants';
 import { formatRelativeTime } from '../../utils/dateUtils';
 import { resolveSocialMediaUrl } from '../../utils/resolveSocialMediaUrl';
 import { saveMediaToDevice } from '../../utils/mediaDownload';
-import { InlineToast, useInlineToast } from '../Common';
+import { ActionSheet, InlineToast, useInlineToast, type ActionSheetOption } from '../Common';
+import CreatePostModal from './CreatePostModal';
 import LikeSkeletonSvg from '../../assets/like-skeleton.svg';
 import { MentionRichText } from './MentionInput';
 import { getAvatar } from '../../utils/avatar';
@@ -52,6 +53,11 @@ interface PostCardProps {
   onUpdate: (post: Post) => void;
   onDelete: (postId: string) => void;
   onCommentPress?: (post: Post) => void;
+  /**
+   * Cho phép CHÍNH CHỦ bài viết sửa/xoá bài của mình (giống bảng tin trên web).
+   * Mặc định tắt ⇒ bảng tin Wislife toàn trường giữ nguyên: chỉ Mobile BOD có menu.
+   */
+  enableAuthorActions?: boolean;
 }
 
 const { width } = Dimensions.get('window');
@@ -63,7 +69,13 @@ const GradientText: React.FC<{ children: string; style?: any }> = ({ children, s
   );
 };
 
-const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onCommentPress }) => {
+const PostCard: React.FC<PostCardProps> = ({
+  post,
+  onUpdate,
+  onDelete,
+  onCommentPress,
+  enableAuthorActions = false,
+}) => {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
@@ -141,6 +153,10 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
   >();
   // State cho danh sách người thích
   const [reactionsListVisible, setReactionsListVisible] = useState(false);
+  // Menu tuỳ chọn bài viết + modal sửa bài
+  const [optionsVisible, setOptionsVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const pendingOptionRef = useRef<string | null>(null);
 
   // Xử lý scroll để cập nhật index ảnh hiện tại
   const handleImageScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -278,22 +294,26 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
     }
   };
 
-  const handlePostOptions = () => {
-    Alert.alert('Tùy chọn bài viết', '', [
-      {
-        text: post.isPinned ? 'Bỏ ghim' : 'Ghim bài viết',
-        onPress: handlePinPost,
-      },
-      {
-        text: 'Xóa bài viết',
-        style: 'destructive',
-        onPress: handleDeletePost,
-      },
-      {
-        text: 'Hủy',
-        style: 'cancel',
-      },
-    ]);
+  /**
+   * Menu tuỳ chọn dùng ActionSheet chứ không dùng `Alert.alert`: menu có thể lên tới
+   * 4 mục (Ghim/Sửa/Xoá/Huỷ) mà Alert trên Android chỉ nhận tối đa 3 nút — mục thứ 4
+   * sẽ bị nuốt mất im lặng.
+   */
+  const openPostOptions = () => {
+    pendingOptionRef.current = null;
+    setOptionsVisible(true);
+  };
+
+  /**
+   * Chạy hành động SAU khi sheet đã đóng hẳn: mở Alert xác nhận hoặc modal sửa
+   * ngay lúc modal sheet đang dismiss thì trên iOS hộp thoại có thể không hiện.
+   */
+  const handleOptionsDismissed = () => {
+    const action = pendingOptionRef.current;
+    pendingOptionRef.current = null;
+    if (action === 'pin') void handlePinPost();
+    if (action === 'edit') setEditModalVisible(true);
+    if (action === 'delete') handleDeletePost();
   };
 
   const reactionCounts = getReactionCounts();
@@ -304,10 +324,41 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
     typeof post.commentCount === 'number' ? post.commentCount : post.comments?.length ?? 0;
 
 
-  // Kiểm tra xem user có quyền xóa bài viết không - CHỈ Mobile BOD
-  // Mobile BOD có thể xóa mọi bài viết, kể cả bài của người khác
+  // Mobile BOD có thể ghim/xóa mọi bài viết, kể cả bài của người khác
   const userRoles = (user as any)?.roles || [];
-  const canDeletePost = userRoles.some((role: string) => role === 'Mobile BOD');
+  const isMobileBod = userRoles.some((role: string) => role === 'Mobile BOD');
+
+  /**
+   * Chính chủ bài viết. So khớp nhiều khoá (email/_id/username) như `getUserReaction`
+   * vì payload feed không đảm bảo khoá nào cũng có mặt.
+   */
+  const isPostAuthor = useMemo(() => {
+    const myIds = [user?._id, (user as any)?.id, user?.email, (user as any)?.username]
+      .filter(Boolean)
+      .map((v) => String(v).toLowerCase());
+    if (myIds.length === 0) return false;
+
+    const author = post.author as any;
+    const authorIds = [author?._id, author?.id, author?.email, author?.username]
+      .filter(Boolean)
+      .map((v: any) => String(v).toLowerCase());
+
+    return authorIds.some((id: string) => myIds.includes(id));
+  }, [user, post.author]);
+
+  const canEditPost = enableAuthorActions && isPostAuthor;
+  const canDeletePost = isMobileBod || (enableAuthorActions && isPostAuthor);
+  const hasPostOptions = isMobileBod || canEditPost || canDeletePost;
+
+  const postOptions: ActionSheetOption[] = [
+    ...(isMobileBod
+      ? [{ label: post.isPinned ? 'Bỏ ghim' : 'Ghim bài viết', value: 'pin' }]
+      : []),
+    ...(canEditPost ? [{ label: 'Sửa bài viết', value: 'edit' }] : []),
+    ...(canDeletePost
+      ? [{ label: 'Xóa bài viết', value: 'delete', color: '#FF3B30' }]
+      : []),
+  ];
 
   // Bật đa cảm xúc thì mở modal chọn; tắt thì bấm là thả tim luôn.
   const handleLikeButtonPress = (event?: GestureResponderEvent) => {
@@ -413,12 +464,12 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
           </View>
         </View>
 
-        {/* Nút tùy chọn (PIN/DELETE) - chỉ hiển thị cho Mobile BOD */}
-        {canDeletePost && (
-          <TouchableOpacity 
-            onPress={handlePostOptions} 
+        {/* Nút tùy chọn (GHIM/SỬA/XÓA) — Mobile BOD, hoặc chính chủ ở feed có bật enableAuthorActions */}
+        {hasPostOptions && (
+          <TouchableOpacity
+            onPress={openPostOptions}
             className="p-2"
-            style={{ zIndex: 20 }}  
+            style={{ zIndex: 20 }}
           >
             <Ionicons name="ellipsis-horizontal" size={20} color="#6B7280" />
           </TouchableOpacity>
@@ -750,6 +801,36 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUpdate, onDelete, onComment
         onClose={() => setReactionsListVisible(false)}
         reactions={post.reactions}
       />
+
+      {/* Tùy chọn bài viết */}
+      <ActionSheet
+        visible={optionsVisible}
+        title="Tùy chọn bài viết"
+        options={postOptions}
+        onSelect={(value) => {
+          pendingOptionRef.current = value;
+          setOptionsVisible(false);
+        }}
+        onCancel={() => {
+          pendingOptionRef.current = null;
+          setOptionsVisible(false);
+        }}
+        onDismiss={handleOptionsDismissed}
+      />
+
+      {/* Sửa bài viết — dùng lại CreatePostModal ở chế độ sửa */}
+      {canEditPost && (
+        <CreatePostModal
+          visible={editModalVisible}
+          onClose={() => setEditModalVisible(false)}
+          onPostCreated={() => {}}
+          editingPost={post}
+          onPostUpdated={(updatedPost) => {
+            setEditModalVisible(false);
+            onUpdate(updatedPost);
+          }}
+        />
+      )}
     </View>
   );
 };

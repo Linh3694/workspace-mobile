@@ -328,15 +328,24 @@ class ChatService {
     return data.attachments;
   }
 
+  /**
+   * `opts.around` — mở từ thông báo: server nạp liền mạch từ tin mới nhất xuống hết trang chứa
+   * tin đó, và trả `pagination.aroundResolved` cho biết có tới được tin đích không (SIS-180).
+   * Bỏ qua `page` khi có `around`. social-service cũ chưa hiểu tham số này thì trả trang đầu
+   * như thường — thoái lui êm, không lỗi.
+   */
   async getMessages(
     conversationId: string,
     page = 1,
-    limit = 50
+    limit = 50,
+    opts?: { around?: string }
   ): Promise<ChatMessagesData> {
     const headers = await this.getAuthHeaders();
-    const q = `page=${page}&limit=${limit}`;
+    const around = String(opts?.around || '').trim();
+    const q = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (around) q.set('around', around);
     const res = await fetch(
-      `${BASE_URL}/api/social/chat/conversations/${encodeURIComponent(conversationId)}/messages?${q}`,
+      `${BASE_URL}/api/social/chat/conversations/${encodeURIComponent(conversationId)}/messages?${q.toString()}`,
       { headers }
     );
     return this.parseJson<ChatMessagesData>(res);

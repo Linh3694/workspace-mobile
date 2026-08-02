@@ -217,6 +217,8 @@ export type RootStackParamList = {
     schoolYearId?: string;
     teacherId?: string;
     guardianId?: string;
+    /** Mở từ thông báo: cuộn thẳng tới tin nhắn này và nháy viền (SIS-180). */
+    messageId?: string;
   };
   [ROUTES.SCREENS.EXCHANGE_CHAT_INFO]: {
     conversationId: string;

@@ -9,9 +9,10 @@ import * as Notifications from 'expo-notifications';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { notificationCenterService } from '../../services/notificationCenterService';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ROUTES } from '../../constants/routes';
-import { CHAT_NOTIFICATION_TYPES } from '../../utils/pushNotificationNavigation';
+import {
+  resolveNotificationTarget,
+  type PushNotificationPayload,
+} from '../../utils/pushNotificationNavigation';
 import { NOTIFICATION_INBOX_REFRESH_EVENT } from '../../providers/NotificationInboxSocketProvider';
 
 // Custom Mark As Read Icon component (giống parent-portal)
@@ -411,239 +412,24 @@ const NotificationsScreen = () => {
         await markGroupedAsRead(notification);
       }
 
-      // Handle navigation based on notification type
-      const data = notification.data;
-
-      // Helper: Ticket IT vs Ticket Hành chính (pushNotificationNavigation)
-      const navigateToTicketDetail = async (ticketId: string, isAdministrative?: boolean) => {
-        try {
-          const storedRolesStr = await AsyncStorage.getItem('userRoles');
-          const storedRoles: string[] = storedRolesStr ? JSON.parse(storedRolesStr) : [];
-
-          if (isAdministrative) {
-            const staff =
-              storedRoles.includes('Mobile Administrative') ||
-              storedRoles.includes('SIS Administrative') ||
-              storedRoles.includes('SIS BOD');
-            (navigation as any).navigate(
-              staff
-                ? ROUTES.SCREENS.ADMINISTRATIVE_TICKET_ADMIN_DETAIL
-                : ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST_DETAIL,
-              { ticketId }
-            );
-            return;
-          }
-
-          const hasMobileIT = storedRoles.includes('Mobile IT');
-          if (hasMobileIT) {
-            (navigation as any).navigate(ROUTES.SCREENS.TICKET_ADMIN_DETAIL, { ticketId });
-          } else {
-            (navigation as any).navigate(ROUTES.SCREENS.TICKET_GUEST_DETAIL, { ticketId });
-          }
-        } catch (error) {
-          console.error('Error navigating to ticket detail:', error);
-          (navigation as any).navigate(
-            isAdministrative
-              ? ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST_DETAIL
-              : ROUTES.SCREENS.TICKET_GUEST_DETAIL,
-            { ticketId }
-          );
-        }
-      };
-
-      // Helper function để navigate đến feedback detail
-      const navigateToFeedbackDetail = (feedbackId: string) => {
-        (navigation as any).navigate(ROUTES.SCREENS.FEEDBACK_DETAIL, { feedbackId });
-      };
-
-      // Helper function để navigate đến leave requests (màn hình chi tiết theo lớp)
-      const navigateToLeaveRequests = (params: any) => {
-        const classId = params?.class_id || params?.classId;
-        const leaveRequestId = params?.leave_request_id || params?.leaveRequestId;
-
-        (navigation as any).navigate(ROUTES.SCREENS.LEAVE_REQUESTS, {
-          classId: classId || undefined,
-          leaveRequestId: leaveRequestId || undefined,
-          fromNotification: true,
-        });
-      };
-
-      // Helper function để navigate đến attendance home
-      const navigateToAttendanceHome = (params: any) => {
-        (navigation as any).navigate(ROUTES.SCREENS.ATTENDANCE_HOME, {
-          initialTab: params?.tab || 'GVCN',
-        });
-      };
-
-      // === TICKET NOTIFICATIONS ===
-      const ticketTypes = ['new_ticket', 'ticket_update', 'ticket_created', 'ticket_updated'];
-      const ticketActions = [
-        'ticket_status_changed',
-        'ticket_assigned',
-        'ticket_processing',
-        'ticket_waiting',
-        'ticket_done',
-        'ticket_closed',
-        'ticket_cancelled',
-        'new_ticket_admin',
-        'user_reply',
-        'ticket_cancelled_admin',
-        'completion_confirmed',
-        'ticket_feedback_received',
-      ];
-
-      if (ticketTypes.includes(data?.type) || ticketActions.includes(data?.action)) {
-        const tid = data?.ticketId || data?.ticket_id;
-        if (tid) {
-          const isHc = data?.ticket_kind === 'administrative' || data?.ticketKind === 'administrative';
-          await navigateToTicketDetail(tid, isHc);
-          return;
-        }
-      }
-
-      // === FEEDBACK NOTIFICATIONS ===
-      const feedbackTypes = [
-        'feedback_created',
-        'feedback_new',
-        'feedback_reply',
-        'feedback_updated',
-      ];
-      const feedbackActions = [
-        'new_feedback',
-        'feedback_created',
-        'feedback_reply',
-        'guardian_reply',
-        'feedback_assigned',
-      ];
-
-      if (feedbackTypes.includes(data?.type) || feedbackActions.includes(data?.action)) {
-        const feedbackId = data?.feedbackId || data?.feedback_id;
-        if (feedbackId) {
-          navigateToFeedbackDetail(feedbackId);
-          return;
-        }
-      }
-
-      // === CRM ISSUE — khớp pushNotificationNavigation (issueId / issue_id) ===
-      const crmIssueTypes = [
-        'crm_issue_created',
-        'crm_issue_approved',
-        'crm_issue_rejected',
-        'crm_issue_status_changed',
-        'crm_issue_pic_changed',
-        'crm_issue_log_added',
-      ];
-      if (crmIssueTypes.includes(data?.type || '')) {
-        const issueId = data?.issueId || data?.issue_id;
-        if (issueId) {
-          (navigation as any).navigate(ROUTES.SCREENS.CRM_ISSUE_DETAIL, { issueId });
-          return;
-        }
-      }
-
-      // === LEAVE REQUEST NOTIFICATIONS ===
-      const leaveTypes = ['leave_request', 'leave'];
-
-      if (leaveTypes.includes(data?.type)) {
-        navigateToLeaveRequests(data);
+      // Ánh xạ loại thông báo → màn đích nằm ở pushNotificationNavigation, dùng CHUNG với
+      // đường push. Trước SIS-180 màn này giữ một bản chép riêng và đã lệch khỏi bản push
+      // (thiếu ticket_picked_up, crm_issue_sla_*), khiến 14 loại thông báo bấm vào không mở
+      // được gì. Thêm loại thông báo mới ⇒ sửa DUY NHẤT ở đó, đừng chép lại vào đây.
+      const target = await resolveNotificationTarget(
+        (notification.data || {}) as PushNotificationPayload
+      );
+      if (target) {
+        (navigation as any).navigate(target.screen, target.params);
         return;
       }
 
-      // === ATTENDANCE NOTIFICATIONS ===
-      if (data?.type === 'attendance_reminder') {
-        navigateToAttendanceHome(data);
-        return;
-      }
-
-      // attendance, staff_attendance — đồng bộ push: mở màn Điểm danh (đã ở tab Thông báo thì không cần reset Main)
-      if (data?.type === 'attendance' || data?.type === 'staff_attendance') {
-        (navigation as any).navigate(ROUTES.SCREENS.ATTENDANCE_HOME, {
-          initialTab: data?.tab || 'GVCN',
-        });
-        return;
-      }
-
-      // === DAILY HEALTH — đồng bộ pushNotificationNavigation ===
-      const healthTypes = [
-        'daily_health',
-        'health_visit_created',
-        'health_visit_received',
-        'health_visit_completed',
-        'health_visit_escalation',
-        'health_visit_cancelled',
-        'health_visit_rejected',
-      ];
-      if (healthTypes.includes(data?.type || '')) {
-        const visitId = data?.visit_id || data?.visitId;
-        const notificationType = data?.type;
-
-        switch (notificationType) {
-          case 'health_visit_created':
-          case 'health_visit_escalation':
-            (navigation as any).navigate(ROUTES.SCREENS.DAILY_HEALTH, {});
-            return;
-          case 'health_visit_received':
-          case 'health_visit_completed':
-            if (visitId) {
-              (navigation as any).navigate(ROUTES.SCREENS.HEALTH_EXAM, { visitId });
-            } else {
-              (navigation as any).navigate(ROUTES.SCREENS.DAILY_HEALTH, {});
-            }
-            return;
-          case 'health_visit_cancelled':
-          case 'health_visit_rejected':
-            (navigation as any).navigate(ROUTES.SCREENS.DAILY_HEALTH, {});
-            return;
-          default:
-            if (visitId) {
-              (navigation as any).navigate(ROUTES.SCREENS.HEALTH_EXAM, { visitId });
-            } else {
-              (navigation as any).navigate(ROUTES.SCREENS.DAILY_HEALTH, {});
-            }
-            return;
-        }
-      }
-
-      // === CHAT — Trao đổi: mở thẳng hội thoại khi payload có conversationId ===
-      if (CHAT_NOTIFICATION_TYPES.includes(data?.type || '')) {
-        const convId = data.conversationId || data.conversation_id || data.chatId;
-        if (convId) {
-          (navigation as any).navigate(ROUTES.SCREENS.EXCHANGE_CHAT, {
-            conversationId: String(convId),
-            classId: data.classId || data.class_id,
-          });
-          return;
-        }
-        // Không có conversationId thì ở lại tab thông báo (hành vi cũ).
-        (navigation as any).navigate(ROUTES.SCREENS.MAIN, {
-          screen: ROUTES.MAIN.NOTIFICATIONS,
-          params: data.notificationId ? { notificationId: data.notificationId } : undefined,
-        });
-        return;
-      }
-
-      // === WISLIFE — module đã ẩn khỏi bottom tab (SIS-109) ===
-      // Không còn tab Social/Wislife: đang ở Trung tâm thông báo nên giữ nguyên,
-      // không điều hướng vào tab/màn không còn hiển thị. Giữ code để bật lại khi mở lại module.
-      const wislifeTypes = [
-        'wislife_new_post',
-        'wislife_post_reaction',
-        'wislife_post_comment',
-        'wislife_comment_reply',
-        'wislife_comment_reaction',
-        'wislife_mention',
-      ];
-
-      if (wislifeTypes.includes(data?.type)) {
-        console.log('[Notifications] Wislife đã ẩn — giữ nguyên ở Trung tâm thông báo');
-        return;
-      }
-
-      // === DEFAULT — giống push: về tab Thông báo (đang ở đây thì chỉ log, tránh flicker) ===
+      // Không có màn đích (loại chưa hỗ trợ, wislife đã ẩn, hoặc payload thiếu id): người dùng
+      // đang đứng sẵn ở Trung tâm thông báo nên giữ nguyên, tránh flicker.
       console.log(
-        '📝 Unhandled notification type in NotificationsScreen:',
-        data?.type,
-        data?.action
+        '📝 Không có màn đích cho thông báo:',
+        notification.data?.type,
+        notification.data?.action
       );
     },
     [navigation, markGroupedAsRead]

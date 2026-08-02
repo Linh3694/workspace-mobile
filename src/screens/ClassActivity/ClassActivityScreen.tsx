@@ -338,6 +338,9 @@ export default function ClassActivityScreen() {
                   post={post}
                   onUpdate={handlePostUpdate}
                   onDelete={handlePostDelete}
+                  // GVCN sửa/xoá được bài của chính mình — khớp bảng tin lớp trên web.
+                  // Chỉ bật ở feed lớp; bảng tin Wislife vẫn chỉ Mobile BOD.
+                  enableAuthorActions
                   onCommentPress={(p) => {
                     setSelectedPost(p);
                     setIsCommentsModalVisible(true);

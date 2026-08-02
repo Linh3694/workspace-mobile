@@ -221,16 +221,41 @@ class PostService {
     return data.data;
   }
 
-  async updatePost(postId: string, postData: Partial<CreatePostData>): Promise<Post> {
-    const headers = await this.getAuthHeaders();
+  /**
+   * Sửa bài viết — multipart, cùng hợp đồng với web (`classActionPostService.updatePost`):
+   * `images`/`videos` là media CŨ được giữ lại (bỏ khỏi mảng = xoá khỏi bài),
+   * `files` là file MỚI thêm vào.
+   *
+   * Không đi đường tải thẳng CDN như lúc đăng bài: endpoint PUT này mới chỉ được
+   * web gọi và web đang gửi multipart, nên đi cùng đường cho chắc thay vì thử một
+   * hợp đồng chưa ai chạy.
+   */
+  async updatePost(
+    postId: string,
+    payload: { content: string; images?: string[]; videos?: string[]; files?: MediaFile[] }
+  ): Promise<Post> {
+    const headers = await this.getMultipartHeaders();
+    const formData = new FormData();
+    formData.append('content', payload.content);
+    (payload.images || []).forEach((image) => formData.append('images', image));
+    (payload.videos || []).forEach((video) => formData.append('videos', video));
+    (payload.files || []).forEach((file) => {
+      formData.append('files', {
+        uri: file.uri,
+        type: file.type,
+        name: file.name,
+      } as unknown as Blob);
+    });
+
     const response = await fetch(`${BASE_URL}/api/social/${postId}`, {
       method: 'PUT',
       headers,
-      body: JSON.stringify(postData),
+      body: formData as unknown as BodyInit,
     });
 
     if (!response.ok) {
-      throw new Error('Failed to update post');
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Failed to update post: ${response.status} ${errorText}`);
     }
 
     const data: CreatePostResponse = await response.json();

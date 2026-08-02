@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,8 @@ import { postService } from '../../services/postService';
 import { useAuth } from '../../context/AuthContext';
 import { Post, MediaFile } from '../../types/post';
 import { getAvatar } from '../../utils/avatar';
+import { API_BASE_URL } from '../../config/constants';
+import { resolveSocialMediaUrl } from '../../utils/resolveSocialMediaUrl';
 import MentionInput, { MentionUser, extractMentionIds, getMentionPlainText } from './MentionInput';
 
 // Config cho image compression
@@ -72,6 +74,9 @@ const compressImage = async (uri: string): Promise<{ uri: string; width: number;
   }
 };
 
+/** Trần media một bài viết — khớp social-service. */
+const MAX_MEDIA = 30;
+
 interface CreatePostModalProps {
   visible: boolean;
   onClose: () => void;
@@ -82,6 +87,10 @@ interface CreatePostModalProps {
     schoolYearId: string;
     className?: string;
   } | null;
+  /** Khi có: modal chạy ở chế độ SỬA bài này thay vì đăng bài mới */
+  editingPost?: Post | null;
+  /** Bắt buộc khi dùng chế độ sửa — nhận bài đã cập nhật từ server */
+  onPostUpdated?: (post: Post) => void;
 }
 
 const CreatePostModal: React.FC<CreatePostModalProps> = ({
@@ -89,6 +98,8 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
   onClose,
   onPostCreated,
   classContext,
+  editingPost,
+  onPostUpdated,
 }) => {
   const { user } = useAuth();
   const [content, setContent] = useState('');
@@ -96,12 +107,39 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [mentionedUsers, setMentionedUsers] = useState<MentionUser[]>([]);
   const [uploadProgress, setUploadProgress] = useState(''); // Hiển thị tiến trình
+  /** Ảnh/video CŨ của bài đang sửa còn được giữ lại (bỏ khỏi mảng = xoá khỏi bài) */
+  const [keptImages, setKeptImages] = useState<string[]>([]);
+  const [keptVideos, setKeptVideos] = useState<string[]>([]);
+
+  const isEditMode = Boolean(editingPost);
+  const keptMediaCount = keptImages.length + keptVideos.length;
+  const totalMediaCount = keptMediaCount + selectedFiles.length;
+  const hasAnyContent = Boolean(content.trim()) || totalMediaCount > 0;
 
   const resetForm = () => {
     setContent('');
     setSelectedFiles([]);
     setMentionedUsers([]);
+    setKeptImages([]);
+    setKeptVideos([]);
   };
+
+  // Nạp lại nội dung bài mỗi lần mở modal ở chế độ sửa; mở để đăng mới thì về form trắng.
+  // Cố ý chỉ phụ thuộc `editingPost?._id` chứ không phải cả object: feed thay object bài
+  // viết mỗi lần có reaction/bình luận mới, phụ thuộc cả object sẽ nuốt nội dung đang gõ dở.
+  useEffect(() => {
+    if (!visible) return;
+    if (editingPost) {
+      setContent(editingPost.content || '');
+      setKeptImages(editingPost.images || []);
+      setKeptVideos(editingPost.videos || []);
+      setSelectedFiles([]);
+      setMentionedUsers([]);
+    } else {
+      resetForm();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, editingPost?._id]);
 
   const handleClose = () => {
     resetForm();
@@ -135,12 +173,12 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
           size: asset.fileSize,
         }));
 
-        // Trần media bài đăng — khớp social-service (30).
-        const totalFiles = selectedFiles.length + newFiles.length;
-        if (totalFiles > 30) {
+        // Trần media bài đăng — khớp social-service (30). Chế độ sửa tính cả media cũ giữ lại.
+        const totalFiles = keptMediaCount + selectedFiles.length + newFiles.length;
+        if (totalFiles > MAX_MEDIA) {
           Alert.alert(
             'Giới hạn file',
-            'Chỉ có thể chọn tối đa 30 file cho một bài viết'
+            `Chỉ có thể chọn tối đa ${MAX_MEDIA} file cho một bài viết`
           );
           return;
         }
@@ -180,10 +218,10 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
           size: asset.fileSize,
         };
 
-        if (selectedFiles.length >= 30) {
+        if (totalMediaCount >= MAX_MEDIA) {
           Alert.alert(
             'Giới hạn file',
-            'Chỉ có thể chọn tối đa 30 file cho một bài viết'
+            `Chỉ có thể chọn tối đa ${MAX_MEDIA} file cho một bài viết`
           );
           return;
         }
@@ -200,6 +238,14 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
+  const removeKeptImage = (index: number) => {
+    setKeptImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const removeKeptVideo = (index: number) => {
+    setKeptVideos(prev => prev.filter((_, i) => i !== index));
+  };
+
   const showMediaOptions = () => {
     Alert.alert(
       'Chọn phương thức',
@@ -212,6 +258,31 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
     );
   };
 
+  /** Nén ảnh cho nhẹ trước khi upload (video giữ nguyên) — dùng chung cho đăng mới và sửa bài. */
+  const compressSelectedFiles = async (): Promise<MediaFile[]> => {
+    const compressedFiles: MediaFile[] = [];
+    const imageFiles = selectedFiles.filter(f => f.type.startsWith('image/'));
+    const videoFiles = selectedFiles.filter(f => f.type.startsWith('video/'));
+
+    if (imageFiles.length > 0) {
+      setUploadProgress(`Đang nén ${imageFiles.length} ảnh...`);
+
+      for (let i = 0; i < imageFiles.length; i++) {
+        setUploadProgress(`Đang nén ảnh ${i + 1}/${imageFiles.length}...`);
+        const file = imageFiles[i];
+        const compressed = await compressImage(file.uri);
+        compressedFiles.push({
+          ...file,
+          uri: compressed.uri,
+        });
+      }
+    }
+
+    // Video giữ nguyên (không compress)
+    compressedFiles.push(...videoFiles);
+    return compressedFiles;
+  };
+
   const handleCreatePost = async () => {
     if (!content.trim() && selectedFiles.length === 0) {
       Alert.alert('Lỗi', 'Vui lòng nhập nội dung hoặc chọn hình ảnh/video');
@@ -220,29 +291,10 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
     try {
       setLoading(true);
-      
+
       // Bước 1: Compress ảnh để upload nhanh hơn
-      const compressedFiles: MediaFile[] = [];
-      const imageFiles = selectedFiles.filter(f => f.type.startsWith('image/'));
-      const videoFiles = selectedFiles.filter(f => f.type.startsWith('video/'));
-      
-      if (imageFiles.length > 0) {
-        setUploadProgress(`Đang nén ${imageFiles.length} ảnh...`);
-        
-        for (let i = 0; i < imageFiles.length; i++) {
-          setUploadProgress(`Đang nén ảnh ${i + 1}/${imageFiles.length}...`);
-          const file = imageFiles[i];
-          const compressed = await compressImage(file.uri);
-          compressedFiles.push({
-            ...file,
-            uri: compressed.uri,
-          });
-        }
-      }
-      
-      // Video giữ nguyên (không compress)
-      compressedFiles.push(...videoFiles);
-      
+      const compressedFiles = await compressSelectedFiles();
+
       // Bước 2: Upload
       setUploadProgress('Đang đăng bài...');
 
@@ -298,6 +350,47 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
     }
   };
 
+  const handleUpdatePost = async () => {
+    if (!editingPost) return;
+
+    if (!hasAnyContent) {
+      Alert.alert('Lỗi', 'Vui lòng nhập nội dung hoặc chọn hình ảnh/video');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const compressedFiles = await compressSelectedFiles();
+      setUploadProgress('Đang lưu thay đổi...');
+
+      const updatedPost = await postService.updatePost(editingPost._id, {
+        content: getMentionPlainText(content).trim(),
+        images: keptImages,
+        videos: keptVideos,
+        files: compressedFiles,
+      });
+
+      setUploadProgress('');
+      onPostUpdated?.(updatedPost);
+      handleClose();
+    } catch (error) {
+      console.error('Error updating post:', error);
+      Alert.alert('Lỗi', 'Không thể cập nhật bài viết. Vui lòng thử lại.');
+    } finally {
+      setLoading(false);
+      setUploadProgress('');
+    }
+  };
+
+  const handleSubmit = () => {
+    if (isEditMode) {
+      void handleUpdatePost();
+      return;
+    }
+    void handleCreatePost();
+  };
+
   const isVideoFile = (file: MediaFile) => {
     return file.type.startsWith('video/');
   };
@@ -316,20 +409,20 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
             <Text className="text-lg text-gray-600">Hủy</Text>
           </TouchableOpacity>
 
-          <Text className="text-lg font-semibold text-gray-900">Tạo bài viết</Text>
+          <Text className="text-lg font-semibold text-gray-900">
+            {isEditMode ? 'Sửa bài viết' : 'Tạo bài viết'}
+          </Text>
 
           <TouchableOpacity
-            onPress={handleCreatePost}
-            disabled={(!content.trim() && selectedFiles.length === 0) || loading}
+            onPress={handleSubmit}
+            disabled={!hasAnyContent || loading}
             className={`px-4 py-2 rounded-full ${
-              (!content.trim() && selectedFiles.length === 0) || loading
-                ? 'bg-gray-300'
-                : 'bg-[#FF7A00]'
+              !hasAnyContent || loading ? 'bg-gray-300' : 'bg-[#FF7A00]'
             }`}>
             {loading ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
-              <Text className="text-white font-medium">Đăng</Text>
+              <Text className="text-white font-medium">{isEditMode ? 'Lưu' : 'Đăng'}</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -353,16 +446,20 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
               </View>
               <View className="flex-col items-start">
                 <Text className="text-lg font-semibold text-gray-900">{user?.fullname}</Text>
-                <View className="flex-row items-center mt-1">
-                  {classContext?.className ? (
-                    <Ionicons name="school-outline" size={14} color="#757575" />
-                  ) : (
-                    <Ionicons name="globe" size={14} color="#757575" />
-                  )}
-                  <Text className="text-gray-600 text-sm ml-1">
-                    {classContext?.className ? labelAudienceClassScope(classContext.className) : 'Công khai'}
-                  </Text>
-                </View>
+                {/* Sửa bài thì không nêu phạm vi đăng: bài đã có phạm vi từ lúc tạo,
+                    hiện "Công khai" ở đây sẽ sai với bài đăng trong lớp. */}
+                {!isEditMode && (
+                  <View className="flex-row items-center mt-1">
+                    {classContext?.className ? (
+                      <Ionicons name="school-outline" size={14} color="#757575" />
+                    ) : (
+                      <Ionicons name="globe" size={14} color="#757575" />
+                    )}
+                    <Text className="text-gray-600 text-sm ml-1">
+                      {classContext?.className ? labelAudienceClassScope(classContext.className) : 'Công khai'}
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
 
@@ -392,14 +489,54 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
             containerStyle={{ zIndex: 10 }}
           />
 
-          {/* Selected Media */}
-          {selectedFiles.length > 0 && (
+          {/* Selected Media — chế độ sửa: ảnh/video cũ giữ lại đứng trước, rồi tới file mới chọn */}
+          {(totalMediaCount > 0) && (
             <View className="mt-4">
-              <ScrollView 
-                horizontal 
+              <ScrollView
+                horizontal
                 showsHorizontalScrollIndicator={false}
                 className="mb-4"
               >
+                {keptImages.map((image, index) => (
+                  <View key={`kept-image-${index}-${image}`} className="mr-3 relative">
+                    <Image
+                      source={{ uri: resolveSocialMediaUrl(image, API_BASE_URL) }}
+                      className="w-32 h-32 rounded-lg"
+                      resizeMode={ResizeMode.COVER}
+                    />
+                    <TouchableOpacity
+                      onPress={() => removeKeptImage(index)}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full items-center justify-center"
+                    >
+                      <Ionicons name="close" size={16} color="white" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+
+                {keptVideos.map((video, index) => (
+                  <View key={`kept-video-${index}-${video}`} className="mr-3 relative">
+                    <View className="w-32 h-32 rounded-lg overflow-hidden bg-black">
+                      <Video
+                        source={{ uri: resolveSocialMediaUrl(video, API_BASE_URL) }}
+                        className="w-full h-full"
+                        resizeMode={ResizeMode.COVER}
+                        shouldPlay={false}
+                        isLooping={false}
+                        useNativeControls={false}
+                      />
+                      <View className="absolute inset-0 items-center justify-center">
+                        <Ionicons name="play-circle" size={32} color="white" />
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => removeKeptVideo(index)}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full items-center justify-center"
+                    >
+                      <Ionicons name="close" size={16} color="white" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+
                 {selectedFiles.map((file, index) => (
                   <View key={index} className="mr-3 relative">
                     {isVideoFile(file) ? (
@@ -448,9 +585,9 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
               </Text>
             </TouchableOpacity>
             
-            {selectedFiles.length > 0 && (
+            {totalMediaCount > 0 && (
               <Text className="text-sm text-gray-500">
-                {selectedFiles.length}/30
+                {totalMediaCount}/{MAX_MEDIA}
               </Text>
             )}
           </View>

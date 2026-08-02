@@ -226,6 +226,12 @@ export type ChatMessagesData = {
     totalPages: number;
     totalMessages: number;
     hasNext: boolean;
+    /**
+     * Chỉ có khi gọi kèm `around`: server có nạp tới được tin đích hay không.
+     * false = tin đã xoá/thu hồi hoặc quá cũ (ngoài trần 300 tin) — client báo toast thay vì
+     * cuộn hụt trong im lặng. Thiếu field = social-service chưa deploy bản hỗ trợ `around`.
+     */
+    aroundResolved?: boolean;
   };
 };
 

@@ -144,6 +144,12 @@ export default function ExchangeChatScreen() {
   const draftSchoolYearId = String(route.params?.schoolYearId ?? '').trim();
   const draftTeacherId = String(route.params?.teacherId ?? '').trim();
   const draftGuardianId = String(route.params?.guardianId ?? '').trim();
+  /**
+   * Mở từ thông báo (SIS-180): tin nhắn cần cuộn tới + nháy viền. Giữ trong ref để
+   * `loadExistingThread` gọi kèm `around` và effect cuộn tiêu thụ đúng MỘT lần.
+   */
+  const focusMessageIdFromRoute = String(route.params?.messageId ?? '').trim();
+  const pendingFocusMessageIdRef = useRef<string | null>(focusMessageIdFromRoute || null);
   /** Định danh cặp GV↔PH của lần mở này — dùng để không mở lại chính nó lần thứ hai. */
   const draftKey = `${draftClassId}|${draftSchoolYearId}|${draftTeacherId}|${draftGuardianId}`;
 
@@ -325,7 +331,14 @@ export default function ExchangeChatScreen() {
       // CRITICAL: chỉ getMessages mới được phép bung lỗi "Không tải được lịch sử chat".
       let loadedConversation: ChatConversation | null = null;
       try {
-        const data = await chatService.getMessages(cid, 1, CHAT_INITIAL_PAGE_LIMIT);
+        // Mở từ thông báo: xin server nạp liền mạch tới tận tin đích, kể cả khi tin đã cũ.
+        const around = pendingFocusMessageIdRef.current || '';
+        const data = await chatService.getMessages(
+          cid,
+          1,
+          CHAT_INITIAL_PAGE_LIMIT,
+          around ? { around } : undefined
+        );
         const sorted = [...(data.messages || [])].sort(
           (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         );
@@ -333,6 +346,18 @@ export default function ExchangeChatScreen() {
         setConversation(data.conversation);
         loadedConversation = data.conversation;
         setHasMoreMessages(Boolean(data.pagination?.hasNext));
+
+        // Trang kế phải bám theo SỐ TIN ĐÃ NẠP, không phải theo `currentPage` của server:
+        // lần đầu dùng CHAT_INITIAL_PAGE_LIMIT còn tải thêm dùng CHAT_LOAD_MORE_LIMIT, và khi
+        // có `around` server trả nhiều trang gộp lại. Tính sai là kéo lên mãi không ra tin mới.
+        const nextBasePage = Math.max(1, Math.floor(sorted.length / CHAT_LOAD_MORE_LIMIT));
+        setMessagesPage(nextBasePage);
+        messagesPageRef.current = nextBasePage;
+
+        if (around && data.pagination?.aroundResolved === false) {
+          pendingFocusMessageIdRef.current = null;
+          showToast('Không tìm thấy tin nhắn — có thể đã thu hồi hoặc quá cũ', 'error');
+        }
       } catch (e) {
         console.warn('[ExchangeChat] getMessages failed', e);
         Alert.alert(t('common.error'), t('exchange.load_thread_error'));
@@ -361,7 +386,7 @@ export default function ExchangeChatScreen() {
         console.warn('[ExchangeChat] socket join (non-fatal)', e);
       }
     },
-    [teacherEmail, t]
+    [teacherEmail, t, showToast]
   );
 
   const openThread = useCallback(async () => {
@@ -1155,20 +1180,28 @@ export default function ExchangeChatScreen() {
     return `${vals.join(', ')} đang soạn tin nhắn`;
   }, [typingNames]);
 
-  /** Tap pill ghim → cuộn inverted list tới bubble + nháy viền. */
-  const scrollToPinnedMessage = useCallback(
-    (messageIdRaw: string) => {
+  /**
+   * Cuộn inverted list tới bubble + nháy viền. Dùng chung cho pill tin ghim và cho deep link
+   * từ thông báo (SIS-180) — đừng viết bản sao thứ hai.
+   *
+   * `alertWhenMissing` chỉ bật cho pill ghim: người dùng vừa chủ động bấm nên cần lời giải
+   * thích. Deep link thì im lặng, đã có toast riêng khi server báo không tới được tin.
+   */
+  const scrollToMessage = useCallback(
+    (messageIdRaw: string, opts?: { alertWhenMissing?: boolean }) => {
       const mid = normalizeMongoId(messageIdRaw);
-      if (!mid) return;
+      if (!mid) return false;
       const idx = reversedChatRows.findIndex(
         (r) => r.kind === 'message' && normalizeMongoId(r.message._id) === mid
       );
       if (idx < 0) {
-        Alert.alert(
-          'Thông báo',
-          'Không thấy tin ghim trong phần đang tải — thử cuộn lên để tải thêm lịch sử.'
-        );
-        return;
+        if (opts?.alertWhenMissing) {
+          Alert.alert(
+            'Thông báo',
+            'Không thấy tin ghim trong phần đang tải — thử cuộn lên để tải thêm lịch sử.'
+          );
+        }
+        return false;
       }
       if (highlightClearTimerRef.current) {
         clearTimeout(highlightClearTimerRef.current);
@@ -1180,9 +1213,40 @@ export default function ExchangeChatScreen() {
         setHighlightedMessageId(null);
         highlightClearTimerRef.current = null;
       }, 1200);
+      return true;
     },
     [reversedChatRows]
   );
+
+  /**
+   * Mở từ thông báo: cuộn tới tin nhắn đích ngay khi danh sách đã dựng xong, đúng một lần.
+   * Chờ theo `reversedChatRows` chứ không gọi thẳng trong `loadExistingThread` vì lúc đó
+   * FlatList chưa có hàng nào để `scrollToIndex` bám vào.
+   */
+  useEffect(() => {
+    const mid = pendingFocusMessageIdRef.current;
+    if (!mid || loading || !reversedChatRows.length) return;
+    const target = normalizeMongoId(mid);
+    const present = reversedChatRows.some(
+      (r) => r.kind === 'message' && normalizeMongoId(r.message._id) === target
+    );
+    if (!present) return;
+    // Chỉ xoá hàng đợi khi ĐÃ cuộn được: tin nhắn mới về trong lúc chờ sẽ đổi
+    // `reversedChatRows` → cleanup huỷ timer này, effect chạy lại và hẹn lại với danh sách mới.
+    const timer = setTimeout(() => {
+      if (scrollToMessage(mid)) {
+        pendingFocusMessageIdRef.current = null;
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [loading, reversedChatRows, scrollToMessage]);
+
+  /** Điều hướng lại vào cùng màn với tin khác (bấm thông báo thứ hai) → xếp hàng cuộn mới. */
+  useEffect(() => {
+    if (focusMessageIdFromRoute) {
+      pendingFocusMessageIdRef.current = focusMessageIdFromRoute;
+    }
+  }, [focusMessageIdFromRoute]);
 
   return (
     <ImageBackground
@@ -1271,7 +1335,9 @@ export default function ExchangeChatScreen() {
           {!loading && conversation?.pinnedMessage ? (
             <PinnedMessageBanner
               pinnedMessage={conversation.pinnedMessage}
-              onPress={() => scrollToPinnedMessage(conversation.pinnedMessage!.messageId)}
+              onPress={() =>
+                scrollToMessage(conversation.pinnedMessage!.messageId, { alertWhenMissing: true })
+              }
               showClose={!locked}
               onUnpin={
                 locked ? undefined : () => {

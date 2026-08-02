@@ -423,18 +423,23 @@ export default function ExchangeListScreen() {
             );
             return [{ ...conversation, unreadCount }, ...prev];
           }
-          return prev.map((item) => {
-            if (normalizeMongoId(item._id) !== conversationId) return item;
-            const unreadCount = duplicateEvent
-              ? Math.max(0, Number(item.unreadCount ?? 0))
-              : mergeUnreadCountOnSocketMessage(
-                  conversation,
-                  item,
-                  fromTeacherSelf,
-                  viewingThisThread
-                );
-            return { ...conversation, unreadCount };
-          });
+          const previous = prev[idx];
+          const unreadCount = duplicateEvent
+            ? Math.max(0, Number(previous.unreadCount ?? 0))
+            : mergeUnreadCountOnSocketMessage(
+                conversation,
+                previous,
+                fromTeacherSelf,
+                viewingThisThread
+              );
+          const next = { ...conversation, unreadCount };
+          // Sự kiện phát trùng: chỉ làm tươi nội dung, GIỮ NGUYÊN vị trí — hội thoại khác có thể
+          // đã nhận tin mới hơn trong lúc đó, đẩy lại sẽ chèn sai thứ tự.
+          if (duplicateEvent) return prev.map((item, i) => (i === idx ? next : item));
+          // Có tin mới → đẩy hội thoại lên đầu. Server chỉ sắp xếp lúc TẢI TRANG còn `sorted` ở
+          // client chỉ đẩy hội thoại đã ghim lên đầu, nên realtime phải tự đẩy: thay tại chỗ thì
+          // dòng vừa có tin mới nhất vẫn nằm nguyên vị trí cũ.
+          return [next, ...prev.slice(0, idx), ...prev.slice(idx + 1)];
         });
       };
 
@@ -570,7 +575,8 @@ export default function ExchangeListScreen() {
       );
     }
     // Khớp web ChatConversationList: server đã sort (chưa đọc → lastMessage.createdAt → updatedAt);
-    // client chỉ đẩy hội thoại đã ghim lên đầu, giữ thứ tự tương đối còn lại.
+    // client chỉ đẩy hội thoại đã ghim lên đầu, giữ thứ tự tương đối còn lại. Hội thoại vừa có tin
+    // mới do handler `chat:message` tự đưa lên đầu `items` — không sort lại theo thời gian ở đây.
     return list.sort(
       (a, b) => Number(pinnedIds.has(String(b._id))) - Number(pinnedIds.has(String(a._id)))
     );
