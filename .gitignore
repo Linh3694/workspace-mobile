@@ -52,3 +52,26 @@ src/assets/theme/christmas/backup-*.png
 # Cache
 .cache/
 .eslintcache
+# ===== Bổ sung GD0-03 (03/08/2026) =====
+.expo/
+android/app/build/
+ios/build/
+ios/Pods/
+
+# Firebase config: mặc định không commit; sau GĐ3-E sẽ commit có chủ đích
+# theo từng tenant tại tenants/<slug>/ — xem PLAN-01 §4.2
+google-services.json
+GoogleService-Info.plist
+!tenants/*/google-services.json
+!tenants/*/GoogleService-Info.plist
+
+# File tạm của editor
+*.bak
+*.swp
+*.swo
+*~
+
+# Env — CHỈ .env.example được commit
+.env
+.env.*
+!.env.example
