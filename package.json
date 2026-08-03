@@ -27,7 +27,10 @@
     "release:both:build-only": "./scripts/release-both.sh --no-submit",
     "clean-all": "rm -rf node_modules && npm install && expo start --clear",
     "check-apple-signin": "node scripts/check-apple-signin.js",
-    "generate-icons": "node scripts/generate-app-icons.js"
+    "generate-icons": "node scripts/generate-app-icons.js",
+    "brand-lint": "node tools/brand-lint/brand-lint.mjs",
+    "brand-lint:count": "node tools/brand-lint/brand-lint.mjs --mode=count",
+    "brand-lint:full": "node tools/brand-lint/brand-lint.mjs --mode=full"
   },
   "dependencies": {
     "@callstack/liquid-glass": "^0.6.0",
