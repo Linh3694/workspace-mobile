@@ -11,12 +11,10 @@ import { Ionicons } from '@expo/vector-icons';
 import ConfirmModal from '../../components/ConfirmModal';
 import Wismelogo from '../../assets/wisme.svg';
 import { getAvatar } from '../../utils/avatar';
-import { BASE_URL } from '../../config/constants.js';
 // FaceID icon removed per requirement
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import axios from 'axios';
 import StandardHeader from '../../components/Common/StandardHeader';
 import SelectModal from '../../components/SelectModal';
 import attendanceService from '../../services/attendanceService';
