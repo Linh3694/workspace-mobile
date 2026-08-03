@@ -1,7 +1,7 @@
 import './src/utils/axiosDefaults';
 import React, { useCallback, useEffect, useRef } from 'react';
 // @ts-ignore
-import { View, StyleSheet, Platform, Text } from 'react-native';
+import { View, StyleSheet, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import AppNavigator, { RootStackParamList } from './src/navigation/AppNavigator';
@@ -15,7 +15,6 @@ import * as Notifications from 'expo-notifications';
 import { createNavigationContainerRef, NavigationContainer } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_BASE_URL } from './src/config/constants';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ToastProvider, ToastInitializer, toast } from './src/components/Toast';
 import * as SplashScreen from 'expo-splash-screen';
@@ -23,9 +22,7 @@ import SvgSplash from './src/assets/splash.svg';
 // @ts-ignore
 import { Image } from 'react-native';
 import * as Linking from 'expo-linking';
-import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import axios from 'axios';
 import * as Font from 'expo-font';
 
 import './global.css';
@@ -186,116 +183,20 @@ export default function App() {
       handleNotificationResponse
     );
 
-    // Setup push notifications registration
-    const setupPushNotifications = async () => {
-      if (!Device.isDevice) {
-        console.log('Thiết bị giả lập không hỗ trợ thông báo đẩy!');
-        return;
-      }
-
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-
-      if (finalStatus !== 'granted') {
-        console.log('Bạn cần cấp quyền thông báo để nhận thông báo!');
-        return;
-      }
-
+    // Đăng ký push token: ủy quyền toàn bộ cho pushNotificationService (đường duy nhất).
+    // Service tự xin quyền, lấy Expo token, đăng ký notification-service + Frappe;
+    // nếu lúc này chưa có authToken, AuthContext sẽ gọi initialize() lại sau khi login
+    // và service tự đăng ký nốt phần backend.
+    (async () => {
       try {
-        const projectId = Constants?.expoConfig?.extra?.eas?.projectId;
-        if (!projectId) {
-          console.error('Không tìm thấy projectId trong app.json');
-          return;
-        }
-
-        // Xác định app type (expo-go vs standalone) - QUAN TRỌNG cho iOS TestFlight
-        const isStandalone = Constants.appOwnership !== 'expo';
-        const appType = isStandalone ? 'standalone' : 'expo-go';
-
-        console.log(`📱 App.tsx - App type: ${appType}, ProjectId: ${projectId}`);
-
-        const token = await Notifications.getExpoPushTokenAsync({ projectId });
-        console.log(`📱 App.tsx Push token (${appType}):`, token.data);
-        await AsyncStorage.setItem('pushToken', token.data);
-        await AsyncStorage.setItem('pushTokenAppType', appType);
-
-        const registerDeviceToken = async (tokenStr: string) => {
-          try {
-            const authToken = await AsyncStorage.getItem('authToken');
-            if (!authToken) {
-              console.log('⏰ User chưa đăng nhập, sẽ thử lại sau...');
-              setTimeout(() => registerDeviceToken(tokenStr), 5000);
-              return;
-            }
-
-            const platform =
-              Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'expo';
-            const deviceName =
-              Device.deviceName || `${Device.brand || 'Unknown'} ${Device.modelName || 'Device'}`;
-            const osVersion = Device.osVersion || 'Unknown';
-            const appVersion =
-              Constants.expoConfig?.version || (Constants.manifest as any)?.version || '1.0.0';
-
-            // Tạo unique device identifier để phân biệt Expo Go và standalone app
-            const deviceId = `${Device.modelId || Device.modelName || 'unknown'}-${Platform.OS}-${appType}`;
-
-            const deviceInfo = {
-              deviceToken: tokenStr,
-              platform: platform,
-              deviceName: deviceName,
-              os: Platform.OS,
-              osVersion: osVersion,
-              appVersion: appVersion,
-              language: 'vi',
-              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-              // Thêm thông tin để phân biệt app type
-              appType: appType, // 'standalone' cho TestFlight/App Store, 'expo-go' cho Expo Go
-              deviceId: deviceId, // Unique ID để backend phân biệt các devices
-              // Bundle theo đúng platform — Android là package, iOS là bundleIdentifier
-              bundleId:
-                Platform.OS === 'android'
-                  ? Constants.expoConfig?.android?.package || 'com.hailinh.n23.workspace'
-                  : Constants.expoConfig?.ios?.bundleIdentifier || 'com.wellspring.workspace',
-            };
-
-            console.log(
-              '📤 App.tsx Registering device with info:',
-              JSON.stringify(deviceInfo, null, 2)
-            );
-
-            const response = await axios.post(
-              `${API_BASE_URL}/api/method/erp.api.erp_sis.mobile_push_notification.register_device_token`,
-              deviceInfo,
-              {
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${authToken}`,
-                },
-              }
-            );
-
-            console.log(
-              `✅ App.tsx Push token registered successfully for ${appType}:`,
-              response.data
-            );
-          } catch (error) {
-            console.error('❌ App.tsx Lỗi đăng ký token thiết bị:', error);
-          }
-        };
-
-        // Register with a short delay to give app time to set auth token
-        setTimeout(() => registerDeviceToken(token.data), 2000);
+        const { default: pushNotificationService } = await import(
+          './src/services/pushNotificationService'
+        );
+        await pushNotificationService.initialize();
       } catch (error) {
         console.error('❌ Lỗi khi thiết lập thông báo đẩy:', error);
       }
-    };
-
-    setupPushNotifications();
+    })();
 
     // Check for initial notification that opened the app
     (async () => {

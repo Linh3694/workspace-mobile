@@ -89,7 +89,15 @@ class PushNotificationService {
 
   async initialize(): Promise<string | null> {
     if (this.isInitialized) {
-      return await AsyncStorage.getItem('pushToken');
+      // Đã init (vd: App.tsx gọi trước khi login) nhưng có thể CHƯA đăng ký được
+      // với backend vì lúc đó thiếu authToken → thử đăng ký lại khi được gọi lần nữa
+      // (AuthContext gọi sau khi login thành công).
+      const cachedToken = await AsyncStorage.getItem('pushToken');
+      const registered = (await AsyncStorage.getItem('pushTokenRegistered')) === 'true';
+      if (cachedToken && !registered) {
+        await this.registerPushToken(cachedToken);
+      }
+      return cachedToken;
     }
 
     try {

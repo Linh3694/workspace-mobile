@@ -283,7 +283,6 @@ const ProfileScreen = () => {
         appVersion: appVersion,
         language: 'vi',
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-        jwt_token: authToken, // Include JWT token in payload for authentication
         // Thêm thông tin để phân biệt app type
         appType: appType, // 'standalone' cho TestFlight/App Store, 'expo-go' cho Expo Go
         deviceId: deviceId, // Unique ID để backend phân biệt các devices
@@ -294,25 +293,18 @@ const ProfileScreen = () => {
             : Constants.expoConfig?.ios?.bundleIdentifier || 'com.wellspring.workspace',
       };
 
-      const apiUrl = `${BASE_URL}/api/method/erp.api.erp_sis.mobile_push_notification.register_device_token`;
-      console.log('📡 FULL API URL being called:', apiUrl);
-      console.log(`📤 Request payload (${appType}):`, JSON.stringify(deviceInfo, null, 2));
-      console.log('🔑 Auth token (first 50 chars):', authToken.substring(0, 50) + '...');
-
-      const response = await axios.post(apiUrl, deviceInfo, {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-      });
+      // Đường đăng ký DUY NHẤT của app: notification-service + dual-write Frappe
+      // (xem notificationApiClient.registerDeviceOnNotificationService)
+      const {
+        registerDeviceOnNotificationService,
+      } = require('../../services/notificationApiClient');
+      const response = await registerDeviceOnNotificationService(deviceInfo);
 
       console.log(`✅ Push token registered successfully for ${appType}`);
-      console.log('📥 Server response:', JSON.stringify(response.data, null, 2));
 
-      // Kiểm tra response có success không
-      if (response.data?.success === false) {
-        console.error('❌ Server returned error:', response.data?.message);
-        Alert.alert(t('common.error'), response.data?.message || 'Đăng ký token thất bại');
+      if (!(response?.status >= 200 && response?.status < 300)) {
+        console.error('❌ Server returned error:', response?.status, response?.data);
+        Alert.alert(t('common.error'), 'Đăng ký token thất bại');
         return false;
       }
 
@@ -347,22 +339,18 @@ const ProfileScreen = () => {
         return;
       }
 
-      console.log('🔔 Unregistering push token with notification service via nginx proxy');
+      console.log('🔔 Unregistering push token (notification-service + Frappe)');
 
-      await axios.post(
-        `${BASE_URL}/api/method/erp.api.erp_sis.mobile_push_notification.unregister_device_token`,
-        { deviceToken: pushToken },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authToken}`,
-          },
-        }
-      );
-      console.log('✅ Push token unregistered successfully from notification service');
+      // Đường hủy đăng ký chung — gỡ token ở cả notification-service lẫn Frappe
+      const {
+        unregisterDeviceOnNotificationService,
+      } = require('../../services/notificationApiClient');
+      await unregisterDeviceOnNotificationService(pushToken);
+      console.log('✅ Push token unregistered successfully');
 
       // Luôn xóa token khỏi AsyncStorage, dù API có fail hay không
       await AsyncStorage.removeItem('pushToken');
+      await AsyncStorage.removeItem('pushTokenRegistered');
       console.log('✅ Push token removed from local storage');
     } catch (error) {
       console.error('❌ Lỗi hủy đăng ký token thiết bị:', error);

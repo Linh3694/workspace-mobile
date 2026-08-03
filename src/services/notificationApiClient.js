@@ -4,11 +4,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 
-import {
-  DEVICE_TOKEN_DUAL_WRITE,
-  NOTIFICATION_API_BASE_URL,
-  API_BASE_URL,
-} from '../config/constants';
+import { NOTIFICATION_API_BASE_URL, API_BASE_URL } from '../config/constants';
 
 const FRAPPE_REGISTER =
   '/api/method/erp.api.erp_sis.mobile_push_notification.register_device_token';
@@ -31,7 +27,7 @@ export async function notificationRequest(config) {
   });
 }
 
-/** Đăng ký Expo token vào Postgres notification-service (+ optional dual-write Frappe). */
+/** Đăng ký Expo token vào Postgres notification-service + Frappe (dual-write). */
 export async function registerDeviceOnNotificationService(deviceInfo) {
   const res = await notificationRequest({
     method: 'POST',
@@ -39,19 +35,20 @@ export async function registerDeviceOnNotificationService(deviceInfo) {
     data: deviceInfo,
   });
 
-  if (DEVICE_TOKEN_DUAL_WRITE) {
-    const authToken = await AsyncStorage.getItem('authToken');
-    if (authToken) {
-      try {
-        await axios.post(`${API_BASE_URL}${FRAPPE_REGISTER}`, deviceInfo, {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-            'Content-Type': 'application/json',
-          },
-        });
-      } catch (_e) {
-        /* không chặn đường chính */
-      }
+  // Luôn dual-write Frappe: hiện Frappe là nơi gửi Expo push chính (attendance,
+  // contact log...), nên token phải tồn tại ở cả hai store. Đây là đường đăng ký
+  // DUY NHẤT của app — App.tsx / ProfileScreen không tự gọi Frappe nữa.
+  const authToken = await AsyncStorage.getItem('authToken');
+  if (authToken) {
+    try {
+      await axios.post(`${API_BASE_URL}${FRAPPE_REGISTER}`, deviceInfo, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+    } catch (_e) {
+      /* không chặn đường chính */
     }
   }
 
