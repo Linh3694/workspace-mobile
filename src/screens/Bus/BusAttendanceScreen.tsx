@@ -1,6 +1,6 @@
 /**
  * Bus Attendance Screen
- * Face recognition and manual attendance for bus students
+ * Điểm danh thủ công học sinh trên chuyến xe bus
  */
 // @ts-nocheck
 
