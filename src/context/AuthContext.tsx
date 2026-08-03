@@ -243,8 +243,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const logout = useCallback(async () => {
     try {
       setLoading(true);
-      // Cleanup push notifications
+      // Cleanup push notifications — PHẢI unregister token trên backend TRƯỚC khi
+      // xoá authToken, nếu không token vẫn active và user cũ tiếp tục nhận push.
       try {
+        const pushToken = await AsyncStorage.getItem('pushToken');
+        if (pushToken) {
+          try {
+            const {
+              unregisterDeviceOnNotificationService,
+            } = require('../services/notificationApiClient');
+            await unregisterDeviceOnNotificationService(pushToken);
+            console.log('✅ [logout] Push token unregistered on backend');
+          } catch (unregError) {
+            console.warn('⚠️ [logout] Failed to unregister push token:', unregError);
+          }
+        }
         pushNotificationService.cleanup();
         await AsyncStorage.removeItem('pushToken');
         await AsyncStorage.removeItem('pushTokenRegistered');

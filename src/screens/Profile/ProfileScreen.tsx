@@ -287,7 +287,11 @@ const ProfileScreen = () => {
         // Thêm thông tin để phân biệt app type
         appType: appType, // 'standalone' cho TestFlight/App Store, 'expo-go' cho Expo Go
         deviceId: deviceId, // Unique ID để backend phân biệt các devices
-        bundleId: Constants.expoConfig?.ios?.bundleIdentifier || 'com.wellspring.workspace',
+        // Bundle theo đúng platform — Android là package, iOS là bundleIdentifier
+        bundleId:
+          Platform.OS === 'android'
+            ? Constants.expoConfig?.android?.package || 'com.hailinh.n23.workspace'
+            : Constants.expoConfig?.ios?.bundleIdentifier || 'com.wellspring.workspace',
       };
 
       const apiUrl = `${BASE_URL}/api/method/erp.api.erp_sis.mobile_push_notification.register_device_token`;

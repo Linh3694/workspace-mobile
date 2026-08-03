@@ -65,7 +65,10 @@ export async function unregisterDeviceOnNotificationService(deviceToken) {
     data: deviceToken ? { deviceToken } : {},
   });
 
-  if (DEVICE_TOKEN_DUAL_WRITE && deviceToken) {
+  // Luôn unregister cả phía Frappe: App.tsx đăng ký thẳng vào Frappe (không phụ thuộc
+  // DEVICE_TOKEN_DUAL_WRITE), nên nếu chỉ gỡ ở notification-service thì token Frappe
+  // vẫn active và user cũ tiếp tục nhận push sau logout.
+  if (deviceToken) {
     const authToken = await AsyncStorage.getItem('authToken');
     if (authToken) {
       try {
