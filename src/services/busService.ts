@@ -1,7 +1,7 @@
 /**
  * Bus Service
  * API service for Bus module in mobile app
- * Handles daily trips, attendance, face recognition
+ * Handles daily trips and attendance
  */
 
 import axios from 'axios';
@@ -114,24 +114,6 @@ export interface TripDetailResponse {
     absent: number;
   };
   warnings: string[];
-}
-
-export interface FaceRecognitionResult {
-  recognized: boolean;
-  checked_in: boolean;
-  message: string;
-  student?: {
-    student_id: string;
-    student_code: string;
-    student_name: string;
-    class_name?: string;
-    current_status: string;
-  };
-  recognition?: {
-    similarity: number;
-    confidence: 'high' | 'medium' | 'low';
-  };
-  new_status?: string;
 }
 
 export interface LoginResponse {
@@ -415,116 +397,6 @@ class BusService {
       return {
         success: false,
         message: error.response?.data?.message || 'Không thể cập nhật trạng thái',
-      };
-    }
-  }
-
-  /**
-   * Recognize student face (without auto check-in)
-   */
-  async recognizeStudentFace(
-    imageBase64: string,
-    campusId: string,
-    schoolYearId: string,
-    tripId?: string
-  ): Promise<{ success: boolean; message?: string; data?: any }> {
-    try {
-      const config = await getAxiosConfig();
-      const response = await axios.post(
-        `${config.baseURL}${BUS_API}.face_recognition.recognize_student_face`,
-        {
-          image: imageBase64,
-          campus_id: campusId,
-          school_year_id: schoolYearId,
-          trip_id: tripId,
-        },
-        config
-      );
-
-      const result = response.data?.message || response.data;
-      return result;
-    } catch (error: any) {
-      console.error('Recognize face error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Nhận diện khuôn mặt thất bại',
-      };
-    }
-  }
-
-  /**
-   * Verify student face and auto check-in
-   */
-  async verifyAndCheckin(
-    imageBase64: string,
-    tripId: string,
-    autoCheckin: boolean = true
-  ): Promise<{ success: boolean; message?: string; data?: FaceRecognitionResult }> {
-    try {
-      console.log('========================================');
-      console.log('[BusService] 🚀 CALLING verify_and_checkin API');
-      console.log('========================================');
-      console.log(`[BusService] Trip ID: ${tripId}`);
-      console.log(`[BusService] Auto checkin: ${autoCheckin}`);
-      console.log(`[BusService] Image data length: ${imageBase64?.length || 0} chars`);
-      
-      const config = await getAxiosConfig();
-      const apiUrl = `${config.baseURL}${BUS_API}.face_recognition.verify_and_checkin`;
-      console.log(`[BusService] API URL: ${apiUrl}`);
-      
-      const response = await axios.post(
-        apiUrl,
-        {
-          image: imageBase64,
-          trip_id: tripId,
-          auto_checkin: autoCheckin,
-        },
-        config
-      );
-
-      console.log('----------------------------------------');
-      console.log('[BusService] 📥 RAW API RESPONSE:');
-      console.log('----------------------------------------');
-      console.log('[BusService] Status:', response.status);
-      console.log('[BusService] Data:', JSON.stringify(response.data, null, 2));
-      console.log('----------------------------------------');
-
-      const result = response.data?.message || response.data;
-      
-      console.log('[BusService] Extracted result:', JSON.stringify(result, null, 2));
-      
-      return result;
-    } catch (error: any) {
-      console.log('========================================');
-      console.log('[BusService] ❌ API ERROR');
-      console.log('========================================');
-      console.error('[BusService] Error:', error.message);
-      console.error('[BusService] Error status:', error.response?.status);
-      console.error('[BusService] Error response data:', JSON.stringify(error.response?.data, null, 2));
-      
-      // Get detailed error message
-      const errorData = error.response?.data;
-      let errorMessage = 'Điểm danh thất bại';
-      
-      if (errorData) {
-        console.log('[BusService] Parsing error data...');
-        if (errorData.message?.message) {
-          errorMessage = errorData.message.message;
-          console.log('[BusService] Found nested message:', errorMessage);
-        } else if (errorData.message) {
-          errorMessage = typeof errorData.message === 'string' ? errorData.message : JSON.stringify(errorData.message);
-          console.log('[BusService] Found message:', errorMessage);
-        } else if (errorData.exc_type) {
-          errorMessage = `${errorData.exc_type}: ${errorData._server_messages || ''}`;
-          console.log('[BusService] Found exception:', errorMessage);
-        }
-      }
-      
-      console.log('[BusService] Final error message:', errorMessage);
-      
-      return {
-        success: false,
-        message: errorMessage,
       };
     }
   }
