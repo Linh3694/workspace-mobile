@@ -6,8 +6,19 @@ import { resolveSocialMediaUrl } from '../../utils/resolveSocialMediaUrl';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GAP = 2; // Khoảng cách giữa các ảnh
 
+/** Một phần tử media trong bài đăng — ảnh hoặc video. */
+export interface GalleryMedia {
+  url: string;
+  kind: 'image' | 'video';
+}
+
 interface ImageGalleryProps {
-  images: string[];
+  /**
+   * Ảnh VÀ video chung một danh sách, đúng thứ tự hiển thị.
+   * Trước đây chỉ nhận ảnh nên video bị bày thành khối riêng bên dưới và không
+   * được tính vào "+N" — lệch hẳn với bản web (03/08/2026).
+   */
+  media: GalleryMedia[];
   baseUrl: string;
   onImagePress: (index: number) => void;
 }
@@ -15,6 +26,47 @@ interface ImageGalleryProps {
 /** URL hiển thị — giữ nguyên CDN signed, chỉ prefix path tương đối. */
 function mediaUri(path: string, baseUrl: string) {
   return resolveSocialMediaUrl(path, baseUrl);
+}
+
+/**
+ * Một ô trong lưới. Video KHÔNG vẽ được bằng `<Image>` nên hiện nền tối kèm
+ * biểu tượng play — bấm vào vẫn mở trình xem đầy đủ như ảnh.
+ *
+ * (Server có sinh sẵn ảnh poster `_poster.webp` cho video, nhưng `Post.videos`
+ * là mảng chuỗi thuần nên chưa có chỗ lưu đường dẫn poster — xem SIS-174.)
+ */
+function MediaTile({
+  item,
+  baseUrl,
+  width,
+  height,
+}: {
+  item: GalleryMedia;
+  baseUrl: string;
+  width: number;
+  height: number;
+}) {
+  if (item.kind === 'video') {
+    return (
+      <View style={{ width, height, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' }}>
+        <View
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 24,
+            backgroundColor: 'rgba(255,255,255,0.9)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ color: '#111', fontSize: 20, marginLeft: 3 }}>▶</Text>
+        </View>
+      </View>
+    );
+  }
+  return (
+    <Image source={{ uri: mediaUri(item.url, baseUrl) }} style={{ width, height }} resizeMode="cover" />
+  );
 }
 
 /**
@@ -27,14 +79,15 @@ function mediaUri(path: string, baseUrl: string) {
  * - 4 ảnh: Grid 2x2
  * - 5+ ảnh: Grid 2x2, ô cuối hiển thị "+N"
  */
-const ImageGallery: React.FC<ImageGalleryProps> = ({ images, baseUrl, onImagePress }) => {
+const ImageGallery: React.FC<ImageGalleryProps> = ({ media, baseUrl, onImagePress }) => {
   const [imageAspectRatios, setImageAspectRatios] = useState<{ [key: number]: number }>({});
 
   // Lấy aspect ratio của ảnh đầu tiên (cho layout 1 ảnh)
   useEffect(() => {
-    if (images.length === 1) {
+    // Chỉ đo tỉ lệ khi phần tử duy nhất là ẢNH — Image.getSize không đọc được video.
+    if (media.length === 1 && media[0].kind === 'image') {
       Image.getSize(
-        mediaUri(images[0], baseUrl),
+        mediaUri(media[0].url, baseUrl),
         (width, height) => {
           setImageAspectRatios({ 0: width / height });
         },
@@ -44,12 +97,12 @@ const ImageGallery: React.FC<ImageGalleryProps> = ({ images, baseUrl, onImagePre
         }
       );
     }
-  }, [images, baseUrl]);
+  }, [media, baseUrl]);
 
-  if (images.length === 0) return null;
+  if (media.length === 0) return null;
 
   // 1 ẢNH - Full width, giữ tỉ lệ gốc
-  if (images.length === 1) {
+  if (media.length === 1) {
     const aspectRatio = imageAspectRatios[0] || 4 / 3;
     const maxHeight = 400;
     const calculatedHeight = SCREEN_WIDTH / aspectRatio;
@@ -57,52 +110,31 @@ const ImageGallery: React.FC<ImageGalleryProps> = ({ images, baseUrl, onImagePre
 
     return (
       <TouchableOpacity onPress={() => onImagePress(0)} activeOpacity={0.9}>
-        <Image
-          source={{ uri: mediaUri(images[0], baseUrl) }}
-          style={{
-            width: SCREEN_WIDTH,
-            height: finalHeight,
-          }}
-          resizeMode="cover"
-        />
+        <MediaTile item={media[0]} baseUrl={baseUrl} width={SCREEN_WIDTH} height={finalHeight} />
       </TouchableOpacity>
     );
   }
 
   // 2 ẢNH - 2 cột bằng nhau
-  if (images.length === 2) {
+  if (media.length === 2) {
     const imageWidth = (SCREEN_WIDTH - GAP) / 2;
     const imageHeight = imageWidth * 1.2; // Tỉ lệ 1:1.2
 
     return (
       <View style={{ flexDirection: 'row' }}>
         <TouchableOpacity onPress={() => onImagePress(0)} activeOpacity={0.9}>
-          <Image
-            source={{ uri: mediaUri(images[0], baseUrl) }}
-            style={{
-              width: imageWidth,
-              height: imageHeight,
-            }}
-            resizeMode="cover"
-          />
+          <MediaTile item={media[0]} baseUrl={baseUrl} width={imageWidth} height={imageHeight} />
         </TouchableOpacity>
         <View style={{ width: GAP }} />
         <TouchableOpacity onPress={() => onImagePress(1)} activeOpacity={0.9}>
-          <Image
-            source={{ uri: mediaUri(images[1], baseUrl) }}
-            style={{
-              width: imageWidth,
-              height: imageHeight,
-            }}
-            resizeMode="cover"
-          />
+          <MediaTile item={media[1]} baseUrl={baseUrl} width={imageWidth} height={imageHeight} />
         </TouchableOpacity>
       </View>
     );
   }
 
   // 3 ẢNH - 1 lớn bên trái, 2 nhỏ bên phải (Facebook style)
-  if (images.length === 3) {
+  if (media.length === 3) {
     const leftWidth = (SCREEN_WIDTH - GAP) * 0.6;
     const rightWidth = (SCREEN_WIDTH - GAP) * 0.4;
     const totalHeight = leftWidth * 1.2;
@@ -112,14 +144,7 @@ const ImageGallery: React.FC<ImageGalleryProps> = ({ images, baseUrl, onImagePre
       <View style={{ flexDirection: 'row' }}>
         {/* Ảnh lớn bên trái */}
         <TouchableOpacity onPress={() => onImagePress(0)} activeOpacity={0.9}>
-          <Image
-            source={{ uri: mediaUri(images[0], baseUrl) }}
-            style={{
-              width: leftWidth,
-              height: totalHeight,
-            }}
-            resizeMode="cover"
-          />
+          <MediaTile item={media[0]} baseUrl={baseUrl} width={leftWidth} height={totalHeight} />
         </TouchableOpacity>
 
         <View style={{ width: GAP }} />
@@ -127,25 +152,11 @@ const ImageGallery: React.FC<ImageGalleryProps> = ({ images, baseUrl, onImagePre
         {/* 2 ảnh nhỏ bên phải */}
         <View>
           <TouchableOpacity onPress={() => onImagePress(1)} activeOpacity={0.9}>
-            <Image
-              source={{ uri: mediaUri(images[1], baseUrl) }}
-              style={{
-                width: rightWidth,
-                height: smallHeight,
-              }}
-              resizeMode="cover"
-            />
+            <MediaTile item={media[1]} baseUrl={baseUrl} width={rightWidth} height={smallHeight} />
           </TouchableOpacity>
           <View style={{ height: GAP }} />
           <TouchableOpacity onPress={() => onImagePress(2)} activeOpacity={0.9}>
-            <Image
-              source={{ uri: mediaUri(images[2], baseUrl) }}
-              style={{
-                width: rightWidth,
-                height: smallHeight,
-              }}
-              resizeMode="cover"
-            />
+            <MediaTile item={media[2]} baseUrl={baseUrl} width={rightWidth} height={smallHeight} />
           </TouchableOpacity>
         </View>
       </View>
@@ -155,12 +166,12 @@ const ImageGallery: React.FC<ImageGalleryProps> = ({ images, baseUrl, onImagePre
   // 4+ ẢNH - Grid 2x2
   const imageWidth = (SCREEN_WIDTH - GAP) / 2;
   const imageHeight = imageWidth;
-  const displayImages = images.slice(0, 4);
-  const remainingCount = images.length - 4;
+  const displayMedia = media.slice(0, 4);
+  const remainingCount = media.length - 4;
 
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-      {displayImages.map((image, index) => {
+      {displayMedia.map((item, index) => {
         const isRight = index % 2 === 1;
         const isBottom = index >= 2;
         const isLastWithMore = index === 3 && remainingCount > 0;
@@ -175,14 +186,7 @@ const ImageGallery: React.FC<ImageGalleryProps> = ({ images, baseUrl, onImagePre
               marginTop: isBottom ? GAP : 0,
             }}
           >
-            <Image
-              source={{ uri: mediaUri(image, baseUrl) }}
-              style={{
-                width: imageWidth,
-                height: imageHeight,
-              }}
-              resizeMode="cover"
-            />
+            <MediaTile item={item} baseUrl={baseUrl} width={imageWidth} height={imageHeight} />
 
             {/* Overlay "+N" cho ảnh cuối */}
             {isLastWithMore && (

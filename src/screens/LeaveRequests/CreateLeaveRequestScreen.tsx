@@ -33,6 +33,7 @@ import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import FilePreviewModal from './components/FilePreviewModal';
 import CustomDatePicker from '../../components/CustomDatePicker';
+import { parseServerDate } from '../../utils/dateUtils';
 
 type CreateLeaveRequestNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -153,12 +154,14 @@ const CreateLeaveRequestScreen = () => {
             setReason(leaveData.reason as any);
             setOtherReason(leaveData.other_reason || '');
             setDescription(leaveData.description || '');
-            setStartDate(leaveData.start_date ? new Date(leaveData.start_date) : new Date());
-            setEndDate(leaveData.end_date ? new Date(leaveData.end_date) : new Date());
+            // parseServerDate thay cho new Date(str): new Date('2026-08-03') là 00:00 UTC,
+            // ghi lại bằng getDate() local sẽ làm đơn tự dịch 1 ngày
+            setStartDate(parseServerDate(leaveData.start_date) ?? new Date());
+            setEndDate(parseServerDate(leaveData.end_date) ?? new Date());
 
             // Check if can edit (within 24 hours)
             if (leaveData.submitted_at) {
-              const submitted = new Date(leaveData.submitted_at);
+              const submitted = parseServerDate(leaveData.submitted_at) ?? new Date();
               setSubmittedAt(submitted);
               const hoursDiff = differenceInHours(new Date(), submitted);
 

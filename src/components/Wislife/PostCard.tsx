@@ -60,7 +60,7 @@ interface PostCardProps {
   enableAuthorActions?: boolean;
 }
 
-const { width } = Dimensions.get('window');
+const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Gradient Text Component đơn giản
 const GradientText: React.FC<{ children: string; style?: any }> = ({ children, style }) => {
@@ -85,6 +85,8 @@ const PostCard: React.FC<PostCardProps> = ({
     navigation.navigate('PostDetail', { post, onUpdate });
   };
   const [imageModalVisible, setImageModalVisible] = useState(false);
+  /** Ref để cuộn tới đúng trang khi mở — `contentOffset` không chạy trên Android. */
+  const mediaScrollRef = useRef<ScrollView>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
@@ -165,6 +167,22 @@ const PostCard: React.FC<PostCardProps> = ({
   };
 
   // Mở modal và scroll tới ảnh được click
+  /**
+   * Ảnh + video CHUNG một danh sách, đúng thứ tự web đang dùng (ảnh trước, video
+   * sau). Nhờ vậy chỉ số bấm ở lưới trỏ đúng phần tử trong trình xem, và "+N"
+   * đếm cả video thay vì bày video thành khối riêng (03/08/2026).
+   */
+  const mediaItems = useMemo(
+    () => [
+      ...post.images.map((url) => ({ url, kind: 'image' as const })),
+      ...post.videos.map((url) => ({ url, kind: 'video' as const })),
+    ],
+    [post.images, post.videos],
+  );
+
+  /** Chiều cao vùng xem media trong modal — trừ safe area trên/dưới. */
+  const mediaViewportHeight = SCREEN_HEIGHT - insets.top - insets.bottom;
+
   const openImageModal = (index: number) => {
     setSelectedImageIndex(index);
     setCurrentImageIndex(index);
@@ -487,59 +505,15 @@ const PostCard: React.FC<PostCardProps> = ({
       </TouchableOpacity>
 
       {/* Media - Facebook/Instagram Style */}
-      {(post.images.length > 0 || post.videos.length > 0) && (
+      {mediaItems.length > 0 && (
         <View className="pb-3">
-          {/* Images - Sử dụng ImageGallery component */}
-          {post.images.length > 0 && (
-            <ImageGallery
-              images={post.images}
-              baseUrl={API_BASE_URL}
-              onImagePress={openImageModal}
-            />
-          )}
+          {/* MỘT lưới cho cả ảnh lẫn video — video nằm trong "+N" như bản web */}
+          <ImageGallery
+            media={mediaItems}
+            baseUrl={API_BASE_URL}
+            onImagePress={openImageModal}
+          />
 
-          {/* Videos */}
-          {post.videos.length > 0 && (
-            <View className={post.images.length > 0 ? 'mt-2' : ''}>
-              {post.videos.slice(0, 1).map((video, index) => (
-                <View
-                  key={index}
-                  className="w-full overflow-hidden bg-black"
-                  style={{ aspectRatio: 16 / 9 }}>
-                  <Video
-                    source={{ uri: resolveSocialMediaUrl(video, API_BASE_URL) }}
-                    style={{ width: '100%', height: '100%' }}
-                    useNativeControls
-                    resizeMode={ResizeMode.CONTAIN}
-                    shouldPlay={false}
-                    isLooping={false}
-                  />
-                  {/* Tải video về máy */}
-                  <TouchableOpacity
-                    disabled={savingMedia}
-                    onPress={() => void saveMedia(video, 'video')}
-                    className="absolute right-2 top-2 h-9 w-9 items-center justify-center rounded-full bg-black/60">
-                    {savingMedia ? (
-                      <ActivityIndicator size="small" color="white" />
-                    ) : (
-                      <Ionicons name="download-outline" size={20} color="white" />
-                    )}
-                  </TouchableOpacity>
-                  {/* Toast tải video khi đang xem trên feed (không có modal để chèn) */}
-                  {!imageModalVisible && toast ? (
-                    <InlineToast
-                      key={toast.id}
-                      message={toast.message}
-                      type={toast.type}
-                      floating
-                      bottomOffset={12}
-                      onHide={hideToast}
-                    />
-                  ) : null}
-                </View>
-              ))}
-            </View>
-          )}
         </View>
       )}
 
@@ -704,7 +678,13 @@ const PostCard: React.FC<PostCardProps> = ({
                 <View className="flex-row items-center">
                   <TouchableOpacity
                     disabled={savingMedia}
-                    onPress={() => void saveMedia(post.images[currentImageIndex], 'image')}
+                    // Chỉ số giờ là của DANH SÁCH GỘP (ảnh + video), không còn là
+                    // chỉ số trong `post.images` — tra nhầm mảng thì đang xem video
+                    // thứ hai lại tải về một tấm ảnh khác hẳn.
+                    onPress={() => {
+                      const item = mediaItems[currentImageIndex];
+                      if (item) void saveMedia(item.url, item.kind);
+                    }}
                     className="mr-2 h-10 w-10 items-center justify-center rounded-full bg-black/50">
                     {savingMedia ? (
                       <ActivityIndicator size="small" color="white" />
@@ -727,41 +707,69 @@ const PostCard: React.FC<PostCardProps> = ({
               </View>
             </View>
 
-            {/* Ảnh */}
+            {/* Ảnh & video */}
             <ScrollView
+              ref={mediaScrollRef}
               horizontal
               pagingEnabled
               showsHorizontalScrollIndicator={false}
               onScroll={handleImageScroll}
               scrollEventThrottle={16}
-              contentOffset={{ x: selectedImageIndex * width, y: 0 }}
+              // `contentOffset` CHỈ chạy trên iOS — Android bỏ qua nên bấm ảnh thứ 5
+              // vẫn mở ảnh đầu. Cuộn bằng ref trong onLayout thì cả hai nền tảng
+              // đều nhảy đúng trang.
+              onLayout={() => {
+                mediaScrollRef.current?.scrollTo({
+                  x: selectedImageIndex * width,
+                  animated: false,
+                });
+              }}
               className="flex-1">
-              {post.images.map((image, index) => (
-                <View key={index} className="items-center justify-center" style={{ width }}>
-                  <Image
-                    source={{ uri: resolveSocialMediaUrl(image, API_BASE_URL) }}
-                    className="h-full w-full"
-                    resizeMode="contain"
-                  />
+              {mediaItems.map((item, index) => (
+                // PHẢI khai `height` tường minh. Trước đây ô chỉ có `width` còn ảnh
+                // lấy `h-full` (height:100%) — phần trăm của chiều cao không xác
+                // định thì ra 0, nên modal mở ra mà ảnh cao bằng không: người dùng
+                // thấy header và số trang nhưng không thấy ảnh đâu.
+                <View
+                  key={`${item.url}-${index}`}
+                  className="items-center justify-center"
+                  style={{ width, height: mediaViewportHeight }}
+                >
+                  {item.kind === 'video' ? (
+                    <Video
+                      source={{ uri: resolveSocialMediaUrl(item.url, API_BASE_URL) }}
+                      style={{ width, height: mediaViewportHeight }}
+                      useNativeControls
+                      resizeMode={ResizeMode.CONTAIN}
+                      shouldPlay={false}
+                      isLooping={false}
+                    />
+                  ) : (
+                    <Image
+                      source={{ uri: resolveSocialMediaUrl(item.url, API_BASE_URL) }}
+                      style={{ width, height: mediaViewportHeight }}
+                      resizeMode="contain"
+                    />
+                  )}
                 </View>
               ))}
             </ScrollView>
 
             {/* Page Indicator - Hiển thị khi có nhiều hơn 1 ảnh */}
-            {post.images.length > 1 && (
+            {mediaItems.length > 1 && (
               <View
                 className="absolute left-0 right-0 items-center"
                 style={{ bottom: insets.bottom + 24 }}>
                 {/* Số trang */}
                 <View className="mb-3 rounded-full bg-black/60 px-4 py-1.5">
                   <Text className="text-sm font-medium text-white">
-                    {currentImageIndex + 1} / {post.images.length}
+                    {currentImageIndex + 1} / {mediaItems.length}
                   </Text>
                 </View>
 
                 {/* Dots indicator */}
                 <View className="flex-row items-center justify-center">
-                  {post.images.map((_, index) => (
+                  {mediaItems.map((_, index) => (
                     <View
                       key={index}
                       className={`mx-1 rounded-full ${

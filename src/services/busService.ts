@@ -32,7 +32,7 @@ const getAxiosConfig = async (additionalConfig: { headers?: Record<string, strin
 // Types
 export interface BusMonitor {
   name: string;
-  monitor_code: string;
+  citizen_id: string;
   full_name: string;
   phone_number: string;
   campus_id: string;

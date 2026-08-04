@@ -1,5 +1,41 @@
+/** "YYYY-MM-DD" hoặc "YYYY-MM-DD HH:mm:ss[.ffffff]" (định dạng Frappe trả về) */
+const SERVER_DATE_RE =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?)?/;
+
+/**
+ * Dựng Date từ chuỗi server theo giờ máy, không đi qua UTC.
+ *
+ * `new Date('2026-08-03')` được JS hiểu là 00:00 UTC nên máy ở múi giờ âm hiển
+ * thị lùi 1 ngày; chuỗi "YYYY-MM-DD HH:mm:ss" thì Hermes có thể trả Invalid Date.
+ * Server gửi ngày-thuần và giờ VN dạng "wall clock" → lấy đúng thành phần y/m/d.
+ */
+export const parseServerDate = (value?: string | null): Date | null => {
+  if (!value) return null;
+
+  const trimmed = value.trim();
+  // Chuỗi có sẵn timezone (…Z hoặc …+07:00) là mốc tuyệt đối — để JS tự xử lý
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(trimmed);
+  const match = hasTimezone ? null : SERVER_DATE_RE.exec(trimmed);
+
+  if (!match) {
+    const fallback = new Date(trimmed);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
+  }
+
+  const [, y, m, d, hh, mm, ss] = match;
+  const date = new Date(
+    Number(y),
+    Number(m) - 1,
+    Number(d),
+    Number(hh ?? 0),
+    Number(mm ?? 0),
+    Number(ss ?? 0)
+  );
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
 export const formatRelativeTime = (dateString: string): string => {
-  const date = new Date(dateString);
+  const date = parseServerDate(dateString) ?? new Date(dateString);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
@@ -21,7 +57,7 @@ export const formatRelativeTime = (dateString: string): string => {
 };
 
 export const formatFullDate = (dateString: string): string => {
-  const date = new Date(dateString);
+  const date = parseServerDate(dateString) ?? new Date(dateString);
   return date.toLocaleDateString('vi-VN', {
     year: 'numeric',
     month: 'long',
@@ -32,7 +68,7 @@ export const formatFullDate = (dateString: string): string => {
 };
 
 export const formatShortDate = (dateString: string): string => {
-  const date = new Date(dateString);
+  const date = parseServerDate(dateString) ?? new Date(dateString);
   return date.toLocaleDateString('vi-VN', {
     day: '2-digit',
     month: '2-digit',

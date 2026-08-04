@@ -22,7 +22,7 @@ import { API_BASE_URL } from '../../config/constants';
 import { Ionicons, MaterialIcons, Feather, AntDesign } from '@expo/vector-icons';
 import attendanceService from '../../services/attendanceService';
 import { leaveService, type LeaveRequest } from '../../services/leaveService';
-import { formatShortDate } from '../../utils/dateUtils';
+import { formatShortDate, parseServerDate } from '../../utils/dateUtils';
 import { normalizeVietnameseName } from '../../utils/nameFormatter';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -273,8 +273,8 @@ const LeaveRequestsScreen = () => {
     const grouped: Record<string, LeaveRequest[]> = {};
 
     leaveRequests.forEach((request) => {
-      const date = new Date(request.submitted_at || request.creation);
-      const dateKey = formatShortDate(date.toISOString());
+      // Không qua toISOString(): đơn gửi sau 17h giờ VN sẽ bị xếp vào ngày hôm trước
+      const dateKey = formatShortDate(request.submitted_at || request.creation);
 
       if (!grouped[dateKey]) {
         grouped[dateKey] = [];
@@ -282,18 +282,18 @@ const LeaveRequestsScreen = () => {
       grouped[dateKey].push(request);
     });
 
-    const sortedDates = Object.keys(grouped).sort((a, b) => {
-      const dateA = new Date(a.split('/').reverse().join('-'));
-      const dateB = new Date(b.split('/').reverse().join('-'));
-      return dateB.getTime() - dateA.getTime();
-    });
+    const toTime = (value?: string | null) => parseServerDate(value)?.getTime() ?? 0;
+
+    const sortedDates = Object.keys(grouped).sort(
+      (a, b) =>
+        toTime(b.split('/').reverse().join('-')) - toTime(a.split('/').reverse().join('-'))
+    );
 
     return sortedDates.map((date) => ({
       date,
       requests: grouped[date].sort(
         (a, b) =>
-          new Date(b.submitted_at || b.creation).getTime() -
-          new Date(a.submitted_at || a.creation).getTime()
+          toTime(b.submitted_at || b.creation) - toTime(a.submitted_at || a.creation)
       ),
     }));
   };
