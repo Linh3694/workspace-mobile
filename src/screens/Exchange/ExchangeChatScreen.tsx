@@ -60,10 +60,13 @@ import {
   normalizeMongoId,
   overlayPreviewPlainText,
   replyQuoteSnippet,
+  resolveChatSenderAvatarUrl,
+  resolveChatSenderDisplayName,
   type ChatListRow,
 } from './exchangeChatThreadUtils';
 import { ChatComposerExchange } from './components/ChatComposerExchange';
 import { CreatePollSheet } from './components/CreatePollSheet';
+import { MessageReadersSheet } from './components/MessageReadersSheet';
 import { PollVotersSheet } from './components/PollVotersSheet';
 import { ReactionViewersSheet } from './components/ReactionViewersSheet';
 import { listMessageReactionViewers } from './reactionViewerModel';
@@ -116,7 +119,8 @@ function resolveBubbleAvatarUri(
   message: ChatMessage,
   isMine: boolean,
   teacherAvatar?: string | null,
-  teacherEmail?: string | null
+  teacherEmail?: string | null,
+  conversation?: ChatConversation | null
 ): string {
   if (isMine) {
     return resolveParticipantAvatarUrl(
@@ -124,8 +128,14 @@ function resolveBubbleAvatarUri(
       teacherEmail || message.senderSnapshot?.name || 'gv'
     );
   }
+  // Roster hội thoại có ảnh PH hiện tại — snapshot lúc gửi hay trống.
+  const fromRoster = resolveChatSenderAvatarUrl(conversation, {
+    avatarUrl: message.senderSnapshot?.avatarUrl,
+    email: message.senderSnapshot?.email,
+    role: message.senderSnapshot?.role,
+  });
   return resolveParticipantAvatarUrl(
-    message.senderSnapshot?.avatarUrl,
+    fromRoster,
     message.senderSnapshot?.email || message.senderSnapshot?.name || 'ph'
   );
 }
@@ -184,6 +194,7 @@ export default function ExchangeChatScreen() {
   }, [conversation?._id, conversationIdFromRoute, isDraftTeacherGuardianThread]);
 
   const convIdRef = useRef(conversationIdFromRoute);
+  const conversationRef = useRef<ChatConversation | null>(null);
 
   const teacherEmail = user?.email;
   const teacherAvatar = user?.avatar;
@@ -212,7 +223,17 @@ export default function ExchangeChatScreen() {
   const [votersSheetFor, setVotersSheetFor] = useState<string | null>(null);
   /** Tin đang mở sheet "Ai đã bày tỏ cảm xúc" (chạm chip dưới bong bóng). */
   const [reactionsSheetFor, setReactionsSheetFor] = useState<string | null>(null);
+  /** Tin đang mở sheet "Người đã đọc". */
+  const [readersSheetFor, setReadersSheetFor] = useState<string | null>(null);
   const [pendingPollIds, setPendingPollIds] = useState<Set<string>>(new Set());
+
+  /** Số thành viên trừ người gửi — mẫu số "Đã đọc N/M". */
+  const readReceiptParticipantCount = useMemo(() => {
+    const n =
+      (conversation?.teachers || []).filter((x) => !x.removedAt).length +
+      (conversation?.guardians || []).filter((x) => !x.removedAt).length;
+    return Math.max(0, n - 1);
+  }, [conversation]);
 
   /**
    * Chiều cao bàn phím trên Android — Expo SDK 54 bật edge-to-edge (`edgeToEdgeEnabled=true`) nên
@@ -253,7 +274,8 @@ export default function ExchangeChatScreen() {
   useEffect(() => {
     selectedIdRef.current = mongoConversationIdForApi;
     convIdRef.current = mongoConversationIdForApi || conversationIdFromRoute;
-  }, [mongoConversationIdForApi, conversationIdFromRoute]);
+    conversationRef.current = conversation;
+  }, [mongoConversationIdForApi, conversationIdFromRoute, conversation]);
 
   const chatListRows = useMemo(() => buildChatRows(messages, new Date()), [messages]);
 
@@ -611,7 +633,16 @@ export default function ExchangeChatScreen() {
         const key = userId || sender || name || 'peer';
         if (isTyping) {
           clearRemoteTypingTtl(key);
-          const displayName = formatChatDisplayName(name) || sender || 'Phụ huynh';
+          const portalGuardian = sender.endsWith('@parent.wellspring.edu.vn');
+          const displayName = (
+            portalGuardian
+              ? resolveChatSenderDisplayName(conversationRef.current, {
+                  name,
+                  email: sender,
+                  role: 'guardian',
+                })
+              : formatChatDisplayName(name) || sender || 'Phụ huynh'
+          ).trim();
           setTypingNames((prev) => ({ ...prev, [key]: displayName }));
           remoteTypingTtlTimersRef.current[key] = setTimeout(() => {
             delete remoteTypingTtlTimersRef.current[key];
@@ -642,6 +673,23 @@ export default function ExchangeChatScreen() {
           return;
         }
         setConversation((prev) => (prev ? { ...prev, writeMode: payload.writeMode } : prev));
+      };
+
+      // PH/GV đánh dấu đã đọc → cập nhật readBy trên tin đang mở.
+      const onChatRead = (payload: { conversationId?: string; userId?: string }) => {
+        if (normalizeMongoId(payload?.conversationId) !== normalizeMongoId(convIdRef.current)) {
+          return;
+        }
+        const readerId = normalizeMongoId(payload?.userId);
+        if (!readerId) return;
+        const readAt = new Date().toISOString();
+        setMessages((prev) =>
+          prev.map((m) => {
+            const existing = m.readBy || [];
+            if (existing.some((r) => normalizeMongoId(r.user) === readerId)) return m;
+            return { ...m, readBy: [...existing, { user: readerId, readAt }] };
+          })
+        );
       };
 
       const onConnect = () => {
@@ -681,6 +729,7 @@ export default function ExchangeChatScreen() {
       socket.on(CHAT_EVENTS.POLL_VOTERS, onPollVoters);
       socket.on(CHAT_EVENTS.PINNED, onConversationPinned);
       socket.on(CHAT_EVENTS.WRITE_MODE, onConversationWriteMode);
+      socket.on(CHAT_EVENTS.READ, onChatRead);
       socket.on(CHAT_EVENTS.TYPING, onTyping);
       socket.on('connect', onConnect);
       socket.on('chat:joined', onChatJoined);
@@ -693,6 +742,7 @@ export default function ExchangeChatScreen() {
         socket.off(CHAT_EVENTS.POLL_VOTERS, onPollVoters);
         socket.off(CHAT_EVENTS.PINNED, onConversationPinned);
         socket.off(CHAT_EVENTS.WRITE_MODE, onConversationWriteMode);
+        socket.off(CHAT_EVENTS.READ, onChatRead);
         socket.off(CHAT_EVENTS.TYPING, onTyping);
         socket.off('connect', onConnect);
         socket.off('chat:joined', onChatJoined);
@@ -1096,7 +1146,13 @@ export default function ExchangeChatScreen() {
       const msgItem = item.message;
       const isMine = isMineMessage(msgItem, teacherEmail);
       const threadMeta = messageThreadMetaById.get(msgItem._id) ?? DEFAULT_THREAD_META;
-      const avatarUri = resolveBubbleAvatarUri(msgItem, isMine, teacherAvatar, teacherEmail);
+      const avatarUri = resolveBubbleAvatarUri(
+        msgItem,
+        isMine,
+        teacherAvatar,
+        teacherEmail,
+        conversation
+      );
       const replyTarget = msgItem.replyTo?.messageId
         ? messages.find((m) => m._id === msgItem.replyTo?.messageId)
         : undefined;
@@ -1107,6 +1163,26 @@ export default function ExchangeChatScreen() {
             ? replyQuoteSnippet(replyTarget)
             : msgItem.replyTo.content
         : undefined;
+      const senderDisplayName = resolveChatSenderDisplayName(conversation, {
+        name: msgItem.senderSnapshot?.name,
+        email: msgItem.senderSnapshot?.email,
+        role: msgItem.senderSnapshot?.role,
+      });
+      const replySenderDisplayName = msgItem.replyTo
+        ? resolveChatSenderDisplayName(conversation, {
+            name: msgItem.replyTo.senderName,
+            email: replyTarget?.senderSnapshot?.email,
+            role: replyTarget?.senderSnapshot?.role,
+          })
+        : undefined;
+      // Người gửi luôn có trong readBy lúc gửi → trừ 1 khi đếm người đã đọc khác mình.
+      const othersRead = Math.max(0, (msgItem.readBy?.length || 0) - (isMine ? 1 : 0));
+      const readReceiptLabel =
+        isMine && !msgItem.recalledAt && (othersRead > 0 || readReceiptParticipantCount > 0)
+          ? readReceiptParticipantCount > 0
+            ? `Đã đọc ${othersRead}/${readReceiptParticipantCount}`
+            : `Đã đọc ${othersRead}`
+          : undefined;
 
       return (
         <ExchangeMessageBubble
@@ -1120,6 +1196,10 @@ export default function ExchangeChatScreen() {
           threadMeta={threadMeta}
           avatarUri={avatarUri}
           replyQuoteContent={replyQuoteContent}
+          senderDisplayName={senderDisplayName}
+          replySenderDisplayName={replySenderDisplayName}
+          readReceiptLabel={readReceiptLabel}
+          onOpenReaders={(m) => setReadersSheetFor(normalizeMongoId(m._id))}
           onOpenActionMenu={handleOpenActionMenu}
           pollPending={pendingPollIds.has(normalizeMongoId(msgItem._id))}
           pollReadOnly={locked || viewerReadOnly}
@@ -1146,6 +1226,8 @@ export default function ExchangeChatScreen() {
       handleClosePoll,
       handleOpenActionMenu,
       highlightedMessageId,
+      conversation,
+      readReceiptParticipantCount,
     ]
   );
 
@@ -1403,6 +1485,15 @@ export default function ExchangeChatScreen() {
                 conversationId={mongoConversationIdForApi ? mongoConversationIdForApi : null}
                 teacherGuardianUploadContext={teacherGuardianUploadComposer}
                 replyTo={replyTo}
+                replySenderLabel={
+                  replyTo
+                    ? resolveChatSenderDisplayName(conversation, {
+                        name: replyTo.senderSnapshot?.name,
+                        email: replyTo.senderSnapshot?.email,
+                        role: replyTo.senderSnapshot?.role,
+                      })
+                    : undefined
+                }
                 onCancelReply={() => setReplyTo(null)}
                 onTyping={() => void sendTypingPulse()}
                 onTypingStop={() => void sendTypingStop()}
@@ -1418,6 +1509,15 @@ export default function ExchangeChatScreen() {
                 conversationId={mongoConversationIdForApi ? mongoConversationIdForApi : null}
                 teacherGuardianUploadContext={teacherGuardianUploadComposer}
                 replyTo={replyTo}
+                replySenderLabel={
+                  replyTo
+                    ? resolveChatSenderDisplayName(conversation, {
+                        name: replyTo.senderSnapshot?.name,
+                        email: replyTo.senderSnapshot?.email,
+                        role: replyTo.senderSnapshot?.role,
+                      })
+                    : undefined
+                }
                 onCancelReply={() => setReplyTo(null)}
                 onTyping={() => void sendTypingPulse()}
                 onTypingStop={() => void sendTypingStop()}
@@ -1438,6 +1538,18 @@ export default function ExchangeChatScreen() {
             replyQuoteContent={overlayReplyQuote}
             showSenderName={overlayShowSenderName}
             showTimestamp={overlayShowTimestamp}
+            senderDisplayName={resolveChatSenderDisplayName(conversation, {
+              name: overlayMessage.senderSnapshot?.name,
+              email: overlayMessage.senderSnapshot?.email,
+              role: overlayMessage.senderSnapshot?.role,
+            })}
+            replySenderDisplayName={
+              overlayMessage.replyTo
+                ? resolveChatSenderDisplayName(conversation, {
+                    name: overlayMessage.replyTo.senderName,
+                  })
+                : undefined
+            }
             locked={locked}
             showRecallButton={overlayShowRecallButton}
             canRecall={overlayCanRecall}
@@ -1474,6 +1586,15 @@ export default function ExchangeChatScreen() {
           viewers={reactionViewers}
           onClose={() => setReactionsSheetFor(null)}
         />
+        {readersSheetFor && mongoConversationIdForApi ? (
+          <MessageReadersSheet
+            visible
+            conversationId={mongoConversationIdForApi}
+            messageId={readersSheetFor}
+            participantCount={readReceiptParticipantCount}
+            onClose={() => setReadersSheetFor(null)}
+          />
+        ) : null}
       </SafeAreaView>
     </ImageBackground>
   );

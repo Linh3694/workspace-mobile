@@ -205,7 +205,9 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.CRM_ISSUE_DETAIL]: { issueId: string };
   [ROUTES.SCREENS.CRM_ISSUE_ADD]: undefined;
   [ROUTES.SCREENS.CRM_ISSUE_EDIT]: { issueId: string };
-  [ROUTES.SCREENS.CLASS_ACTIVITY]: undefined;
+  [ROUTES.SCREENS.CLASS_ACTIVITY]:
+    | { classId?: string; postId?: string; fromNotification?: boolean }
+    | undefined;
   [ROUTES.SCREENS.EXCHANGE_LIST]:
     | { classId?: string; schoolYearId?: string; classTitle?: string }
     | undefined;

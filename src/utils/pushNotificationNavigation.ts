@@ -316,6 +316,21 @@ export async function resolveNotificationTarget(
     }
   }
 
+  // === Bảng tin lớp (khác Wislife toàn trường đã ẩn) → Hoạt động lớp ===
+  if (
+    str(data.type) === 'wislife_class_post' ||
+    str(data.action) === 'open_class_newsfeed'
+  ) {
+    return {
+      screen: ROUTES.SCREENS.CLASS_ACTIVITY,
+      params: {
+        classId: str(data.classId) || str(data.class_id) || undefined,
+        postId: str(data.postId) || undefined,
+        fromNotification: true,
+      },
+    };
+  }
+
   // === WISLIFE — module đã ẩn khỏi bottom tab (SIS-109) ===
   if (matchesEvent(data, WISLIFE_EVENTS)) {
     return null;

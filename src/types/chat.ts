@@ -200,12 +200,50 @@ export type ChatMessage = {
     content: string;
     senderName?: string;
   };
+  /** Chỉ GV nhận từ BE — danh sách userId đã đọc. */
+  readBy?: Array<{ user: string; readAt: string }>;
   createdAt: string;
   reactions?: ChatReaction[];
   recalledAt?: string;
   recalledBy?: string;
   /** Tin bình chọn — `content` vẫn giữ "[Bình chọn] <câu hỏi>" cho preview/bản app cũ. */
   poll?: ChatPoll | null;
+};
+
+/** GET …/messages/:messageId/readers */
+export type ChatMessageReader = {
+  userId: string;
+  name: string;
+  role: 'teacher' | 'guardian' | string;
+  email?: string;
+  studentNames?: string[];
+  readAt?: string | null;
+};
+
+export type ChatMessageReadersData = {
+  messageId: string;
+  readers: ChatMessageReader[];
+  readerCount: number;
+  participantCount: number;
+};
+
+/** GET …/attachments — tệp phẳng trong hội thoại. */
+export type ChatConversationAttachmentItem = ChatAttachment & {
+  messageId: string;
+  createdAt?: string | null;
+  senderName?: string;
+  senderEmail?: string;
+  senderRole?: 'teacher' | 'guardian';
+};
+
+export type ChatConversationAttachmentsData = {
+  items: ChatConversationAttachmentItem[];
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalItems: number;
+    hasNext: boolean;
+  };
 };
 
 export type ChatEmoji = 'like' | 'love' | 'haha' | 'wow' | 'sad' | 'angry';

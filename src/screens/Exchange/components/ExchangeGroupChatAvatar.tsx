@@ -105,8 +105,43 @@ export function ExchangeGroupChatAvatar({ conversation, viewerEmails, size = 44 
 
   if (display.kind === 'single') {
     const m = display.members[0];
-    const uri = m ? memberToAvatarUri(m) : memberToAvatarUri({ key: '', emailNorm: '', name: '', role: 'guardian' });
+    const uri = m ? memberToAvatarUri(m) : '';
     const r = size / 2;
+    // Không có ảnh thật → initials tên người (tránh ui-avatars / mã lớp N0, T0…).
+    if (!uri) {
+      const rawName = String(m?.name || '').trim();
+      const initials = rawName && !rawName.includes('@')
+        ? rawName
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((w) => w.charAt(0).toUpperCase())
+            .join('') || 'PH'
+        : 'PH';
+      return (
+        <View
+          style={{
+            width: size,
+            height: size,
+            borderRadius: r,
+            backgroundColor: '#F97316',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: borderW,
+            borderColor: 'rgba(255,255,255,0.7)',
+          }}>
+          <Text
+            style={{
+              fontFamily: 'Mulish-Bold',
+              fontSize: Math.round(size * (initials.length >= 3 ? 0.28 : 0.36)),
+              color: '#fff',
+            }}
+            numberOfLines={1}>
+            {initials}
+          </Text>
+        </View>
+      );
+    }
     return (
       <View
         style={{

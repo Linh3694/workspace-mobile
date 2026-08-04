@@ -46,6 +46,7 @@ import { getPinnedIds } from './chatPinStore';
 import {
   conversationHeaderTitle,
   formatChatDisplayName,
+  resolveChatSenderDisplayName,
   isMessageFromTeacherViewer,
   mergeUnreadCountOnSocketMessage,
   normalizeMongoId,
@@ -605,7 +606,11 @@ export default function ExchangeListScreen() {
     ({ item }: { item: ChatConversation }) => {
       // Dòng phụ: chỉ tên người gửi + nội dung tin cuối (không lặp tên lớp/title).
       const lastContent = item.lastMessage?.content?.trim() || '';
-      const lastSender = formatChatDisplayName(item.lastMessage?.senderName);
+      // lastMessage thiếu role/email — suy PH từ roster (đặc biệt chat 1-1).
+      const lastSender = resolveChatSenderDisplayName(item, {
+        name: item.lastMessage?.senderName,
+        email: item.lastMessage?.senderEmail,
+      });
       const subtitle = lastContent
         ? lastSender
           ? `${lastSender}: ${lastContent}`
