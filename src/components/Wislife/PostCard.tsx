@@ -62,6 +62,13 @@ interface PostCardProps {
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+/**
+ * Khoảng chừa cho khung video trong modal, để thanh điều khiển native của iOS
+ * (nút âm lượng ở góc trên phải) không đè lên nút đóng / tải xuống của app.
+ * Xấp xỉ chiều cao header + một chút đệm.
+ */
+const VIDEO_CONTROLS_INSET = 140;
+
 // Gradient Text Component đơn giản
 const GradientText: React.FC<{ children: string; style?: any }> = ({ children, style }) => {
   return (
@@ -736,9 +743,16 @@ const PostCard: React.FC<PostCardProps> = ({
                   style={{ width, height: mediaViewportHeight }}
                 >
                   {item.kind === 'video' ? (
+                    // Thấp hơn ảnh một khoảng bằng chiều cao header.
+                    //
+                    // `useNativeControls` vẽ thanh điều khiển của iOS BÁM THEO
+                    // khung video, trong đó nút âm lượng nằm ở góc trên phải —
+                    // trùng đúng chỗ nút đóng và nút tải xuống của app, hai nút
+                    // đè lên nhau không bấm được. Khung thấp hơn thì nút âm lượng
+                    // tụt xuống dưới header, hết chồng lấn.
                     <Video
                       source={{ uri: resolveSocialMediaUrl(item.url, API_BASE_URL) }}
-                      style={{ width, height: mediaViewportHeight }}
+                      style={{ width, height: Math.max(120, mediaViewportHeight - VIDEO_CONTROLS_INSET) }}
                       useNativeControls
                       resizeMode={ResizeMode.CONTAIN}
                       shouldPlay={false}

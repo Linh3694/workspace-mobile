@@ -12,6 +12,7 @@ import {
 } from './src/utils/pushNotificationNavigation';
 import { useAuth } from './src/context/AuthContext';
 import * as Notifications from 'expo-notifications';
+import { Audio } from 'expo-av';
 import { createNavigationContainerRef, NavigationContainer } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -80,6 +81,28 @@ function PendingPushNotificationConsumer() {
 
 export default function App() {
   // Ẩn native splash ngay lập tức để hiển thị custom splash
+  /**
+   * Cấu hình phiên âm thanh MỘT LẦN lúc khởi động — nếu không, video phát KHÔNG
+   * CÓ TIẾNG khi máy đang gạt công tắc im lặng (03/08/2026).
+   *
+   * Mặc định của iOS là `playsInSilentModeIOS: false`, tức mọi âm thanh do app
+   * phát đều bị công tắc im lặng tắt. Với chuông báo thì đúng, nhưng với video
+   * người dùng CHỦ ĐỘNG bấm play thì sai — Messenger, Zalo, Instagram đều bật
+   * cờ này. Triệu chứng khó đoán vì nó im lặng ở CẢ chat lẫn Bảng tin, và người
+   * dùng thường không nghĩ tới cái gạt bên hông máy.
+   *
+   * `soundService` cũng gọi setAudioModeAsync nhưng chỉ khi phát âm báo ticket,
+   * nên video không bao giờ hưởng cấu hình đó.
+   */
+  useEffect(() => {
+    Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    }).catch((e) => console.warn('[App] không đặt được audio mode:', e));
+  }, []);
+
   useEffect(() => {
     (async () => {
       // Ẩn native splash ngay khi app mount
