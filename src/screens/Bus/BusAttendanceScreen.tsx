@@ -1,6 +1,6 @@
 /**
  * Bus Attendance Screen
- * Face recognition and manual attendance for bus students
+ * Điểm danh thủ công học sinh trên chuyến xe bus
  */
 // @ts-nocheck
 
@@ -30,7 +30,6 @@ import { toast } from '../../utils/toast';
 
 type RootStackParamList = {
   BusAttendance: { tripId: string; tripType: string };
-  FaceCamera: { tripId: string; onSuccess: () => void };
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -404,24 +403,6 @@ const BusAttendanceScreen: React.FC = () => {
         )}
       </ScrollView>
 
-      {/* Floating Face Recognition Button */}
-      <TouchableOpacity
-        style={styles.floatingFaceButton}
-        onPress={() =>
-          navigation.navigate('FaceCamera', { tripId, onSuccess: () => loadTripDetail(false) })
-        }
-        activeOpacity={0.8}>
-        <View style={styles.floatingFaceButtonInner}>
-          <Ionicons name="person" size={28} color="#FFFFFF" />
-          <View style={styles.scanCorners}>
-            <View style={[styles.scanCorner, styles.scanCornerTL]} />
-            <View style={[styles.scanCorner, styles.scanCornerTR]} />
-            <View style={[styles.scanCorner, styles.scanCornerBL]} />
-            <View style={[styles.scanCorner, styles.scanCornerBR]} />
-          </View>
-        </View>
-      </TouchableOpacity>
-
       {/* Status Change Modal */}
       <Modal
         visible={showStatusModal}
@@ -639,60 +620,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.7)',
     marginTop: 4,
     fontFamily: 'Mulish',
-  },
-  floatingFaceButton: {
-    position: 'absolute',
-    bottom: '5%',
-    alignSelf: 'center',
-    zIndex: 100,
-  },
-  floatingFaceButtonInner: {
-    width: 70,
-    height: 70,
-    borderRadius: 40,
-    backgroundColor: '#F05023',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#F05023',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  scanCorners: {
-    position: 'absolute',
-    width: 36,
-    height: 36,
-  },
-  scanCorner: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    borderColor: '#FFFFFF',
-  },
-  scanCornerTL: {
-    top: 0,
-    left: 0,
-    borderTopWidth: 2,
-    borderLeftWidth: 2,
-  },
-  scanCornerTR: {
-    top: 0,
-    right: 0,
-    borderTopWidth: 2,
-    borderRightWidth: 2,
-  },
-  scanCornerBL: {
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: 2,
-    borderLeftWidth: 2,
-  },
-  scanCornerBR: {
-    bottom: 0,
-    right: 0,
-    borderBottomWidth: 2,
-    borderRightWidth: 2,
   },
   scrollView: {
     flex: 1,

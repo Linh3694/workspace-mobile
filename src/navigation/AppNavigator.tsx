@@ -29,7 +29,6 @@ import {
   BusHomeScreen,
   BusTripDetailScreen,
   BusAttendanceScreen,
-  FaceCameraScreen,
 } from '../screens/Bus';
 import { FeedbackScreen, FeedbackDetailScreen } from '../screens/Feedback';
 import { MenuScreen } from '../screens/Menu';
@@ -137,7 +136,6 @@ export type RootStackParamList = {
   BusHome: undefined;
   BusTripDetail: { tripId: string };
   BusAttendance: { tripId: string; tripType: string };
-  FaceCamera: { tripId: string; onSuccess?: () => void };
   // Feedback Module Routes
   [ROUTES.SCREENS.FEEDBACK]: undefined;
   [ROUTES.SCREENS.FEEDBACK_DETAIL]: { feedbackId: string };
@@ -465,11 +463,6 @@ const AppNavigator = () => {
             name="BusAttendance"
             component={BusAttendanceScreen}
             options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="FaceCamera"
-            component={FaceCameraScreen}
-            options={{ headerShown: false, animation: 'slide_from_bottom' }}
           />
           {/* Feedback Module Screens */}
           <Stack.Screen
