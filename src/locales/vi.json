@@ -562,13 +562,14 @@
     "tile_desc": "Đặt phòng họp / phòng chức năng"
   },
   "class_activity": {
-    "tile_title": "Hoạt động",
-    "tile_desc": "Nhật ký lớp chủ nhiệm",
+    "tile_title": "Bảng tin",
+    "tile_desc": "Bảng tin lớp",
     "loading_classes": "Đang tải lớp…",
     "load_error": "Không tải được nhật ký lớp.",
     "no_homeroom": "Chưa có lớp chủ nhiệm/phó chủ nhiệm",
     "no_homeroom_desc": "Chỉ giáo viên được gán làm GVCN hoặc Phó chủ nhiệm trên Frappe mới dùng được mục này.",
     "pick_class": "Chọn lớp chủ nhiệm",
+    "pick_class_all": "Chọn lớp",
     "badge_homeroom": "GVCN",
     "badge_vice": "Phó GVCN",
     "tap_switch_class": "Chạm để đổi lớp",

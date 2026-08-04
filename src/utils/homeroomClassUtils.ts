@@ -6,8 +6,8 @@ export type HomeroomClassOption = {
   title: string;
   shortTitle?: string;
   schoolYearId: string;
-  /** Chủ nhiệm hoặc phó — hiển thị badge UI */
-  roleLabel: 'homeroom' | 'vice';
+  /** Chủ nhiệm / phó / BOD xem toàn trường — hiển thị badge UI */
+  roleLabel: 'homeroom' | 'vice' | 'bod';
 };
 
 function norm(s: unknown): string {
@@ -55,6 +55,33 @@ export function homeroomClassesToOptions(
       shortTitle: c.short_title ? norm(c.short_title) : undefined,
       schoolYearId: sy,
       roleLabel: role,
+    });
+  }
+  return out;
+}
+
+/**
+ * BOD xem tất cả lớp regular của năm học — roleLabel 'bod',
+ * trừ khi user chính là GVCN/phó lớp đó (giữ badge đúng vai trò).
+ */
+export function allClassesToOptions(
+  classes: TeacherClass[],
+  teacherUserId?: string,
+  teacherEmail?: string
+): HomeroomClassOption[] {
+  const out: HomeroomClassOption[] = [];
+  for (const c of classes || []) {
+    if (norm(c.class_type) && norm(c.class_type) !== 'regular') continue;
+    const sy = norm(c.school_year_id);
+    if (!sy) continue;
+    const role =
+      teacherUserId ? resolveHomeroomRole(c, teacherUserId, teacherEmail) : null;
+    out.push({
+      id: norm(c.name),
+      title: norm(c.title || c.short_title || c.name),
+      shortTitle: c.short_title ? norm(c.short_title) : undefined,
+      schoolYearId: sy,
+      roleLabel: role ?? 'bod',
     });
   }
   return out;

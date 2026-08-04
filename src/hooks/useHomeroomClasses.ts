@@ -4,7 +4,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import timetableService from '../services/timetableService';
 import type { TeacherClassesResponse } from '../services/timetableService';
-import { homeroomClassesToOptions, type HomeroomClassOption } from '../utils/homeroomClassUtils';
+import {
+  allClassesToOptions,
+  homeroomClassesToOptions,
+  type HomeroomClassOption,
+} from '../utils/homeroomClassUtils';
 
 export const STORAGE_SELECTED_CLASS_ACTIVITY_ID = 'class_activity_selected_class_v1';
 
@@ -29,26 +33,41 @@ export function useHomeroomClasses() {
     selected: null,
   });
 
+  const roles: string[] = Array.isArray(user?.roles) ? (user?.roles as string[]) : [];
+  const isBOD = roles.includes('Mobile BOD');
+
   const load = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
-      const data = await timetableService.getTeacherClasses();
-      if (!data?.teacher_user_id) {
-        setState({
-          loading: false,
-          error: null,
-          raw: data,
-          options: [],
-          selected: null,
-        });
-        return;
-      }
       const email = user?.email;
-      const options = homeroomClassesToOptions(
-        data.homeroom_classes || [],
-        data.teacher_user_id,
-        email
-      );
+      const data = await timetableService.getTeacherClasses();
+
+      let options: HomeroomClassOption[] = [];
+      if (isBOD) {
+        // Mobile BOD: xem tất cả lớp regular của năm học đang enable
+        const schoolYearId =
+          data?.school_year_id || (await timetableService.getEnabledSchoolYear());
+        if (schoolYearId) {
+          const allClasses = await timetableService.getAllClasses(schoolYearId);
+          options = allClassesToOptions(allClasses, data?.teacher_user_id, email);
+        }
+      } else {
+        if (!data?.teacher_user_id) {
+          setState({
+            loading: false,
+            error: null,
+            raw: data,
+            options: [],
+            selected: null,
+          });
+          return;
+        }
+        options = homeroomClassesToOptions(
+          data.homeroom_classes || [],
+          data.teacher_user_id,
+          email
+        );
+      }
 
       let selected: HomeroomClassOption | null = null;
       const savedId = await AsyncStorage.getItem(STORAGE_SELECTED_CLASS_ACTIVITY_ID);
@@ -79,7 +98,7 @@ export function useHomeroomClasses() {
         selected: null,
       });
     }
-  }, [user?.email]);
+  }, [user?.email, isBOD]);
 
   useEffect(() => {
     void load();
@@ -98,5 +117,7 @@ export function useHomeroomClasses() {
     reload: load,
     setSelected,
     teacherUserId: state.raw?.teacher_user_id,
+    /** Mobile BOD — xem tất cả lớp (read-only feed) */
+    isBOD,
   };
 }

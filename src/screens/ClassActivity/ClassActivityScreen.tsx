@@ -55,7 +55,11 @@ export default function ClassActivityScreen() {
     selected,
     error: classErr,
     setSelected,
+    isBOD,
   } = useHomeroomClasses();
+
+  /** BOD xem lớp không phải của mình: chỉ xem, không đăng bài */
+  const canCompose = !isBOD || selected?.roleLabel !== 'bod';
 
   const { t } = useLanguage();
 
@@ -279,9 +283,10 @@ export default function ClassActivityScreen() {
         selectedId={selected?.id}
         onClose={() => setPickerOpen(false)}
         onSelect={(o) => void setSelected(o)}
-        title={t('class_activity.pick_class')}
+        title={isBOD ? t('class_activity.pick_class_all') : t('class_activity.pick_class')}
       />
 
+      {canCompose ? (
       <TouchableOpacity
         onPress={() => setIsCreateModalVisible(true)}
         style={styles.composerRow}
@@ -298,6 +303,7 @@ export default function ClassActivityScreen() {
           </View>
         </View>
       </TouchableOpacity>
+      ) : null}
 
       <ScrollView
         style={{ flex: 1 }}

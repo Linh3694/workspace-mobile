@@ -9,13 +9,11 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../hooks/useLanguage';
 import { Ionicons } from '@expo/vector-icons';
 import ConfirmModal from '../../components/ConfirmModal';
-import Wismelogo from '../../assets/wisme.svg';
 import { getAvatar } from '../../utils/avatar';
 // FaceID icon removed per requirement
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import StandardHeader from '../../components/Common/StandardHeader';
 import SelectModal from '../../components/SelectModal';
 import attendanceService from '../../services/attendanceService';
 import {
@@ -385,8 +383,20 @@ const ProfileScreen = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white" edges={['bottom', 'left', 'right']}>
-      <StandardHeader logo={<Wismelogo width={130} height={50} />} />
+    <SafeAreaView className="flex-1 bg-white">
+      {/* Header đồng bộ Nhắn tin / Thông báo: spacer 44px hai bên + tiêu đề căn giữa */}
+      <View className="px-4 pt-4">
+        <View className="mb-4 flex-row items-center">
+          <View style={{ width: 44, height: 44 }} />
+          <Text
+            className="flex-1 text-center text-2xl text-[#0A2240]"
+            style={{ fontFamily: 'Mulish-Bold' }}
+            numberOfLines={1}>
+            {t('profile.title')}
+          </Text>
+          <View style={{ width: 44, height: 44 }} />
+        </View>
+      </View>
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}>
         {/* Profile Section */}
         <View className="mx-4 mt-6 items-center rounded-2xl p-6">
