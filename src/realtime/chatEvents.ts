@@ -11,6 +11,8 @@ export const CHAT_EVENTS = {
   PINNED: 'chat:conversation:pinned',
   /** GVCN/phó khóa nhóm về "chỉ GV được nhắn" — broadcast `writeMode`. */
   WRITE_MODE: 'chat:conversation:write_mode',
+  /** Thành viên đánh dấu đã đọc hội thoại — payload `{ conversationId, userId }`. */
+  READ: 'chat:read',
   /** Bỏ phiếu / kết thúc bình chọn — broadcast cho mọi thành viên, KHÔNG kèm `myVote`. */
   POLL: 'chat:message:poll',
   /** Danh tính người bầu của bình chọn ẩn danh — CHỈ phát vào room giáo viên. */

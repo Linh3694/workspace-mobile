@@ -25,8 +25,8 @@ import CommentsModal from '../../components/Wislife/CommentsModal';
 import PostSkeleton from '../../components/Wislife/PostSkeleton';
 import { Ionicons } from '@expo/vector-icons';
 
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { ROUTES } from '../../constants/routes';
 
@@ -47,9 +47,11 @@ import { useNewsfeedClasses } from '../../hooks/useNewsfeedClasses';
 import { ClassPickerSheet } from './components/ClassPickerSheet';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type ClassActivityRoute = NativeStackScreenProps<RootStackParamList, 'ClassActivity'>['route'];
 
 export default function ClassActivityScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<ClassActivityRoute>();
   const { user } = useAuth();
 
   const {
@@ -58,7 +60,21 @@ export default function ClassActivityScreen() {
     selected,
     error: classErr,
     setSelected,
+    isBOD,
   } = useNewsfeedClasses();
+
+  // Deep link từ thông báo bài bảng tin → chọn đúng lớp
+  useEffect(() => {
+    const classId = String(route.params?.classId || '').trim();
+    if (!classId || loadingClasses || !options.length) return;
+    const match = options.find((o) => o.id === classId);
+    if (match && selected?.id !== match.id) {
+      setSelected(match);
+    }
+  }, [route.params?.classId, loadingClasses, options, selected?.id, setSelected]);
+
+  /** BOD xem lớp không phải của mình: chỉ xem, không đăng bài */
+  const canCompose = !isBOD || selected?.roleLabel !== 'bod';
 
   const { t } = useLanguage();
 
@@ -282,9 +298,10 @@ export default function ClassActivityScreen() {
         selectedId={selected?.id}
         onClose={() => setPickerOpen(false)}
         onSelect={(o) => void setSelected(o)}
-        title={t('class_activity.pick_class')}
+        title={isBOD ? t('class_activity.pick_class_all') : t('class_activity.pick_class')}
       />
 
+      {canCompose ? (
       <TouchableOpacity
         onPress={() => setIsCreateModalVisible(true)}
         style={styles.composerRow}
@@ -301,6 +318,7 @@ export default function ClassActivityScreen() {
           </View>
         </View>
       </TouchableOpacity>
+      ) : null}
 
       <ScrollView
         style={{ flex: 1 }}

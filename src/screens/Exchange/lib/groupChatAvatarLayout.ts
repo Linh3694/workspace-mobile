@@ -83,6 +83,17 @@ export function getGroupAvatarDisplay(
   const members = listGroupChatMembers(conversation);
   const n = members.length;
 
+  // Chat 1-1 GV↔PH: luôn hiện avatar PH (đối phương).
+  // Không dựa "notSelf" theo email — roster GV thiếu/lệch email sẽ khiến
+  // `notSelf[0]` rơi vào GV (sort teachers trước) và list hiện ảnh giáo viên.
+  if (String(conversation.type || '').startsWith('teacher_guardian')) {
+    const guardian =
+      members.find((m) => m.role === 'guardian') ||
+      members.find((m) => m.emailNorm && !viewerEmailsNorm.has(m.emailNorm)) ||
+      members[0];
+    return { kind: 'single', members: guardian ? [guardian] : [] };
+  }
+
   if (n === 0) {
     return { kind: 'single', members: [] };
   }
@@ -90,8 +101,12 @@ export function getGroupAvatarDisplay(
     return { kind: 'single', members: [members[0]] };
   }
   if (n === 2) {
-    const notSelf = members.filter((m) => !m.emailNorm || !viewerEmailsNorm.has(m.emailNorm));
-    const pick = notSelf[0] ?? members[0];
+    // Ưu tiên người có email và không phải viewer; thiếu email không được đẩy lên đầu
+    // (tránh chọn nhầm GV khi email roster trống).
+    const notSelf = members.filter(
+      (m) => m.emailNorm && !viewerEmailsNorm.has(m.emailNorm)
+    );
+    const pick = notSelf[0] ?? members.find((m) => !viewerEmailsNorm.has(m.emailNorm)) ?? members[0];
     return { kind: 'single', members: pick ? [pick] : [] };
   }
   if (n === 3) {

@@ -621,11 +621,19 @@ const NotificationsScreen = () => {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white pt-6">
-      <View className="mb-5 flex-row items-center justify-center px-5">
-        <Text className="text-center text-2xl text-[#0A2240]" style={{ fontFamily: 'Mulish-Bold' }}>
-          Thông báo
-        </Text>
+    <SafeAreaView className="flex-1 bg-white">
+      {/* Header đồng bộ Nhắn tin / Hồ sơ: spacer 44px hai bên + tiêu đề căn giữa */}
+      <View className="px-4 pt-4">
+        <View className="mb-4 flex-row items-center">
+          <View style={{ width: 44, height: 44 }} />
+          <Text
+            className="flex-1 text-center text-2xl text-[#0A2240]"
+            style={{ fontFamily: 'Mulish-Bold' }}
+            numberOfLines={1}>
+            Thông báo
+          </Text>
+          <View style={{ width: 44, height: 44 }} />
+        </View>
       </View>
 
       {/* Nút đánh dấu tất cả đã đọc - chỉ hiển thị khi có thông báo chưa đọc */}

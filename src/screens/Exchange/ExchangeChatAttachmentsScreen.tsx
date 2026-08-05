@@ -1,5 +1,6 @@
 /**
  * Danh sách đầy đủ Ảnh & Video / Tệp của hội thoại — chia nhóm theo ngày gửi.
+ * Có ô tìm theo tên tệp (API server).
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -12,6 +13,7 @@ import {
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -28,7 +30,6 @@ import { saveMediaToDevice } from '../../utils/mediaDownload';
 import { ChatImagePreviewModal } from './components/ChatImagePreviewModal';
 import { ChatVideoThumbnail } from './components/ChatVideoThumbnail';
 import {
-  collectDatedAttachments,
   groupAttachmentsByDay,
   type DatedAttachment,
 } from './exchangeInfoUtils';
@@ -57,16 +58,40 @@ export default function ExchangeChatAttachmentsScreen() {
 
   const [dated, setDated] = useState<DatedAttachment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   useEffect(() => {
     let mounted = true;
+    setLoading(true);
     void (async () => {
       try {
-        const data = await chatService.getMessages(conversationId, 1, 50);
+        const data = await chatService.listAttachments(conversationId, {
+          q: debouncedQuery || undefined,
+          kind: kind === 'media' ? 'media' : 'file',
+          page: 1,
+          limit: 100,
+        });
         if (!mounted) return;
-        setDated(collectDatedAttachments(data.messages || []));
+        const items: DatedAttachment[] = (data.items || []).map((a) => ({
+          kind: a.kind,
+          url: a.url,
+          name: a.name,
+          mimeType: a.mimeType,
+          size: a.size,
+          width: a.width,
+          height: a.height,
+          createdAt: a.createdAt || new Date().toISOString(),
+        }));
+        setDated(items);
       } catch (e) {
         console.warn('[ExchangeChatAttachments] load failed', e);
+        if (mounted) setDated([]);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -74,12 +99,13 @@ export default function ExchangeChatAttachmentsScreen() {
     return () => {
       mounted = false;
     };
-  }, [conversationId]);
+  }, [conversationId, debouncedQuery, kind]);
 
   const groups = useMemo(() => {
-    const filtered = dated.filter((a) =>
-      kind === 'media' ? a.kind === 'image' || a.kind === 'video' : a.kind === 'file'
-    );
+    const filtered =
+      kind === 'media'
+        ? dated.filter((a) => a.kind === 'image' || a.kind === 'video')
+        : dated.filter((a) => a.kind === 'file');
     return groupAttachmentsByDay(filtered);
   }, [dated, kind]);
 
@@ -150,6 +176,31 @@ export default function ExchangeChatAttachmentsScreen() {
         <View style={{ width: 44 }} />
       </View>
 
+      <View className="border-b border-gray-100 px-4 py-2">
+        <View className="flex-row items-center rounded-xl bg-gray-100 px-3 py-2">
+          <Ionicons name="search" size={18} color="#9CA3AF" />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder={
+              kind === 'media'
+                ? t('exchange.media_search_placeholder') || 'Tìm tên ảnh, video…'
+                : t('exchange.file_search_placeholder') || 'Tìm tên tệp…'
+            }
+            placeholderTextColor="#9CA3AF"
+            className="ml-2 flex-1 font-mulish-medium text-sm text-[#0A2240]"
+            autoCorrect={false}
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+          />
+          {query ? (
+            <Pressable onPress={() => setQuery('')} hitSlop={8}>
+              <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+
       {loading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#FF7A00" />
@@ -162,7 +213,11 @@ export default function ExchangeChatAttachmentsScreen() {
             color="#D1D5DB"
           />
           <Text className="mt-3 text-center text-sm text-[#9CA3AF]">
-            {kind === 'media' ? t('exchange.info_no_media') : t('exchange.info_no_files')}
+            {debouncedQuery
+              ? t('exchange.attachment_search_empty') || 'Không có tệp khớp'
+              : kind === 'media'
+                ? t('exchange.info_no_media')
+                : t('exchange.info_no_files')}
           </Text>
         </View>
       ) : (

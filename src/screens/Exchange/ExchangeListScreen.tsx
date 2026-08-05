@@ -46,6 +46,7 @@ import { getPinnedIds } from './chatPinStore';
 import {
   conversationHeaderTitle,
   formatChatDisplayName,
+  resolveChatSenderDisplayName,
   isMessageFromTeacherViewer,
   mergeUnreadCountOnSocketMessage,
   normalizeMongoId,
@@ -605,7 +606,11 @@ export default function ExchangeListScreen() {
     ({ item }: { item: ChatConversation }) => {
       // Dòng phụ: chỉ tên người gửi + nội dung tin cuối (không lặp tên lớp/title).
       const lastContent = item.lastMessage?.content?.trim() || '';
-      const lastSender = formatChatDisplayName(item.lastMessage?.senderName);
+      // lastMessage thiếu role/email — suy PH từ roster (đặc biệt chat 1-1).
+      const lastSender = resolveChatSenderDisplayName(item, {
+        name: item.lastMessage?.senderName,
+        email: item.lastMessage?.senderEmail,
+      });
       const subtitle = lastContent
         ? lastSender
           ? `${lastSender}: ${lastContent}`
@@ -644,26 +649,18 @@ export default function ExchangeListScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      {/* Header giống Hoạt động / Đơn từ: back + tiêu đề căn giữa + nút Tạo mới (44px) */}
+      {/* Header: tiêu đề căn giữa, hai bên spacer 44px (màn là tab nên không có back) */}
       <View className="px-4 pt-4">
         <View className="mb-4 flex-row items-center">
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={{
-              width: 44,
-              height: 44,
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginLeft: -8,
-            }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="chevron-back" size={26} color="#0A2240" />
-          </TouchableOpacity>
-          <Text className="flex-1 text-center text-2xl font-bold text-[#0A2240]" numberOfLines={1}>
+          <View style={{ width: 44, height: 44 }} />
+          <Text
+            className="flex-1 text-center text-2xl text-[#0A2240]"
+            style={{ fontFamily: 'Mulish-Bold' }}
+            numberOfLines={1}>
             {t('exchange.title')}
           </Text>
           {/* Nút tạo mới đã chuyển xuống cuối thanh tìm kiếm (đồng bộ bản GV web). */}
-          <View style={{ width: 44 }} />
+          <View style={{ width: 44, height: 44 }} />
         </View>
         {showClassPill ? (
           <View className="mb-2 items-center px-4">

@@ -50,6 +50,13 @@ type Props = {
   threadMeta: MessageThreadMeta;
   avatarUri: string;
   replyQuoteContent?: string;
+  /** Tên người gửi đã resolve (PH → "Tên PH (PHHS + HS)"). */
+  senderDisplayName?: string;
+  /** Tên người gửi tin được trích dẫn (đã resolve). */
+  replySenderDisplayName?: string;
+  /** Nhãn "Đã đọc N/M" dưới tin của mình — chỉ GV. */
+  readReceiptLabel?: string;
+  onOpenReaders?: (message: ChatMessage) => void;
   onOpenActionMenu?: (payload: { message: ChatMessage; anchor: MessageActionAnchor }) => void;
   /** Chạm chip cảm xúc → mở danh sách người đã bày tỏ. */
   onOpenReactions?: (message: ChatMessage) => void;
@@ -90,6 +97,10 @@ export const ExchangeMessageBubble = memo(
     threadMeta,
     avatarUri,
     replyQuoteContent,
+    senderDisplayName,
+    replySenderDisplayName,
+    readReceiptLabel,
+    onOpenReaders,
     onOpenActionMenu,
     onOpenReactions,
     pollPending,
@@ -220,14 +231,14 @@ export const ExchangeMessageBubble = memo(
         ]}>
         {showSenderName && (
           <Text className="mb-1 font-mulish-bold text-sm text-[#002855]">
-            {formatChatDisplayName(message.senderSnapshot?.name)}
+            {senderDisplayName || formatChatDisplayName(message.senderSnapshot?.name)}
           </Text>
         )}
         {message.replyTo && replyQuoteContent && !recalled ? (
           <View
             className={`mb-2 rounded-lg border-l-4 px-3 py-2 ${isMine ? 'border-white/70 bg-white/10' : 'border-[#F97316] bg-white'}`}>
             <Text className={`font-mulish-bold text-sm ${isMine ? 'text-white' : 'text-[#002855]'}`}>
-              {formatChatDisplayName(message.replyTo.senderName)}
+              {replySenderDisplayName || formatChatDisplayName(message.replyTo.senderName)}
             </Text>
             <Text
               numberOfLines={3}
@@ -289,12 +300,25 @@ export const ExchangeMessageBubble = memo(
         )}
         {/* Tin bình chọn: giờ nằm trên hàng "BÌNH CHỌN" trong thẻ nên bỏ dòng giờ dưới bong bóng. */}
         {showTimestamp && !poll ? (
-          <Text
-            className={`mt-2 font-mulish-medium text-xs ${
-              isMine && !isFrameless ? 'text-white/70' : 'text-gray-400'
-            }`}>
-            {formatChatTimeVi(message.createdAt)}
-          </Text>
+          <View
+            className={`mt-2 flex-row flex-wrap items-center gap-x-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
+            <Text
+              className={`font-mulish-medium text-xs ${
+                isMine && !isFrameless ? 'text-white/70' : 'text-gray-400'
+              }`}>
+              {formatChatTimeVi(message.createdAt)}
+            </Text>
+            {isMine && readReceiptLabel ? (
+              <Pressable onPress={() => onOpenReaders?.(message)} hitSlop={8}>
+                <Text
+                  className={`font-mulish-semibold text-xs underline ${
+                    isMine && !isFrameless ? 'text-white/85' : 'text-[#0D9488]'
+                  }`}>
+                  {readReceiptLabel}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         ) : null}
       </View>
     );
@@ -402,6 +426,7 @@ export const ExchangeMessageBubble = memo(
     prev.message.content === next.message.content &&
     prev.message.createdAt === next.message.createdAt &&
     prev.message.recalledAt === next.message.recalledAt &&
+    (prev.message.readBy?.length || 0) === (next.message.readBy?.length || 0) &&
     prev.highlighted === next.highlighted &&
     chatAttachmentsKey(prev.message.attachments) === chatAttachmentsKey(next.message.attachments) &&
     chatReactionsKey(prev.message.reactions) === chatReactionsKey(next.message.reactions) &&
@@ -421,6 +446,10 @@ export const ExchangeMessageBubble = memo(
     prev.threadMeta.showTimestamp === next.threadMeta.showTimestamp &&
     prev.avatarUri === next.avatarUri &&
     prev.replyQuoteContent === next.replyQuoteContent &&
+    prev.senderDisplayName === next.senderDisplayName &&
+    prev.replySenderDisplayName === next.replySenderDisplayName &&
+    prev.readReceiptLabel === next.readReceiptLabel &&
+    prev.onOpenReaders === next.onOpenReaders &&
     prev.onReply === next.onReply &&
     prev.onOpenActionMenu === next.onOpenActionMenu &&
     prev.onOpenReactions === next.onOpenReactions

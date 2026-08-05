@@ -541,9 +541,8 @@ const HomeScreen = () => {
   const allowedKeys = new Set<string>();
 
   if (hasMobileBOD) {
-    // Mobile BOD: tất cả (trừ Hoạt động nếu user không có lớp nào được đăng bài — giống kế hoạch)
+    // Mobile BOD: tất cả tile, gồm Bảng tin (xem được mọi lớp, read-only nếu không phải GVCN/phó)
     allItems.forEach((item) => {
-      if (item.key === 'class_activity' && !hasClassActivityAccess) return;
       allowedKeys.add(item.key);
     });
   }

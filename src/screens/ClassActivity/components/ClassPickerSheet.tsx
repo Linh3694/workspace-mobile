@@ -46,7 +46,9 @@ export function ClassPickerSheet({
                   <View style={{ flex: 1 }}>
                     <Text style={styles.rowTitle}>{o.title}</Text>
                     <Text style={styles.rowSub}>
-                      {`${t(`class_activity.sheet_role_${o.roleLabel}`)} · ${o.id}`}
+                      {o.roleLabel === 'bod'
+                        ? o.id
+                        : `${t(`class_activity.sheet_role_${o.roleLabel}`)} · ${o.id}`}
                     </Text>
                   </View>
                   {active ? <Text style={styles.check}>✓</Text> : null}

@@ -572,6 +572,7 @@
     "no_access": "Chưa có lớp nào được đăng bài",
     "no_access_desc": "Mục này dành cho GVCN/Phó chủ nhiệm và giáo viên bộ môn được GVCN cấp quyền đăng bài bảng tin lớp.",
     "pick_class": "Chọn lớp",
+    "pick_class_all": "Chọn lớp",
     "badge_homeroom": "GVCN",
     "badge_vice": "Phó GVCN",
     "tap_switch_class": "Chạm để đổi lớp",

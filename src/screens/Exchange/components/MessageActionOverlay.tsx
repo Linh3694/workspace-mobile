@@ -53,6 +53,9 @@ type Props = {
   replyQuoteContent?: string;
   showSenderName: boolean;
   showTimestamp: boolean;
+  /** Tên người gửi đã resolve (PH → "Tên PH (PHHS + HS)"). */
+  senderDisplayName?: string;
+  replySenderDisplayName?: string;
   locked: boolean;
   /** Hiện nút Thu hồi (tin của mình, chưa thu hồi, nhóm không locked). */
   showRecallButton: boolean;
@@ -79,6 +82,8 @@ export function MessageActionOverlay({
   replyQuoteContent,
   showSenderName,
   showTimestamp,
+  senderDisplayName,
+  replySenderDisplayName,
   locked,
   showRecallButton,
   canRecall,
@@ -197,14 +202,14 @@ export function MessageActionOverlay({
       ]}>
       {showSenderName && !isMine ? (
         <Text className="mb-1 font-mulish-bold text-sm text-[#002855]">
-          {formatChatDisplayName(message.senderSnapshot?.name)}
+          {senderDisplayName || formatChatDisplayName(message.senderSnapshot?.name)}
         </Text>
       ) : null}
       {message.replyTo && replyQuoteContent && !recalled ? (
         <View
           className={`mb-2 rounded-lg border-l-4 px-3 py-2 ${isMine ? 'border-white/70 bg-white/10' : 'border-[#F97316] bg-white'}`}>
           <Text className={`font-mulish-bold text-sm ${isMine ? 'text-white' : 'text-[#002855]'}`}>
-            {formatChatDisplayName(message.replyTo.senderName)}
+            {replySenderDisplayName || formatChatDisplayName(message.replyTo.senderName)}
           </Text>
           <Text
             numberOfLines={1}

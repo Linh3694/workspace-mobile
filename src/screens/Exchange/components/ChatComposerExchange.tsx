@@ -54,6 +54,8 @@ export type ChatComposerExchangeProps = {
   };
   placeholder?: string;
   replyTo?: ChatMessage | null;
+  /** Tên người được trả lời đã resolve (PH → "Tên PH (PHHS + HS)"). */
+  replySenderLabel?: string;
   onCancelReply?: () => void;
   onTyping: () => void;
   onTypingStop: () => void;
@@ -127,6 +129,7 @@ export function ChatComposerExchange({
   teacherGuardianUploadContext,
   placeholder = 'Nhập tin nhắn',
   replyTo,
+  replySenderLabel,
   onCancelReply,
   onTyping,
   onTypingStop,
@@ -383,7 +386,10 @@ export function ChatComposerExchange({
         <View className="mb-2 flex-row items-center rounded-xl border border-[#0d9488]/25 bg-[#0d9488]/08 px-3 py-2">
           <View className="min-w-0 flex-1 border-l-4 border-[#0d9488] pl-2">
             <Text className="font-mulish-bold text-xs text-[#002855]/80">
-              Trả lời {formatChatDisplayName(replyTo.senderSnapshot?.name) || '…'}
+              Trả lời{' '}
+              {replySenderLabel ||
+                formatChatDisplayName(replyTo.senderSnapshot?.name) ||
+                '…'}
             </Text>
             <Text className="mt-0.5 font-mulish-medium text-sm text-[#002855]" numberOfLines={2}>
               {replySnippet}

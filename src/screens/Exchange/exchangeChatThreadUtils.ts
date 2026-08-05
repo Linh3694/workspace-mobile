@@ -259,10 +259,167 @@ export function classShortName(className?: string) {
   return (className || 'lớp').replace(/^Lớp\s+/i, '').trim();
 }
 
+type ChatGuardianSnapshot = NonNullable<ChatConversation['guardians']>[number];
+
+function normalizeNameForCompare(name?: string | null): string {
+  return normalizeVietnameseName(String(name || '').trim()).toLowerCase();
+}
+
+/** Tên học sinh gắn PH — ưu tiên studentNames, fallback studentLinks. */
+export function guardianStudentNames(guardian?: ChatGuardianSnapshot | null): string[] {
+  if (!guardian) return [];
+  const fromNames = (guardian.studentNames || [])
+    .map((n) => String(n || '').trim())
+    .filter(Boolean);
+  const source = fromNames.length
+    ? fromNames
+    : (guardian.studentLinks || [])
+        .map((l) => String(l?.studentName || '').trim())
+        .filter(Boolean);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const n of source) {
+    const k = n.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(n);
+  }
+  return out;
+}
+
+/**
+ * Nhãn PH trên UI GV: "Tên phụ huynh (PHHS Học sinh A + Học sinh B)".
+ * Không có tên HS → chỉ hiện tên PH.
+ */
+export function guardianPhhsLabel(
+  guardian?: ChatGuardianSnapshot | null,
+  fallbackName?: string | null
+): string {
+  const name =
+    formatChatDisplayName(guardian?.name || fallbackName || '') ||
+    String(guardian?.email || '').trim();
+  const students = guardianStudentNames(guardian);
+  if (name && students.length) return `${name} (PHHS ${students.join(' + ')})`;
+  if (name) return name;
+  if (students.length) return `PHHS ${students.join(' + ')}`;
+  return 'Phụ huynh';
+}
+
+export function findGuardianInConversation(
+  conversation: ChatConversation | null | undefined,
+  opts: { email?: string | null; guardianId?: string | null } = {}
+): ChatGuardianSnapshot | undefined {
+  if (!conversation?.guardians?.length) return undefined;
+  const email = String(opts.email || '')
+    .trim()
+    .toLowerCase();
+  const gid = String(opts.guardianId || '')
+    .trim()
+    .toLowerCase();
+  return conversation.guardians.find((g) => {
+    if (g.removedAt) return false;
+    if (email && String(g.email || '').trim().toLowerCase() === email) return true;
+    if (gid && String(g.guardianId || '').trim().toLowerCase() === gid) return true;
+    return false;
+  });
+}
+
+/**
+ * Ảnh người gửi trên bubble: roster theo role/email, rồi mới snapshot lúc gửi.
+ * Không fallback PH cho tin GV (tránh đè avatar giáo viên trong chat 1-1).
+ */
+export function resolveChatSenderAvatarUrl(
+  conversation: ChatConversation | null | undefined,
+  opts: {
+    avatarUrl?: string | null;
+    email?: string | null;
+    role?: string | null;
+  }
+): string {
+  const email = String(opts.email || '')
+    .trim()
+    .toLowerCase();
+  const role = String(opts.role || '')
+    .trim()
+    .toLowerCase();
+  const snap = String(opts.avatarUrl || '').trim();
+
+  const teacherByEmail = email
+    ? (conversation?.teachers || []).find(
+        (x) => !x.removedAt && String(x.email || '').trim().toLowerCase() === email
+      )
+    : undefined;
+  const guardianByEmail = email
+    ? findGuardianInConversation(conversation, { email })
+    : undefined;
+
+  // GV: chỉ roster teachers / snapshot — không đụng guardians.
+  if (role === 'teacher') {
+    const tUrl = String(teacherByEmail?.avatarUrl || '').trim();
+    return tUrl || snap;
+  }
+
+  // PH: roster guardian; chat 1-1 thiếu email thì lấy PH duy nhất.
+  if (role === 'guardian') {
+    const fromGuardian =
+      guardianByEmail ||
+      (String(conversation?.type || '').startsWith('teacher_guardian')
+        ? conversation?.guardians?.find((x) => !x.removedAt)
+        : undefined);
+    const gUrl = String(fromGuardian?.avatarUrl || '').trim();
+    return gUrl || snap;
+  }
+
+  // Role trống: khớp email roster, không fallback 1-1 (tránh nhầm GV → PH).
+  const gUrl = String(guardianByEmail?.avatarUrl || '').trim();
+  if (gUrl) return gUrl;
+  const tUrl = String(teacherByEmail?.avatarUrl || '').trim();
+  if (tUrl) return tUrl;
+  return snap;
+}
+
+/** PH → "Tên PH (PHHS + HS)"; GV giữ formatChatDisplayName. */
+export function resolveChatSenderDisplayName(
+  conversation: ChatConversation | null | undefined,
+  opts: { name?: string | null; email?: string | null; role?: string | null }
+): string {
+  const role = String(opts.role || '')
+    .trim()
+    .toLowerCase();
+  const email = String(opts.email || '')
+    .trim()
+    .toLowerCase();
+  const fallback = formatChatDisplayName(opts.name);
+  if (role === 'teacher') return fallback;
+
+  const byEmail = email ? findGuardianInConversation(conversation, { email }) : undefined;
+  const byName =
+    !byEmail && opts.name
+      ? (conversation?.guardians || []).find((g) => {
+          if (g.removedAt) return false;
+          return normalizeNameForCompare(g.name) === normalizeNameForCompare(opts.name);
+        })
+      : undefined;
+  const byDirect =
+    !byEmail &&
+    !byName &&
+    role !== 'teacher' &&
+    String(conversation?.type || '').startsWith('teacher_guardian')
+      ? conversation?.guardians?.find((x) => !x.removedAt)
+      : undefined;
+
+  const guardian = byEmail || byName || byDirect;
+  if (guardian || role === 'guardian') {
+    return guardianPhhsLabel(guardian, opts.name);
+  }
+  return fallback;
+}
+
 /** Tên phụ huynh (đối phương) cho cuộc GV↔PH — danh sách & header WIS. */
 export function teacherGuardianChatCounterpartTitle(c: ChatConversation): string {
   for (const g of c.guardians || []) {
-    const n = formatChatDisplayName(g?.name);
+    if (g.removedAt) continue;
+    const n = guardianPhhsLabel(g);
     if (n) return n;
   }
   const t = c.title?.trim() || '';

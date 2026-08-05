@@ -131,6 +131,37 @@ const timetableService = {
   },
 
   /**
+   * Lấy năm học đang enable — dùng cho BOD xem tất cả lớp
+   */
+  async getEnabledSchoolYear(): Promise<string | null> {
+    try {
+      const response = await api.get('/method/erp.api.erp_sis.discipline.get_enabled_school_year');
+      const res = response.data?.message ?? response.data;
+      if (res?.success && res?.data?.name) return String(res.data.name);
+      return null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Lấy tất cả lớp theo năm học (BOD) — erp.api.erp_sis.sis_class.get_all_classes
+   */
+  async getAllClasses(schoolYearId: string): Promise<TeacherClass[]> {
+    try {
+      const response = await api.get('/method/erp.api.erp_sis.sis_class.get_all_classes', {
+        params: { school_year_id: schoolYearId },
+      });
+      const raw = response.data;
+      const rows = raw?.message?.data ?? raw?.data ?? [];
+      return Array.isArray(rows) ? (rows as TeacherClass[]) : [];
+    } catch (error) {
+      console.error('📚 Error fetching all classes:', error);
+      return [];
+    }
+  },
+
+  /**
    * Lấy TKB theo giáo viên (chỉ các tiết giáo viên dạy) - dùng cho Sổ đầu bài
    * API: get_teacher_week - query từ SIS Teacher Timetable
    */

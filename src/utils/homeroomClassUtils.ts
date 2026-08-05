@@ -9,9 +9,9 @@ export type HomeroomClassOption = {
   schoolYearId: string;
   /**
    * Vai trò với lớp — hiển thị badge UI.
-   * `poster` = GV bộ môn được GVCN cấp quyền đăng bài, không phải chủ nhiệm.
+   * `poster` = GV bộ môn được GVCN cấp quyền đăng bài; `bod` = BOD xem toàn trường.
    */
-  roleLabel: 'homeroom' | 'vice' | 'poster';
+  roleLabel: 'homeroom' | 'vice' | 'poster' | 'bod';
 };
 
 function norm(s: unknown): string {
@@ -60,6 +60,33 @@ export function newsfeedClassesToOptions(classes: NewsfeedClass[]): HomeroomClas
       schoolYearId: sy,
       roleLabel:
         c.role === 'homeroom' ? 'homeroom' : c.role === 'vice_homeroom' ? 'vice' : 'poster',
+    });
+  }
+  return out;
+}
+
+/**
+ * BOD xem tất cả lớp regular của năm học — roleLabel 'bod',
+ * trừ khi user chính là GVCN/phó lớp đó (giữ badge đúng vai trò).
+ */
+export function allClassesToOptions(
+  classes: TeacherClass[],
+  teacherUserId?: string,
+  teacherEmail?: string
+): HomeroomClassOption[] {
+  const out: HomeroomClassOption[] = [];
+  for (const c of classes || []) {
+    if (norm(c.class_type) && norm(c.class_type) !== 'regular') continue;
+    const sy = norm(c.school_year_id);
+    if (!sy) continue;
+    const role =
+      teacherUserId ? resolveHomeroomRole(c, teacherUserId, teacherEmail) : null;
+    out.push({
+      id: norm(c.name),
+      title: norm(c.title || c.short_title || c.name),
+      shortTitle: c.short_title ? norm(c.short_title) : undefined,
+      schoolYearId: sy,
+      roleLabel: role ?? 'bod',
     });
   }
   return out;

@@ -3,7 +3,12 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '../context/AuthContext';
 import classNewsfeedService from '../services/classNewsfeedService';
-import { newsfeedClassesToOptions, type HomeroomClassOption } from '../utils/homeroomClassUtils';
+import timetableService from '../services/timetableService';
+import {
+  allClassesToOptions,
+  newsfeedClassesToOptions,
+  type HomeroomClassOption,
+} from '../utils/homeroomClassUtils';
 
 export const STORAGE_SELECTED_CLASS_ACTIVITY_ID = 'class_activity_selected_class_v1';
 
@@ -19,6 +24,7 @@ type State = {
  *
  * Gồm lớp GVCN/phó VÀ lớp mà GVCN đã cấp quyền đăng bài cho GV bộ môn — trước đây
  * hook này chỉ đọc lớp chủ nhiệm nên GV bộ môn được cấp quyền vẫn không đăng được.
+ * Mobile BOD: xem tất cả lớp regular (read-only nếu không phải GVCN/phó).
  */
 export function useNewsfeedClasses() {
   const { user } = useAuth();
@@ -29,11 +35,28 @@ export function useNewsfeedClasses() {
     selected: null,
   });
 
+  const roles: string[] = Array.isArray(user?.roles) ? (user?.roles as string[]) : [];
+  const isBOD = roles.includes('Mobile BOD');
+
   const load = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
-      const classes = await classNewsfeedService.getMyNewsfeedClasses(user?.email);
-      const options = newsfeedClassesToOptions(classes);
+      const email = user?.email;
+      let options: HomeroomClassOption[] = [];
+
+      if (isBOD) {
+        // Mobile BOD: xem tất cả lớp regular của năm học đang enable
+        const data = await timetableService.getTeacherClasses();
+        const schoolYearId =
+          data?.school_year_id || (await timetableService.getEnabledSchoolYear());
+        if (schoolYearId) {
+          const allClasses = await timetableService.getAllClasses(schoolYearId);
+          options = allClassesToOptions(allClasses, data?.teacher_user_id, email);
+        }
+      } else {
+        const classes = await classNewsfeedService.getMyNewsfeedClasses(email);
+        options = newsfeedClassesToOptions(classes);
+      }
 
       let selected: HomeroomClassOption | null = null;
       const savedId = await AsyncStorage.getItem(STORAGE_SELECTED_CLASS_ACTIVITY_ID);
@@ -62,7 +85,7 @@ export function useNewsfeedClasses() {
         selected: null,
       });
     }
-  }, [user?.email]);
+  }, [user?.email, isBOD]);
 
   useEffect(() => {
     void load();
@@ -80,5 +103,7 @@ export function useNewsfeedClasses() {
     selected: state.selected,
     reload: load,
     setSelected,
+    /** Mobile BOD — xem tất cả lớp (read-only feed nếu không phải GVCN/phó) */
+    isBOD,
   };
 }

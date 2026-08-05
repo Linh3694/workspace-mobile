@@ -6,10 +6,13 @@ import { normalizeCampusIdForBackend } from '../utils/campusIdUtils';
 import type {
   AddableTeacher,
   ChatAttachment,
+  ChatAttachmentKind,
   ChatConversation,
+  ChatConversationAttachmentsData,
   ChatConversationWriteMode,
   ChatEmoji,
   ChatMessage,
+  ChatMessageReadersData,
   ChatMessagesData,
   ChatPoll,
   ChatPollVotersData,
@@ -403,6 +406,44 @@ class ChatService {
       { method: 'POST', headers, body: '{}' }
     );
     return this.parseJson<ChatConversation>(res);
+  }
+
+  /** Danh sách người đã đọc một tin — chỉ GV (BE 403 với PH). */
+  async getMessageReaders(
+    conversationId: string,
+    messageId: string
+  ): Promise<ChatMessageReadersData> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(
+      `${BASE_URL}/api/social/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/readers`,
+      { headers }
+    );
+    return this.parseJson<ChatMessageReadersData>(res);
+  }
+
+  /** Kho tệp/ảnh/video trong hội thoại + tìm theo tên. */
+  async listAttachments(
+    conversationId: string,
+    opts: {
+      q?: string;
+      /** media = ảnh+video; còn lại theo ChatAttachmentKind */
+      kind?: ChatAttachmentKind | 'media' | '';
+      page?: number;
+      limit?: number;
+    } = {}
+  ): Promise<ChatConversationAttachmentsData> {
+    const headers = await this.getAuthHeaders();
+    const query = new URLSearchParams();
+    if (opts.q?.trim()) query.set('q', opts.q.trim());
+    if (opts.kind) query.set('kind', opts.kind);
+    if (opts.page) query.set('page', String(opts.page));
+    if (opts.limit) query.set('limit', String(opts.limit));
+    const qs = query.toString();
+    const res = await fetch(
+      `${BASE_URL}/api/social/chat/conversations/${encodeURIComponent(conversationId)}/attachments${qs ? `?${qs}` : ''}`,
+      { headers }
+    );
+    return this.parseJson<ChatConversationAttachmentsData>(res);
   }
 
   /** Ẩn hội thoại khỏi danh sách (soft — server ghi theo user). */
