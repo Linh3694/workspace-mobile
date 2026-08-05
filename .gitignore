@@ -64,6 +64,11 @@ google-services.json
 GoogleService-Info.plist
 !tenants/*/google-services.json
 !tenants/*/GoogleService-Info.plist
+# Ngoại lệ: 2 file dưới đây ĐÃ được commit và Android build cần chúng.
+# EAS Build lọc file upload theo .gitignore KỂ CẢ khi file đã được git track,
+# nên nếu bị ignore thì task :app:processReleaseGoogleServices sẽ fail.
+!/google-services.json
+!/android/app/google-services.json
 
 # File tạm của editor
 *.bak
