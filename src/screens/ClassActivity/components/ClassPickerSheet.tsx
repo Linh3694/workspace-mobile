@@ -1,6 +1,6 @@
 // @ts-nocheck
 /**
- * Bottom sheet chọn lớp chủ nhiệm — đồng bộ pattern các module khác (Modal + nền trong)
+ * Bottom sheet chọn lớp được đăng bài — đồng bộ pattern các module khác (Modal + nền trong)
  */
 import React from 'react';
 import { View, Text, Modal, Pressable, ScrollView, StyleSheet } from 'react-native';
@@ -46,9 +46,7 @@ export function ClassPickerSheet({
                   <View style={{ flex: 1 }}>
                     <Text style={styles.rowTitle}>{o.title}</Text>
                     <Text style={styles.rowSub}>
-                      {o.roleLabel === 'vice'
-                        ? `${t('class_activity.sheet_role_vice')} · ${o.id}`
-                        : `${t('class_activity.sheet_role_homeroom')} · ${o.id}`}
+                      {`${t(`class_activity.sheet_role_${o.roleLabel}`)} · ${o.id}`}
                     </Text>
                   </View>
                   {active ? <Text style={styles.check}>✓</Text> : null}

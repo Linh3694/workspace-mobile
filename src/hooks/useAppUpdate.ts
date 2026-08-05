@@ -143,6 +143,31 @@ export function useAppUpdateStatus(options: { enabled?: boolean } = {}) {
   return { status, refresh };
 }
 
+/**
+ * Mở App Store / Google Play cho phiên bản đang tra được.
+ * Ưu tiên scheme cửa hàng (mở thẳng app store), fallback link https.
+ */
+export async function openAppStore(
+  status: Pick<AppUpdateStatus, 'storeUrl' | 'storeDeepLink'> | undefined
+): Promise<void> {
+  const deepLink = status?.storeDeepLink;
+  const webUrl = status?.storeUrl;
+
+  if (deepLink) {
+    try {
+      if (await Linking.canOpenURL(deepLink)) {
+        await Linking.openURL(deepLink);
+        return;
+      }
+    } catch {
+      // Không mở được scheme cửa hàng → thử link https bên dưới
+    }
+  }
+  if (webUrl) {
+    await Linking.openURL(webUrl);
+  }
+}
+
 export interface AppUpdatePrompt {
   status: AppUpdateStatus | undefined;
   /** Có hiển thị popup lúc này không. */
@@ -206,24 +231,11 @@ export function useAppUpdatePrompt(): AppUpdatePrompt {
     void writeSnooze(record);
   }, [latestVersion, mandatory]);
 
-  const openStore = useCallback(async () => {
-    const deepLink = status?.storeDeepLink;
-    const webUrl = status?.storeUrl;
-
-    if (deepLink) {
-      try {
-        if (await Linking.canOpenURL(deepLink)) {
-          await Linking.openURL(deepLink);
-          return;
-        }
-      } catch {
-        // Không mở được scheme cửa hàng → thử link https bên dưới
-      }
-    }
-    if (webUrl) {
-      await Linking.openURL(webUrl);
-    }
-  }, [status?.storeDeepLink, status?.storeUrl]);
+  const openStore = useCallback(
+    () => openAppStore(status),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [status?.storeDeepLink, status?.storeUrl]
+  );
 
   return { status, visible, mandatory, dismiss, openStore };
 }

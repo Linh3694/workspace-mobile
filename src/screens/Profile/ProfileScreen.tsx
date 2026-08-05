@@ -18,6 +18,8 @@ import * as Device from 'expo-device';
 import StandardHeader from '../../components/Common/StandardHeader';
 import SelectModal from '../../components/SelectModal';
 import attendanceService from '../../services/attendanceService';
+import { getAppVersionFullLabel } from '../../services/appUpdateService';
+import { openAppStore, useAppUpdateStatus } from '../../hooks/useAppUpdate';
 import {
   sendTestLocalNotification,
   sendTestAttendanceNotification,
@@ -43,6 +45,9 @@ const ProfileScreen = () => {
   >([]);
   const [campusSelectorVisible, setCampusSelectorVisible] = useState(false);
   const [selectedCampus, setSelectedCampus] = useState<string | null>(null); // stores campus_id like campus-1
+  // Tra store để biết có bản mới không — quyết định hiện nút "Cập nhật" ở hàng Phiên bản.
+  const { status: updateStatus } = useAppUpdateStatus();
+  const updateAvailable = !!updateStatus?.updateAvailable;
   // Debug user avatar fields when user changes
   useEffect(() => {
     if (user) {
@@ -514,6 +519,44 @@ const ProfileScreen = () => {
                 <Ionicons name="chevron-down" size={16} color="#757575" />
               </View>
             </TouchableOpacity>
+
+            {/* Version + nút cập nhật khi store có bản mới */}
+            <View className="flex-row items-center justify-between">
+              <View className="flex-1 flex-row items-center">
+                <Ionicons name="information-circle-outline" size={20} color="#757575" />
+                <View className="ml-5 flex-1">
+                  <Text className="text-black" style={{ fontFamily: 'Mulish-Medium' }}>
+                    {t('profile.version')}
+                  </Text>
+                  {updateAvailable ? (
+                    <Text
+                      className="mt-1 text-xs text-[#F97316]"
+                      style={{ fontFamily: 'Mulish-Medium' }}>
+                      {String(t('profile.update_available')).replace(
+                        '{version}',
+                        updateStatus?.latestVersion || ''
+                      )}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+              <View className="flex-row items-center">
+                <Text className="mr-2 text-black" style={{ fontFamily: 'Mulish-Medium' }}>
+                  {getAppVersionFullLabel()}
+                </Text>
+                {updateAvailable ? (
+                  <TouchableOpacity
+                    className="rounded-full bg-[#F97316] px-3 py-1.5"
+                    onPress={() => {
+                      void openAppStore(updateStatus);
+                    }}>
+                    <Text className="text-xs text-white" style={{ fontFamily: 'Mulish-Bold' }}>
+                      {t('profile.update')}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
 
             {/* Logout */}
             <TouchableOpacity onPress={handleLogout} className="flex-row items-center">

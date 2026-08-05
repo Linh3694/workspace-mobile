@@ -110,6 +110,15 @@ export type AddableTeacher = {
   subjects?: Array<{ id?: string; title?: string }>;
 };
 
+/**
+ * Trần số đính kèm mỗi tin nhắn.
+ *
+ * PHẢI KHỚP `CHAT_MAX_ATTACHMENTS` ở `social-service/controllers/chatController.js`.
+ * Đặt cao hơn server thì phần dư bị `sanitizeIncomingAttachments` **cắt im lặng**:
+ * upload xong hết, tin nhắn chỉ lưu một phần, không lỗi nào nổi lên.
+ */
+export const CHAT_MAX_ATTACHMENTS = 30;
+
 export type ChatAttachmentKind = 'image' | 'file' | 'video';
 
 export type ChatAttachment = {

@@ -2,29 +2,29 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '../context/AuthContext';
-import timetableService from '../services/timetableService';
-import type { TeacherClassesResponse } from '../services/timetableService';
-import { homeroomClassesToOptions, type HomeroomClassOption } from '../utils/homeroomClassUtils';
+import classNewsfeedService from '../services/classNewsfeedService';
+import { newsfeedClassesToOptions, type HomeroomClassOption } from '../utils/homeroomClassUtils';
 
 export const STORAGE_SELECTED_CLASS_ACTIVITY_ID = 'class_activity_selected_class_v1';
 
 type State = {
   loading: boolean;
   error: string | null;
-  raw: TeacherClassesResponse | null;
   options: HomeroomClassOption[];
   selected: HomeroomClassOption | null;
 };
 
 /**
- * Lớp GVCN/phó + lưu lớp đã chọn (AsyncStorage)
+ * Lớp được đăng bài bảng tin + lưu lớp đã chọn (AsyncStorage).
+ *
+ * Gồm lớp GVCN/phó VÀ lớp mà GVCN đã cấp quyền đăng bài cho GV bộ môn — trước đây
+ * hook này chỉ đọc lớp chủ nhiệm nên GV bộ môn được cấp quyền vẫn không đăng được.
  */
-export function useHomeroomClasses() {
+export function useNewsfeedClasses() {
   const { user } = useAuth();
   const [state, setState] = useState<State>({
     loading: true,
     error: null,
-    raw: null,
     options: [],
     selected: null,
   });
@@ -32,23 +32,8 @@ export function useHomeroomClasses() {
   const load = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
-      const data = await timetableService.getTeacherClasses();
-      if (!data?.teacher_user_id) {
-        setState({
-          loading: false,
-          error: null,
-          raw: data,
-          options: [],
-          selected: null,
-        });
-        return;
-      }
-      const email = user?.email;
-      const options = homeroomClassesToOptions(
-        data.homeroom_classes || [],
-        data.teacher_user_id,
-        email
-      );
+      const classes = await classNewsfeedService.getMyNewsfeedClasses(user?.email);
+      const options = newsfeedClassesToOptions(classes);
 
       let selected: HomeroomClassOption | null = null;
       const savedId = await AsyncStorage.getItem(STORAGE_SELECTED_CLASS_ACTIVITY_ID);
@@ -65,7 +50,6 @@ export function useHomeroomClasses() {
       setState({
         loading: false,
         error: null,
-        raw: data,
         options,
         selected,
       });
@@ -74,7 +58,6 @@ export function useHomeroomClasses() {
       setState({
         loading: false,
         error: msg,
-        raw: null,
         options: [],
         selected: null,
       });
@@ -97,6 +80,5 @@ export function useHomeroomClasses() {
     selected: state.selected,
     reload: load,
     setSelected,
-    teacherUserId: state.raw?.teacher_user_id,
   };
 }

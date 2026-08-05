@@ -20,7 +20,7 @@ import {
 } from 'react-native';
 
 import { chatService } from '../../../services/chatService';
-import type { ChatAttachment, ChatMessage } from '../../../types/chat';
+import { CHAT_MAX_ATTACHMENTS, type ChatAttachment, type ChatMessage } from '../../../types/chat';
 import { formatChatWislifeStickerContent } from '../../../utils/chatWislifeSticker';
 
 import { formatChatDisplayName, replyQuoteSnippet } from '../exchangeChatThreadUtils';
@@ -33,7 +33,7 @@ const EMOJI_PANEL_GAP = 8;
 const KEYBOARD_VERTICAL_OFFSET = 12;
 const INPUT_PLACEHOLDER_HEX = '#64748B';
 /** Trần đính kèm mỗi tin — tính chung ảnh + video + tệp (upload gửi 1 lượt). */
-const MAX_LOCAL_PICKS = 10;
+const MAX_LOCAL_PICKS = CHAT_MAX_ATTACHMENTS;
 
 type LocalPick = {
   id: string;
@@ -226,7 +226,7 @@ export function ChatComposerExchange({
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images', 'videos'],
       allowsMultipleSelection: true,
-      selectionLimit: 10,
+      selectionLimit: MAX_LOCAL_PICKS,
       quality: 0.85,
     });
     if (result.canceled || !result.assets?.length) return;

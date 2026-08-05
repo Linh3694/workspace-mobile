@@ -1,6 +1,9 @@
 // @ts-nocheck
 /**
- * Hoạt động lớp — nhật ký class-feed cho GVCN/phó CN (journal Wislife scope lớp)
+ * Hoạt động lớp — nhật ký class-feed (journal Wislife scope lớp).
+ *
+ * Người dùng được: GVCN/phó CN (mặc định) + GV bộ môn được GVCN cấp quyền đăng bài
+ * (`SIS Class Newsfeed Poster`). Danh sách lớp lấy từ server, không suy ra ở client.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -39,7 +42,7 @@ import { getAvatar } from '../../utils/avatar';
 
 import { useLanguage } from '../../hooks/useLanguage';
 
-import { useHomeroomClasses } from '../../hooks/useHomeroomClasses';
+import { useNewsfeedClasses } from '../../hooks/useNewsfeedClasses';
 
 import { ClassPickerSheet } from './components/ClassPickerSheet';
 
@@ -55,7 +58,7 @@ export default function ClassActivityScreen() {
     selected,
     error: classErr,
     setSelected,
-  } = useHomeroomClasses();
+  } = useNewsfeedClasses();
 
   const { t } = useLanguage();
 
@@ -228,8 +231,8 @@ export default function ClassActivityScreen() {
         {headerBackTitleRight(<View style={{ width: 44 }} />)}
         <View style={styles.center}>
           <Ionicons name="school-outline" size={56} color="#D1D5DB" />
-          <Text style={styles.emptyTitle}>{t('class_activity.no_homeroom')}</Text>
-          <Text style={styles.emptySub}>{t('class_activity.no_homeroom_desc')}</Text>
+          <Text style={styles.emptyTitle}>{t('class_activity.no_access')}</Text>
+          <Text style={styles.emptySub}>{t('class_activity.no_access_desc')}</Text>
         </View>
       </SafeAreaView>
     );

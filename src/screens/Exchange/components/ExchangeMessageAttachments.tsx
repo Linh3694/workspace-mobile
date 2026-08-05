@@ -51,7 +51,7 @@ export function ExchangeMessageAttachments({
   const [previewVideo, setPreviewVideo] = useState<ChatAttachment | null>(null);
   const [savingVideo, setSavingVideo] = useState(false);
   const { toast, showToast, hideToast } = useInlineToast();
-  const { downloadingUrl, download } = useChatAttachmentDownload();
+  const { downloadingUrl, view } = useChatAttachmentDownload();
 
   /** Lưu video đang xem vào album (không được thì mở bảng chia sẻ). */
   const handleSaveVideo = async () => {
@@ -238,12 +238,13 @@ export function ExchangeMessageAttachments({
         </Modal>
       ) : null}
 
-      {/* Tải về rồi mở bảng chia sẻ để GIỮ TÊN GỐC — mở URL trực tiếp thì tệp lưu
-          ra mang tên hash của CDN. */}
+      {/* Tap = xem ngay trong app (tải về cache GIỮ TÊN GỐC rồi mở QuickLook/intent);
+          không mở được thì rơi xuống bảng chia sẻ. Mở URL trực tiếp thì tệp lưu ra
+          mang tên hash của CDN. */}
       {files.map((f) => (
         <Pressable
           key={f.url}
-          onPress={() => void download(f)}
+          onPress={() => void view(f)}
           disabled={downloadingUrl === f.url}
           onLongPress={onLongPress}
           delayLongPress={420}

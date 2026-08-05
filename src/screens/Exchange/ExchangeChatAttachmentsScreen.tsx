@@ -90,7 +90,7 @@ export default function ExchangeChatAttachmentsScreen() {
   );
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
-  const { downloadingUrl, download } = useChatAttachmentDownload();
+  const { downloadingUrl, download, view } = useChatAttachmentDownload();
 
   /** Chỉ dùng cho video (xem ngoài app); tệp thì phải tải để giữ tên gốc. */
   const openAttachment = (url?: string) => {
@@ -208,12 +208,14 @@ export default function ExchangeChatAttachmentsScreen() {
                   ))}
                 </View>
               ) : (
-                // Tải về rồi mở bảng chia sẻ để GIỮ TÊN GỐC — mở URL trực tiếp thì
-                // tệp lưu ra mang tên hash của CDN.
+                // Tap = xem in-app (tải về cache giữ TÊN GỐC rồi mở QuickLook/intent);
+                // giữ = tải về / chia sẻ như cũ.
                 g.items.map((f, i) => (
                   <TouchableOpacity
                     key={`${f.url}-${i}`}
-                    onPress={() => void download(f)}
+                    onPress={() => void view(f)}
+                    onLongPress={() => void download(f)}
+                    delayLongPress={420}
                     disabled={downloadingUrl === f.url}
                     className="flex-row items-center gap-3 rounded-xl py-2">
                     <View

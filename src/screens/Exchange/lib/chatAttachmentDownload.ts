@@ -48,9 +48,80 @@ function targetFile(name: string, seq: number) {
   }
 }
 
+type FileViewerModule = {
+  default: {
+    open: (
+      path: string,
+      options?: { displayName?: string; showOpenWithDialog?: boolean }
+    ) => Promise<void>;
+  };
+};
+
+/**
+ * Mở tệp bằng viewer native NGAY TRONG APP (iOS: QuickLook, Android: intent chooser).
+ * false nếu không mở được (Expo Go chưa có native module, máy không có app đọc
+ * định dạng này, …) — nơi gọi rơi xuống bảng chia sẻ như luồng cũ.
+ *
+ * Không import tĩnh `react-native-file-viewer`: trên Expo Go module throw ngay khi
+ * load, kéo sập cả màn chat.
+ */
+async function tryOpenWithNativeViewer(uri: string, displayName?: string): Promise<boolean> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const FileViewer = (require('react-native-file-viewer') as FileViewerModule).default;
+    // FileViewer nhận path thuần, không nhận scheme file://
+    const path = uri.startsWith('file://') ? uri.slice('file://'.length) : uri;
+    await FileViewer.open(path, { displayName, showOpenWithDialog: true });
+    return true;
+  } catch (error) {
+    console.warn('[ExchangeChat] native file viewer fallback', error);
+    return false;
+  }
+}
+
 export function useChatAttachmentDownload() {
   const { t } = useLanguage();
   const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null);
+
+  /** Tải về cache (giữ tên gốc) rồi trả uri local — dùng chung cho "xem" và "tải/chia sẻ". */
+  const fetchToCache = useCallback(async (attachment: DownloadableChatAttachment, url: string) => {
+    const file = targetFile(safeChatAttachmentFileName(attachment.name), Date.now());
+    const result = await FileSystem.File.downloadFileAsync(url, file, {
+      idempotent: true,
+    });
+    return result.uri;
+  }, []);
+
+  /** Bảng chia sẻ hệ thống — luồng "tải về/chia sẻ", cũng là fallback của viewer. */
+  const shareLocalFile = useCallback(async (attachment: DownloadableChatAttachment, localUri: string) => {
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(localUri, {
+        mimeType: attachment.mimeType || undefined,
+        dialogTitle: attachment.name || undefined,
+        UTI: attachment.mimeType || undefined,
+      });
+      return;
+    }
+    await Linking.openURL(localUri);
+  }, []);
+
+  /** Tải/chia sẻ lỗi thì vẫn để người dùng xem được tệp — chỉ mất tên gốc. */
+  const alertFailure = useCallback(
+    (url: string) => {
+      Alert.alert(
+        t('exchange.attachment_download_error_title'),
+        t('exchange.attachment_download_error'),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('exchange.attachment_open_in_browser'),
+            onPress: () => void Linking.openURL(url),
+          },
+        ]
+      );
+    },
+    [t]
+  );
 
   const download = useCallback(
     async (attachment: DownloadableChatAttachment) => {
@@ -58,38 +129,42 @@ export function useChatAttachmentDownload() {
       if (!url) return;
       try {
         setDownloadingUrl(attachment.url);
-        const file = targetFile(safeChatAttachmentFileName(attachment.name), Date.now());
-        const result = await FileSystem.File.downloadFileAsync(url, file, {
-          idempotent: true,
-        });
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(result.uri, {
-            mimeType: attachment.mimeType || undefined,
-            dialogTitle: attachment.name || undefined,
-            UTI: attachment.mimeType || undefined,
-          });
-          return;
-        }
-        await Linking.openURL(result.uri);
+        const localUri = await fetchToCache(attachment, url);
+        await shareLocalFile(attachment, localUri);
       } catch (error) {
         console.error('[ExchangeChat] download attachment', error);
-        // Tải/chia sẻ lỗi thì vẫn để người dùng xem được tệp — chỉ mất tên gốc.
-        Alert.alert(
-          t('exchange.attachment_download_error_title'),
-          t('exchange.attachment_download_error'),
-          [
-            { text: t('common.cancel'), style: 'cancel' },
-            { text: t('exchange.attachment_open_in_browser'), onPress: () => void Linking.openURL(url) },
-          ],
-        );
+        alertFailure(url);
       } finally {
         setDownloadingUrl(null);
       }
     },
-    [t],
+    [alertFailure, fetchToCache, shareLocalFile]
   );
 
-  return { downloadingUrl, download };
+  /**
+   * Xem tệp NGAY TRONG APP: tải về cache rồi mở QuickLook (iOS) / intent (Android).
+   * Viewer không mở được (Expo Go, định dạng lạ…) → rơi xuống bảng chia sẻ như cũ.
+   */
+  const view = useCallback(
+    async (attachment: DownloadableChatAttachment) => {
+      const url = resolveChatAttachmentUrl(attachment.url);
+      if (!url) return;
+      try {
+        setDownloadingUrl(attachment.url);
+        const localUri = await fetchToCache(attachment, url);
+        if (await tryOpenWithNativeViewer(localUri, attachment.name || undefined)) return;
+        await shareLocalFile(attachment, localUri);
+      } catch (error) {
+        console.error('[ExchangeChat] view attachment', error);
+        alertFailure(url);
+      } finally {
+        setDownloadingUrl(null);
+      }
+    },
+    [alertFailure, fetchToCache, shareLocalFile]
+  );
+
+  return { downloadingUrl, download, view };
 }
 
 export default useChatAttachmentDownload;

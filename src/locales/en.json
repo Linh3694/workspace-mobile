@@ -11,7 +11,10 @@
     "english": "English",
     "change_language": "Change Language",
     "language_changed": "Language changed successfully",
-    "campus": "Campus"
+    "campus": "Campus",
+    "version": "Version",
+    "update": "Update",
+    "update_available": "Version {version} is available"
   },
   "common": {
     "success": "Success",
@@ -550,12 +553,12 @@
   },
   "class_activity": {
     "tile_title": "Class activity",
-    "tile_desc": "Homeroom class journal",
+    "tile_desc": "Class newsfeed journal",
     "loading_classes": "Loading classes…",
     "load_error": "Could not load class journal.",
-    "no_homeroom": "No homeroom class assigned",
-    "no_homeroom_desc": "Only homeroom / vice-homeroom teachers (as set in Frappe) can use this feature.",
-    "pick_class": "Choose homeroom class",
+    "no_access": "No class available to post to",
+    "no_access_desc": "This feature is for homeroom / vice-homeroom teachers and subject teachers granted class newsfeed posting rights.",
+    "pick_class": "Choose class",
     "badge_homeroom": "HR",
     "badge_vice": "Vice HR",
     "tap_switch_class": "Tap to switch class",
@@ -563,7 +566,8 @@
     "empty_feed_title": "No posts yet",
     "empty_feed_sub": "Share a moment or announcement for your class parents.",
     "sheet_role_homeroom": "HR",
-    "sheet_role_vice": "Vice HR"
+    "sheet_role_vice": "Vice HR",
+    "sheet_role_poster": "Subject teacher"
   },
   "exchange": {
     "poll_deadline_custom": "Pick date & time",

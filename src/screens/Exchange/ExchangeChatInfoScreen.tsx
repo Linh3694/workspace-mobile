@@ -38,6 +38,7 @@ import { InfoMemberRow } from './components/InfoMemberRow';
 import { MemberProfileSheet } from './components/MemberProfileSheet';
 import { conversationHeaderTitle } from './exchangeChatThreadUtils';
 import { isConversationPinned, togglePinned } from './chatPinStore';
+import { useChatAttachmentDownload } from './lib/chatAttachmentDownload';
 import {
   buildConversationMembers,
   type InfoMember,
@@ -130,6 +131,7 @@ export default function ExchangeChatInfoScreen() {
   const files = useMemo(() => attachments.filter((a) => a.kind === 'file'), [attachments]);
 
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const { downloadingUrl, view: viewAttachment } = useChatAttachmentDownload();
   /** PH đang mở sheet thông tin — null là đóng. */
   const [profileMember, setProfileMember] = useState<InfoMember | null>(null);
 
@@ -379,12 +381,17 @@ export default function ExchangeChatInfoScreen() {
               {previewFiles.map((f, i) => (
                 <TouchableOpacity
                   key={`${f.url}-${i}`}
-                  onPress={() => openAttachment(f.url)}
+                  onPress={() => void viewAttachment(f)}
+                  disabled={downloadingUrl === f.url}
                   className="flex-row items-center gap-3 rounded-xl py-2">
                   <View
                     className="items-center justify-center rounded-lg"
                     style={{ width: 40, height: 40, backgroundColor: '#FEF2F2' }}>
-                    <Ionicons name="document-text-outline" size={22} color="#EF4444" />
+                    {downloadingUrl === f.url ? (
+                      <ActivityIndicator size="small" color="#EF4444" />
+                    ) : (
+                      <Ionicons name="document-text-outline" size={22} color="#EF4444" />
+                    )}
                   </View>
                   <View className="min-w-0 flex-1">
                     <Text className="text-sm font-semibold text-[#0A2240]" numberOfLines={1}>

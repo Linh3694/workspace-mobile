@@ -11,7 +11,10 @@
     "english": "English",
     "change_language": "Đổi ngôn ngữ",
     "language_changed": "Đã thay đổi ngôn ngữ thành công",
-    "campus": "Campus"
+    "campus": "Campus",
+    "version": "Phiên bản",
+    "update": "Cập nhật",
+    "update_available": "Đã có phiên bản {version}"
   },
   "common": {
     "success": "Thành công",
@@ -563,12 +566,12 @@
   },
   "class_activity": {
     "tile_title": "Hoạt động",
-    "tile_desc": "Nhật ký lớp chủ nhiệm",
+    "tile_desc": "Nhật ký bảng tin lớp",
     "loading_classes": "Đang tải lớp…",
     "load_error": "Không tải được nhật ký lớp.",
-    "no_homeroom": "Chưa có lớp chủ nhiệm/phó chủ nhiệm",
-    "no_homeroom_desc": "Chỉ giáo viên được gán làm GVCN hoặc Phó chủ nhiệm trên Frappe mới dùng được mục này.",
-    "pick_class": "Chọn lớp chủ nhiệm",
+    "no_access": "Chưa có lớp nào được đăng bài",
+    "no_access_desc": "Mục này dành cho GVCN/Phó chủ nhiệm và giáo viên bộ môn được GVCN cấp quyền đăng bài bảng tin lớp.",
+    "pick_class": "Chọn lớp",
     "badge_homeroom": "GVCN",
     "badge_vice": "Phó GVCN",
     "tap_switch_class": "Chạm để đổi lớp",
@@ -576,7 +579,8 @@
     "empty_feed_title": "Chưa có hoạt động",
     "empty_feed_sub": "Hãy chia sẻ khoảnh khắc hoặc thông báo cho phụ huynh lớp bạn.",
     "sheet_role_homeroom": "GVCN",
-    "sheet_role_vice": "Phó GVCN"
+    "sheet_role_vice": "Phó GVCN",
+    "sheet_role_poster": "GV bộ môn"
   },
   "exchange": {
     "poll_deadline_custom": "Chọn ngày giờ",

@@ -86,6 +86,7 @@ const CRM_ISSUE_EVENTS: readonly string[] = [
   'crm_issue_log_added',
   'crm_issue_sla_warning',
   'crm_issue_sla_breached',
+  'crm_issue_department_added',
 ];
 
 const LEAVE_EVENTS: readonly string[] = ['leave_request', 'leave', 'new_leave_from_parent'];

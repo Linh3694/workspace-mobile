@@ -65,8 +65,8 @@ import {
   type HomeMenuUsageState,
 } from '../../utils/homeMenuUsage';
 
-import timetableService from '../../services/timetableService';
-import { homeroomClassesToOptions } from '../../utils/homeroomClassUtils';
+import classNewsfeedService from '../../services/classNewsfeedService';
+import { newsfeedClassesToOptions } from '../../utils/homeroomClassUtils';
 
 // Define type cho navigation
 type HomeScreenNavigationProp = NativeStackNavigationProp<
@@ -89,25 +89,19 @@ const HomeScreen = () => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const isMountedRef = useRef(true);
 
-  /** Có lớp GVCN/phó — mới hiện tile Hoạt động */
-  const [hasClassActivityHomeroom, setHasClassActivityHomeroom] = useState(false);
+  /**
+   * Có lớp được đăng bài — mới hiện tile Hoạt động.
+   * Gồm cả GV bộ môn được GVCN cấp quyền, không chỉ GVCN/phó.
+   */
+  const [hasClassActivityAccess, setHasClassActivityAccess] = useState(false);
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const data = await timetableService.getTeacherClasses();
-        if (cancelled || !data?.teacher_user_id) {
-          if (!cancelled) setHasClassActivityHomeroom(false);
-          return;
-        }
-        const opts = homeroomClassesToOptions(
-          data.homeroom_classes || [],
-          data.teacher_user_id,
-          user?.email
-        );
-        if (!cancelled) setHasClassActivityHomeroom(opts.length > 0);
+        const classes = await classNewsfeedService.getMyNewsfeedClasses(user?.email);
+        if (!cancelled) setHasClassActivityAccess(newsfeedClassesToOptions(classes).length > 0);
       } catch {
-        if (!cancelled) setHasClassActivityHomeroom(false);
+        if (!cancelled) setHasClassActivityAccess(false);
       }
     })();
     return () => {
@@ -547,9 +541,9 @@ const HomeScreen = () => {
   const allowedKeys = new Set<string>();
 
   if (hasMobileBOD) {
-    // Mobile BOD: tất cả (trừ Hoạt động nếu user không có lớp GVCN/phó — giống kế hoạch)
+    // Mobile BOD: tất cả (trừ Hoạt động nếu user không có lớp nào được đăng bài — giống kế hoạch)
     allItems.forEach((item) => {
-      if (item.key === 'class_activity' && !hasClassActivityHomeroom) return;
+      if (item.key === 'class_activity' && !hasClassActivityAccess) return;
       allowedKeys.add(item.key);
     });
   }
@@ -586,7 +580,7 @@ const HomeScreen = () => {
       'class_log',
       'teacher_health',
     ].forEach((key) => allowedKeys.add(key));
-    if (hasClassActivityHomeroom) allowedKeys.add('class_activity');
+    if (hasClassActivityAccess) allowedKeys.add('class_activity');
   }
 
   if (hasMobileMedical) {

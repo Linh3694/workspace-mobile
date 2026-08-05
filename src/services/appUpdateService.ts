@@ -19,6 +19,22 @@ export type AppLanguage = 'vi' | 'en';
 export const APP_VERSION: string =
   Constants.expoConfig?.version || Application.nativeApplicationVersion || '0.0.0';
 
+/** Build number (iOS CFBundleVersion / Android versionCode). */
+export const APP_BUILD_NUMBER: string = (() => {
+  const native = Application.nativeBuildVersion;
+  if (native) return String(native);
+  const ios = Constants.expoConfig?.ios?.buildNumber;
+  if (ios != null && String(ios).length > 0) return String(ios);
+  const android = Constants.expoConfig?.android?.versionCode;
+  if (android != null) return String(android);
+  return '1';
+})();
+
+/** Nhãn đầy đủ cho màn hình Cài đặt — ví dụ v1.0.3 (4). */
+export function getAppVersionFullLabel(): string {
+  return `v${APP_VERSION} (${APP_BUILD_NUMBER})`;
+}
+
 /** Thông tin phiên bản lấy được từ một nguồn (store hoặc remote config). */
 export interface StoreVersionInfo {
   latestVersion: string;

@@ -1,13 +1,17 @@
+import type { NewsfeedClass } from '../services/classNewsfeedService';
 import type { TeacherClass } from '../services/timetableService';
 
-/** Một lớp chủ nhiệm / phó chủ nhiệm để picker + feed */
+/** Một lớp được đăng bài bảng tin để dựng picker + feed */
 export type HomeroomClassOption = {
   id: string;
   title: string;
   shortTitle?: string;
   schoolYearId: string;
-  /** Chủ nhiệm hoặc phó — hiển thị badge UI */
-  roleLabel: 'homeroom' | 'vice';
+  /**
+   * Vai trò với lớp — hiển thị badge UI.
+   * `poster` = GV bộ môn được GVCN cấp quyền đăng bài, không phải chủ nhiệm.
+   */
+  roleLabel: 'homeroom' | 'vice' | 'poster';
 };
 
 function norm(s: unknown): string {
@@ -19,7 +23,7 @@ export function resolveHomeroomRole(
   cls: TeacherClass,
   teacherUserId: string,
   teacherEmail?: string
-): HomeroomClassOption['roleLabel'] | null {
+): 'homeroom' | 'vice' | null {
   const uid = norm(teacherUserId);
   const email = norm(teacherEmail).toLowerCase();
 
@@ -27,7 +31,7 @@ export function resolveHomeroomRole(
     if (!info) return false;
     const u = norm(info.user_id);
     const em = norm(info.email).toLowerCase();
-    if (uid && u && (u === uid || email && em && email === em)) return true;
+    if (uid && u && (u === uid || (email && em && email === em))) return true;
     return false;
   };
 
@@ -36,25 +40,26 @@ export function resolveHomeroomRole(
   return null;
 }
 
-/** Chỉ lớp regular; server đã gắn homeroom_teacher nhưng vẫn lọc an toàn */
-export function homeroomClassesToOptions(
-  homeroomClasses: TeacherClass[],
-  teacherUserId: string,
-  teacherEmail?: string
-): HomeroomClassOption[] {
+/**
+ * Map danh sách quyền đăng bài từ server sang option cho picker + feed.
+ *
+ * Không lọc lại theo GVCN: server đã quyết định ai đăng được lớp nào, lọc thêm ở
+ * client chính là chỗ GV bộ môn từng bị rơi mất.
+ */
+export function newsfeedClassesToOptions(classes: NewsfeedClass[]): HomeroomClassOption[] {
   const out: HomeroomClassOption[] = [];
-  for (const c of homeroomClasses || []) {
-    if (norm(c.class_type) && norm(c.class_type) !== 'regular') continue;
-    const role = resolveHomeroomRole(c, teacherUserId, teacherEmail);
-    if (!role) continue;
-    const sy = norm(c.school_year_id);
-    if (!sy) continue;
+  for (const c of classes || []) {
+    if (norm(c.classType) && norm(c.classType) !== 'regular') continue;
+    const id = norm(c.classId);
+    const sy = norm(c.schoolYearId);
+    if (!id || !sy) continue;
     out.push({
-      id: norm(c.name),
-      title: norm(c.title || c.short_title || c.name),
-      shortTitle: c.short_title ? norm(c.short_title) : undefined,
+      id,
+      title: norm(c.title || c.shortTitle || c.classId),
+      shortTitle: c.shortTitle ? norm(c.shortTitle) : undefined,
       schoolYearId: sy,
-      roleLabel: role,
+      roleLabel:
+        c.role === 'homeroom' ? 'homeroom' : c.role === 'vice_homeroom' ? 'vice' : 'poster',
     });
   }
   return out;
