@@ -96,14 +96,28 @@ const ATTENDANCE_REMINDER_EVENTS: readonly string[] = ['attendance_reminder'];
 
 const ATTENDANCE_EVENTS: readonly string[] = ['attendance', 'staff_attendance'];
 
+/**
+ * Sự kiện y tế / sức khoẻ.
+ * - NVYT (Mobile Medical) → màn Y tế (DailyHealth / HealthExam — ghi được hồ sơ)
+ * - GVCN / còn lại → màn Sức khoẻ (TeacherHealth / StudentHealthDetail — chỉ xem + gửi PH)
+ * Backend: daily_health_notification.py — `examination_created` khi publish hồ sơ cho GVCN;
+ * các `health_visit_*` cũng gửi cả Mobile Medical lẫn Homeroom.
+ */
 const HEALTH_EVENTS: readonly string[] = [
   'daily_health',
+  'health_examination',
+  'examination_created',
   'health_visit_created',
   'health_visit_received',
   'health_visit_completed',
   'health_visit_escalation',
   'health_visit_cancelled',
   'health_visit_rejected',
+];
+
+/** Sự kiện chỉ dành cho luồng GVCN (publish hồ sơ) — luôn mở Sức khoẻ, kể cả user có cả Mobile Medical */
+const TEACHER_HEALTH_ONLY_EVENTS: readonly string[] = [
+  'examination_created',
 ];
 
 /**
@@ -221,6 +235,57 @@ export async function getAdministrativeTicketDetailScreenName(): Promise<
   }
 }
 
+async function getStoredRoles(): Promise<string[]> {
+  try {
+    const storedRolesStr = await AsyncStorage.getItem('userRoles');
+    return storedRolesStr ? JSON.parse(storedRolesStr) : [];
+  } catch {
+    return [];
+  }
+}
+
+function todayDateStr(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Đích Sức khoẻ (GVCN) — không bao giờ mở HealthExam (màn ghi hồ sơ NVYT). */
+function resolveTeacherHealthTarget(data: PushNotificationPayload): NotificationTarget {
+  const studentId = str(data.student_id) || str(data.studentId);
+  const classId = str(data.class_id) || str(data.classId);
+  if (studentId && classId) {
+    return {
+      screen: ROUTES.SCREENS.STUDENT_HEALTH_DETAIL,
+      params: {
+        classId,
+        studentId,
+        date: todayDateStr(),
+      },
+    };
+  }
+  return { screen: ROUTES.SCREENS.TEACHER_HEALTH, params: {} };
+}
+
+/** Đích Y tế (NVYT) — giữ hành vi cũ theo type. */
+function resolveMedicalHealthTarget(data: PushNotificationPayload): NotificationTarget {
+  const visitId = str(data.visit_id) || str(data.visitId);
+  const eventType = str(data.type) || str(data.action);
+  switch (eventType) {
+    case 'health_visit_created':
+    case 'health_visit_escalation':
+    case 'health_visit_cancelled':
+    case 'health_visit_rejected':
+      return { screen: ROUTES.SCREENS.DAILY_HEALTH, params: {} };
+    default:
+      return visitId
+        ? { screen: ROUTES.SCREENS.HEALTH_EXAM, params: { visitId } }
+        : { screen: ROUTES.SCREENS.DAILY_HEALTH, params: {} };
+  }
+}
+
 /**
  * Payload thông báo → màn đích. NGUỒN DUY NHẤT cho cả hai đường sống:
  *   1. bấm trong màn Thông báo  — NotificationsScreen.handleNotificationPress
@@ -298,20 +363,20 @@ export async function resolveNotificationTarget(
     };
   }
 
-  // === Y TẾ HẰNG NGÀY ===
+  // === Y TẾ / SỨC KHOẺ — phân nhánh theo role (tránh GVCN vào HealthExam ghi hồ sơ) ===
   if (matchesEvent(data, HEALTH_EVENTS)) {
-    const visitId = str(data.visit_id) || str(data.visitId);
-    switch (str(data.type)) {
-      case 'health_visit_created':
-      case 'health_visit_escalation':
-      case 'health_visit_cancelled':
-      case 'health_visit_rejected':
-        return { screen: ROUTES.SCREENS.DAILY_HEALTH, params: {} };
-      default:
-        return visitId
-          ? { screen: ROUTES.SCREENS.HEALTH_EXAM, params: { visitId } }
-          : { screen: ROUTES.SCREENS.DAILY_HEALTH, params: {} };
+    // Publish hồ sơ khám → luôn mở Sức khoẻ (đúng người nhận là GVCN)
+    if (matchesEvent(data, TEACHER_HEALTH_ONLY_EVENTS)) {
+      return resolveTeacherHealthTarget(data);
     }
+
+    const roles = await getStoredRoles();
+    const hasMobileMedical = roles.includes('Mobile Medical');
+    if (hasMobileMedical) {
+      return resolveMedicalHealthTarget(data);
+    }
+    // GVCN / Giám thị / BOD không có Mobile Medical → Sức khoẻ (read)
+    return resolveTeacherHealthTarget(data);
   }
 
   // === Bảng tin lớp (khác Wislife toàn trường đã ẩn) → Hoạt động lớp ===
