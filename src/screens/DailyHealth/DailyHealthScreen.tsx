@@ -20,6 +20,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import DatePickerModal from '../../components/DatePickerModal';
 import { useLanguage } from '../../hooks/useLanguage';
+import { useAuth } from '../../context/AuthContext';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
 import dailyHealthService, { DailyHealthVisit, VisitOutcome } from '../../services/dailyHealthService';
@@ -57,6 +58,16 @@ const DailyHealthScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<RouteParams>();
   const { t } = useLanguage();
+  const { user } = useAuth();
+  const roles: string[] = Array.isArray(user?.roles) ? user.roles : [];
+  const hasMobileMedical = roles.includes('Mobile Medical');
+
+  // Chặn GVCN / role khác vào màn ghi hồ sơ Y tế (push deep-link cũ, BOD, …)
+  useEffect(() => {
+    if (!hasMobileMedical) {
+      navigation.replace(ROUTES.SCREENS.TEACHER_HEALTH);
+    }
+  }, [hasMobileMedical, navigation]);
 
   // State
   const [loading, setLoading] = useState(true);
@@ -106,6 +117,7 @@ const DailyHealthScreen: React.FC = () => {
   }, []);
 
   const loadData = useCallback(async () => {
+    if (!hasMobileMedical) return;
     try {
       setLoading(true);
       const dateStr = formatDate(selectedDate);
@@ -119,21 +131,22 @@ const DailyHealthScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, selectedStage]);
+  }, [selectedDate, selectedStage, hasMobileMedical]);
 
   // Load data when screen focuses, date or campus changes
   useFocusEffect(
     useCallback(() => {
-      loadData();
-    }, [loadData])
+      if (hasMobileMedical) loadData();
+    }, [loadData, hasMobileMedical])
   );
 
   // Handle navigation from notification
   useEffect(() => {
+    if (!hasMobileMedical) return;
     if (route.params?.visitId) {
       navigation.navigate(ROUTES.SCREENS.HEALTH_EXAM, { visitId: route.params.visitId });
     }
-  }, [route.params?.visitId, navigation]);
+  }, [route.params?.visitId, navigation, hasMobileMedical]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -315,6 +328,15 @@ const DailyHealthScreen: React.FC = () => {
 
   // Check if today
   const isToday = formatDate(selectedDate) === formatDate(new Date());
+
+  // Không render UI Y tế nếu không có quyền — tránh flash dữ liệu nhạy cảm
+  if (!hasMobileMedical) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <ActivityIndicator size="large" color="#002855" />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: '#FFFFFF', paddingTop: insets.top }}>

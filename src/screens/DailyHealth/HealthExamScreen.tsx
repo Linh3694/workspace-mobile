@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
+import { useAuth } from '../../context/AuthContext';
 import dailyHealthService, {
   DailyHealthVisit,
   HealthExamination,
@@ -67,11 +68,38 @@ const normalizeExamDateStr = (value: string | undefined): string => {
   return s.length >= 10 ? s.slice(0, 10) : s;
 };
 
+const todayDateStr = (): string => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 const HealthExamScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<RouteParams>();
   const { visitId, visitData: initialVisitData } = route.params;
+  const { user } = useAuth();
+  const roles: string[] = Array.isArray(user?.roles) ? user.roles : [];
+  const hasMobileMedical = roles.includes('Mobile Medical');
+
+  // Chặn không phải NVYT vào màn ghi hồ sơ — chuyển sang Sức khoẻ (GVCN)
+  useEffect(() => {
+    if (hasMobileMedical) return;
+    const studentId = initialVisitData?.student_id;
+    const classId = initialVisitData?.class_id;
+    if (studentId && classId) {
+      navigation.replace(ROUTES.SCREENS.STUDENT_HEALTH_DETAIL, {
+        classId,
+        studentId,
+        date: todayDateStr(),
+      });
+      return;
+    }
+    navigation.replace(ROUTES.SCREENS.TEACHER_HEALTH);
+  }, [hasMobileMedical, navigation, initialVisitData]);
 
   // State
   const [loading, setLoading] = useState(!initialVisitData);
@@ -114,6 +142,7 @@ const HealthExamScreen: React.FC = () => {
 
   // Load data
   const loadDataCallback = useCallback(async () => {
+    if (!hasMobileMedical) return;
     try {
       let visitData = visit;
 
@@ -142,12 +171,12 @@ const HealthExamScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [visitId, visit]);
+  }, [visitId, visit, hasMobileMedical]);
 
   useFocusEffect(
     useCallback(() => {
-      loadDataCallback();
-    }, [loadDataCallback])
+      if (hasMobileMedical) loadDataCallback();
+    }, [loadDataCallback, hasMobileMedical])
   );
 
   const handleRefresh = async () => {
@@ -287,6 +316,17 @@ const HealthExamScreen: React.FC = () => {
       setCheckingOut(false);
     }
   };
+
+  // Không phải NVYT → đang redirect sang Sức khoẻ, không render form ghi hồ sơ
+  if (!hasMobileMedical) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#FFFFFF', paddingTop: insets.top }}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color="#002855" />
+        </View>
+      </View>
+    );
+  }
 
   // Render exam card
   // Render loading
