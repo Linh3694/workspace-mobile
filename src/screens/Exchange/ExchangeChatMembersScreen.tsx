@@ -6,7 +6,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -62,7 +62,19 @@ export default function ExchangeChatMembersScreen() {
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [addable, setAddable] = useState<AddableTeacher[]>([]);
   const [loadingAddable, setLoadingAddable] = useState(false);
-  const [selectedAddIds, setSelectedAddIds] = useState<Set<string>>(new Set());
+  const [addSearchQuery, setAddSearchQuery] = useState('');
+  const addSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Giữ nguyên OBJECT đã chọn (không chỉ id): danh sách kết quả đổi theo từ khoá, người đã
+   * chọn ở lượt tìm trước phải còn hiện ra để GVCN biết mình sắp thêm ai.
+   */
+  const [selectedTeachers, setSelectedTeachers] = useState<AddableTeacher[]>([]);
+  const selectedAddIds = useMemo(
+    () => new Set(selectedTeachers.map((tt) => tt.teacherId)),
+    [selectedTeachers]
+  );
+  /** Tooltip giải thích phạm vi tìm kiếm — mobile không có hover nên bấm icon để bật/tắt. */
+  const [scopeHintVisible, setScopeHintVisible] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const roleLabels = useMemo(
@@ -121,12 +133,10 @@ export default function ExchangeChatMembersScreen() {
     });
   };
 
-  const openAddModal = async () => {
-    setAddModalVisible(true);
-    setSelectedAddIds(new Set());
+  const fetchAddable = async (search: string) => {
     setLoadingAddable(true);
     try {
-      const list = await chatService.getAddableTeachers(conversationId);
+      const list = await chatService.getAddableTeachers(conversationId, search);
       setAddable(list || []);
     } catch (e) {
       console.warn('[ExchangeChatMembers] addable failed', e);
@@ -136,32 +146,64 @@ export default function ExchangeChatMembersScreen() {
     }
   };
 
-  const toggleSelectAdd = (teacherId: string) => {
-    setSelectedAddIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(teacherId)) next.delete(teacherId);
-      else next.add(teacherId);
-      return next;
-    });
+  const openAddModal = () => {
+    setAddModalVisible(true);
+    setSelectedTeachers([]);
+    setAddSearchQuery('');
+    setScopeHintVisible(false);
+    void fetchAddable('');
+  };
+
+  const onChangeAddSearch = (text: string) => {
+    setAddSearchQuery(text);
+    setScopeHintVisible(false);
+    if (addSearchTimeoutRef.current) clearTimeout(addSearchTimeoutRef.current);
+    addSearchTimeoutRef.current = setTimeout(() => {
+      void fetchAddable(text);
+    }, 300);
+  };
+
+  useEffect(
+    () => () => {
+      if (addSearchTimeoutRef.current) clearTimeout(addSearchTimeoutRef.current);
+    },
+    []
+  );
+
+  const toggleSelectAdd = (teacher: AddableTeacher) => {
+    setSelectedTeachers((prev) =>
+      prev.some((item) => item.teacherId === teacher.teacherId)
+        ? prev.filter((item) => item.teacherId !== teacher.teacherId)
+        : [...prev, teacher]
+    );
   };
 
   /** Thêm tuần tự từng GV (giống web) — lần cuối trả về conversation mới nhất. */
   const confirmAdd = async () => {
-    const ids = Array.from(selectedAddIds);
-    if (!ids.length || busy) return;
+    if (!selectedTeachers.length || busy) return;
     setBusy(true);
+    const addedIds = new Set<string>();
+    let updated: ChatConversation | null = conversation;
     try {
-      let updated: ChatConversation | null = conversation;
-      for (const id of ids) {
-        updated = await chatService.addConversationTeacher(conversationId, id);
+      for (const teacher of selectedTeachers) {
+        updated = await chatService.addConversationTeacher(conversationId, teacher.teacherId);
+        addedIds.add(teacher.teacherId);
       }
-      if (updated) setConversation(updated);
-      setSelectedAddIds(new Set());
       setAddModalVisible(false);
     } catch (e) {
       console.warn('[ExchangeChatMembers] add failed', e);
-      Alert.alert(t('common.error'), t('exchange.info_add_error'));
+      // Lỗi giữa chừng: báo rõ đã thêm được bao nhiêu, giữ modal mở để thử lại phần còn lại.
+      Alert.alert(
+        t('common.error'),
+        addedIds.size
+          ? t('exchange.info_add_partial_error', { n: addedIds.size })
+          : t('exchange.info_add_error')
+      );
     } finally {
+      if (updated) setConversation(updated);
+      // Chỉ bỏ người ĐÃ thêm xong — người lỗi giữ lại để thử lại, không mất lựa chọn.
+      setAddable((prev) => prev.filter((item) => !addedIds.has(item.teacherId)));
+      setSelectedTeachers((prev) => prev.filter((item) => !addedIds.has(item.teacherId)));
       setBusy(false);
     }
   };
@@ -252,11 +294,6 @@ export default function ExchangeChatMembersScreen() {
             }
           />
         )}
-        ListFooterComponent={
-          viewerIsHomeroom ? (
-            <Text className="mt-4 px-1 text-xs text-[#9CA3AF]">{t('exchange.info_manage_note')}</Text>
-          ) : null
-        }
         ListEmptyComponent={
           <Text className="mt-8 text-center text-sm text-[#9CA3AF]">
             {t('exchange.info_members_no_match')}
@@ -295,13 +332,100 @@ export default function ExchangeChatMembersScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* zIndex: tooltip là View tuyệt đối phải nổi trên danh sách bên dưới.
+                KHÔNG dùng Modal lồng cho tooltip — trên iOS mở Modal trong Modal gây treo app. */}
+            <View className="px-4 pb-3" style={{ zIndex: 10 }}>
+              {/* Lớp mốc KHÔNG padding: neo `right-0` của tooltip trùng đúng mép phải ô tìm
+                  kiếm, không phụ thuộc cách Yoga tính inset qua padding của thẻ cha. */}
+              <View>
+              <View
+                className="flex-row items-center rounded-xl px-3"
+                style={{ backgroundColor: '#F1F3F5', height: 40 }}>
+                <Ionicons name="search" size={16} color="#9CA3AF" />
+                <TextInput
+                  value={addSearchQuery}
+                  onChangeText={onChangeAddSearch}
+                  placeholder={t('exchange.info_add_search_placeholder')}
+                  placeholderTextColor="#9CA3AF"
+                  className="ml-2 flex-1 text-sm text-[#0A2240]"
+                  style={{ paddingVertical: 0 }}
+                  returnKeyType="search"
+                  autoCorrect={false}
+                />
+                {addSearchQuery.length > 0 ? (
+                  <TouchableOpacity
+                    onPress={() => onChangeAddSearch('')}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={16} color="#9CA3AF" />
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  onPress={() => setScopeHintVisible((v) => !v)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('exchange.info_add_scope_hint_aria')}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  className="ml-2">
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={18}
+                    color={scopeHintVisible ? '#0A2240' : '#9CA3AF'}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {scopeHintVisible ? (
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => setScopeHintVisible(false)}
+                  accessibilityRole="button"
+                  className="absolute right-0 rounded-xl px-3 py-2"
+                  style={{
+                    top: 44,
+                    maxWidth: 280,
+                    backgroundColor: '#0A2240',
+                    // Nổi trên danh sách ở cả hai nền (iOS dùng shadow, Android dùng elevation).
+                    elevation: 6,
+                    shadowColor: '#000',
+                    shadowOpacity: 0.18,
+                    shadowRadius: 8,
+                    shadowOffset: { width: 0, height: 3 },
+                  }}>
+                  <Text className="text-xs text-white">{t('exchange.info_add_scope_hint')}</Text>
+                </TouchableOpacity>
+              ) : null}
+              </View>
+            </View>
+
+            {/* Người đã chọn ở các lượt tìm trước — giữ hiện để không "thêm nhầm người vô hình". */}
+            {selectedTeachers.length ? (
+              <View className="flex-row flex-wrap px-4 pb-3" style={{ gap: 6 }}>
+                {selectedTeachers.map((tt) => (
+                  <TouchableOpacity
+                    key={tt.teacherId}
+                    onPress={() => toggleSelectAdd(tt)}
+                    disabled={busy}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('exchange.info_unselect_teacher')}
+                    className="max-w-full flex-row items-center rounded-full px-3 py-1.5"
+                    style={{ backgroundColor: '#F1F3F5', opacity: busy ? 0.6 : 1 }}>
+                    <Text className="text-xs text-[#0A2240]" numberOfLines={1}>
+                      {formatChatDisplayName(tt.name) || tt.email}
+                    </Text>
+                    <Ionicons name="close" size={13} color="#6B7280" style={{ marginLeft: 4 }} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
+
             {loadingAddable ? (
               <View className="items-center py-10">
                 <ActivityIndicator size="large" color="#FF7A00" />
               </View>
             ) : addable.length === 0 ? (
               <Text className="px-4 py-8 text-center text-sm text-[#9CA3AF]">
-                {t('exchange.info_no_addable')}
+                {addSearchQuery.trim()
+                  ? t('exchange.info_no_teacher_found')
+                  : t('exchange.info_no_addable')}
               </Text>
             ) : (
               <ScrollView className="px-4" style={{ maxHeight: 380 }}>
@@ -314,7 +438,7 @@ export default function ExchangeChatMembersScreen() {
                   return (
                     <TouchableOpacity
                       key={tt.teacherId}
-                      onPress={() => toggleSelectAdd(tt.teacherId)}
+                      onPress={() => toggleSelectAdd(tt)}
                       className="flex-row items-center py-2">
                       <Image
                         source={{
@@ -346,16 +470,16 @@ export default function ExchangeChatMembersScreen() {
             <View className="px-4 pt-3">
               <TouchableOpacity
                 onPress={confirmAdd}
-                disabled={busy || selectedAddIds.size === 0}
+                disabled={busy || selectedTeachers.length === 0}
                 className="items-center rounded-2xl py-3"
                 style={{
-                  backgroundColor: busy || selectedAddIds.size === 0 ? '#D1D5DB' : '#0A2240',
+                  backgroundColor: busy || selectedTeachers.length === 0 ? '#D1D5DB' : '#0A2240',
                 }}>
                 {busy ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <Text className="text-base font-semibold text-white">
-                    {t('exchange.info_add_count', { n: selectedAddIds.size })}
+                    {t('exchange.info_add_count', { n: selectedTeachers.length })}
                   </Text>
                 )}
               </TouchableOpacity>

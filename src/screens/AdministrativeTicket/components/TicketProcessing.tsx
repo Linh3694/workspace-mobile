@@ -25,6 +25,7 @@ import {
   useAdministrativeTicketUIActions,
   useAdministrativeTicketSubTasks,
   useAdministrativeTicketMessages,
+  getAdministrativeActionError,
 } from '../../../hooks/useAdministrativeTicketStore';
 
 // Utils & Constants
@@ -182,7 +183,7 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
           setCancelReason('');
           setShowCancelReasonInput(false);
         } else {
-          toast.error('Không thể cập nhật');
+          toast.error(getAdministrativeActionError('Không thể cập nhật'));
         }
       } else {
         const success = await updateStatus(newStatus as AdministrativeTicketStatusUi);
@@ -192,13 +193,13 @@ const TicketProcessing: React.FC<TicketProcessingProps> = ({ ticketId }) => {
           if (newStatus === 'Done' && hasIncompleteSubTasks) {
             toast.error('Cần xử lý hết subtask trước');
           } else {
-            toast.error('Không thể cập nhật');
+            toast.error(getAdministrativeActionError('Không thể cập nhật'));
           }
         }
       }
     } catch (err) {
       console.error('Lỗi cập nhật trạng thái:', err);
-      toast.error('Không thể cập nhật');
+      toast.error(err instanceof Error && err.message.trim() ? err.message : 'Không thể cập nhật');
     }
   };
 

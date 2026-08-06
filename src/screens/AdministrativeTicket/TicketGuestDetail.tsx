@@ -13,6 +13,7 @@ import {
   useAdministrativeTicketData,
   useAdministrativeTicketActions,
   useAdministrativeTicketUIActions,
+  getAdministrativeActionError,
 } from '../../hooks/useAdministrativeTicketStore';
 
 // Utils
@@ -94,7 +95,7 @@ const TicketGuestDetail = () => {
     if (success) {
       toast.success('Đã hoàn thành ticket và gửi đánh giá!');
     } else {
-      toast.error('Không thể hoàn thành ticket');
+      toast.error(getAdministrativeActionError('Không thể hoàn thành ticket'));
     }
   };
 
@@ -109,7 +110,7 @@ const TicketGuestDetail = () => {
     if (success) {
       toast.success('Đã hủy ticket');
     } else {
-      toast.error('Không thể hủy ticket');
+      toast.error(getAdministrativeActionError('Không thể hủy ticket'));
     }
   };
 

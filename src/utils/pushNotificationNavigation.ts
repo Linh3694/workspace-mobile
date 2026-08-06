@@ -2,6 +2,7 @@ import type { NavigationContainerRef } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ROUTES } from '../constants/routes';
 import type { RootStackParamList } from '../navigation/AppNavigator';
+import { isAdminTicketStaff } from './administrativeTicketPermissions';
 
 /**
  * `data.type` của thông báo cần mở màn Trao đổi.
@@ -212,11 +213,7 @@ export async function getAdministrativeTicketDetailScreenName(): Promise<
   try {
     const storedRolesStr = await AsyncStorage.getItem('userRoles');
     const storedRoles: string[] = storedRolesStr ? JSON.parse(storedRolesStr) : [];
-    const staff =
-      storedRoles.includes('Mobile Administrative') ||
-      storedRoles.includes('SIS Administrative') ||
-      storedRoles.includes('SIS BOD');
-    return staff
+    return isAdminTicketStaff(storedRoles)
       ? ROUTES.SCREENS.ADMINISTRATIVE_TICKET_ADMIN_DETAIL
       : ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST_DETAIL;
   } catch {
@@ -318,10 +315,7 @@ export async function resolveNotificationTarget(
   }
 
   // === Bảng tin lớp (khác Wislife toàn trường đã ẩn) → Hoạt động lớp ===
-  if (
-    str(data.type) === 'wislife_class_post' ||
-    str(data.action) === 'open_class_newsfeed'
-  ) {
+  if (str(data.type) === 'wislife_class_post' || str(data.action) === 'open_class_newsfeed') {
     return {
       screen: ROUTES.SCREENS.CLASS_ACTIVITY,
       params: {

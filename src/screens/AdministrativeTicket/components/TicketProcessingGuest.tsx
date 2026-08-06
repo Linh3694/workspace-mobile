@@ -27,13 +27,13 @@ import {
 } from '../../../hooks/useAdministrativeTicketStore';
 import {
   acceptAdminFeedback,
-  updateAdminTicket,
   getAdminFeedbackStatsByEmail,
   reopenAdminTicket,
 } from '../../../services/administrativeTicketService';
 
 // Utils & Constants
 import { toast } from '../../../utils/toast';
+import { isAdminTicketStaff } from '../../../utils/administrativeTicketPermissions';
 import { getAvatar } from '../../../utils/avatar';
 import { normalizeVietnameseName } from '../../../utils/nameFormatter';
 import { getAdminTicketStatusLabel } from '../../../config/administrativeTicketConstants';
@@ -145,9 +145,7 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
   // CBNV hỗ trợ hành chính: được quản lý công việc con kể cả trên ticket mình tạo
   // (khớp web — section subtask hiện theo VAI TRÒ chứ không theo người tạo ticket).
   const { user } = useAuth();
-  const isAdminTicketStaff =
-    Array.isArray(user?.roles) &&
-    user.roles.some((r) => ['SIS Administrative', 'Mobile Administrative', 'SIS BOD'].includes(r));
+  const isStaff = isAdminTicketStaff(user?.roles);
 
   // Load messages when ticket changes
   useEffect(() => {
@@ -185,31 +183,25 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
 
     try {
       setSubmitting(true);
-      console.log('[handleSubmitFeedback] Submitting feedback:', {
-        ticketId,
-        rating,
-        review,
-        selectedBadges,
-      });
 
+      // `accept_feedback` TỰ đặt status = Closed rồi commit. KHÔNG gọi thêm
+      // `update_ticket` để đóng lại: lúc đó ticket đã Closed, mà `update_ticket`
+      // chặn "Không thể sửa ticket đã đóng" với mọi caller không phải staff HC —
+      // tức là chặn đúng người tạo ticket, người duy nhất được bấm nút này. Lần
+      // gọi thừa đó luôn ném lỗi, nuốt mất toast thành công và chặn refreshTicket
+      // bên dưới, khiến người dùng tưởng gửi đánh giá thất bại (thực ra đã lưu).
       await acceptAdminFeedback(ticketId, {
         rating,
         comment: review,
         badges: selectedBadges,
       });
-      console.log('[handleSubmitFeedback] Feedback submitted successfully');
-
-      await updateAdminTicket({
-        ticket_id: ticketId,
-        status: 'Closed',
-      });
-      console.log('[handleSubmitFeedback] Ticket status updated to Closed');
 
       toast.success('Đánh giá đã được gửi thành công');
       await refreshTicket();
-    } catch (error: any) {
-      console.error('[handleSubmitFeedback] Error:', error?.message || error);
-      toast.error(error?.message || 'Không thể gửi đánh giá');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message.trim() : '';
+      console.error('[handleSubmitFeedback] Error:', message || error);
+      toast.error(message || 'Không thể gửi đánh giá');
     } finally {
       setSubmitting(false);
     }
@@ -417,7 +409,7 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
                 {renderTechnician()}
               </View>
 
-              {isAdminTicketStaff ? (
+              {isStaff ? (
                 // CBNV hỗ trợ: quản lý công việc con (thêm/giao việc/đổi trạng thái/xoá)
                 <SubTaskSection />
               ) : subTasks && subTasks.length > 0 ? (

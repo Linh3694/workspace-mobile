@@ -456,17 +456,22 @@ class ChatService {
     await this.parseJson(res);
   }
 
-  /** GV bộ môn có thể thêm vào nhóm (chỉ GVCN/Phó CN gọi được — BE tự chặn 403). */
-  async getAddableTeachers(conversationId: string): Promise<AddableTeacher[]> {
+  /**
+   * GV có thể thêm vào nhóm (chỉ GVCN/Phó CN gọi được — BE tự chặn 403). Không truyền `search`
+   * chỉ trả GV bộ môn của lớp; có `search` (>=2 ký tự) BE mở rộng tìm theo tên/email trong toàn
+   * trường (vd GV tổ trưởng không dạy lớp này).
+   */
+  async getAddableTeachers(conversationId: string, search?: string): Promise<AddableTeacher[]> {
     const headers = await this.getAuthHeaders();
+    const query = search?.trim() ? `?q=${encodeURIComponent(search.trim())}` : '';
     const res = await fetch(
-      `${BASE_URL}/api/social/chat/conversations/${encodeURIComponent(conversationId)}/members/addable`,
+      `${BASE_URL}/api/social/chat/conversations/${encodeURIComponent(conversationId)}/members/addable${query}`,
       { headers }
     );
     return this.parseJson<AddableTeacher[]>(res);
   }
 
-  /** Thêm 1 GV bộ môn vào nhóm — trả về conversation đã cập nhật. */
+  /** Thêm 1 GV vào nhóm — trả về conversation đã cập nhật. */
   async addConversationTeacher(
     conversationId: string,
     teacherId: string

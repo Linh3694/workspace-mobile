@@ -341,12 +341,29 @@ class PushNotificationService {
         sound: 'default',
       });
 
-      await Notifications.setNotificationChannelAsync('wislife', {
+      // ID phải là 'journal' — CẢ HAI backend đều gửi channelId 'journal' cho Wislife
+      // (erp/api/erp_sis/mobile_push_notification.py và notification-service expoPush.js).
+      // Kênh cũ tên 'wislife' không khớp nên FCM rơi về kênh mặc định: user chỉnh mục
+      // "Wislife" trong Cài đặt Android mà không thấy tác dụng gì.
+      await Notifications.setNotificationChannelAsync('journal', {
         name: 'Wislife - Mạng xã hội nội bộ',
         description: 'Thông báo về bài viết, bình luận, và tương tác trên Wislife',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#8B5CF6',
+        sound: 'default',
+      });
+
+      // Dọn kênh 'wislife' cũ — Android không cho đổi id, để lại thì user thấy hai mục
+      // trùng tên và mục cũ không bao giờ nhận thông báo.
+      await Notifications.deleteNotificationChannelAsync('wislife').catch(() => {});
+
+      await Notifications.setNotificationChannelAsync('news', {
+        name: 'Tin tức',
+        description: 'Tin tức và thông báo chung từ nhà trường',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#0891B2',
         sound: 'default',
       });
 

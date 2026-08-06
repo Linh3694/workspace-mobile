@@ -19,6 +19,7 @@ import {
   useAdministrativeTicketData,
   useAdministrativeTicketActions,
   useAdministrativeTicketUIActions,
+  getAdministrativeActionError,
 } from '../../hooks/useAdministrativeTicketStore';
 
 // Utils
@@ -101,7 +102,7 @@ const TicketAdminDetail = () => {
     if (success) {
       toast.success('Đã nhận ticket thành công!');
     } else {
-      toast.error('Không thể nhận ticket');
+      toast.error(getAdministrativeActionError('Không thể nhận ticket'));
     }
   };
 
@@ -118,7 +119,7 @@ const TicketAdminDetail = () => {
       const formattedName = normalizeVietnameseName(member.fullname);
       toast.success(`Đã chuyển cho ${formattedName}`);
     } else {
-      toast.error('Không thể chuyển ticket');
+      toast.error(getAdministrativeActionError('Không thể chuyển ticket'));
     }
   };
 
@@ -133,7 +134,7 @@ const TicketAdminDetail = () => {
     if (success) {
       toast.success('Đã hủy ticket');
     } else {
-      toast.error('Không thể hủy ticket');
+      toast.error(getAdministrativeActionError('Không thể hủy ticket'));
     }
   };
 

@@ -60,6 +60,8 @@ interface AdministrativeTicketStore {
   supportTeamLoading: boolean;
 
   actionLoading: boolean;
+  /** Message lỗi THẬT của hành động vừa chạy (do backend trả) — UI hiện thay câu chung chung. */
+  actionError: string | null;
   ui: AdministrativeTicketUIState;
 
   fetchTicket: (ticketId: string) => Promise<void>;
@@ -74,7 +76,10 @@ interface AdministrativeTicketStore {
   updateStatus: (status: AdministrativeTicketStatusUi) => Promise<boolean>;
 
   addSubTask: (title: string, assignedTo?: string) => Promise<boolean>;
-  updateSubTaskStatus: (subTaskId: string, status: AdministrativeSubTaskStatusUi) => Promise<boolean>;
+  updateSubTaskStatus: (
+    subTaskId: string,
+    status: AdministrativeSubTaskStatusUi
+  ) => Promise<boolean>;
   updateSubTaskAssignee: (subTaskId: string, assignedTo: string) => Promise<boolean>;
   deleteSubTask: (subTaskId: string) => Promise<boolean>;
 
@@ -131,8 +136,22 @@ const initialState = {
   supportTeamMembers: [] as AdministrativeSupportMember[],
   supportTeamLoading: false,
   actionLoading: false,
+  actionError: null,
   ui: initialUIState,
 };
+
+/**
+ * Bóc message lỗi để UI hiện đúng lý do.
+ *
+ * `administrativeTicketService` đã ném `Error(out.message)` với message thật của
+ * backend ("Không có quyền sửa", "Vui lòng hoàn thành tất cả công việc con trước
+ * khi kết thúc ticket"…). Trước đây các action chỉ `console.error` rồi trả false
+ * nên message đó bị vứt và người dùng luôn chỉ thấy "Không thể cập nhật".
+ */
+function actionErrorMessage(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message.trim() : '';
+  return message || fallback;
+}
 
 async function loadTicketWithSubtasks(ticketId: string): Promise<AdministrativeTicket | null> {
   const [detail, subTasks] = await Promise.all([
@@ -215,7 +234,7 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
     assignToMe: async () => {
       const { currentTicketId } = get();
       if (!currentTicketId) return false;
-      set({ actionLoading: true });
+      set({ actionLoading: true, actionError: null });
       try {
         await assignAdminTicketToMe(currentTicketId);
         await get().refreshTicket();
@@ -223,7 +242,10 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
         return true;
       } catch (error) {
         console.error('Error assigning ticket HC:', error);
-        set({ actionLoading: false });
+        set({
+          actionLoading: false,
+          actionError: actionErrorMessage(error, 'Không thể nhận ticket'),
+        });
         return false;
       }
     },
@@ -231,7 +253,7 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
     assignToUser: async (userId: string, _userName?: string) => {
       const { currentTicketId } = get();
       if (!currentTicketId) return false;
-      set({ actionLoading: true });
+      set({ actionLoading: true, actionError: null });
       try {
         await assignAdminTicketToUser(currentTicketId, userId);
         await get().refreshTicket();
@@ -239,7 +261,10 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
         return true;
       } catch (error) {
         console.error('Error assigning ticket HC to user:', error);
-        set({ actionLoading: false });
+        set({
+          actionLoading: false,
+          actionError: actionErrorMessage(error, 'Không thể giao ticket'),
+        });
         return false;
       }
     },
@@ -247,7 +272,7 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
     cancelTicket: async (reason: string) => {
       const { currentTicketId } = get();
       if (!currentTicketId) return false;
-      set({ actionLoading: true });
+      set({ actionLoading: true, actionError: null });
       try {
         await cancelAdminTicket(currentTicketId, reason);
         await get().refreshTicket();
@@ -258,7 +283,10 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
         return true;
       } catch (error) {
         console.error('Error cancelling ticket HC:', error);
-        set({ actionLoading: false });
+        set({
+          actionLoading: false,
+          actionError: actionErrorMessage(error, 'Không thể huỷ ticket'),
+        });
         return false;
       }
     },
@@ -266,7 +294,7 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
     completeTicket: async (feedback: AdminFeedbackData) => {
       const { currentTicketId } = get();
       if (!currentTicketId) return false;
-      set({ actionLoading: true });
+      set({ actionLoading: true, actionError: null });
       try {
         await acceptAdminFeedback(currentTicketId, feedback);
         await get().refreshTicket();
@@ -283,7 +311,10 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
         return true;
       } catch (error) {
         console.error('Error completing ticket HC:', error);
-        set({ actionLoading: false });
+        set({
+          actionLoading: false,
+          actionError: actionErrorMessage(error, 'Không thể gửi đánh giá'),
+        });
         return false;
       }
     },
@@ -300,7 +331,7 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
         }
       }
 
-      set({ actionLoading: true });
+      set({ actionLoading: true, actionError: null });
       try {
         await updateAdminTicket({
           ticket_id: currentTicketId,
@@ -311,7 +342,10 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
         return true;
       } catch (error) {
         console.error('Error updating ticket HC status:', error);
-        set({ actionLoading: false });
+        set({
+          actionLoading: false,
+          actionError: actionErrorMessage(error, 'Không thể cập nhật'),
+        });
         return false;
       }
     },
@@ -319,7 +353,7 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
     addSubTask: async (title: string, assignedTo?: string) => {
       const { currentTicketId } = get();
       if (!currentTicketId) return false;
-      set({ actionLoading: true });
+      set({ actionLoading: true, actionError: null });
       try {
         await createAdminSubTask(currentTicketId, { title, assignedTo });
         await get().refreshTicket();
@@ -327,7 +361,10 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
         return true;
       } catch (error) {
         console.error('Error adding subtask HC:', error);
-        set({ actionLoading: false });
+        set({
+          actionLoading: false,
+          actionError: actionErrorMessage(error, 'Không thể thêm công việc con'),
+        });
         return false;
       }
     },
@@ -335,7 +372,7 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
     updateSubTaskStatus: async (subTaskId: string, status: AdministrativeSubTaskStatusUi) => {
       const { currentTicketId } = get();
       if (!currentTicketId) return false;
-      set({ actionLoading: true });
+      set({ actionLoading: true, actionError: null });
       try {
         await updateAdminSubTaskStatus(currentTicketId, subTaskId, status);
         await get().refreshTicket();
@@ -343,7 +380,10 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
         return true;
       } catch (error) {
         console.error('Error updating subtask HC:', error);
-        set({ actionLoading: false });
+        set({
+          actionLoading: false,
+          actionError: actionErrorMessage(error, 'Không thể cập nhật công việc con'),
+        });
         return false;
       }
     },
@@ -351,7 +391,7 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
     updateSubTaskAssignee: async (subTaskId: string, assignedTo: string) => {
       const { currentTicketId } = get();
       if (!currentTicketId) return false;
-      set({ actionLoading: true });
+      set({ actionLoading: true, actionError: null });
       try {
         await updateAdminSubTask(currentTicketId, subTaskId, { assignedTo });
         await get().refreshTicket();
@@ -359,7 +399,10 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
         return true;
       } catch (error) {
         console.error('Error updating subtask assignee HC:', error);
-        set({ actionLoading: false });
+        set({
+          actionLoading: false,
+          actionError: actionErrorMessage(error, 'Không thể đổi người thực hiện'),
+        });
         return false;
       }
     },
@@ -367,7 +410,7 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
     deleteSubTask: async (subTaskId: string) => {
       const { currentTicketId } = get();
       if (!currentTicketId) return false;
-      set({ actionLoading: true });
+      set({ actionLoading: true, actionError: null });
       try {
         await deleteAdminSubTask(currentTicketId, subTaskId);
         await get().refreshTicket();
@@ -375,7 +418,10 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
         return true;
       } catch (error) {
         console.error('Error deleting subtask HC:', error);
-        set({ actionLoading: false });
+        set({
+          actionLoading: false,
+          actionError: actionErrorMessage(error, 'Không thể xoá công việc con'),
+        });
         return false;
       }
     },
@@ -464,17 +510,26 @@ export const useAdministrativeTicketStore = create<AdministrativeTicketStore>()(
   }))
 );
 
-export const useAdministrativeTicket = () =>
-  useAdministrativeTicketStore((state) => state.ticket);
+export const useAdministrativeTicket = () => useAdministrativeTicketStore((state) => state.ticket);
 export const useAdministrativeTicketLoading = () =>
   useAdministrativeTicketStore((state) => state.loading);
 export const useAdministrativeTicketError = () =>
   useAdministrativeTicketStore((state) => state.error);
 /** Trạng thái modal/sheet UI (tương đương useTicketUI bên IT) */
-export const useAdministrativeTicketUI = () =>
-  useAdministrativeTicketStore((state) => state.ui);
+export const useAdministrativeTicketUI = () => useAdministrativeTicketStore((state) => state.ui);
 export const useAdministrativeActionLoading = () =>
   useAdministrativeTicketStore((state) => state.actionLoading);
+
+/**
+ * Lý do thất bại của hành động vừa chạy, để toast nói đúng vấn đề thay vì
+ * "Không thể cập nhật".
+ *
+ * KHÔNG phải hook và cố ý như vậy: phải gọi NGAY SAU `await <action>()`. Giá trị
+ * lấy từ hook là snapshot lúc render nên luôn là lỗi của lần trước, còn store ghi
+ * `actionError` trong lúc await — chỉ `getState()` mới đọc được giá trị mới.
+ */
+export const getAdministrativeActionError = (fallback: string): string =>
+  useAdministrativeTicketStore.getState().actionError || fallback;
 
 export const useCanSendAdministrativeMessage = () => {
   const ticket = useAdministrativeTicketStore((state) => state.ticket);
@@ -535,6 +590,7 @@ export const useAdministrativeTicketActions = () =>
       updateSubTaskAssignee: state.updateSubTaskAssignee,
       deleteSubTask: state.deleteSubTask,
       actionLoading: state.actionLoading,
+      actionError: state.actionError,
     }))
   );
 

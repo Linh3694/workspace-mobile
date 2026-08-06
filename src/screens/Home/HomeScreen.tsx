@@ -66,6 +66,7 @@ import {
 } from '../../utils/homeMenuUsage';
 
 import classNewsfeedService from '../../services/classNewsfeedService';
+import { isAdminTicketStaff } from '../../utils/administrativeTicketPermissions';
 import { newsfeedClassesToOptions } from '../../utils/homeroomClassUtils';
 
 // Define type cho navigation
@@ -308,12 +309,7 @@ const HomeScreen = () => {
   const navigateToAdministrativeTicket = () => {
     try {
       if (user) {
-        const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
-        if (
-          roles.includes('Mobile Administrative') ||
-          roles.includes('SIS Administrative') ||
-          roles.includes('SIS BOD')
-        ) {
+        if (isAdminTicketStaff(user?.roles)) {
           navigation.navigate(ROUTES.SCREENS.ADMINISTRATIVE_TICKET_ADMIN);
         } else {
           navigation.navigate(ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST);

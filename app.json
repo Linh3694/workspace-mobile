@@ -86,7 +86,8 @@
         "NSMicrophoneUsageDescription": "Ứng dụng cần quyền truy cập microphone để ghi âm",
         "NSFaceIDUsageDescription": "Ứng dụng cần sử dụng FaceID để xác thực đăng nhập an toàn",
         "CFBundleAllowMixedLocalizations": true
-      }
+      },
+      "buildNumber": "105"
     },
     "android": {
       "adaptiveIcon": {

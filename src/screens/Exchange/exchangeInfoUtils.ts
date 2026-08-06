@@ -58,6 +58,52 @@ function teacherRoleText(
   return subjects ? `${labels.subjectTeacher} • ${subjects}` : labels.homeroom || labels.teacher;
 }
 
+/**
+ * Thứ tự nhóm thành viên: GVCN → Phó GVCN → GVBM → PH chính → PH thường (mỗi nhóm A→Z).
+ * Giữ khớp với bản web (`classChatUtils.buildChatMemberRows`) để hai nền hiện cùng thứ tự.
+ */
+const MEMBER_GROUP_RANK = {
+  homeroom: 0,
+  viceHomeroom: 1,
+  subjectTeacher: 2,
+  keyGuardian: 3,
+  guardian: 4,
+} as const;
+
+/**
+ * Sắp tên tiếng Việt: tên → họ → đệm (cùng luật `sortVietnameseName` dùng ở các màn khác).
+ * Luật đó chỉ so ký tự ĐẦU mỗi phần nên tên cùng chữ cái đầu sẽ hoà — so thêm nguyên chuỗi
+ * để ra A→Z thật sự và thứ tự ổn định.
+ */
+function compareVietnameseName(nameA: string, nameB: string): number {
+  const partsA = nameA.trim().split(' ').filter(Boolean);
+  const partsB = nameB.trim().split(' ').filter(Boolean);
+  if (!partsA.length && !partsB.length) return 0;
+  if (!partsA.length) return 1;
+  if (!partsB.length) return -1;
+
+  const firstChars = (parts: string[]) => parts.map((p) => p.charAt(0).toLowerCase());
+  const charsA = firstChars(partsA);
+  const charsB = firstChars(partsB);
+
+  const byGivenName = (charsA[charsA.length - 1] || '').localeCompare(
+    charsB[charsB.length - 1] || '',
+    'vi'
+  );
+  if (byGivenName !== 0) return byGivenName;
+
+  const byFamilyName = (charsA[0] || '').localeCompare(charsB[0] || '', 'vi');
+  if (byFamilyName !== 0) return byFamilyName;
+
+  if (charsA.length >= 3 && charsB.length >= 3) {
+    const byMiddle = (charsA[1] || '').localeCompare(charsB[1] || '', 'vi');
+    if (byMiddle !== 0) return byMiddle;
+  } else if (charsA.length >= 3) return -1;
+  else if (charsB.length >= 3) return 1;
+
+  return nameA.localeCompare(nameB, 'vi');
+}
+
 /** Chữ cái đầu cho avatar chữ của học sinh (họ + tên gọi), giống `getInitials` bên web. */
 export function memberInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -110,7 +156,12 @@ function relationshipCodeOf(guardian: ChatGuardian): string {
 }
 
 /**
- * Danh sách thành viên từ conversation.teachers[] + guardians[] (GV trước, PH sau).
+ * Danh sách thành viên từ conversation.teachers[] + guardians[], sắp theo
+ * {@link MEMBER_GROUP_RANK}: GVCN → Phó GVCN → GVBM → PH chính → PH thường (mỗi nhóm A→Z).
+ *
+ * Rank GV bám ĐÚNG luật của {@link teacherRoleText} (kể cả nhánh fallback khi thiếu
+ * `homeroomRole`) để thứ tự luôn khớp nhãn vai trò đang hiện. "PH chính" = PH có cờ
+ * `keyPerson` ở ít nhất một liên kết học sinh.
  *
  * `translateRelationship` dịch mã quan hệ ('mother') sang nhãn hiển thị — truyền từ màn hình
  * để dùng đúng ngôn ngữ đang chọn; thiếu thì bỏ chip quan hệ chứ không in mã EN ra UI.
@@ -127,38 +178,57 @@ export function buildConversationMembers(
         .map((s) => s?.title)
         .filter(Boolean)
         .join(', ');
+      const rank =
+        tt.homeroomRole === 'vice_homeroom'
+          ? MEMBER_GROUP_RANK.viceHomeroom
+          : tt.homeroomRole === 'homeroom'
+            ? MEMBER_GROUP_RANK.homeroom
+            : subjects
+              ? MEMBER_GROUP_RANK.subjectTeacher
+              : MEMBER_GROUP_RANK.homeroom;
       return {
-        key: `t:${tt.teacherId || tt.email || tt.name || i}`,
-        name: formatChatDisplayName(tt.name) || tt.email || labels.teacher,
-        avatar: resolveParticipantAvatarUrl(tt.avatarUrl, tt.email || tt.name || 'gv'),
-        role: teacherRoleText(tt, subjects, labels),
-        pill: 'GV' as const,
-        phone: String(tt.phoneNumber || '').trim() || undefined,
-        students: [] as InfoMemberStudent[],
-        isGuardian: false,
-        teacherId: tt.teacherId,
-        removable: Boolean(tt.manualAdd),
+        rank,
+        member: {
+          key: `t:${tt.teacherId || tt.email || tt.name || i}`,
+          name: formatChatDisplayName(tt.name) || tt.email || labels.teacher,
+          avatar: resolveParticipantAvatarUrl(tt.avatarUrl, tt.email || tt.name || 'gv'),
+          role: teacherRoleText(tt, subjects, labels),
+          pill: 'GV' as const,
+          phone: String(tt.phoneNumber || '').trim() || undefined,
+          students: [] as InfoMemberStudent[],
+          isGuardian: false,
+          teacherId: tt.teacherId,
+          removable: Boolean(tt.manualAdd),
+        },
       };
     });
   const guardians = (conversation?.guardians || [])
     .filter((g) => !g.removedAt) // PH đã rời nhóm → không hiển thị (giống web)
     .map((g, i) => {
       const relationCode = relationshipCodeOf(g);
+      const students = studentLinksOf(g);
       return {
-        key: `g:${g.guardianId || g.email || g.name || i}`,
-        name: formatChatDisplayName(g.name) || g.email || labels.parent,
-        avatar: resolveParticipantAvatarUrl(g.avatarUrl, g.email || g.name || 'ph'),
-        role: labels.parent,
-        pill: null,
-        relationPill: (relationCode && translateRelationship?.(relationCode)) || undefined,
-        phone: String(g.phoneNumber || '').trim() || undefined,
-        email: displayGuardianEmail(g) || undefined,
-        students: studentLinksOf(g),
-        isGuardian: true,
-        guardianId: g.guardianId,
+        rank: students.some((s) => s.keyPerson)
+          ? MEMBER_GROUP_RANK.keyGuardian
+          : MEMBER_GROUP_RANK.guardian,
+        member: {
+          key: `g:${g.guardianId || g.email || g.name || i}`,
+          name: formatChatDisplayName(g.name) || g.email || labels.parent,
+          avatar: resolveParticipantAvatarUrl(g.avatarUrl, g.email || g.name || 'ph'),
+          role: labels.parent,
+          pill: null,
+          relationPill: (relationCode && translateRelationship?.(relationCode)) || undefined,
+          phone: String(g.phoneNumber || '').trim() || undefined,
+          email: displayGuardianEmail(g) || undefined,
+          students,
+          isGuardian: true,
+          guardianId: g.guardianId,
+        },
       };
     });
-  return [...teachers, ...guardians];
+  return [...teachers, ...guardians]
+    .sort((a, b) => a.rank - b.rank || compareVietnameseName(a.member.name, b.member.name))
+    .map((item) => item.member);
 }
 
 /** Chuẩn hoá chuỗi tìm kiếm: bỏ dấu + thường hoá. */
