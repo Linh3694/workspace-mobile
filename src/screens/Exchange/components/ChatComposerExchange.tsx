@@ -4,7 +4,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,10 +20,24 @@ import {
 } from 'react-native';
 
 import { chatService } from '../../../services/chatService';
-import { CHAT_MAX_ATTACHMENTS, type ChatAttachment, type ChatMessage } from '../../../types/chat';
+import {
+  CHAT_MAX_ATTACHMENTS,
+  type ChatAttachment,
+  type ChatConversation,
+  type ChatMention,
+  type ChatMessage,
+} from '../../../types/chat';
 import { formatChatWislifeStickerContent } from '../../../utils/chatWislifeSticker';
 
 import { formatChatDisplayName, replyQuoteSnippet } from '../exchangeChatThreadUtils';
+import {
+  buildMentionCandidates,
+  findMentionTrigger,
+  insertMention,
+  syncMentions,
+  type ChatMentionCandidate,
+  type ChatMentionTrigger,
+} from '../lib/chatMentions';
 import { ChatEmojiPickerPanel } from './ChatEmojiPickerPanel';
 import { ChatVideoThumbnail } from './ChatVideoThumbnail';
 
@@ -60,10 +74,15 @@ export type ChatComposerExchangeProps = {
   onTyping: () => void;
   onTypingStop: () => void;
   onEmojiOpenChange?: (open: boolean) => void;
+  /** Hội thoại đang mở — nguồn danh sách gợi ý @ và quyền tag nhóm (server tính sẵn). */
+  conversation?: ChatConversation | null;
+  /** Email người đang đăng nhập — không gợi ý tự tag chính mình. */
+  viewerEmail?: string;
   onSend: (payload: {
     content: string;
     attachments?: ChatAttachment[];
     replyToMessageId?: string;
+    mentions?: ChatMention[];
   }) => Promise<void>;
   /** Viewer là GVCN/phó của nhóm lớp → hiện nút tạo bình chọn. */
   canCreatePoll?: boolean;
@@ -134,6 +153,8 @@ export function ChatComposerExchange({
   onTyping,
   onTypingStop,
   onEmojiOpenChange,
+  conversation,
+  viewerEmail,
   onSend,
   canCreatePoll,
   onCreatePoll,
@@ -157,6 +178,35 @@ export function ChatComposerExchange({
   const [localPicks, setLocalPicks] = useState<LocalPick[]>([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [sending, setSending] = useState(false);
+  /** Nhắc tên (@): tag đã chèn, token đang gõ, và vị trí con trỏ mới nhất. */
+  const [mentions, setMentions] = useState<ChatMention[]>([]);
+  const [mentionTrigger, setMentionTrigger] = useState<ChatMentionTrigger | null>(null);
+  const caretRef = useRef(0);
+
+  const mentionCandidates = useMemo(
+    () => (mentionTrigger
+      ? buildMentionCandidates({ conversation, query: mentionTrigger.query, viewerEmail })
+      : []),
+    [mentionTrigger, conversation, viewerEmail]
+  );
+  const mentionOpen = Boolean(mentionTrigger) && mentionCandidates.length > 0;
+
+  /** Chọn một gợi ý: chèn `@Tên `, dời offset các tag đứng sau. */
+  const pickMentionCandidate = useCallback(
+    (candidate: ChatMentionCandidate) => {
+      if (!mentionTrigger) return;
+      const result = insertMention(value, mentionTrigger, candidate);
+      const delta = result.text.length - value.length;
+      const shifted = mentions.map((m) => (m.start >= mentionTrigger.start ? { ...m, start: m.start + delta } : m));
+      setValue(result.text);
+      setMentions(syncMentions(result.text, [...shifted, result.mention]));
+      setMentionTrigger(null);
+      caretRef.current = result.caret;
+      // RN không cho set caret trực tiếp; giữ focus để người dùng gõ tiếp ngay sau tag.
+      inputRef.current?.focus();
+    },
+    [mentions, mentionTrigger, value]
+  );
 
   const setEmojiPanelOpen = useCallback(
     (open: boolean) => {
@@ -330,8 +380,12 @@ export function ChatComposerExchange({
         content: text,
         attachments,
         replyToMessageId: replyTo?._id,
+        // Server trim `content` ⇒ neo lại offset theo đúng chuỗi sắp gửi.
+        mentions: syncMentions(text, mentions),
       });
       setValue('');
+      setMentions([]);
+      setMentionTrigger(null);
       setLocalPicks([]);
       setEmojiPanelOpen(false);
       void onTypingStop();
@@ -434,6 +488,46 @@ export function ChatComposerExchange({
         </ScrollView>
       ) : null}
 
+      {/* Gợi ý nhắc tên (@) — nổi trên ô nhập, chạm để chèn. */}
+      {mentionOpen ? (
+        <View className="mb-1 max-h-56 overflow-hidden rounded-2xl border border-teal-600/20 bg-white shadow-sm">
+          <ScrollView keyboardShouldPersistTaps="always">
+            {mentionCandidates.map((candidate) => (
+              <Pressable
+                key={candidate.key}
+                onPress={() => pickMentionCandidate(candidate)}
+                className="flex-row items-center gap-2 px-3 py-2 active:bg-gray-100">
+                {candidate.isGroup ? (
+                  <View className="size-8 items-center justify-center rounded-full bg-teal-50">
+                    <Ionicons
+                      name={candidate.type === 'everyone' ? 'at-outline' : 'people-outline'}
+                      size={16}
+                      color={TEAL_ICON}
+                    />
+                  </View>
+                ) : candidate.avatarUrl ? (
+                  <Image source={{ uri: candidate.avatarUrl }} className="size-8 rounded-full" />
+                ) : (
+                  <View className="size-8 items-center justify-center rounded-full bg-gray-200">
+                    <Ionicons name="person-outline" size={16} color="#64748B" />
+                  </View>
+                )}
+                <View className="min-w-0 flex-1">
+                  <Text numberOfLines={1} className="font-mulish-semibold text-sm text-[#0f172a]">
+                    {candidate.name}
+                  </Text>
+                  {candidate.subtitle ? (
+                    <Text numberOfLines={1} className="font-mulish-medium text-xs text-gray-500">
+                      {candidate.subtitle}
+                    </Text>
+                  ) : null}
+                </View>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+
       <View className="flex-row items-end">
         <View
           className="min-w-0 flex-1 flex-row items-end gap-2 rounded-full border border-teal-600/20 bg-white/95 px-1.5 py-1.5 shadow-sm"
@@ -458,9 +552,18 @@ export function ChatComposerExchange({
               setEmojiPanelOpen(false);
             }}
             onChangeText={(t) => {
+              // Con trỏ sau khi gõ: RN bắn onChangeText TRƯỚC onSelectionChange nên tự suy ra
+              // vị trí mới từ độ dài thay đổi, nếu không token `@` sẽ tính theo caret cũ.
+              const nextCaret = Math.max(0, Math.min(caretRef.current + (t.length - value.length), t.length));
+              caretRef.current = nextCaret;
               setValue(t);
+              setMentions((prev) => (prev.length ? syncMentions(t, prev) : prev));
+              setMentionTrigger(findMentionTrigger(t, nextCaret));
               if (!t.trim()) void onTypingStop();
               else onTyping();
+            }}
+            onSelectionChange={(event) => {
+              caretRef.current = event.nativeEvent.selection.end;
             }}
             placeholder={locked ? 'Nhóm chỉ đọc' : placeholder}
             placeholderTextColor={INPUT_PLACEHOLDER_HEX}

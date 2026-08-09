@@ -18,6 +18,12 @@ import { useAuth } from '../../../context/AuthContext';
 // Utils
 import { toast } from '../../../utils/toast';
 import { normalizeVietnameseName } from '../../../utils/nameFormatter';
+import {
+  ADMIN_SUBTASK_QUEUED_LABEL,
+  ADMIN_SUBTASK_QUEUED_STYLE,
+  getAdminSubTaskStatusLabel,
+  getAdminSubTaskStatusStyle,
+} from '../../../config/administrativeTicketConstants';
 
 // Components
 import { SubTaskStatusSheet, SubTaskAssigneeModal, AssigneeSearchSheet } from './TicketModals';
@@ -170,36 +176,16 @@ const SubTaskSection: React.FC<SubTaskSectionProps> = ({ title = 'Danh sách cô
     const inProgressTasks = subTasks.filter((t) => t.status === 'In Progress');
     const isFirstInProgress = inProgressTasks.length > 0 && inProgressTasks[0]._id === task._id;
 
-    // Style based on status
-    let bgColor = '#fff';
-    let textColor = '#222';
-    let textDecorationLine: 'none' | 'line-through' = 'none';
-
-    if (task.status === 'Completed') {
-      bgColor = '#E4EFE6';
-      textColor = '#009483';
-    } else if (task.status === 'Cancelled') {
-      bgColor = '#EBEBEB';
-      textColor = '#757575';
-      textDecorationLine = 'line-through';
-    } else if (task.status === 'In Progress') {
-      if (isFirstInProgress) {
-        bgColor = '#E6EEF6';
-        textColor = '#002855';
-      } else {
-        bgColor = '#EBEBEB';
-        textColor = '#757575';
-      }
-    }
-
-    const statusLabel =
-      task.status === 'In Progress'
-        ? isFirstInProgress
-          ? 'Đang xử lý'
-          : 'Chờ xử lý'
-        : task.status === 'Completed'
-          ? 'Hoàn thành'
-          : 'Đã huỷ';
+    // Style theo trạng thái, rồi đè bằng style "xếp hàng chờ" cho các subtask
+    // In Progress không phải cái đầu tiên — đây là thông tin vị trí trong hàng đợi
+    // của riêng ticket này nên nó nằm ở đây chứ không nằm trong helper chung.
+    const isQueued = task.status === 'In Progress' && !isFirstInProgress;
+    const { bgColor, textColor, textDecorationLine } = isQueued
+      ? ADMIN_SUBTASK_QUEUED_STYLE
+      : getAdminSubTaskStatusStyle(task.status);
+    const statusLabel = isQueued
+      ? ADMIN_SUBTASK_QUEUED_LABEL
+      : getAdminSubTaskStatusLabel(task.status);
 
     return (
       <TouchableOpacity

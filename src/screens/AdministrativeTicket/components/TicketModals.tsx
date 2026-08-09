@@ -320,6 +320,13 @@ interface SubTaskStatusSheetProps {
   canComplete?: boolean;
   onReassign?: () => void;
   onDelete?: () => void;
+  /**
+   * Bỏ trống => sheet tự lấy trạng thái từ store ticket detail (hành vi cũ).
+   * Truyền vào => sheet chạy controlled, dùng cho màn list nơi mỗi dòng thuộc một
+   * ticket khác nhau nên store detail (vốn scope theo currentTicketId) không dùng được.
+   */
+  visible?: boolean;
+  onClose?: () => void;
 }
 
 export const SubTaskStatusSheet: React.FC<SubTaskStatusSheetProps> = ({
@@ -329,9 +336,15 @@ export const SubTaskStatusSheet: React.FC<SubTaskStatusSheetProps> = ({
   canComplete = true,
   onReassign,
   onDelete,
+  visible,
+  onClose,
 }) => {
   const { showSubTaskStatusModal } = useAdministrativeTicketUI();
   const { closeSubTaskStatusModal } = useAdministrativeTicketUIActions();
+
+  const isControlled = visible !== undefined;
+  const isVisible = isControlled ? visible : showSubTaskStatusModal;
+  const handleClose = isControlled ? onClose || (() => {}) : closeSubTaskStatusModal;
 
   if (!subTask) return null;
 
@@ -353,8 +366,8 @@ export const SubTaskStatusSheet: React.FC<SubTaskStatusSheetProps> = ({
 
   return (
     <BottomSheetModal
-      visible={showSubTaskStatusModal}
-      onClose={closeSubTaskStatusModal}
+      visible={isVisible}
+      onClose={handleClose}
       maxHeightPercent={42}
       keyboardAvoiding={false}
       bottomPaddingExtra={8}>
@@ -371,7 +384,7 @@ export const SubTaskStatusSheet: React.FC<SubTaskStatusSheetProps> = ({
               <TouchableOpacity
                 onPress={() => {
                   onSelect(item.value);
-                  closeSubTaskStatusModal();
+                  handleClose();
                 }}
                 className="px-4 py-3.5 active:bg-gray-200/80">
                 <Text className="text-center text-base font-medium text-[#002855]">
@@ -402,9 +415,7 @@ export const SubTaskStatusSheet: React.FC<SubTaskStatusSheetProps> = ({
           </View>
         )}
         <View className="mt-2 overflow-hidden rounded-2xl bg-gray-100">
-          <TouchableOpacity
-            onPress={closeSubTaskStatusModal}
-            className="px-4 py-3.5 active:bg-gray-200/80">
+          <TouchableOpacity onPress={handleClose} className="px-4 py-3.5 active:bg-gray-200/80">
             <Text className="text-center text-base font-semibold text-[#FF3B30]">Hủy</Text>
           </TouchableOpacity>
         </View>

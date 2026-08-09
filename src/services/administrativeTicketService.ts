@@ -4,6 +4,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL } from '../config/constants';
+import { getIssueDepartmentOptions } from './organizationService';
 
 const getAxiosConfig = async (additionalConfig: { headers?: Record<string, string> } = {}) => {
   const token = await AsyncStorage.getItem('authToken');
@@ -196,6 +197,44 @@ export interface AdminSubTask {
   status: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/**
+ * Công việc con của chính user đang đăng nhập (tab "Việc của tôi").
+ * `ticketId` là thứ cho phép gọi updateAdminSubTaskStatus ngay từ màn list —
+ * ở màn detail thông tin này nằm sẵn trong store nên AdminSubTask không cần.
+ * Không có `assignedTo` vì luôn là chính người gọi.
+ */
+export interface MyAdminSubTask extends AdminSubTask {
+  ticketId: string;
+}
+
+/** Một ticket cha kèm các công việc con được giao cho tôi trong ticket đó. */
+export interface MyAdminSubTaskTicketGroup {
+  _id: string;
+  ticketCode: string;
+  title: string;
+  status: string;
+  priority?: string;
+  category?: string;
+  categoryLabel?: string;
+  assignedTo?: { _id: string; fullname: string } | null;
+  creator?: { email: string; fullname: string };
+  createdAt?: string;
+  updatedAt?: string;
+  /** Số công việc con CỦA TÔI chưa xong / tổng số công việc con của tôi trong ticket. */
+  openCount: number;
+  totalCount: number;
+  subTasks: MyAdminSubTask[];
+}
+
+export interface MyAdminSubTasksResult {
+  tickets: MyAdminSubTaskTicketGroup[];
+  totalOpenSubTasks: number;
+  totalSubTasks: number;
+  totalTickets: number;
+  /** false => user không đọc được ticket cha, ẩn nút "Mở ticket" để tránh 403. */
+  canOpenTicketDetail: boolean;
 }
 
 export interface AdminTicketHistoryEntry {
@@ -526,15 +565,17 @@ export async function getRoomEventBookings(params: {
   }
 }
 
+/**
+ * Danh sách phòng ban — đơn vị Sơ đồ tổ chức.
+ *
+ * Trước đây gọi `erp.api.crm.issue_department.get_departments`; endpoint đó đã bị gỡ
+ * khỏi backend (doctype CRM Issue Department không còn) nên danh sách luôn rỗng mà
+ * không báo lỗi. Shape trả về giữ nguyên để nơi gọi không phải sửa theo.
+ */
 export async function getCrmIssueDepartments(): Promise<CrmIssueDepartmentOption[]> {
   try {
-    const config = await getAxiosConfig();
-    const response = await axios.get('/api/method/erp.api.crm.issue_department.get_departments', {
-      ...config,
-      params: { is_active: true },
-    });
-    const out = unwrap<CrmIssueDepartmentOption[]>(response);
-    if (out.success && Array.isArray(out.data)) return out.data;
+    const res = await getIssueDepartmentOptions();
+    if (res.success) return res.data;
     return [];
   } catch (e) {
     console.error('getCrmIssueDepartments', e);
@@ -683,6 +724,35 @@ export async function getAdminSubTasks(ticketId: string): Promise<AdminSubTask[]
   const out = unwrap<{ subTasks?: AdminSubTask[] }>(response);
   if (out.success && out.data?.subTasks) return out.data.subTasks;
   return [];
+}
+
+/**
+ * Công việc con được giao cho user hiện tại, gom theo ticket cha.
+ *
+ * Khác các getter còn lại trong file (getAllAdminTickets, getAdminSubTasks... đều
+ * nuốt lỗi rồi trả mảng rỗng): hàm này THROW. Ở đây danh sách rỗng là một câu trả
+ * lời có nghĩa — "bạn không có việc nào" — nên gộp nó với lỗi mạng sẽ báo sai cho
+ * user đúng thứ mà tính năng này sinh ra để nói. Màn hình tự bắt và hiện nút thử lại.
+ */
+export async function getMyAdminSubTasks(options?: {
+  scope?: 'pending' | 'all';
+  limit?: number;
+}): Promise<MyAdminSubTasksResult> {
+  const config = await getAxiosConfig();
+  const payload: Record<string, unknown> = { scope: options?.scope || 'pending' };
+  if (options?.limit !== undefined) payload.limit = options.limit;
+  const response = await axios.post(`${BASE}.get_my_subtasks`, payload, config);
+  const out = unwrap<MyAdminSubTasksResult>(response);
+  if (!out.success || !out.data) {
+    throw new Error(out.message || 'getMyAdminSubTasks failed');
+  }
+  return {
+    tickets: out.data.tickets || [],
+    totalOpenSubTasks: out.data.totalOpenSubTasks || 0,
+    totalSubTasks: out.data.totalSubTasks || 0,
+    totalTickets: out.data.totalTickets || 0,
+    canOpenTicketDetail: out.data.canOpenTicketDetail !== false,
+  };
 }
 
 export async function createAdminSubTask(

@@ -530,6 +530,10 @@ export function applyPollUpdate(cur: ChatPoll | null | undefined, next: ChatPoll
   if (next.rev <= cur.rev) return cur;
   // REST/getMessages: payload đầy đủ theo người xem → dùng nguyên.
   if (next.viewerScoped) return next;
+  // GV vừa BẬT ẩn danh cho bình chọn đang công khai ⇒ KHÔNG được giữ lại danh sách người bầu cũ,
+  // nếu không phụ huynh vẫn nhìn thấy danh tính đã hiện trước đó cho tới khi tải lại trang.
+  // Giáo viên nhận tiếp event `chat:message:poll:voters` ngay sau đó nên không mất quyền xem.
+  if (next.anonymous && !cur.anonymous) return { ...next, myVote: cur.myVote };
   // Broadcast: đã lược trường phụ thuộc người xem. Giữ lại từ trạng thái cũ, nếu không GV sẽ mất
   // quyền xem người bầu (canSeeVoters) và danh sách avatar ngay khi có người bỏ phiếu poll ẩn danh.
   return {

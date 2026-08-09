@@ -6,17 +6,22 @@ export const CRM_ISSUE_DIRECT_ISSUE_ROLES = [
   'SIS Sales Care Admin',
 ] as const;
 
-/** Roles Sales — đồng bộ web CRM_ISSUE_SALES_STATUS_ROLES — chỉ nhóm này đổi Trạng thái / Kết quả xử lý */
+/**
+ * Nhóm Care/Admin — đổi Trạng thái / Kết quả xử lý.
+ * Khớp web CRM_ISSUE_SALES_STATUS_ROLES + backend ISSUE_STATUS_SALES_ROLES.
+ * KHÔNG có `SIS Sales`: role đó là user thường, backend từ chối thao tác.
+ */
 export const CRM_ISSUE_SALES_STATUS_ROLES = [
-  'SIS Sales',
-  'SIS Sales Admin',
   'SIS Sales Care',
   'SIS Sales Care Admin',
+  'SIS Sales Admin',
 ] as const;
 
-/** Role được ghi / xử lý vấn đề — khớp backend ISSUE_WRITE_ROLES + web CRM_ISSUE_WRITE_ROLES */
+/**
+ * Role được ghi / xử lý vấn đề — khớp backend ISSUE_WRITE_ROLES + web CRM_ISSUE_WRITE_ROLES.
+ * `SIS Sales` ghi qua Team đơn vị (backend tự tính), không nằm trong danh sách này.
+ */
 export const CRM_ISSUE_WRITE_ROLES = [
-  'SIS Sales',
   'SIS Sales Care',
   'SIS Sales Care Admin',
   'SIS Sales Admin',
@@ -24,8 +29,19 @@ export const CRM_ISSUE_WRITE_ROLES = [
   'System Manager',
 ] as const;
 
-/** @deprecated dùng CRM_ISSUE_SALES_STATUS_ROLES */
-export const SALES_ROLES = CRM_ISSUE_SALES_STATUS_ROLES;
+/** Thấy tab "Tất cả" + "Chờ duyệt" ở danh sách; role khác chỉ có "Của tôi" / "Liên quan" */
+export const CRM_ISSUE_FULL_LIST_TAB_ROLES = [
+  'System Manager',
+  'SIS BOD',
+  'SIS Sales Care',
+  'SIS Sales Care Admin',
+] as const;
+
+/** Chỉ nhóm Care được thêm/bớt phòng ban liên quan — khớp backend ISSUE_DEPT_EDIT_ROLES */
+export const CRM_ISSUE_DEPT_EDIT_ROLES = [
+  'SIS Sales Care',
+  'SIS Sales Care Admin',
+] as const;
 
 /** Roles được gọi API CRM (khớp erp.api.crm.utils.ALLOWED_ROLES) */
 export const CRM_ALLOWED_ROLES = [
@@ -84,9 +100,19 @@ export function canWriteCrmIssue(
   return set.has(uid);
 }
 
-/** Chỉ Sales — đổi trạng thái xử lý / kết quả sau khi đã duyệt */
+/** Chỉ nhóm Care/Admin — đổi trạng thái xử lý / kết quả sau khi đã duyệt */
 export function canEditSalesStatusResult(roles: string[]): boolean {
   return CRM_ISSUE_SALES_STATUS_ROLES.some((r) => roles.includes(r));
+}
+
+/** Thấy tab "Tất cả" + "Chờ duyệt" ở danh sách vấn đề */
+export function canSeeFullIssueListTabs(roles: string[]): boolean {
+  return CRM_ISSUE_FULL_LIST_TAB_ROLES.some((r) => roles.includes(r));
+}
+
+/** Thêm/bớt phòng ban liên quan (nhóm Care) — dùng khi API chưa trả can_change_department */
+export function canEditIssueDepartments(roles: string[]): boolean {
+  return CRM_ISSUE_DEPT_EDIT_ROLES.some((r) => roles.includes(r));
 }
 
 export const PIC_CHANGE_ROLES = [

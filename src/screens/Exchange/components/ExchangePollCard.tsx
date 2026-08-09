@@ -75,18 +75,25 @@ export function ExchangePollCard({
   poll,
   pending,
   canClose,
+  canEdit,
   readOnly,
   maxWidth,
   timeLabel,
   onToggleOption,
   onOpenVoters,
   onClose,
+  onEdit,
 }: {
   poll: ChatPoll;
   /** Đang chờ server phản hồi lượt bỏ phiếu. */
   pending?: boolean;
   /** Người xem được kết thúc sớm (người tạo hoặc GVCN/phó). */
   canClose?: boolean;
+  /**
+   * Người xem được sửa bình chọn (người tạo hoặc GVCN/phó). Vẫn hiện khi đã kết thúc —
+   * đặt lại hạn ở tương lai chính là cách mở lại bình chọn.
+   */
+  canEdit?: boolean;
   /** Nhóm khóa → không bỏ phiếu được. */
   readOnly?: boolean;
   maxWidth?: number;
@@ -98,6 +105,7 @@ export function ExchangePollCard({
   onToggleOption: (optionId: string) => void;
   onOpenVoters: () => void;
   onClose: () => void;
+  onEdit?: () => void;
 }) {
   const { t } = useLanguage();
   const myVote = poll.myVote ?? [];
@@ -206,6 +214,15 @@ export function ExchangePollCard({
           <Pressable onPress={onOpenVoters}>
             <Text style={{ color: ACCENT }} className="font-mulish-bold text-[11px]">
               {t('exchange.poll_view_voters')}
+            </Text>
+          </Pressable>
+        ) : null}
+        {/* Nút sửa đặt ở chân thẻ (không phải hàng tiêu đề): hàng tiêu đề chỉ rộng ~0.7 màn hình
+            và đã có hạn + giờ gửi + "Kết thúc", thêm nữa là cắt chữ. */}
+        {canEdit && onEdit ? (
+          <Pressable onPress={onEdit} hitSlop={8} className="ml-auto">
+            <Text style={{ color: ACCENT }} className="font-mulish-bold text-[11px]">
+              {t('exchange.poll_edit_action')}
             </Text>
           </Pressable>
         ) : null}

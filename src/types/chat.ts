@@ -98,7 +98,47 @@ export type ChatConversation = {
   }>;
   /** Tối đa 1 tin ghim trong hội thoại — null nếu không có. */
   pinnedMessage?: PinnedMessageSnapshot | null;
+  /** Ma trận quyền tag nhóm của thành viên thường (Trưởng/Phó nhóm luôn được nên không có mặt). */
+  mentionPolicy?: ChatMentionPolicy;
+  /** Các phân loại thành viên đang có trong nhóm — nguồn để dựng `@Giáo viên` / `@Phụ huynh`. */
+  mentionSegments?: ChatMentionSegment[];
+  /**
+   * Quyền tag nhóm của CHÍNH người đang đăng nhập. Thiếu (payload broadcast / server cũ) ⇒
+   * app coi như không tag nhóm được, chỉ tag từng người — an toàn hơn là đoán mở.
+   */
+  viewerMentionPermissions?: ChatViewerMentionPermissions;
   updatedAt: string;
+};
+
+/**
+ * Phân loại thành viên để tag cả nhóm (`@Giáo viên` / `@Phụ huynh`). Chuỗi mở CỐ Ý:
+ * server có thể thêm nhóm mới mà bản app cũ không vỡ kiểu.
+ */
+export type ChatMentionSegment = 'teachers' | 'guardians' | (string & {});
+
+/** Quyền tag cả nhóm của người đang xem — server tính, app chỉ vẽ theo. */
+export type ChatViewerMentionPermissions = {
+  isGroupAdmin: boolean;
+  allowedSegments: ChatMentionSegment[];
+  canMentionEveryone: boolean;
+};
+
+/** `{ [vai trò]: { [segment]: bật/tắt } }` — thiếu khoá ⇒ được phép. */
+export type ChatMentionPolicy = Partial<Record<'teacher' | 'guardian', Record<string, boolean>>>;
+
+/**
+ * Một lượt nhắc tên trong tin — khớp `ChatMessage.mentions` của social-service.
+ * `content` vẫn là text thuần, mảng này chỉ neo vị trí để tô đậm.
+ */
+export type ChatMention = {
+  type: 'user' | 'segment' | 'everyone';
+  segment?: ChatMentionSegment;
+  userId?: string;
+  email?: string;
+  /** Tên đúng như đã gõ trong `content`, không kèm '@'. */
+  name: string;
+  start: number;
+  length: number;
 };
 
 /** GV bộ môn có thể thêm vào nhóm (đang phân công dạy lớp, chưa ở trong nhóm). */
@@ -157,6 +197,8 @@ export type ChatPoll = {
   anonymous: boolean;
   closesAt?: string | null;
   closedAt?: string | null;
+  /** Số phút nhắc trước hạn (null = không nhắc) — dùng để nạp lại form khi sửa bình chọn. */
+  remindBeforeMinutes?: number | null;
   /** Server tính: đã đóng tay hoặc đã quá `closesAt`. */
   isClosed: boolean;
   /** Số NGƯỜI đã bầu (không phải số phiếu) — mẫu số cho %. */
@@ -175,11 +217,39 @@ export type ChatPoll = {
   rev: number;
 };
 
+/** Một thành viên CHƯA bình chọn — chỉ giáo viên nhận được (server lược với phụ huynh). */
+export type ChatPollPendingMember = {
+  userId: string;
+  name: string;
+  role: 'teacher' | 'guardian' | string;
+  email?: string;
+  avatarUrl?: string;
+  studentNames?: string[];
+};
+
 export type ChatPollVotersData = {
   messageId: string;
   rev: number;
   totalVoters: number;
   options: { id: string; voters: ChatPollVoter[] }[];
+  /** CHỈ có với giáo viên — danh sách người chưa bình chọn (đã trừ người tạo). */
+  pending?: ChatPollPendingMember[];
+  /** Tổng thành viên active (đã trừ người tạo) — mẫu số cho "M/N". */
+  participantCount?: number;
+};
+
+/**
+ * Sửa bình chọn — field KHÔNG gửi lên nghĩa là giữ nguyên.
+ * `options` gửi TOÀN BỘ danh sách mong muốn: phần tử có `id` = phương án đang có (khi đã có phiếu
+ * thì text phải giữ nguyên), phần tử không `id` = phương án thêm mới.
+ */
+export type UpdateChatPollPayload = {
+  question?: string;
+  options?: { id?: string; text: string }[];
+  allowMultiple?: boolean;
+  anonymous?: boolean;
+  closesAt?: string | null;
+  remindBeforeMinutes?: number | null;
 };
 
 export type CreateChatPollPayload = {
@@ -209,6 +279,8 @@ export type ChatMessage = {
     content: string;
     senderName?: string;
   };
+  /** Nhắc tên (@) — rỗng/thiếu với tin không tag ai. */
+  mentions?: ChatMention[];
   /** Chỉ GV nhận từ BE — danh sách userId đã đọc. */
   readBy?: Array<{ user: string; readAt: string }>;
   createdAt: string;
@@ -286,6 +358,8 @@ export type SendChatMessageInput = {
   content?: string;
   replyTo?: string;
   attachments?: ChatAttachment[];
+  /** Nhắc tên (@) — server xác thực lại offset/quyền, sai thì bỏ hoặc trả 403. */
+  mentions?: ChatMention[];
 };
 
 /** Snapshot môn dạy của GV bộ môn — phục vụ hiển thị trong picker. */

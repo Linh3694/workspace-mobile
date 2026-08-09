@@ -29,6 +29,7 @@ import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
 import { useAuth } from '../../context/AuthContext';
 import {
+  canEditIssueDepartments,
   canWriteCrmIssue,
   CRM_ISSUE_DIRECT_ISSUE_ROLES,
   hasCrmAccess,
@@ -37,15 +38,42 @@ import {
   createIssue,
   getIssue,
   getModules,
-  getDepartments,
+  getIssuePicCandidates,
+  previewIssueParticipants,
   updateIssue,
   uploadIssueAttachment,
   searchCrmStudents,
   collectDepartmentMemberEmailsForIssue,
   type CrmStudentSearchHit,
 } from '../../services/crmIssueService';
-import type { CRMIssueModule, CRMIssueDepartment, CRMIssuePriority } from '../../types/crmIssue';
+import { getIssueUnitOptions, type IssueUnitOption } from '../../services/organizationService';
+import {
+  getAllSchoolYears,
+  pickDefaultSchoolYear,
+  schoolYearLabel,
+  type SchoolYear,
+} from '../../services/schoolYearService';
+import { searchGuardiansForPicker } from '../../services/guardianService';
+import { searchUsersForPicker } from '../../services/userDirectoryService';
+import type {
+  CRMIssueGroup,
+  CRMIssueModule,
+  CRMIssuePriority,
+  IssueParticipant,
+  IssuePicCandidate,
+} from '../../types/crmIssue';
+import {
+  CRM_ISSUE_GROUP_OPTIONS,
+  CRM_ISSUE_PRIORITY_ORDER,
+  labelForCrmIssuePriority,
+} from '../../types/crmIssue';
+import { descendantUnitsOf, keepGroupsUnderDepartments } from './shared/issueOrgUnits';
+import { MultiPickerSheet, type PickerOption } from './components/MultiPickerSheet';
+import { IssueParticipantsPreview } from './components/IssueParticipantsPreview';
 import { normalizeStudentClassTitle } from '../../utils/studentClassUtils';
+
+/** Loại vấn đề "Góp ý" sinh từ Parent Portal — ẩn khỏi danh sách chọn như web */
+const MODULE_NAME_FEEDBACK = 'Góp ý';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type RAdd = RouteProp<RootStackParamList, typeof ROUTES.SCREENS.CRM_ISSUE_ADD>;
@@ -152,16 +180,37 @@ const CRMIssueAddEditScreen: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [content, setContent] = useState('');
   const [modules, setModules] = useState<CRMIssueModule[]>([]);
-  const [departments, setDepartments] = useState<CRMIssueDepartment[]>([]);
+  /** Đơn vị Sơ đồ tổ chức — nguồn cho cả Phòng ban và Nhóm liên quan */
+  const [unitOptions, setUnitOptions] = useState<IssueUnitOption[]>([]);
   const [moduleId, setModuleId] = useState<string>('');
-  /** Nhiều CRM Issue Department — khớp web departments[] */
+  /** Phòng ban liên quan — docname đơn vị (khớp web departments[]) */
   const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>([]);
+  /** Nhóm liên quan — đơn vị con của phòng ban đã chọn */
+  const [groupIds, setGroupIds] = useState<string[]>([]);
+  /** Người liên quan chọn tay (email user) + nhãn để hiện chip khi chưa tìm lại */
+  const [relatedUserIds, setRelatedUserIds] = useState<string[]>([]);
+  const [relatedUserLabels, setRelatedUserLabels] = useState<Record<string, string>>({});
   const [occurredAt, setOccurredAt] = useState(new Date());
   const [priority, setPriority] = useState<CRMIssuePriority>('Trung binh');
+  const [schoolYears, setSchoolYears] = useState<SchoolYear[]>([]);
+  const [schoolYearId, setSchoolYearId] = useState('');
+  const [issueGroup, setIssueGroup] = useState<CRMIssueGroup | ''>('');
+  const [picItems, setPicItems] = useState<IssuePicCandidate[]>([]);
+  const [pic, setPic] = useState('');
+  /** Phụ huynh liên quan đã chọn */
+  const [guardians, setGuardians] = useState<{ name: string; label: string; phone?: string }[]>([]);
+  const [participants, setParticipants] = useState<IssueParticipant[]>([]);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [showDate, setShowDate] = useState(false);
   const [showStudents, setShowStudents] = useState(false);
   const [showModule, setShowModule] = useState(false);
   const [showDept, setShowDept] = useState(false);
+  const [showGroups, setShowGroups] = useState(false);
+  const [showRelatedUsers, setShowRelatedUsers] = useState(false);
+  const [showGuardians, setShowGuardians] = useState(false);
+  const [showSchoolYear, setShowSchoolYear] = useState(false);
+  const [showIssueGroup, setShowIssueGroup] = useState(false);
+  const [showPic, setShowPic] = useState(false);
   const [showPriority, setShowPriority] = useState(false);
   const [showAttachSheet, setShowAttachSheet] = useState(false);
   /** URL từ server (sửa) */
@@ -181,10 +230,33 @@ const CRMIssueAddEditScreen: React.FC = () => {
   const [studentHits, setStudentHits] = useState<CrmStudentSearchHit[]>([]);
 
   const loadMeta = useCallback(async () => {
-    const [m, d] = await Promise.all([getModules(), getDepartments()]);
+    const [m, u, sy, p] = await Promise.all([
+      getModules(),
+      getIssueUnitOptions(),
+      getAllSchoolYears(),
+      getIssuePicCandidates(),
+    ]);
     if (m.success && m.data) setModules(m.data);
-    if (d.success && d.data) setDepartments(d.data);
+    if (u.success) setUnitOptions(u.data);
+    if (p.success && p.data) setPicItems(p.data);
+    if (sy.success && sy.data.length) {
+      setSchoolYears(sy.data);
+      // Tạo mới: mặc định năm học đang bật; sửa thì `loadDoc` ghi đè theo bản ghi
+      const active = pickDefaultSchoolYear(sy.data);
+      if (active) setSchoolYearId((prev) => prev || active.name);
+    }
   }, []);
+
+  /**
+   * Điều kiện hiển thị cụm Phân công — khớp web IssueFormV2:
+   * người ngoài nhóm Care để trống, team care điền khi duyệt.
+   */
+  const showAssignmentFields = isEdit || canCreateDirectSales;
+  const canEditDepartments = !isEdit || canEditIssueDepartments(roles);
+  const requireDepartment = !isEdit && canCreateDirectSales;
+  const requireIssueGroup = !isEdit && canCreateDirectSales;
+  /** PIC chỉ chọn khi Care tạo trực tiếp; đổi PIC làm ở màn chi tiết */
+  const showPicField = canCreateDirectSales && !isEdit;
 
   useEffect(() => {
     if (!hasCrmAccess(roles)) {
@@ -216,11 +288,38 @@ const CRMIssueAddEditScreen: React.FC = () => {
           setContent(htmlToPlainText(doc.content || ''));
           setModuleId(doc.issue_module);
           setPriority((doc.priority as CRMIssuePriority) || 'Trung binh');
+          setIssueGroup((doc.issue_group as CRMIssueGroup) || '');
+          if (doc.school_year_id) setSchoolYearId(doc.school_year_id);
+          setPic(doc.pic || '');
           const fromRows = (doc.issue_departments ?? [])
             .map((r) => r.department)
             .filter(Boolean) as string[];
           setSelectedDeptIds(
             fromRows.length > 0 ? fromRows : doc.department ? [doc.department] : []
+          );
+          setGroupIds(
+            (doc.issue_related_groups ?? []).map((r) => r.unit).filter(Boolean) as string[]
+          );
+          // Chỉ người CHỌN TAY mới sửa được ở đây; người do đơn vị kéo vào bỏ bằng cách bỏ đơn vị
+          const manual = (doc.related_users ?? []).filter((r) => r.source === 'manual');
+          setRelatedUserIds(manual.map((r) => r.user));
+          setRelatedUserLabels(
+            Object.fromEntries(manual.map((r) => [r.user, r.full_name?.trim() || r.user]))
+          );
+          const gRows = doc.issue_guardians ?? [];
+          const gList = gRows
+            .filter((r) => r.guardian)
+            .map((r) => ({
+              name: r.guardian as string,
+              label: r.guardian_display_name || (r.guardian as string),
+              phone: r.guardian_phone,
+            }));
+          setGuardians(
+            gList.length > 0
+              ? gList
+              : doc.guardian
+                ? [{ name: doc.guardian, label: doc.guardian }]
+                : []
           );
           if (doc.occurred_at) {
             const d = new Date(doc.occurred_at);
@@ -263,6 +362,95 @@ const CRMIssueAddEditScreen: React.FC = () => {
     }, 400);
     return () => clearTimeout(timer);
   }, [studentSheetSearch, showStudents]);
+
+  // Bỏ phòng ban nào thì nhóm con của nó cũng rời khỏi lựa chọn
+  useEffect(() => {
+    setGroupIds((prev) => {
+      const next = keepGroupsUnderDepartments(unitOptions, selectedDeptIds, prev);
+      return next.length === prev.length ? prev : next;
+    });
+  }, [unitOptions, selectedDeptIds]);
+
+  /** Xem trước người nhận thông báo — hỏi server để không lệch logic gửi thật */
+  useEffect(() => {
+    if (!showAssignmentFields) return;
+    if (selectedDeptIds.length === 0 && groupIds.length === 0 && relatedUserIds.length === 0) {
+      setParticipants([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingParticipants(true);
+    const timer = setTimeout(() => {
+      void previewIssueParticipants({
+        departments: selectedDeptIds,
+        related_groups: groupIds,
+        related_users: relatedUserIds,
+      })
+        .then((res) => {
+          if (cancelled) return;
+          setParticipants(res.success && res.data ? res.data.participants : []);
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingParticipants(false);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [showAssignmentFields, selectedDeptIds, groupIds, relatedUserIds]);
+
+  /** Loại vấn đề chọn được — ẩn "Góp ý" (sinh từ Parent Portal) trừ khi đang sửa đúng loại đó */
+  const moduleOptions = useMemo(() => {
+    const isFb = (m: CRMIssueModule) => (m.module_name || '').trim() === MODULE_NAME_FEEDBACK;
+    const filtered = modules.filter((m) => !isFb(m));
+    if (isEdit && moduleId) {
+      const current = modules.find((m) => m.name === moduleId);
+      if (current && isFb(current)) return [current, ...filtered];
+    }
+    return filtered;
+  }, [modules, isEdit, moduleId]);
+
+  /** Chỉ đơn vị cấp "Phòng" được chọn ở ô Phòng ban liên quan */
+  const departmentPickerOptions = useMemo<PickerOption[]>(
+    () =>
+      unitOptions
+        .filter((u) => u.is_department)
+        .map((u) => ({ value: u.name, label: u.department_name })),
+    [unitOptions]
+  );
+
+  /** Nhóm liên quan: chỉ đơn vị nằm dưới phòng ban đang chọn */
+  const groupPickerOptions = useMemo<PickerOption[]>(
+    () =>
+      descendantUnitsOf(unitOptions, selectedDeptIds).map((u) => ({
+        value: u.name,
+        label: u.department_name,
+      })),
+    [unitOptions, selectedDeptIds]
+  );
+
+  const unitLabelById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const u of unitOptions) map[u.name] = u.department_name;
+    return map;
+  }, [unitOptions]);
+
+  /** Người đã được phòng ban / nhóm kéo vào thì không cần chọn tay nữa */
+  const autoParticipantIds = useMemo(
+    () => new Set(participants.filter((p) => p.source !== 'manual').map((p) => p.user)),
+    [participants]
+  );
+
+  const relatedUserPickerSelected = useMemo<PickerOption[]>(
+    () => relatedUserIds.map((id) => ({ value: id, label: relatedUserLabels[id] || id })),
+    [relatedUserIds, relatedUserLabels]
+  );
+
+  const guardianPickerSelected = useMemo<PickerOption[]>(
+    () => guardians.map((g) => ({ value: g.name, label: g.label, subtitle: g.phone })),
+    [guardians]
+  );
 
   const attachmentDisplayName = useMemo(() => {
     if (pendingAttachment) return pendingAttachment.name;
@@ -392,7 +580,16 @@ const CRMIssueAddEditScreen: React.FC = () => {
   };
 
   const onSubmit = async () => {
-    if (!content.trim() || !moduleId || selectedDeptIds.length === 0 || !priority) {
+    // Phòng ban / Nhóm vấn đề chỉ bắt buộc khi Care tạo trực tiếp (tự duyệt) — khớp web.
+    // Người ngoài Care để trống, team care điền ở bước duyệt.
+    if (
+      !content.trim() ||
+      !moduleId ||
+      !schoolYearId ||
+      !priority ||
+      (requireDepartment && selectedDeptIds.length === 0) ||
+      (requireIssueGroup && !issueGroup)
+    ) {
       Alert.alert(t('common.error'), t('crm_issue.required_fields'));
       return;
     }
@@ -415,19 +612,38 @@ const CRMIssueAddEditScreen: React.FC = () => {
 
       const contentHtml = plainTextToHtml(content.trim());
       const studentIds = students.map((s) => s.name);
+      const guardianIds = guardians.map((g) => g.name);
+
+      // Phân công chỉ gửi khi user được phép chỉnh — người ngoài Care bỏ trống để team care điền khi duyệt
+      const assignment =
+        showAssignmentFields && canEditDepartments
+          ? {
+              department: selectedDeptIds[0] || undefined,
+              departments: selectedDeptIds,
+              related_groups: groupIds,
+              related_users: relatedUserIds,
+              ...(issueGroup ? { issue_group: issueGroup } : {}),
+            }
+          : {};
+
+      const basePayload = {
+        content: contentHtml,
+        issue_module: moduleId,
+        school_year_id: schoolYearId,
+        occurred_at: formatOccurredForApi(occurredAt),
+        priority,
+        attachment: attachmentFinal,
+        ...assignment,
+      };
 
       if (isEdit && issueId) {
         const res = await updateIssue({
           name: issueId,
-          content: contentHtml,
-          issue_module: moduleId,
-          department: selectedDeptIds[0] || undefined,
-          departments: selectedDeptIds.length ? selectedDeptIds : undefined,
-          occurred_at: formatOccurredForApi(occurredAt),
-          priority,
-          attachment: attachmentFinal,
+          ...basePayload,
           students: studentIds,
           student: studentIds[0] || '',
+          guardians: guardianIds,
+          guardian: guardianIds[0] || '',
         });
         if (res.success) {
           Alert.alert(t('common.success'), res.message || '');
@@ -435,15 +651,10 @@ const CRMIssueAddEditScreen: React.FC = () => {
         } else Alert.alert(t('common.error'), res.message || '');
       } else {
         const res = await createIssue({
-          content: contentHtml,
-          issue_module: moduleId,
-          department: selectedDeptIds[0] || undefined,
-          departments: selectedDeptIds.length ? selectedDeptIds : undefined,
-          occurred_at: formatOccurredForApi(occurredAt),
-          priority,
-          attachment: attachmentFinal,
-          students: studentIds,
-          student: studentIds[0] || '',
+          ...basePayload,
+          ...(showPicField && pic ? { pic } : {}),
+          ...(studentIds.length > 0 ? { students: studentIds, student: studentIds[0] } : {}),
+          ...(guardianIds.length > 0 ? { guardians: guardianIds, guardian: guardianIds[0] } : {}),
         });
         if (res.success) {
           Alert.alert(t('common.success'), res.message || '');
@@ -500,6 +711,39 @@ const CRMIssueAddEditScreen: React.FC = () => {
               </Text>
             </View>
           ) : null}
+          <View style={styles.fieldWrapper}>
+            <Text style={styles.fieldLabel}>
+              {t('crm_issue.school_year')} <Text style={styles.asterisk}>*</Text>
+            </Text>
+            <TouchableOpacity
+              onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowSchoolYear(true), 100); }}
+              style={styles.inputRow}>
+              <Text style={[styles.inputText, !schoolYearId && styles.placeholder]} numberOfLines={1}>
+                {schoolYears.find((y) => y.name === schoolYearId)
+                  ? schoolYearLabel(schoolYears.find((y) => y.name === schoolYearId)!)
+                  : t('crm_issue.select_school_year')}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
+
+          {showAssignmentFields ? (
+            <View style={styles.fieldWrapper}>
+              <Text style={styles.fieldLabel}>
+                {t('crm_issue.issue_group')}{' '}
+                {requireIssueGroup ? <Text style={styles.asterisk}>*</Text> : null}
+              </Text>
+              <TouchableOpacity
+                onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowIssueGroup(true), 100); }}
+                style={styles.inputRow}>
+                <Text style={[styles.inputText, !issueGroup && styles.placeholder]} numberOfLines={1}>
+                  {issueGroup || t('crm_issue.select_issue_group')}
+                </Text>
+                <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
           <View style={styles.fieldWrapper}>
             <Text style={styles.fieldLabel}>
               {t('crm_issue.module')} <Text style={styles.asterisk}>*</Text>
@@ -564,32 +808,141 @@ const CRMIssueAddEditScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
+          {/* Phụ huynh liên quan — picker tìm ở server (tên / SĐT) */}
           <View style={styles.fieldWrapper}>
-            <Text style={styles.fieldLabel}>
-              {t('crm_issue.department')} <Text style={styles.asterisk}>*</Text>
-            </Text>
-            <TouchableOpacity onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowDept(true), 100); }} style={styles.inputRow}>
+            <Text style={styles.fieldLabel}>{t('crm_issue.guardians')}</Text>
+            <TouchableOpacity
+              onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowGuardians(true), 100); }}
+              style={styles.inputRow}>
               <Text
-                style={[styles.inputText, selectedDeptIds.length === 0 && styles.placeholder]}
-                numberOfLines={2}>
-                {selectedDeptIds.length === 0
-                  ? t('crm_issue.optional')
-                  : selectedDeptIds
-                      .map((id) => departments.find((d) => d.name === id)?.department_name || id)
-                      .join(', ')}
+                style={[styles.inputText, guardians.length === 0 && styles.placeholder]}
+                numberOfLines={1}>
+                {guardians.length > 0
+                  ? t('crm_issue.guardians_selected_count', { count: guardians.length })
+                  : t('crm_issue.guardians_pick_placeholder')}
               </Text>
               <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
             </TouchableOpacity>
+            {guardians.length > 0 ? (
+              <View style={styles.chipRow}>
+                {guardians.map((g) => (
+                  <TouchableOpacity
+                    key={g.name}
+                    onPress={() => setGuardians((p) => p.filter((x) => x.name !== g.name))}
+                    style={styles.chip}>
+                    <View style={styles.chipTextCol}>
+                      <Text style={styles.chipText} numberOfLines={1}>
+                        {g.label}
+                      </Text>
+                      {g.phone ? (
+                        <Text style={styles.chipSub} numberOfLines={1}>
+                          {g.phone}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Ionicons name="close-circle" size={18} color={PRIMARY} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
           </View>
+
+          {/* Cụm Phân công — chỉ hiện với nhóm Care (tạo trực tiếp) hoặc khi sửa, như web */}
+          {showAssignmentFields ? (
+            <>
+              <Text style={styles.sectionLabel}>{t('crm_issue.assignment_section')}</Text>
+
+              <View style={styles.fieldWrapper}>
+                <Text style={styles.fieldLabel}>
+                  {t('crm_issue.department')}{' '}
+                  {requireDepartment ? <Text style={styles.asterisk}>*</Text> : null}
+                </Text>
+                <TouchableOpacity
+                  disabled={!canEditDepartments}
+                  onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowDept(true), 100); }}
+                  style={[styles.inputRow, !canEditDepartments && { opacity: 0.6 }]}>
+                  <Text
+                    style={[styles.inputText, selectedDeptIds.length === 0 && styles.placeholder]}
+                    numberOfLines={2}>
+                    {selectedDeptIds.length === 0
+                      ? t('crm_issue.select_department')
+                      : selectedDeptIds.map((id) => unitLabelById[id] || id).join(', ')}
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+                {!canEditDepartments ? (
+                  <Text style={styles.fieldHint}>{t('crm_issue.only_care_edit_assignment')}</Text>
+                ) : null}
+              </View>
+
+              <View style={styles.fieldWrapper}>
+                <Text style={styles.fieldLabel}>{t('crm_issue.related_groups')}</Text>
+                <TouchableOpacity
+                  disabled={!canEditDepartments || selectedDeptIds.length === 0}
+                  onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowGroups(true), 100); }}
+                  style={[
+                    styles.inputRow,
+                    (!canEditDepartments || selectedDeptIds.length === 0) && { opacity: 0.6 },
+                  ]}>
+                  <Text
+                    style={[styles.inputText, groupIds.length === 0 && styles.placeholder]}
+                    numberOfLines={2}>
+                    {selectedDeptIds.length === 0
+                      ? t('crm_issue.pick_department_first')
+                      : groupIds.length === 0
+                        ? t('crm_issue.select_related_groups')
+                        : groupIds.map((id) => unitLabelById[id] || id).join(', ')}
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+                <Text style={styles.fieldHint}>{t('crm_issue.related_groups_hint')}</Text>
+              </View>
+
+              <View style={styles.fieldWrapper}>
+                <Text style={styles.fieldLabel}>{t('crm_issue.related_users')}</Text>
+                <TouchableOpacity
+                  disabled={!canEditDepartments}
+                  onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowRelatedUsers(true), 100); }}
+                  style={[styles.inputRow, !canEditDepartments && { opacity: 0.6 }]}>
+                  <Text
+                    style={[styles.inputText, relatedUserIds.length === 0 && styles.placeholder]}
+                    numberOfLines={2}>
+                    {relatedUserIds.length === 0
+                      ? t('crm_issue.select_related_users')
+                      : relatedUserIds.map((id) => relatedUserLabels[id] || id).join(', ')}
+                  </Text>
+                  <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
+                </TouchableOpacity>
+                <Text style={styles.fieldHint}>{t('crm_issue.related_users_hint')}</Text>
+              </View>
+
+              <IssueParticipantsPreview
+                participants={participants}
+                loading={loadingParticipants}
+              />
+            </>
+          ) : null}
+
+          {showPicField ? (
+            <View style={styles.fieldWrapper}>
+              <Text style={styles.fieldLabel}>{t('crm_issue.pic')}</Text>
+              <TouchableOpacity
+                onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowPic(true), 100); }}
+                style={styles.inputRow}>
+                <Text style={[styles.inputText, !pic && styles.placeholder]} numberOfLines={1}>
+                  {picItems.find((u) => u.user_id === pic)?.full_name || t('crm_issue.select_pic')}
+                </Text>
+                <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
           <View style={styles.fieldWrapper}>
             <Text style={styles.fieldLabel}>
               {t('crm_issue.priority')} <Text style={styles.asterisk}>*</Text>
             </Text>
             <TouchableOpacity onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowPriority(true), 100); }} style={styles.inputRow}>
-              <Text style={styles.inputText}>
-                {priority === 'Trung binh' ? t('crm_issue.priority_medium') : priority === 'Thap' ? t('crm_issue.priority_low') : t('crm_issue.priority_high')}
-              </Text>
+              <Text style={styles.inputText}>{labelForCrmIssuePriority(priority, t)}</Text>
               <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
             </TouchableOpacity>
           </View>
@@ -749,10 +1102,10 @@ const CRMIssueAddEditScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
-            {modules.length === 0 ? (
+            {moduleOptions.length === 0 ? (
               <Text style={styles.sheetHint}>{t('crm_issue.no_modules')}</Text>
             ) : null}
-            {modules.map((m) => (
+            {moduleOptions.map((m) => (
               <TouchableOpacity
                 key={m.name}
                 onPress={() => {
@@ -774,44 +1127,201 @@ const CRMIssueAddEditScreen: React.FC = () => {
         </View>
       </BottomSheetModal>
 
-      <BottomSheetModal visible={showDept} onClose={() => setShowDept(false)} maxHeightPercent={50} keyboardAvoiding={false} fillHeight>
+      {/* Phòng ban liên quan — đơn vị cấp "Phòng" của Sơ đồ tổ chức */}
+      <MultiPickerSheet
+        visible={showDept}
+        onClose={() => setShowDept(false)}
+        title={t('crm_issue.select_department')}
+        options={departmentPickerOptions}
+        selected={selectedDeptIds}
+        onToggle={(value) => toggleDepartment(value)}
+        emptyText={t('crm_issue.no_departments')}
+        onClear={() => setSelectedDeptIds([])}
+        clearLabel={t('crm_issue.clear_department')}
+      />
+
+      {/* Nhóm liên quan — đơn vị con của phòng ban đang chọn */}
+      <MultiPickerSheet
+        visible={showGroups}
+        onClose={() => setShowGroups(false)}
+        title={t('crm_issue.related_groups')}
+        options={groupPickerOptions}
+        selected={groupIds}
+        onToggle={(value) =>
+          setGroupIds((prev) =>
+            prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
+          )
+        }
+        emptyText={t('crm_issue.no_related_groups')}
+        onClear={() => setGroupIds([])}
+      />
+
+      {/* Người liên quan — tìm trong danh bạ user, bỏ người đã do đơn vị kéo vào */}
+      <MultiPickerSheet
+        visible={showRelatedUsers}
+        onClose={() => setShowRelatedUsers(false)}
+        title={t('crm_issue.related_users')}
+        options={relatedUserPickerSelected}
+        selected={relatedUserIds}
+        searchPlaceholder={t('crm_issue.related_users_search_placeholder')}
+        onSearch={async (term) => {
+          const res = await searchUsersForPicker(term);
+          return res.data
+            .filter((u) => !autoParticipantIds.has(u.name))
+            .map((u) => ({
+              value: u.name,
+              label: u.full_name || u.email,
+              subtitle: u.email,
+            }));
+        }}
+        onToggle={(value, option) => {
+          setRelatedUserLabels((prev) => ({ ...prev, [value]: option.label }));
+          setRelatedUserIds((prev) =>
+            prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
+          );
+        }}
+        onClear={() => setRelatedUserIds([])}
+      />
+
+      {/* Phụ huynh liên quan — tìm theo tên / SĐT */}
+      <MultiPickerSheet
+        visible={showGuardians}
+        onClose={() => setShowGuardians(false)}
+        title={t('crm_issue.guardians')}
+        options={guardianPickerSelected}
+        selected={guardians.map((g) => g.name)}
+        searchPlaceholder={t('crm_issue.guardians_search_placeholder')}
+        onSearch={async (term) => {
+          const res = await searchGuardiansForPicker(term);
+          return res.data.map((g) => ({
+            value: g.name,
+            label: g.guardian_name || g.name,
+            subtitle: g.phone_number,
+          }));
+        }}
+        onToggle={(value, option) => {
+          setGuardians((prev) =>
+            prev.some((x) => x.name === value)
+              ? prev.filter((x) => x.name !== value)
+              : [...prev, { name: value, label: option.label, phone: option.subtitle }]
+          );
+        }}
+        onClear={() => setGuardians([])}
+      />
+
+      {/* Năm học */}
+      <BottomSheetModal visible={showSchoolYear} onClose={() => setShowSchoolYear(false)} maxHeightPercent={50} keyboardAvoiding={false} fillHeight>
         <View style={styles.sheetInner}>
           <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>{t('crm_issue.select_department')}</Text>
-            <TouchableOpacity onPress={() => setShowDept(false)} style={styles.sheetDone}>
+            <Text style={styles.sheetTitle}>{t('crm_issue.select_school_year')}</Text>
+            <TouchableOpacity onPress={() => setShowSchoolYear(false)} style={styles.sheetDone}>
+              <Text style={styles.sheetDoneText}>{t('common.close')}</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
+            {schoolYears.map((y) => (
+              <TouchableOpacity
+                key={y.name}
+                onPress={() => {
+                  setSchoolYearId(y.name);
+                  setShowSchoolYear(false);
+                }}
+                style={[styles.sheetItem, schoolYearId === y.name && styles.sheetItemSelected]}>
+                <Text
+                  style={[
+                    styles.sheetItemText,
+                    schoolYearId === y.name && styles.sheetItemTextSelected,
+                  ]}
+                  numberOfLines={1}>
+                  {schoolYearLabel(y)}
+                </Text>
+                {schoolYearId === y.name ? (
+                  <Ionicons name="checkmark-circle" size={22} color={PRIMARY} />
+                ) : null}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </BottomSheetModal>
+
+      {/* Nhóm vấn đề */}
+      <BottomSheetModal visible={showIssueGroup} onClose={() => setShowIssueGroup(false)} maxHeightPercent={35} keyboardAvoiding={false}>
+        <View style={styles.sheetInner}>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle}>{t('crm_issue.select_issue_group')}</Text>
+            <TouchableOpacity onPress={() => setShowIssueGroup(false)} style={styles.sheetDone}>
+              <Text style={styles.sheetDoneText}>{t('common.close')}</Text>
+            </TouchableOpacity>
+          </View>
+          {CRM_ISSUE_GROUP_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              onPress={() => {
+                setIssueGroup(opt.value);
+                setShowIssueGroup(false);
+              }}
+              style={[styles.sheetItem, issueGroup === opt.value && styles.sheetItemSelected]}>
+              <Text
+                style={[
+                  styles.sheetItemText,
+                  issueGroup === opt.value && styles.sheetItemTextSelected,
+                ]}>
+                {opt.label}
+              </Text>
+              {issueGroup === opt.value ? (
+                <Ionicons name="checkmark-circle" size={22} color={PRIMARY} />
+              ) : null}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </BottomSheetModal>
+
+      {/* Người thực hiện (PIC) — chỉ khi Care tạo trực tiếp */}
+      <BottomSheetModal visible={showPic} onClose={() => setShowPic(false)} maxHeightPercent={55} keyboardAvoiding={false} fillHeight>
+        <View style={styles.sheetInner}>
+          <View style={styles.sheetHeader}>
+            <Text style={styles.sheetTitle}>{t('crm_issue.select_pic')}</Text>
+            <TouchableOpacity onPress={() => setShowPic(false)} style={styles.sheetDone}>
               <Text style={styles.sheetDoneText}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
           <TouchableOpacity
             onPress={() => {
-              setSelectedDeptIds([]);
-              setShowDept(false);
+              setPic('');
+              setShowPic(false);
             }}
             style={styles.sheetItem}>
-            <Text style={styles.clearText}>{t('crm_issue.clear_department')}</Text>
+            <Text style={styles.clearText}>{t('crm_issue.clear_pic')}</Text>
           </TouchableOpacity>
           <ScrollView keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
-            {departments.length === 0 ? (
-              <Text style={styles.sheetHint}>{t('crm_issue.no_departments')}</Text>
+            {picItems.length === 0 ? (
+              <Text style={styles.sheetHint}>{t('crm_issue.no_pic_candidates')}</Text>
             ) : null}
-            {departments.map((d) => {
-              const selected = selectedDeptIds.includes(d.name);
-              return (
-                <TouchableOpacity
-                  key={d.name}
-                  onPress={() => toggleDepartment(d.name)}
-                  style={[styles.sheetItem, selected && styles.sheetItemSelected]}>
-                  <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
-                    {selected ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
-                  </View>
+            {picItems.map((u) => (
+              <TouchableOpacity
+                key={u.user_id}
+                onPress={() => {
+                  setPic(u.user_id);
+                  setShowPic(false);
+                }}
+                style={[styles.sheetItem, pic === u.user_id && styles.sheetItemSelected]}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text
-                    style={[styles.sheetItemText, selected && styles.sheetItemTextSelected]}
-                    numberOfLines={2}>
-                    {d.department_name}
+                    style={[styles.sheetItemText, pic === u.user_id && styles.sheetItemTextSelected]}
+                    numberOfLines={1}>
+                    {u.full_name || u.email}
                   </Text>
-                </TouchableOpacity>
-              );
-            })}
+                  {u.job_title ? (
+                    <Text style={styles.sheetHint} numberOfLines={1}>
+                      {u.job_title}
+                    </Text>
+                  ) : null}
+                </View>
+                {pic === u.user_id ? (
+                  <Ionicons name="checkmark-circle" size={22} color={PRIMARY} />
+                ) : null}
+              </TouchableOpacity>
+            ))}
           </ScrollView>
         </View>
       </BottomSheetModal>
@@ -824,11 +1334,10 @@ const CRMIssueAddEditScreen: React.FC = () => {
               <Text style={styles.sheetDoneText}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
-          {[
-            { value: 'Cao' as CRMIssuePriority, label: t('crm_issue.priority_high') },
-            { value: 'Trung binh' as CRMIssuePriority, label: t('crm_issue.priority_medium') },
-            { value: 'Thap' as CRMIssuePriority, label: t('crm_issue.priority_low') },
-          ].map((item) => (
+          {CRM_ISSUE_PRIORITY_ORDER.map((value) => ({
+            value,
+            label: labelForCrmIssuePriority(value, t),
+          })).map((item) => (
             <TouchableOpacity
               key={item.value}
               onPress={() => {
@@ -900,6 +1409,22 @@ const styles = StyleSheet.create({
     fontFamily: MULISH,
   },
   asterisk: { color: ERROR },
+  /** Tiêu đề nhóm field (vd "Phân công") */
+  sectionLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: PRIMARY,
+    marginTop: 8,
+    marginBottom: 12,
+    fontFamily: MULISH,
+  },
+  /** Chú thích nhỏ dưới field */
+  fieldHint: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontFamily: MULISH,
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',

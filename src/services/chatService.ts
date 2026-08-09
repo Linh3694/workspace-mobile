@@ -19,6 +19,7 @@ import type {
   ChatReaction,
   ClassChatScopePayload,
   CreateChatPollPayload,
+  UpdateChatPollPayload,
   PinnedMessageSnapshot,
   SendChatMessageInput,
 } from '../types/chat';
@@ -368,6 +369,7 @@ class ChatService {
         content: contentOrPayload.content ?? '',
         replyTo: contentOrPayload.replyTo,
         attachments: contentOrPayload.attachments,
+        mentions: contentOrPayload.mentions?.length ? contentOrPayload.mentions : undefined,
       };
     }
     const res = await fetch(
@@ -560,6 +562,24 @@ class ChatService {
         }),
       }
     );
+    return this.parseJson(res);
+  }
+
+  /**
+   * Sửa bình chọn đã tạo — người tạo hoặc GVCN/phó.
+   * Chỉ gửi field muốn đổi. Khi đã có phiếu, backend chỉ nhận thêm phương án, đổi hạn/nhắc,
+   * đổi ẩn danh và đổi chọn-một ↔ chọn-nhiều (về chọn-một cần chưa ai chọn từ 2 phương án).
+   */
+  async updatePoll(
+    messageId: string,
+    payload: UpdateChatPollPayload
+  ): Promise<{ messageId: string; poll: ChatPoll }> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`${BASE_URL}/api/social/chat/messages/${messageId}/poll`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(payload),
+    });
     return this.parseJson(res);
   }
 

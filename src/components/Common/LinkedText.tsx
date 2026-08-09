@@ -5,6 +5,7 @@
 import type { ReactNode } from "react";
 import { Alert, Linking, Text } from "react-native";
 
+import { normalizeLineBreaks } from "../../utils/lineBreaks";
 import { splitTextWithLinks } from "../../utils/linkify";
 
 /** Mở link ngoài app; URL hỏng / không có app xử lý thì báo nhẹ thay vì crash. */
@@ -32,7 +33,9 @@ export function linkedChildren(
     renderPlain?: (chunk: string, key: string) => ReactNode;
   } = {},
 ): ReactNode[] {
-  return splitTextWithLinks(text).map((seg, i) => {
+  // Android chỉ ngắt dòng ở '\n' còn iOS ngắt cả ở U+2028/U+2029 — chuẩn hoá ở đây để mọi chỗ
+  // dùng chung (tin nhắn, bài viết, bình luận) hiện giống nhau trên hai nền tảng.
+  return splitTextWithLinks(normalizeLineBreaks(text)).map((seg, i) => {
     if (seg.type === "link") {
       return (
         <Text

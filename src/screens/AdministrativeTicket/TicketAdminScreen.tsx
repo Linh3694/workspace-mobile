@@ -15,20 +15,34 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getAllAdminTickets, type AdministrativeTicket } from '../../services/administrativeTicketService';
+import {
+  getAllAdminTickets,
+  getMyAdminSubTasks,
+  updateAdminSubTaskStatus,
+  type AdministrativeTicket,
+  type MyAdminSubTask,
+  type MyAdminSubTasksResult,
+} from '../../services/administrativeTicketService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { normalizeVietnameseName } from '../../utils/nameFormatter';
 import {
   getAdminTicketStatusLabel,
   getAdminTicketStatusColorClass,
+  isAdminSubTaskOpen,
   ADMIN_TICKET_FILTER_STATUSES,
 } from '../../config/administrativeTicketConstants';
 import { ROUTES } from '../../constants/routes';
+import { toast } from '../../utils/toast';
+import MyWorkTicketCard from './components/MyWorkTicketCard';
+import { SubTaskStatusSheet } from './components/TicketModals';
 
 type TicketScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
   typeof ROUTES.SCREENS.ADMINISTRATIVE_TICKET_ADMIN
 >;
+
+/** 'all' = tất cả ticket · 'assigned' = ticket tôi tạo · 'mywork' = ticket có công việc con giao cho tôi */
+type AdminTicketTab = 'all' | 'assigned' | 'mywork';
 
 interface TicketAdminScreenProps {
   isFromTab?: boolean;
@@ -62,7 +76,12 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('all'); // 'all' hoặc 'assigned'
+  const [activeTab, setActiveTab] = useState<AdminTicketTab>('all');
+  // Tab "Việc của tôi" — công việc con được giao cho tôi, gom theo ticket cha.
+  const [myWorkData, setMyWorkData] = useState<MyAdminSubTasksResult | null>(null);
+  const [myWorkError, setMyWorkError] = useState<string | null>(null);
+  const [selectedSubTask, setSelectedSubTask] = useState<MyAdminSubTask | null>(null);
+  const [pendingSubTaskId, setPendingSubTaskId] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const skipNextFetchRef = React.useRef(false);
 
@@ -94,24 +113,59 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
     }, [filterStatus, filterRole, activeTab, userId])
   );
 
+  // Badge "Việc của tôi" phải hiện kể cả khi user đang đứng ở tab khác, nên nạp
+  // riêng. Cố ý KHÔNG gộp vào effect trên: effect đó phụ thuộc filterStatus nên sẽ
+  // gọi lại API mỗi lần bấm chip trạng thái của tab "Tất cả". Đọc tab qua ref để
+  // khỏi gọi trùng khi chính tab đó đang mở (lúc ấy fetchTickets đã nạp rồi).
+  const activeTabRef = React.useRef(activeTab);
+  activeTabRef.current = activeTab;
+
+  const prefetchMyWorkBadge = React.useCallback(() => {
+    if (userId && activeTabRef.current !== 'mywork') {
+      fetchMyWork(false);
+    }
+  }, [userId]);
+
+  useEffect(prefetchMyWorkBadge, [prefetchMyWorkBadge]);
+
+  useFocusEffect(prefetchMyWorkBadge);
+
+  const fetchMyWork = async (showLoading: boolean = true) => {
+    try {
+      if (showLoading) setLoading(true);
+      setMyWorkError(null);
+      const data = await getMyAdminSubTasks();
+      setMyWorkData(data);
+    } catch (error) {
+      console.error('getMyAdminSubTasks', error);
+      setMyWorkError(
+        error instanceof Error ? error.message : 'Không tải được danh sách công việc'
+      );
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
+
   const fetchTickets = async (
     showLoading: boolean = true,
     options?: {
-      overrideTab?: string;
+      overrideTab?: AdminTicketTab;
       overrideSearch?: string;
       overrideStatus?: string;
     }
   ) => {
+    // Sử dụng override nếu có, nếu không dùng state hiện tại
+    const currentTab = options?.overrideTab ?? activeTab;
+    // Tab "Việc của tôi" dùng endpoint riêng — không đụng tới getAllAdminTickets.
+    if (currentTab === 'mywork') {
+      return fetchMyWork(showLoading);
+    }
+
     try {
       if (showLoading) setLoading(true);
 
-      // Sử dụng override nếu có, nếu không dùng state hiện tại
-      const currentTab = options?.overrideTab ?? activeTab;
       const currentSearch = options?.overrideSearch ?? searchTerm;
       const currentStatus = options?.overrideStatus ?? filterStatus;
-
-      console.log('Fetching all tickets...');
-      console.log('Active Tab:', currentTab);
 
       const allTickets = await getAllAdminTickets();
 
@@ -177,6 +231,8 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
   };
 
   const handleSearch = () => {
+    // Tab "Việc của tôi" lọc hoàn toàn client-side (myWorkGroups) nên không cần gọi lại API.
+    if (activeTab === 'mywork') return;
     fetchTickets();
   };
 
@@ -218,7 +274,54 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
     navigation.navigate(ROUTES.SCREENS.ADMINISTRATIVE_TICKET_CREATE);
   };
 
-  const toggleTab = (tab: string) => {
+  /**
+   * Đổi trạng thái công việc con ngay tại list, optimistic + rollback khi lỗi.
+   *
+   * Không refetch sau khi thành công: update_subtask không trả về document nào để
+   * merge, và endpoint mặc định chỉ trả ticket còn việc chưa xong nên refetch ngay
+   * sẽ giật dòng vừa bấm ra khỏi màn hình. Để nó rụng ở lần refresh kế tiếp.
+   */
+  const handleUpdateMySubTaskStatus = async (subTask: MyAdminSubTask, newStatus: string) => {
+    if (newStatus === subTask.status) return;
+
+    const snapshot = myWorkData;
+    if (!snapshot) return;
+
+    const nextTickets = snapshot.tickets.map((group) => {
+      if (group._id !== subTask.ticketId) return group;
+      const subTasks = group.subTasks.map((s) =>
+        s._id === subTask._id ? { ...s, status: newStatus } : s
+      );
+      return {
+        ...group,
+        subTasks,
+        openCount: subTasks.filter((s) => isAdminSubTaskOpen(s.status)).length,
+      };
+    });
+
+    setPendingSubTaskId(subTask._id);
+    setMyWorkData({
+      ...snapshot,
+      tickets: nextTickets,
+      // Tính lại từ groups local thay vì giữ số của server, nếu không badge và list
+      // sẽ lệch nhau ngay sau lần cập nhật đầu tiên.
+      totalOpenSubTasks: nextTickets.reduce((sum, g) => sum + g.openCount, 0),
+    });
+
+    try {
+      await updateAdminSubTaskStatus(subTask.ticketId, subTask._id, newStatus);
+      toast.success('Cập nhật thành công!');
+    } catch (error) {
+      setMyWorkData(snapshot);
+      toast.error(
+        error instanceof Error ? error.message : 'Lỗi cập nhật công việc con'
+      );
+    } finally {
+      setPendingSubTaskId(null);
+    }
+  };
+
+  const toggleTab = (tab: AdminTicketTab) => {
     if (activeTab !== tab) {
       // Đặt lại các filter khi chuyển tab
       setFilterStatus('');
@@ -246,6 +349,23 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
     await fetchTickets(false);
     setRefreshing(false);
   };
+
+  const isMyWorkTab = activeTab === 'mywork';
+  const myWorkOpenCount = myWorkData?.totalOpenSubTasks || 0;
+
+  // Search client-side trên cả tiêu đề ticket lẫn tiêu đề công việc con — user
+  // thường nhớ tên việc mình phải làm hơn là tên ticket cha.
+  const myWorkGroups = React.useMemo(() => {
+    const groups = myWorkData?.tickets || [];
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return groups;
+    return groups.filter(
+      (g) =>
+        g.title?.toLowerCase().includes(term) ||
+        g.ticketCode?.toLowerCase().includes(term) ||
+        g.subTasks.some((s) => s.title?.toLowerCase().includes(term))
+    );
+  }, [myWorkData, searchTerm]);
 
   return (
     <SafeAreaView
@@ -297,6 +417,28 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
             {activeTab === 'assigned' && <View className="mt-2 h-0.5 bg-[#002855]" />}
           </TouchableOpacity>
         </View>
+        <View className="flex-1 items-center">
+          <TouchableOpacity key="mywork-tab" onPress={() => toggleTab('mywork')}>
+            <View className="flex-row items-center justify-center">
+              <Text
+                className={
+                  activeTab === 'mywork'
+                    ? 'text-center font-bold text-[#002855]'
+                    : 'text-center font-medium text-gray-500'
+                }>
+                Việc của tôi
+              </Text>
+              {myWorkOpenCount > 0 ? (
+                <View className="ml-1.5 min-w-[20px] items-center rounded-full bg-[#F05023] px-1.5 py-0.5">
+                  <Text className="text-xs font-bold text-white">
+                    {myWorkOpenCount > 99 ? '99+' : myWorkOpenCount}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            {activeTab === 'mywork' && <View className="mt-2 h-0.5 bg-[#002855]" />}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Content */}
@@ -307,7 +449,7 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
             <View className="flex-1 flex-row items-center rounded-2xl bg-gray-100 px-3 py-2">
               <Ionicons name="search" size={20} color="#666" />
               <TextInput
-                placeholder="Tìm kiếm ticket..."
+                placeholder={isMyWorkTab ? 'Tìm kiếm công việc...' : 'Tìm kiếm ticket...'}
                 className="ml-2 flex-1 text-base"
                 value={searchTerm}
                 onChangeText={setSearchTerm}
@@ -318,22 +460,25 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
                 <TouchableOpacity
                   onPress={() => {
                     setSearchTerm('');
-                    handleSearch();
+                    if (!isMyWorkTab) handleSearch();
                   }}>
                   <Ionicons name="close-circle" size={20} color="#666" />
                 </TouchableOpacity>
               ) : null}
             </View>
-            <TouchableOpacity
-              className="ml-2 h-10 w-10 items-center justify-center rounded-full bg-gray-100"
-              onPress={toggleFilters}>
-              <MaterialIcons name="filter-list" size={24} color="#666" />
-            </TouchableOpacity>
+            {/* Chip lọc là trạng thái TICKET nên vô nghĩa ở tab "Việc của tôi". */}
+            {!isMyWorkTab ? (
+              <TouchableOpacity
+                className="ml-2 h-10 w-10 items-center justify-center rounded-full bg-gray-100"
+                onPress={toggleFilters}>
+                <MaterialIcons name="filter-list" size={24} color="#666" />
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
 
         {/* Bộ lọc trạng thái */}
-        {showFilters && (
+        {showFilters && !isMyWorkTab && (
           <View className="mb-2 px-4">
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="py-2">
               <TouchableOpacity
@@ -380,6 +525,54 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
           <View className="flex-1 items-center justify-center">
             <ActivityIndicator size="large" color="#F05023" />
           </View>
+        ) : isMyWorkTab ? (
+          myWorkError ? (
+            <View className="flex-1 items-center justify-center p-4">
+              <Text className="mb-3 text-center font-medium text-gray-500">{myWorkError}</Text>
+              <TouchableOpacity
+                onPress={() => fetchMyWork()}
+                className="rounded-full bg-[#002855] px-5 py-2">
+                <Text className="font-medium text-white">Thử lại</Text>
+              </TouchableOpacity>
+            </View>
+          ) : myWorkGroups.length > 0 ? (
+            <FlatList
+              data={myWorkGroups}
+              keyExtractor={(item) => item._id}
+              contentContainerStyle={{ padding: 16 }}
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              renderItem={({ item }) => (
+                <MyWorkTicketCard
+                  group={item}
+                  pendingSubTaskId={pendingSubTaskId}
+                  onPressSubTask={setSelectedSubTask}
+                  onOpenTicket={
+                    myWorkData?.canOpenTicketDetail
+                      ? (ticketId) =>
+                          navigation.navigate(
+                            ROUTES.SCREENS.ADMINISTRATIVE_TICKET_ADMIN_DETAIL,
+                            { ticketId }
+                          )
+                      : undefined
+                  }
+                />
+              )}
+            />
+          ) : (
+            <View className="flex-1 items-center justify-center p-4">
+              <Text className="text-center font-medium text-gray-500">
+                {searchTerm
+                  ? 'Không tìm thấy công việc nào.'
+                  : 'Bạn chưa được giao công việc con nào.'}
+              </Text>
+              {!searchTerm ? (
+                <Text className="mt-1 text-center text-sm text-gray-400">
+                  Công việc con được giao trong tab Tiến trình của từng ticket.
+                </Text>
+              ) : null}
+            </View>
+          )
         ) : tickets.length > 0 ? (
           <FlatList
             data={tickets}
@@ -438,13 +631,35 @@ const TicketAdminScreen = ({ isFromTab = false }: TicketAdminScreenProps) => {
           </View>
         )}
 
-        {/* Nút thêm mới ở dưới cùng */}
-        <TouchableOpacity
-          className="absolute bottom-[10%] right-[5%] h-14 w-14 items-center justify-center rounded-full bg-orange-500 shadow-lg"
-          onPress={handleCreateTicket}>
-          <Ionicons name="add" size={30} color="white" />
-        </TouchableOpacity>
+        {/* Nút thêm mới ở dưới cùng — tab "Việc của tôi" không tạo ticket. */}
+        {!isMyWorkTab ? (
+          <TouchableOpacity
+            className="absolute bottom-[10%] right-[5%] h-14 w-14 items-center justify-center rounded-full bg-orange-500 shadow-lg"
+            onPress={handleCreateTicket}>
+            <Ionicons name="add" size={30} color="white" />
+          </TouchableOpacity>
+        ) : null}
       </View>
+
+      {/* Đổi trạng thái công việc con ngay tại list.
+          - controlled (visible/onClose) vì store ticket detail scope theo 1 ticket,
+            còn ở đây mỗi dòng thuộc một ticket khác nhau.
+          - canComplete luôn true: mọi công việc con trong tab này đều do chính user
+            phụ trách, mà backend cho PIC công việc con đánh dấu hoàn thành.
+          - allSubTasks chỉ gồm đúng nó để sheet không gán nhãn "Chờ xử lý" theo vị
+            trí trong hàng đợi — thứ tự ở đây đã bị lọc còn mỗi việc của tôi. */}
+      <SubTaskStatusSheet
+        subTask={selectedSubTask}
+        allSubTasks={selectedSubTask ? [selectedSubTask] : []}
+        canComplete
+        visible={!!selectedSubTask}
+        onClose={() => setSelectedSubTask(null)}
+        onSelect={(value) => {
+          if (selectedSubTask) {
+            handleUpdateMySubTaskStatus(selectedSubTask, value);
+          }
+        }}
+      />
     </SafeAreaView>
   );
 };

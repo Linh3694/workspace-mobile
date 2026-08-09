@@ -5,9 +5,49 @@
 export type CRMIssueStatus = 'Cho duyet' | 'Tiep nhan' | 'Dang xu ly' | 'Hoan thanh' | 'Dong';
 
 export type CRMIssueResult = 'Hai long' | 'Chua hai long';
-export type CRMIssuePriority = 'Cao' | 'Trung binh' | 'Thap';
+
+/** Mức độ — khớp doctype CRM Issue.priority (4 lựa chọn, cao nhất là Khẩn cấp) */
+export type CRMIssuePriority = 'Khan cap' | 'Cao' | 'Trung binh' | 'Thap';
+
+/** Thứ tự hiển thị mức độ — cao xuống thấp, khớp web IssueFormV2 */
+export const CRM_ISSUE_PRIORITY_ORDER: readonly CRMIssuePriority[] = [
+  'Khan cap',
+  'Cao',
+  'Trung binh',
+  'Thap',
+] as const;
+
+/**
+ * Khoá i18n theo mức độ. Tra bảng thay vì if/else — trước đây nhánh `else` cuối
+ * trả "Cao" nên vấn đề mức Khẩn cấp hiển thị sai.
+ */
+export const CRM_ISSUE_PRIORITY_I18N_KEYS: Record<CRMIssuePriority, string> = {
+  'Khan cap': 'crm_issue.priority_urgent',
+  Cao: 'crm_issue.priority_high',
+  'Trung binh': 'crm_issue.priority_medium',
+  Thap: 'crm_issue.priority_low',
+};
+
+/** Nhãn mức độ đã dịch; giá trị lạ thì trả nguyên văn, rỗng thì trả '—'. */
+export function labelForCrmIssuePriority(
+  value: string | null | undefined,
+  t: (key: string) => string
+): string {
+  const raw = (value ?? '').trim();
+  if (!raw) return '—';
+  const key = CRM_ISSUE_PRIORITY_I18N_KEYS[raw as CRMIssuePriority];
+  return key ? t(key) : raw;
+}
 
 export type CRMIssueApprovalStatus = 'Cho duyet' | 'Da duyet' | 'Tu choi';
+
+/** Nhóm vấn đề — team care bắt buộc điền trước khi duyệt (backend approve_issue chặn nếu trống) */
+export type CRMIssueGroup = 'Góp ý' | 'Sự vụ';
+
+export const CRM_ISSUE_GROUP_OPTIONS: { value: CRMIssueGroup; label: string }[] = [
+  { value: 'Góp ý', label: 'Góp ý' },
+  { value: 'Sự vụ', label: 'Sự vụ' },
+];
 
 /** Trạng thái SLA — khớp backend CRM Issue */
 export type CRMIssueSlaStatus = 'On track' | 'Warning' | 'Breached' | 'Passed';
@@ -153,6 +193,34 @@ export interface CRMIssueStudentRow {
   student_class_title?: string;
 }
 
+export interface CRMIssueGuardianRow {
+  name?: string;
+  guardian?: string;
+  /** Từ API get_issue (enrich CRM Guardian) */
+  guardian_display_name?: string;
+  guardian_phone?: string;
+}
+
+/** Đơn vị con của phòng ban — bảng `issue_related_groups` */
+export interface CRMIssueRelatedGroupRow {
+  name?: string;
+  unit?: string;
+  unit_title?: string;
+}
+
+/**
+ * Người liên quan của vấn đề.
+ * `source = 'manual'` là người được chọn tay; `'auto'` do phòng ban / nhóm kéo vào
+ * (muốn bỏ thì bỏ đơn vị tương ứng, không sửa trực tiếp ở đây).
+ */
+export interface CRMIssueRelatedUser {
+  user: string;
+  full_name?: string;
+  user_image?: string;
+  source?: 'manual' | 'auto';
+  source_label?: string;
+}
+
 /** Thông tin guardian từ Feedback liên kết (API get_linked_feedback_replies) */
 export interface LinkedFeedbackGuardianInfo {
   name?: string;
@@ -204,7 +272,16 @@ export interface CRMIssue {
   issue_departments?: { department: string; name?: string }[];
   /** get_issues enrich: docname các phòng ban */
   departments?: string[];
+  /** Nhóm liên quan — đơn vị con của phòng ban đã chọn */
+  issue_related_groups?: CRMIssueRelatedGroupRow[];
+  /** Người liên quan (đọc): gồm cả người chọn tay và người do đơn vị kéo vào */
+  related_users?: CRMIssueRelatedUser[];
   priority?: CRMIssuePriority;
+  /** Nhóm vấn đề: Góp ý / Sự vụ */
+  issue_group?: CRMIssueGroup;
+  /** Năm học của vấn đề */
+  school_year_id?: string;
+  school_year_title?: string;
   status: CRMIssueStatus;
   result?: CRMIssueResult;
   lead?: string;
@@ -213,6 +290,8 @@ export interface CRMIssue {
   student_display_name?: string;
   student_class_title?: string;
   issue_students?: CRMIssueStudentRow[];
+  guardian?: string;
+  issue_guardians?: CRMIssueGuardianRow[];
   process_logs?: CRMIssueLog[];
   creation?: string;
   modified?: string;
@@ -246,6 +325,8 @@ export interface CRMIssue {
   can_add_process_log?: boolean;
   can_edit_process_log?: boolean;
   can_reply_parent?: boolean;
+  /** Sửa được danh sách Người liên quan chọn tay */
+  can_edit_related_users?: boolean;
   /** API get_issue: có thấy scope hàng chờ (khi BE trả ngoài data) */
   can_see_pending_queue_scope?: boolean;
 }
@@ -255,13 +336,23 @@ export interface CreateIssueData {
   content: string;
   issue_module: string;
   occurred_at?: string;
+  /** Docname SIS School Year — bắt buộc như web */
+  school_year_id?: string;
+  /** Nhóm vấn đề: Góp ý / Sự vụ */
+  issue_group?: CRMIssueGroup;
   lead?: string;
   student?: string;
   students?: string[];
+  guardian?: string;
+  guardians?: string[];
   pic?: string;
   department?: string;
-  /** Ưu tiên khi gửi — nhiều CRM Issue Department */
+  /** Ưu tiên khi gửi — docname đơn vị Sơ đồ tổ chức */
   departments?: string[];
+  /** Nhóm liên quan — đơn vị con của phòng ban đã chọn */
+  related_groups?: string[];
+  /** Người liên quan chọn tay (email user) */
+  related_users?: string[];
   priority: CRMIssuePriority;
   attachment?: string;
 }
@@ -271,6 +362,27 @@ export interface IssuePicCandidate {
   full_name: string;
   email: string;
   user_image?: string | null;
+  job_title?: string | null;
+}
+
+/** Một người sẽ nhận thông báo — server tính từ phòng ban / nhóm / người liên quan */
+export interface IssueParticipant {
+  user: string;
+  full_name: string;
+  user_image?: string;
+  source: 'department' | 'group' | 'manual';
+  /** Tên đơn vị kéo người này vào ('' nếu được thêm tay) */
+  source_label?: string;
+}
+
+export interface IssueParticipantsResult {
+  participants: IssueParticipant[];
+  total: number;
+}
+
+export interface IssueRelatedUsersResult {
+  related_users: CRMIssueRelatedUser[];
+  can_edit_related_users: boolean;
 }
 
 export interface CrmPagination {

@@ -17,6 +17,7 @@ import {
 import ReactionEmoji from '../../../components/Wislife/ReactionEmoji';
 import type { ChatMessage } from '../../../types/chat';
 import { parseChatWislifeStickerContent } from '../../../utils/chatWislifeSticker';
+import { normalizeLineBreaks } from '../../../utils/lineBreaks';
 import { resolveChatReactionCode } from '../../../utils/emojiUtils';
 
 import {
@@ -35,7 +36,8 @@ import {
 import { ExchangeMessageAttachments } from './ExchangeMessageAttachments';
 import { ExchangePollCard } from './ExchangePollCard';
 import type { MessageActionAnchor } from './MessageActionOverlay';
-import { LinkedText } from '../../../components/Common/LinkedText';
+import { LinkedText, linkedChildren } from '../../../components/Common/LinkedText';
+import { splitMentionParts } from '../lib/chatMentions';
 
 const CHAT_AVATAR_SIZE = 40;
 const CHAT_AVATAR_COLUMN_WIDTH = CHAT_AVATAR_SIZE;
@@ -69,6 +71,8 @@ type Props = {
   onTogglePollOption?: (message: ChatMessage, optionId: string) => void;
   onOpenPollVoters?: (message: ChatMessage) => void;
   onClosePoll?: (message: ChatMessage) => void;
+  /** Bỏ trống = không hiện nút sửa (vd nhóm chỉ đọc). */
+  onEditPoll?: (message: ChatMessage) => void;
 };
 
 function ChatAvatarCircle({ uri }: { uri: string }) {
@@ -109,6 +113,7 @@ export const ExchangeMessageBubble = memo(
     onTogglePollOption,
     onOpenPollVoters,
     onClosePoll,
+    onEditPoll,
   }: Props) {
     const bubbleWrapRef = useRef<View>(null);
     const translateX = useRef(new Animated.Value(0)).current;
@@ -267,12 +272,14 @@ export const ExchangeMessageBubble = memo(
                     poll={poll}
                     pending={pollPending}
                     canClose={isMine || viewerIsHomeroom}
+                    canEdit={(isMine || viewerIsHomeroom) && !pollReadOnly}
                     readOnly={pollReadOnly}
                     maxWidth={bubbleMaxWidth}
                     timeLabel={showTimestamp ? formatChatTimeVi(message.createdAt) : undefined}
                     onToggleOption={(optionId) => onTogglePollOption?.(message, optionId)}
                     onOpenVoters={() => onOpenPollVoters?.(message)}
                     onClose={() => onClosePoll?.(message)}
+                    onEdit={onEditPoll ? () => onEditPoll(message) : undefined}
                   />
                 );
               }
@@ -285,13 +292,31 @@ export const ExchangeMessageBubble = memo(
                 );
               }
               if (message.content?.trim()) {
+                // Android chỉ ngắt dòng ở '\n'; iOS còn ngắt ở U+2028/U+2029 nên tin dán từ nơi
+                // khác vào hiển thị đúng trên iOS mà dồn thành khối chữ trên Android.
+                const content = normalizeLineBreaks(message.content);
+                const textClass = `font-mulish-medium text-base ${isMine ? 'text-white' : 'text-gray-900'}`;
+                // Bong bóng của mình nền đậm ⇒ link phải sáng mới đọc được.
+                const linkClass = `underline ${isMine ? 'text-white' : 'text-[#0B63CE]'}`;
+                const mentionClass = `font-mulish-bold ${isMine ? 'text-white' : 'text-[#0d9488]'}`;
+                if (!message.mentions?.length) {
+                  return <LinkedText text={content} className={textClass} linkClassName={linkClass} />;
+                }
+                // Có nhắc tên: cắt theo offset trước, phần chữ còn lại vẫn tách link như cũ.
                 return (
-                  <LinkedText
-                    text={message.content}
-                    className={`font-mulish-medium text-base ${isMine ? 'text-white' : 'text-gray-900'}`}
-                    // Bong bóng của mình nền đậm ⇒ link phải sáng mới đọc được.
-                    linkClassName={`underline ${isMine ? 'text-white' : 'text-[#0B63CE]'}`}
-                  />
+                  <Text className={textClass}>
+                    {splitMentionParts(content, message.mentions).map((part, index) => (
+                      part.mention ? (
+                        <Text key={`m-${index}`} className={mentionClass}>
+                          {part.text}
+                        </Text>
+                      ) : (
+                        <Text key={`t-${index}`}>
+                          {linkedChildren(part.text, { linkClassName: linkClass })}
+                        </Text>
+                      )
+                    ))}
+                  </Text>
                 );
               }
               return null;
@@ -424,6 +449,7 @@ export const ExchangeMessageBubble = memo(
   (prev, next) =>
     prev.message._id === next.message._id &&
     prev.message.content === next.message.content &&
+    (prev.message.mentions?.length || 0) === (next.message.mentions?.length || 0) &&
     prev.message.createdAt === next.message.createdAt &&
     prev.message.recalledAt === next.message.recalledAt &&
     (prev.message.readBy?.length || 0) === (next.message.readBy?.length || 0) &&
@@ -439,6 +465,7 @@ export const ExchangeMessageBubble = memo(
     prev.onTogglePollOption === next.onTogglePollOption &&
     prev.onOpenPollVoters === next.onOpenPollVoters &&
     prev.onClosePoll === next.onClosePoll &&
+    prev.onEditPoll === next.onEditPoll &&
     prev.isMine === next.isMine &&
     prev.replyDisabled === next.replyDisabled &&
     prev.threadMeta.showName === next.threadMeta.showName &&

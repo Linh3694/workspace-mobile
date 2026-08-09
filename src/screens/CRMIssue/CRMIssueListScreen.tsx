@@ -22,13 +22,13 @@ import { useTranslation } from 'react-i18next';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
 import { useAuth } from '../../context/AuthContext';
-import { hasCrmAccess } from '../../utils/crmIssuePermissions';
+import { canSeeFullIssueListTabs, hasCrmAccess } from '../../utils/crmIssuePermissions';
 import {
   getIssues,
   getPendingIssues,
   getModules,
   getDepartments,
-  getDepartment,
+  getMyIssueUnits,
 } from '../../services/crmIssueService';
 import type { CRMIssue, CRMIssueStatus } from '../../types/crmIssue';
 import { CRM_ISSUE_STATUS_LABELS } from '../../types/crmIssue';
@@ -43,28 +43,14 @@ function rowDepartmentIds(row: CRMIssue): string[] {
   return d ? [d] : [];
 }
 
-function departmentLabelsForRow(row: CRMIssue, deptMap: Record<string, string>): string {
-  const ids = rowDepartmentIds(row);
-  if (ids.length === 0) return '';
-  return ids.map((id) => deptMap[id] || id).join(', ');
-}
-
 /** Danh sách nhãn phòng ban liên quan — dùng render badge trên thẻ */
 function departmentLabelListForRow(row: CRMIssue, deptMap: Record<string, string>): string[] {
   const ids = rowDepartmentIds(row);
   return ids.map((id) => deptMap[id] || id).filter(Boolean);
 }
 
-const normalizeSearch = (text: string): string => {
-  try {
-    return text
-      .normalize('NFD')
-      .replace(/\p{Diacritic}/gu, '')
-      .toLowerCase();
-  } catch {
-    return (text || '').toLowerCase();
-  }
-};
+/** Tab danh sách — khớp web `IssueListTab` */
+type IssueListTab = 'all' | 'mine' | 'related' | 'pending';
 
 const CRMIssueListScreen: React.FC = () => {
   const { t } = useTranslation();
@@ -75,11 +61,15 @@ const CRMIssueListScreen: React.FC = () => {
   const sessionUserId = (user?.email || (user as { name?: string })?.name || '').trim();
   const canSeeCrm = hasCrmAccess(roles);
   const [isMemberOfAnyIssueDept, setIsMemberOfAnyIssueDept] = useState(false);
-  /** Cùng quyền vào danh sách CRM — mọi user đều xem tab hàng chờ đầy đủ */
-  const showPendingQueueTab = canSeeCrm;
+  /**
+   * Tab "Tất cả" + "Chờ duyệt" chỉ dành cho System Manager / BOD / nhóm Care — khớp web
+   * `CRM_ISSUE_FULL_LIST_TAB_ROLES`. Trước đây mobile cho mọi user có quyền CRM đều thấy.
+   */
+  const canSeeAllAndPending = canSeeFullIssueListTabs(roles);
+  const showPendingQueueTab = canSeeAllAndPending;
   const showRelatedTab = isMemberOfAnyIssueDept;
 
-  const [tab, setTab] = useState<'all' | 'related' | 'pending'>('all');
+  const [tab, setTab] = useState<IssueListTab>(canSeeAllAndPending ? 'all' : 'mine');
   const [items, setItems] = useState<CRMIssue[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -87,6 +77,8 @@ const CRMIssueListScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
+  /** Từ khoá đã debounce — gửi lên API (tìm trên toàn bộ dữ liệu, không chỉ trang đang tải) */
+  const [searchQuery, setSearchQuery] = useState('');
   const [moduleMap, setModuleMap] = useState<Record<string, string>>({});
   const [deptMap, setDeptMap] = useState<Record<string, string>>({});
   const [filterStatus, setFilterStatus] = useState<CRMIssueStatus | ''>('');
@@ -116,7 +108,11 @@ const CRMIssueListScreen: React.FC = () => {
     }
   }, []);
 
-  /** User có thuộc ít nhất một CRM Issue Department — tab Liên quan + quyền xem hàng chờ */
+  /**
+   * User có thuộc đơn vị (Sơ đồ tổ chức) liên quan issue không — quyết định tab "Liên quan".
+   * Một lời gọi `get_my_issue_units` như web; trước đây duyệt hết phòng ban rồi gọi chi tiết
+   * từng cái (N+1) qua API `issue_department` nay đã bị gỡ khỏi backend.
+   */
   useEffect(() => {
     if (!sessionUserId) {
       setIsMemberOfAnyIssueDept(false);
@@ -124,19 +120,9 @@ const CRMIssueListScreen: React.FC = () => {
     }
     let cancelled = false;
     void (async () => {
-      const dRes = await getDepartments();
-      if (!dRes.success || !dRes.data?.length) {
-        if (!cancelled) setIsMemberOfAnyIssueDept(false);
-        return;
-      }
-      const checks = await Promise.all(
-        dRes.data.map((dept) => getDepartment(dept.name))
-      );
+      const res = await getMyIssueUnits();
       if (cancelled) return;
-      const ok = checks.some(
-        (r) => r.success && r.data?.members?.some((m) => m.user === sessionUserId)
-      );
-      setIsMemberOfAnyIssueDept(ok);
+      setIsMemberOfAnyIssueDept(res.success && Array.isArray(res.data) && res.data.length > 0);
     })();
     return () => {
       cancelled = true;
@@ -144,10 +130,19 @@ const CRMIssueListScreen: React.FC = () => {
   }, [sessionUserId]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  /** Tab không còn hợp lệ (mất quyền / không thuộc đơn vị nào) → rơi về tab an toàn */
+  useEffect(() => {
     if (tab === 'related' && !isMemberOfAnyIssueDept) {
-      setTab('all');
+      setTab(canSeeAllAndPending ? 'all' : 'mine');
     }
-  }, [tab, isMemberOfAnyIssueDept]);
+    if ((tab === 'all' || tab === 'pending') && !canSeeAllAndPending) {
+      setTab('mine');
+    }
+  }, [tab, isMemberOfAnyIssueDept, canSeeAllAndPending]);
 
   const fetchPage = useCallback(
     async (p: number, append: boolean) => {
@@ -163,13 +158,21 @@ const CRMIssueListScreen: React.FC = () => {
         if (filterStatus) params.status = filterStatus;
         if (filterModule) params.issue_module = filterModule;
         if (filterDept) params.department = filterDept;
+        if (searchQuery) params.search = searchQuery;
         if (tab === 'related') {
           params.only_my_departments = true;
+        }
+        if (tab === 'mine') {
+          params.mine = true;
         }
 
         let res;
         if (tab === 'pending' && showPendingQueueTab) {
-          res = await getPendingIssues({ page: p, per_page: PER_PAGE });
+          res = await getPendingIssues({
+            page: p,
+            per_page: PER_PAGE,
+            ...(searchQuery ? { search: searchQuery } : {}),
+          });
         } else {
           res = await getIssues(params);
         }
@@ -190,7 +193,7 @@ const CRMIssueListScreen: React.FC = () => {
         setLoadingMore(false);
       }
     },
-    [canSeeCrm, tab, showPendingQueueTab, filterStatus, filterModule, filterDept]
+    [canSeeCrm, tab, showPendingQueueTab, filterStatus, filterModule, filterDept, searchQuery]
   );
 
   useEffect(() => {
@@ -207,21 +210,11 @@ const CRMIssueListScreen: React.FC = () => {
     }, [canSeeCrm, fetchPage, tab, showPendingQueueTab])
   );
 
-  const displayItems = useMemo(() => {
-    const q = search.trim();
-    if (!q) return items;
-    const nq = normalizeSearch(q);
-    return items.filter(
-      (it) =>
-        normalizeSearch(it.issue_code || '').includes(nq) ||
-        normalizeSearch(it.title || '').includes(nq) ||
-        normalizeSearch(it.pic_full_name || '').includes(nq) ||
-        normalizeSearch(it.created_by_name || '').includes(nq) ||
-        normalizeSearch(it.created_by_user || '').includes(nq) ||
-        normalizeSearch(it.owner || '').includes(nq) ||
-        normalizeSearch(departmentLabelsForRow(it, deptMap)).includes(nq)
-    );
-  }, [items, search, deptMap]);
+  /**
+   * Server đã lọc theo `search` trên toàn bộ dữ liệu (mã, tiêu đề, học sinh, phụ huynh).
+   * Trước đây lọc bằng JS trên `items` nên chỉ tìm được trong các trang đã tải về.
+   */
+  const displayItems = items;
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -234,6 +227,27 @@ const CRMIssueListScreen: React.FC = () => {
   };
 
   const moduleLabel = useMemo(() => moduleMap, [moduleMap]);
+
+  /** Tab hiển thị + nhãn — khớp thứ tự web: Tất cả · Của tôi · Liên quan · Chờ duyệt */
+  const tabOptions = useMemo(() => {
+    const opts: { value: IssueListTab; label: string }[] = [];
+    if (canSeeAllAndPending) opts.push({ value: 'all', label: t('crm_issue.all_issues') });
+    opts.push({ value: 'mine', label: t('crm_issue.tab_mine') });
+    if (showRelatedTab) opts.push({ value: 'related', label: t('crm_issue.tab_related') });
+    if (showPendingQueueTab) opts.push({ value: 'pending', label: t('crm_issue.pending_approval') });
+    return opts;
+  }, [canSeeAllAndPending, showRelatedTab, showPendingQueueTab, t]);
+
+  /** Thông báo rỗng theo ngữ cảnh — khớp web `emptyMessage` */
+  const emptyMessage = useMemo(() => {
+    if (search.trim() || filterStatus || filterModule || filterDept) {
+      return t('crm_issue.not_found');
+    }
+    if (tab === 'mine') return t('crm_issue.empty_mine');
+    if (tab === 'related') return t('crm_issue.empty_related');
+    if (tab === 'pending') return t('crm_issue.empty_pending');
+    return t('crm_issue.empty');
+  }, [search, filterStatus, filterModule, filterDept, tab, t]);
 
   // Không quyền CRM — giống DisciplineScreen (không header, chỉ icon + nội dung + nút)
   if (!canSeeCrm) {
@@ -278,45 +292,22 @@ const CRMIssueListScreen: React.FC = () => {
           <View style={{ width: 40 }} />
         </View>
 
-        {/* Tabs — Tất cả / Liên quan (only_my_departments) / Hàng chờ — khớp web IssueList */}
+        {/* Tabs — Tất cả / Của tôi / Liên quan / Chờ duyệt, đúng thứ tự và phân quyền như web */}
         <View className="mb-2 flex-row border-b border-gray-200 px-2">
-          <TouchableOpacity
-            onPress={() => setTab('all')}
-            className={`min-w-[28%] flex-1 items-center border-b-2 py-3 ${
-              tab === 'all' ? 'border-[#002855]' : 'border-transparent'
-            }`}>
-            <Text
-              className={`text-center text-sm font-semibold ${tab === 'all' ? 'text-[#002855]' : 'text-gray-500'}`}
-              numberOfLines={1}>
-              {t('crm_issue.all_issues')}
-            </Text>
-          </TouchableOpacity>
-          {showRelatedTab ? (
+          {tabOptions.map((opt) => (
             <TouchableOpacity
-              onPress={() => setTab('related')}
-              className={`min-w-[28%] flex-1 items-center border-b-2 py-3 ${
-                tab === 'related' ? 'border-[#002855]' : 'border-transparent'
+              key={opt.value}
+              onPress={() => setTab(opt.value)}
+              className={`min-w-[24%] flex-1 items-center border-b-2 py-3 ${
+                tab === opt.value ? 'border-[#002855]' : 'border-transparent'
               }`}>
               <Text
-                className={`text-center text-sm font-semibold ${tab === 'related' ? 'text-[#002855]' : 'text-gray-500'}`}
+                className={`text-center text-sm font-semibold ${tab === opt.value ? 'text-[#002855]' : 'text-gray-500'}`}
                 numberOfLines={1}>
-                {t('crm_issue.tab_related')}
+                {opt.label}
               </Text>
             </TouchableOpacity>
-          ) : null}
-          {showPendingQueueTab ? (
-            <TouchableOpacity
-              onPress={() => setTab('pending')}
-              className={`min-w-[28%] flex-1 items-center border-b-2 py-3 ${
-                tab === 'pending' ? 'border-[#002855]' : 'border-transparent'
-              }`}>
-              <Text
-                className={`text-center text-sm font-semibold ${tab === 'pending' ? 'text-[#002855]' : 'text-gray-500'}`}
-                numberOfLines={1}>
-                {t('crm_issue.pending_approval')}
-              </Text>
-            </TouchableOpacity>
-          ) : null}
+          ))}
         </View>
 
         {/* Search — rounded-2xl bg-gray-100 như Discipline */}
@@ -386,9 +377,7 @@ const CRMIssueListScreen: React.FC = () => {
               <View className="items-center justify-center px-6 py-20">
                 <Ionicons name="document-text-outline" size={64} color="#D1D5DB" />
                 <Text className="mt-4 text-center text-base font-medium text-gray-500">
-                  {search.trim()
-                    ? t('crm_issue.not_found')
-                    : t('crm_issue.empty')}
+                  {emptyMessage}
                 </Text>
               </View>
             }

@@ -34,10 +34,12 @@ import type {
   ChatAttachment,
   ChatConversation,
   ChatEmoji,
+  ChatMention,
   ChatMessage,
   ChatPoll,
   ChatPollVotersData,
   CreateChatPollPayload,
+  UpdateChatPollPayload,
   PinnedMessageSnapshot,
 } from '../../types/chat';
 
@@ -220,6 +222,9 @@ export default function ExchangeChatScreen() {
   /** Bình chọn: sheet tạo, sheet danh sách người bầu, và các tin đang chờ server phản hồi. */
   const [pollSheetOpen, setPollSheetOpen] = useState(false);
   const [creatingPoll, setCreatingPoll] = useState(false);
+  /** Tin bình chọn đang mở sheet SỬA — cùng một CreatePollSheet, chỉ khác `mode`. */
+  const [editPollFor, setEditPollFor] = useState<string | null>(null);
+  const [savingPoll, setSavingPoll] = useState(false);
   const [votersSheetFor, setVotersSheetFor] = useState<string | null>(null);
   /** Tin đang mở sheet "Ai đã bày tỏ cảm xúc" (chạm chip dưới bong bóng). */
   const [reactionsSheetFor, setReactionsSheetFor] = useState<string | null>(null);
@@ -918,8 +923,43 @@ export default function ExchangeChatScreen() {
     [markPollPending, patchPollFromServer, t]
   );
 
+  /**
+   * Lưu sửa bình chọn. Backend là nơi chốt bộ quy tắc (đã có phiếu thì chỉ thêm phương án, đổi
+   * hạn/nhắc/ẩn danh/cách chọn) nên lỗi 400 hiện nguyên văn message của server cho GV hiểu.
+   */
+  const handleUpdatePoll = useCallback(
+    async (messageId: string, payload: UpdateChatPollPayload) => {
+      if (!messageId) return;
+      markPollPending(messageId, true);
+      try {
+        setSavingPoll(true);
+        const data = await chatService.updatePoll(messageId, payload);
+        patchPollFromServer(messageId, data.poll);
+        setEditPollFor(null);
+      } catch (error) {
+        console.warn('[ExchangeChat] updatePoll error:', error);
+        const status = (error as { status?: number })?.status;
+        const serverMessage = (error as { message?: string })?.message;
+        Alert.alert(
+          t('common.error'),
+          status === 403
+            ? t('exchange.poll_edit_forbidden')
+            : serverMessage || t('exchange.poll_edit_failed')
+        );
+      } finally {
+        setSavingPoll(false);
+        markPollPending(messageId, false);
+      }
+    },
+    [markPollPending, patchPollFromServer, t]
+  );
+
   const handleOpenPollVoters = useCallback((message: ChatMessage) => {
     setVotersSheetFor(normalizeMongoId(message._id));
+  }, []);
+
+  const handleEditPoll = useCallback((message: ChatMessage) => {
+    setEditPollFor(normalizeMongoId(message._id));
   }, []);
 
   const handleOpenReactions = useCallback((message: ChatMessage) => {
@@ -951,14 +991,23 @@ export default function ExchangeChatScreen() {
     [votersSheetFor, messages]
   );
 
+  /** Tin đang mở sheet sửa bình chọn — cũng lấy từ state để form nạp đúng bản mới nhất. */
+  const editPollTarget = useMemo(
+    () =>
+      editPollFor ? messages.find((m) => normalizeMongoId(m._id) === editPollFor) ?? null : null,
+    [editPollFor, messages]
+  );
+
   const handleSend = async ({
     content,
     attachments,
     replyToMessageId,
+    mentions,
   }: {
     content: string;
     attachments?: ChatAttachment[];
     replyToMessageId?: string;
+    mentions?: ChatMention[];
   }) => {
     const draftSend =
       isDraftTeacherGuardianThread &&
@@ -994,6 +1043,7 @@ export default function ExchangeChatScreen() {
           content: content || (attachments?.length ? ' ' : ''),
           attachments: attachments?.length ? attachments : undefined,
           replyTo: replyToMessageId,
+          mentions: mentions?.length ? mentions : undefined,
         });
       }
       setReplyTo(null);
@@ -1208,6 +1258,7 @@ export default function ExchangeChatScreen() {
           onOpenPollVoters={handleOpenPollVoters}
           onOpenReactions={handleOpenReactions}
           onClosePoll={handleClosePoll}
+          onEditPoll={locked || viewerReadOnly ? undefined : handleEditPoll}
           onReply={() => !locked && setReplyTo(msgItem)}
         />
       );
@@ -1224,6 +1275,7 @@ export default function ExchangeChatScreen() {
       handleTogglePollOption,
       handleOpenPollVoters,
       handleClosePoll,
+      handleEditPoll,
       handleOpenActionMenu,
       highlightedMessageId,
       conversation,
@@ -1497,6 +1549,8 @@ export default function ExchangeChatScreen() {
                 onCancelReply={() => setReplyTo(null)}
                 onTyping={() => void sendTypingPulse()}
                 onTypingStop={() => void sendTypingStop()}
+                conversation={conversation}
+                viewerEmail={teacherEmail}
                 onSend={handleSend}
                 canCreatePoll={viewerIsHomeroom}
                 onCreatePoll={() => setPollSheetOpen(true)}
@@ -1521,6 +1575,8 @@ export default function ExchangeChatScreen() {
                 onCancelReply={() => setReplyTo(null)}
                 onTyping={() => void sendTypingPulse()}
                 onTypingStop={() => void sendTypingStop()}
+                conversation={conversation}
+                viewerEmail={teacherEmail}
                 onSend={handleSend}
                 canCreatePoll={viewerIsHomeroom}
                 onCreatePoll={() => setPollSheetOpen(true)}
@@ -1571,6 +1627,22 @@ export default function ExchangeChatScreen() {
             submitting={creatingPoll}
             onSubmit={(payload) => void handleCreatePoll(payload)}
             onClose={() => setPollSheetOpen(false)}
+          />
+        ) : null}
+        {editPollTarget?.poll ? (
+          <CreatePollSheet
+            // Đổi tin đang sửa phải dựng lại form từ đầu — cùng instance thì effect nạp dữ liệu
+            // (chỉ chạy khi `visible` đổi) sẽ không chạy lại và form giữ nội dung bình chọn trước.
+            key={normalizeMongoId(editPollTarget._id)}
+            visible
+            mode="edit"
+            poll={editPollTarget.poll}
+            submitting={savingPoll}
+            onSubmit={(payload) => void handleCreatePoll(payload)}
+            onUpdate={(payload) =>
+              void handleUpdatePoll(normalizeMongoId(editPollTarget._id), payload)
+            }
+            onClose={() => setEditPollFor(null)}
           />
         ) : null}
         {votersPollTarget?.poll ? (

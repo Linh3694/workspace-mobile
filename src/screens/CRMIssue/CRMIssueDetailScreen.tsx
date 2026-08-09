@@ -13,10 +13,9 @@ import {
   Image,
   Platform,
   RefreshControl,
-  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TouchableOpacity, BottomSheetModal, ActionSheet } from '../../components/Common';
+import { TouchableOpacity, ActionSheet } from '../../components/Common';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -26,6 +25,7 @@ import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
 import { useAuth } from '../../context/AuthContext';
 import {
+  canChangeIssuePic,
   canWriteCrmIssue,
   canEditSalesStatusResult,
   getIssueDepartmentDocnames,
@@ -41,16 +41,14 @@ import {
   collectDepartmentMemberEmailsForIssue,
   updateIssue,
   getDepartment,
-  getDepartments,
   getModule,
   getLinkedFeedbackReplies,
   addStaffReplyToFeedback,
+  setIssueRelatedUsers,
 } from '../../services/crmIssueService';
 import type {
   CRMIssue,
-  CRMIssueDepartment,
   CRMIssueDeptMember,
-  CRMIssueLogAccent,
   CRMIssueResult,
   CRMIssueStatus,
   LinkedFeedbackPayload,
@@ -58,15 +56,23 @@ import type {
 import {
   CRM_ISSUE_RESULT_CHIP_STYLES,
   CRM_ISSUE_RESULT_NONE_CHIP_STYLE,
+  labelForCrmIssuePriority,
   labelForCrmIssueResult,
 } from '../../types/crmIssue';
+import { getAllowedStatusTransitions } from './shared/issueStatusTransitions';
 import { IssueStatusBadge } from './components/IssueStatusBadge';
 import { IssueApprovalIcon } from './components/IssueApprovalIcon';
+import { ApproveIssueSheet, type ApprovePayload } from './components/ApproveIssueSheet';
+import { ChangePicSheet } from './components/ChangePicSheet';
+import { MultiPickerSheet } from './components/MultiPickerSheet';
+import { IssueActivityFeedList } from './detail/IssueActivityFeedList';
+import { buildIssueActivityFeed } from './shared/issueActivityFeed';
+import { searchUsersForPicker } from '../../services/userDirectoryService';
+import { getIssueUnitOptions, type IssueUnitOption } from '../../services/organizationService';
 import { RejectModal } from './components/RejectModal';
 import { StatusChangeModal } from './components/StatusChangeModal';
 import { ProcessLogModal } from './components/ProcessLogModal';
 import { FeedbackReplyModal } from './components/FeedbackReplyModal';
-import { LinkedFeedbackConversation } from './components/LinkedFeedbackConversation';
 
 import { formatIssuePersonDisplayName } from '../../utils/nameUtils';
 import { splitIssueContentAndFeedbackFiles } from '../../utils/crmIssueContent';
@@ -112,15 +118,6 @@ function formatStudentLine(displayName: string, classTitle?: string | null): str
 }
 
 /** Strip HTML tags → plain text */
-/** Viền trái log — ưu tiên API log_accent (khớp web) */
-function logBorderColorFromAccent(accent: CRMIssueLogAccent | undefined, fallbackPic: boolean): string {
-  if (accent === 'bod') return '#FF4500';
-  if (accent === 'sales') return '#002855';
-  if (accent === 'dept') return '#0D9488';
-  if (accent === 'neutral') return '#9CA3AF';
-  return fallbackPic ? '#002147' : '#FF4500';
-}
-
 function stripHtml(html?: string): string {
   if (!html?.trim()) return '';
   let text = html;
@@ -170,14 +167,22 @@ const CRMIssueDetailScreen: React.FC = () => {
   /** Thành viên phòng ban (user + full_name từ API get_department) */
   const [deptMemberRows, setDeptMemberRows] = useState<CRMIssueDeptMember[]>([]);
 
+  const [showApprove, setShowApprove] = useState(false);
+  const [showRelatedUsers, setShowRelatedUsers] = useState(false);
+  /** Bản nháp danh sách Người liên quan — chỉ ghi lên server khi đóng sheet */
+  const [relatedUserDraft, setRelatedUserDraft] = useState<string[]>([]);
+  const [relatedUserLabels, setRelatedUserLabels] = useState<Record<string, string>>({});
   const [showReject, setShowReject] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [showDeptSheet, setShowDeptSheet] = useState(false);
   
-  const [departmentList, setDepartmentList] = useState<CRMIssueDepartment[]>([]);
-  const [deptSearchText, setDeptSearchText] = useState('');
-  const [activeTab, setActiveTab] = useState<'info' | 'logs'>('info');
+  /** Đơn vị Sơ đồ tổ chức cho sheet đổi phòng ban + bản nháp lựa chọn */
+  const [unitOptions, setUnitOptions] = useState<IssueUnitOption[]>([]);
+  const [deptDraft, setDeptDraft] = useState<string[]>([]);
+  /** Hai tab như web IssueDetailV2: Yêu cầu (nội dung + phân công) / Tiến trình (dòng thời gian) */
+  const [activeTab, setActiveTab] = useState<'request' | 'processing'>('request');
+  const [showChangePic, setShowChangePic] = useState(false);
   /** Menu FAB: thêm log vs phản hồi phụ huynh (khi có source_feedback) */
   const [showFabMenu, setShowFabMenu] = useState(false);
   const [showReplyFeedback, setShowReplyFeedback] = useState(false);
@@ -212,24 +217,24 @@ const CRMIssueDetailScreen: React.FC = () => {
             setModuleCode('');
           }
 
-          // Gộp phòng ban + thành viên (đa phòng ban) — khớp web
+          // Gộp phòng ban + thành viên (đa phòng ban) — khớp web.
+          // Các đơn vị độc lập nhau nên gọi song song; thứ tự nhãn giữ theo issue.
           const deptIds = getIssueDepartmentDocnames(doc);
+          const deps = await Promise.all(deptIds.map((did) => getDepartment(did)));
           const deptLabels: string[] = [];
           const seenUsers = new Set<string>();
           const mergedRows: CRMIssueDeptMember[] = [];
-          for (const did of deptIds) {
-            const dep = await getDepartment(did);
-            if (dep.success && dep.data) {
-              deptLabels.push(dep.data.department_name || did);
-              for (const m of dep.data.members || []) {
-                const u = (m.user || '').trim();
-                if (u && !seenUsers.has(u)) {
-                  seenUsers.add(u);
-                  mergedRows.push({ user: u, full_name: m.full_name });
-                }
+          deps.forEach((dep, idx) => {
+            if (!dep.success || !dep.data) return;
+            deptLabels.push(dep.data.department_name || deptIds[idx]);
+            for (const m of dep.data.members || []) {
+              const u = (m.user || '').trim();
+              if (u && !seenUsers.has(u)) {
+                seenUsers.add(u);
+                mergedRows.push({ user: u, full_name: m.full_name });
               }
             }
-          }
+          });
           setDeptName(deptLabels.join(', '));
           setDeptMemberRows(mergedRows);
 
@@ -303,6 +308,20 @@ const CRMIssueDetailScreen: React.FC = () => {
     return issue.approval_status === 'Da duyet' && canEditSalesStatusResult(roles);
   }, [issue, roles]);
 
+  /**
+   * Bước trạng thái backend sẽ chấp nhận — khớp web.
+   * `isCareAdmin` suy từ cờ `can_edit_process_log` (chỉ Care Admin sửa được log của người khác),
+   * đúng cách web `IssueDetailV2` đang làm.
+   */
+  const allowedStatuses = useMemo(() => {
+    if (!issue) return [] as CRMIssueStatus[];
+    return getAllowedStatusTransitions(issue, {
+      canEditSalesStatus: showStatusResultButton,
+      isCareAdmin: issue.can_edit_process_log === true,
+      isPic: !!sessionUserId && (issue.pic || '').trim() === sessionUserId,
+    });
+  }, [issue, showStatusResultButton, sessionUserId]);
+
   const canAddLog = useMemo(() => {
     if (!issue) return false;
     if (issue.can_add_process_log === true || issue.can_add_process_log === false) {
@@ -335,18 +354,17 @@ const CRMIssueDetailScreen: React.FC = () => {
   }, [issue]);
 
   // --- Actions ---
-  const onApprove = async () => {
+  /**
+   * Duyệt vấn đề. Phòng ban + Nhóm vấn đề do người duyệt chốt trong sheet — backend
+   * `approve_issue` bắt buộc cả hai, duyệt thẳng bằng giá trị cũ sẽ bị từ chối.
+   */
+  const onApproveConfirm = async (payload: ApprovePayload) => {
     if (!issue) return;
     setActionLoading(true);
     try {
-      const deptIds =
-        (issue.issue_departments ?? []).map((r) => r.department).filter(Boolean) as string[];
-      const res = await approveIssue(issue.name, {
-        departments: deptIds.length > 0 ? deptIds : issue.department ? [issue.department] : undefined,
-        pic: issue.pic || undefined,
-        priority: issue.priority || 'Trung binh',
-      });
+      const res = await approveIssue(issue.name, payload);
       if (res.success) {
+        setShowApprove(false);
         Alert.alert(t('common.success'), t('crm_issue.approve_success'));
         await load();
       } else Alert.alert(t('common.error'), res.message || '');
@@ -370,11 +388,15 @@ const CRMIssueDetailScreen: React.FC = () => {
     }
   };
 
-  const onStatusConfirm = async (status: CRMIssueStatus, result?: CRMIssueResult | '') => {
+  const onStatusConfirm = async (
+    status: CRMIssueStatus,
+    result?: CRMIssueResult | '',
+    note?: string,
+  ) => {
     if (!issue) return;
     setActionLoading(true);
     try {
-      const res = await changeIssueStatus(issue.name, status, result);
+      const res = await changeIssueStatus(issue.name, status, result, note);
       setShowStatus(false);
       if (res.success) {
         Alert.alert(t('common.success'), res.message || '');
@@ -425,21 +447,26 @@ const CRMIssueDetailScreen: React.FC = () => {
   };
 
   const openDeptSheet = useCallback(async () => {
+    // Nạp bản nháp từ phòng ban hiện tại rồi mới mở sheet
+    setDeptDraft(issue ? getIssueDepartmentDocnames(issue) : []);
     setShowDeptSheet(true);
-    const res = await getDepartments();
-    if (res.success && res.data) setDepartmentList(res.data);
-    else setDepartmentList([]);
-  }, []);
+    const res = await getIssueUnitOptions();
+    setUnitOptions(res.success ? res.data : []);
+  }, [issue]);
 
-  const onPickDepartment = async (deptName: string) => {
+  /**
+   * Lưu TOÀN BỘ danh sách phòng ban.
+   * Trước đây sheet này chọn một phòng rồi gửi `departments: [tên]` — vấn đề đang gắn
+   * nhiều phòng sẽ bị ghi đè mất, nên đổi sang chọn nhiều như web.
+   */
+  const saveDepartments = async (nextIds: string[]) => {
     if (!issue) return;
-    setShowDeptSheet(false);
     setActionLoading(true);
     try {
       const res = await updateIssue({
         name: issue.name,
-        department: deptName,
-        departments: [deptName],
+        department: nextIds[0] || undefined,
+        departments: nextIds,
       });
       if (res.success) await load();
       else Alert.alert(t('common.error'), res.message || '');
@@ -448,33 +475,45 @@ const CRMIssueDetailScreen: React.FC = () => {
     }
   };
 
-  
 
-  // --- Logs grouped by date ---
-  const groupedLogs = useMemo(() => {
-    const logs = issue?.process_logs || [];
-    if (logs.length === 0) return [];
-    const sorted = [...logs].sort(
-      (a, b) => new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime()
-    );
-    const groups: { date: string; items: typeof sorted }[] = [];
-    const map = new Map<string, typeof sorted>();
-    for (const log of sorted) {
-      const d = fmtDate(log.logged_at);
-      if (!map.has(d)) map.set(d, []);
-      map.get(d)!.push(log);
+
+  /** Cập nhật nhóm Người liên quan chọn tay (ghi đè toàn bộ danh sách) */
+  const saveRelatedUsers = useCallback(
+    async (users: string[]) => {
+      if (!issue) return;
+      setActionLoading(true);
+      try {
+        const res = await setIssueRelatedUsers(issue.name, users);
+        if (res.success) await load();
+        else Alert.alert(t('common.error'), res.message || '');
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [issue, load, t],
+  );
+
+  const onChangePicConfirm = async (nextPic: string) => {
+    if (!issue) return;
+    setActionLoading(true);
+    try {
+      const res = await updateIssue({ name: issue.name, pic: nextPic });
+      if (res.success) {
+        setShowChangePic(false);
+        await load();
+      } else Alert.alert(t('common.error'), res.message || '');
+    } finally {
+      setActionLoading(false);
     }
-    for (const [date, items] of map) groups.push({ date, items });
-    return groups;
-  }, [issue?.process_logs]);
+  };
 
-  const filteredDepartments = useMemo(() => {
-    const q = deptSearchText.trim().toLowerCase();
-    if (!q) return departmentList;
-    return departmentList.filter((d) =>
-      (d.department_name || '').toLowerCase().includes(q),
-    );
-  }, [departmentList, deptSearchText]);
+  const departmentPickerOptions = useMemo(
+    () =>
+      unitOptions
+        .filter((u) => u.is_department)
+        .map((u) => ({ value: u.name, label: u.department_name })),
+    [unitOptions],
+  );
 
   // --- Attachment URL ---
   const attachmentUrl = useMemo(() => {
@@ -526,6 +565,29 @@ const CRMIssueDetailScreen: React.FC = () => {
     return base;
   }, [issue, moduleCode, t]);
 
+  /** Nhóm liên quan — nhãn đơn vị, fallback docname khi API chưa enrich */
+  const relatedGroupLabels = useMemo(
+    () =>
+      (issue?.issue_related_groups ?? [])
+        .map((r) => (r.unit_title || r.unit || '').trim())
+        .filter(Boolean),
+    [issue?.issue_related_groups],
+  );
+
+  /** Chỉ người được CHỌN TAY mới sửa ở đây; người do đơn vị kéo vào bỏ bằng cách bỏ đơn vị */
+  const manualRelatedUsers = useMemo(
+    () => (issue?.related_users ?? []).filter((r) => r.source !== 'auto'),
+    [issue?.related_users],
+  );
+
+  const canEditRelatedUsers = issue?.can_edit_related_users === true;
+
+  const canChangePic = useMemo(() => {
+    if (!issue) return false;
+    if (issue.can_change_pic === true || issue.can_change_pic === false) return issue.can_change_pic;
+    return canChangeIssuePic(roles);
+  }, [issue, roles]);
+
   /** Banner Đã duyệt / Đã từ chối — khớp web IssueDetail */
   const approvedByDisplayName = useMemo(
     () =>
@@ -548,6 +610,31 @@ const CRMIssueDetailScreen: React.FC = () => {
         : '—',
     [issue?.rejected_by_name, issue?.rejected_by_user, issue],
   );
+
+  /** Dòng thời gian hợp nhất cho tab Tiến trình */
+  const activityFeed = useMemo(() => {
+    if (!issue) return [];
+    return buildIssueActivityFeed({
+      issue,
+      approvedByDisplayName,
+      rejectedByDisplayName,
+      parentReplies: linkedFeedbackData?.replies ?? [],
+      linkedFeedbackData,
+      isParentPortalIssueFlow: moduleCode === 'FB',
+      labels: {
+        rejected: t('crm_issue.feed_rejected'),
+        rejectedNoReason: t('crm_issue.feed_rejected_no_reason'),
+        approved: t('crm_issue.feed_approved'),
+        approvedContent: t('crm_issue.feed_approved_content'),
+        processLog: t('crm_issue.feed_process_log'),
+        replyFromSchool: t('crm_issue.feed_reply_school'),
+        replyFromParent: t('crm_issue.feed_reply_parent'),
+        parentName: (name: string) => t('crm_issue.feed_parent_name', { name }),
+        parentLinkWarning: t('crm_issue.feed_parent_link_warning'),
+        parentLinkWarningContent: t('crm_issue.feed_parent_link_warning_content'),
+      },
+    });
+  }, [issue, approvedByDisplayName, rejectedByDisplayName, linkedFeedbackData, moduleCode, t]);
 
   // --- Loading state ---
   if (loading && !issue) {
@@ -677,7 +764,7 @@ const CRMIssueDetailScreen: React.FC = () => {
         <View className="mb-6 flex-row flex-wrap items-center gap-3 px-4">
           {canApproveReject && isPendingApproval && (
             <TouchableOpacity
-              onPress={onApprove}
+              onPress={() => setShowApprove(true)}
               disabled={actionLoading}
               className="h-10 w-10 items-center justify-center rounded-full bg-[#E8F5E9]">
               {actionLoading ? (
@@ -740,8 +827,8 @@ const CRMIssueDetailScreen: React.FC = () => {
       {/* ====== TAB NAVIGATION ====== */}
       <View className="flex-row border-b border-gray-200 pl-5">
         {[
-          { key: 'info' as const, label: t('crm_issue.tab_info') },
-          { key: 'logs' as const, label: t('crm_issue.tab_logs') },
+          { key: 'request' as const, label: t('crm_issue.tab_request') },
+          { key: 'processing' as const, label: t('crm_issue.tab_processing') },
         ].map((tab) => (
           <TouchableOpacity
             key={tab.key}
@@ -758,7 +845,7 @@ const CRMIssueDetailScreen: React.FC = () => {
 
       {/* ====== TAB CONTENT ====== */}
       <View className="flex-1">
-        {activeTab === 'info' ? (
+        {activeTab === 'request' ? (
           <ScrollView
             className="flex-1 bg-white p-4"
             contentContainerStyle={{ paddingBottom: 32 }}
@@ -777,6 +864,11 @@ const CRMIssueDetailScreen: React.FC = () => {
               </Text>
               <InfoRow label={t('crm_issue.issue_code')} value={issue.issue_code} />
               <InfoRow label={t('crm_issue.module')} value={moduleName || issue.issue_module} />
+              <InfoRow
+                label={t('crm_issue.school_year')}
+                value={issue.school_year_title || issue.school_year_id || '—'}
+              />
+              <InfoRow label={t('crm_issue.issue_group')} value={issue.issue_group || '—'} />
               <InfoRow label={t('crm_issue.received_date')} value={fmtDate(issue.occurred_at)} />
               <InfoRow
                 label={t('crm_issue.created_by')}
@@ -851,15 +943,7 @@ const CRMIssueDetailScreen: React.FC = () => {
               </View>
               <InfoRow
                 label={t('crm_issue.priority')}
-                value={
-                  issue.priority === 'Trung binh'
-                    ? t('crm_issue.priority_medium')
-                    : issue.priority === 'Thap'
-                      ? t('crm_issue.priority_low')
-                      : issue.priority
-                        ? t('crm_issue.priority_high')
-                        : '—'
-                }
+                value={labelForCrmIssuePriority(issue.priority, t)}
               />
               <View className="mb-3 flex-row items-start justify-between">
                 <Text className="max-w-[38%] flex-shrink-0 pr-2 text-base font-semibold text-[#757575]">
@@ -906,13 +990,22 @@ const CRMIssueDetailScreen: React.FC = () => {
               </Text>
               <View className="mb-4 flex-row items-center justify-between">
                 <Text className="text-[#757575]">{t('crm_issue.pic')}</Text>
-                <View className="max-w-[65%] flex-row items-center">
+                <View className="max-w-[65%] flex-row items-center gap-2">
                   <Text className="text-right font-medium text-[#002855]" numberOfLines={2}>
                     {formatIssuePersonDisplayName({
                       fullName: issue.pic_full_name,
                       userId: issue.pic,
                     })}
                   </Text>
+                  {canChangePic ? (
+                    <TouchableOpacity
+                      onPress={() => setShowChangePic(true)}
+                      disabled={actionLoading}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      className="rounded-lg bg-white p-1.5">
+                      <Ionicons name="swap-horizontal" size={16} color="#002855" />
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               </View>
 
@@ -957,25 +1050,72 @@ const CRMIssueDetailScreen: React.FC = () => {
                 </View>
               </View>
 
+              {/* Nhóm liên quan — đơn vị con của phòng ban */}
+              <View className="mb-4 flex-row items-start justify-between">
+                <Text className="max-w-[38%] flex-shrink-0 pr-2 text-base font-semibold text-[#757575]">
+                  {t('crm_issue.related_groups')}
+                </Text>
+                <View className="min-w-0 max-w-[62%] flex-1 items-end">
+                  {relatedGroupLabels.length > 0 ? (
+                    relatedGroupLabels.map((label, idx) => (
+                      <Text
+                        key={`grp-${idx}`}
+                        className={`text-right font-medium text-[#002855] ${idx > 0 ? 'mt-1' : ''}`}>
+                        {label}
+                      </Text>
+                    ))
+                  ) : (
+                    <Text className="text-right font-medium text-[#98A2B3]">—</Text>
+                  )}
+                </View>
+              </View>
+
+              {/* Người liên quan — chọn tay; người do đơn vị kéo vào không sửa ở đây */}
+              <View className="mb-4 flex-row items-start justify-between">
+                <Text className="max-w-[38%] flex-shrink-0 pr-2 text-base font-semibold text-[#757575]">
+                  {t('crm_issue.related_users')}
+                </Text>
+                <View className="min-w-0 max-w-[62%] flex-1 items-end">
+                  {manualRelatedUsers.length > 0 ? (
+                    manualRelatedUsers.map((r, idx) => (
+                      <Text
+                        key={r.user || `ru-${idx}`}
+                        className={`text-right font-medium text-[#002855] ${idx > 0 ? 'mt-1' : ''}`}>
+                        {r.full_name?.trim() || r.user}
+                      </Text>
+                    ))
+                  ) : (
+                    <Text className="text-right font-medium text-[#98A2B3]">—</Text>
+                  )}
+                  {canEditRelatedUsers ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        // Nạp bản nháp từ danh sách hiện tại rồi mới mở sheet
+                        setRelatedUserDraft(manualRelatedUsers.map((r) => r.user));
+                        setRelatedUserLabels(
+                          Object.fromEntries(
+                            manualRelatedUsers.map((r) => [r.user, r.full_name?.trim() || r.user]),
+                          ),
+                        );
+                        setShowRelatedUsers(true);
+                      }}
+                      disabled={actionLoading}
+                      className="mt-2 flex-row items-center gap-1 rounded-lg bg-white px-2.5 py-1.5">
+                      <Ionicons name="person-add-outline" size={14} color="#002855" />
+                      <Text className="text-xs font-medium text-[#002855]">
+                        {manualRelatedUsers.length === 0
+                          ? t('crm_issue.add_related_users')
+                          : t('crm_issue.edit_related_users')}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
+
               <InfoRow label={t('crm_issue.updated_date')} value={fmtDate(issue.modified)} />
             </View>
 
-          </ScrollView>
-        ) : (
-          /* ====== TAB: Quá trình xử lý (nội dung vấn đề + timeline log) ====== */
-          <>
-          <ScrollView
-            className="flex-1 bg-white p-4"
-            contentContainerStyle={{ paddingBottom: 32 }}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => load(true)}
-                colors={['#F05023']}
-                tintColor="#F05023"
-              />
-            }>
-            {/* --- Card: Nội dung vấn đề --- */}
+            {/* --- Nội dung vấn đề (tab Yêu cầu, khớp web IssueRequestTabV2) --- */}
             <View className="mb-4 rounded-2xl bg-[#F8F8F8] p-4">
               <Text className="mb-3 text-lg font-semibold text-[#002855]">
                 {t('crm_issue.content_section')}
@@ -990,7 +1130,7 @@ const CRMIssueDetailScreen: React.FC = () => {
               {contentSplit.embeddedFiles.length > 0 ? (
                 <View className="mb-3">
                   <Text className="mb-2 font-semibold text-[#002855]">
-                    {t('crm_issue.feedback_embedded_files') || 'File từ góp ý phụ huynh'}
+                    {t('crm_issue.feedback_embedded_files')}
                   </Text>
                   {contentSplit.embeddedFiles.map((f, fi) => {
                     const u = f.url.startsWith('http')
@@ -1015,7 +1155,6 @@ const CRMIssueDetailScreen: React.FC = () => {
                 </View>
               ) : null}
 
-              {/* Đính kèm */}
               {issue.attachment ? (
                 <View className="mb-1">
                   <Text className="mb-2 font-semibold text-[#002855]">
@@ -1052,96 +1191,33 @@ const CRMIssueDetailScreen: React.FC = () => {
               ) : null}
             </View>
 
-            {/* Lịch sử trao đổi với phụ huynh (khi issue từ Feedback / Góp ý) */}
-            <LinkedFeedbackConversation
-              data={
-                linkedFeedbackData ||
-                (issue.source_feedback
-                  ? {
-                      source_feedback: issue.source_feedback,
-                      replies: [],
-                      guardian_info: null,
-                    }
-                  : null)
-              }
-              loading={loadingLinkedFeedback}
+          </ScrollView>
+        ) : (
+          /* ====== TAB: Quá trình xử lý (nội dung vấn đề + timeline log) ====== */
+          <>
+          <ScrollView
+            className="flex-1 bg-white p-4"
+            contentContainerStyle={{ paddingBottom: 32 }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => load(true)}
+                colors={['#F05023']}
+                tintColor="#F05023"
+              />
+            }>
+            {/* Dòng thời gian hợp nhất: duyệt / từ chối / phản hồi phụ huynh / nhật ký xử lý */}
+            <IssueActivityFeedList
+              items={activityFeed}
+              canEditLog={issue.can_edit_process_log === true}
+              onEditLog={(log) => {
+                setEditLogName(log.name || null);
+                setInitialLogTitle(log.title || '');
+                setInitialLogContent(log.content || '');
+                setShowLog(true);
+              }}
+              loadingLinkedFeedback={loadingLinkedFeedback}
             />
-
-            {groupedLogs.length === 0 ? (
-              <Text className="py-6 text-center text-sm text-gray-400">
-                {t('crm_issue.no_logs')}
-              </Text>
-            ) : (
-              groupedLogs.map((group) => (
-                <View key={group.date} className="mb-5">
-                  <Text className="mb-3 text-sm font-medium text-gray-400">{group.date}</Text>
-                  {group.items.map((log, idx) => {
-                    const isPic = log.logged_by === issue.pic;
-                    const borderColor = logBorderColorFromAccent(log.log_accent, isPic);
-                    return (
-                      <View
-                        key={log.name || `log-${idx}`}
-                        className="mb-3 rounded-xl bg-white p-4"
-                        style={{
-                          borderLeftWidth: 3,
-                          borderLeftColor: borderColor,
-                          shadowColor: '#000',
-                          shadowOpacity: 0.04,
-                          shadowRadius: 4,
-                          shadowOffset: { width: 0, height: 1 },
-                          elevation: 1,
-                        }}>
-                        <View className="mb-1 flex-row items-start justify-between gap-2">
-                          {log.title ? (
-                            <Text className="flex-1 text-base font-semibold text-[#002855]">
-                              {log.title}
-                            </Text>
-                          ) : (
-                            <View className="flex-1" />
-                          )}
-                          {issue.can_edit_process_log && log.name ? (
-                            <TouchableOpacity
-                              onPress={() => {
-                                setEditLogName(log.name!);
-                                setInitialLogTitle(log.title || '');
-                                setInitialLogContent(log.content || '');
-                                setShowLog(true);
-                              }}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                              className="p-1">
-                              <Ionicons name="pencil" size={18} color="#002855" />
-                            </TouchableOpacity>
-                          ) : null}
-                        </View>
-                        <Text className="text-sm text-[#757575]">{log.content}</Text>
-                        <View className="mt-3 flex-row flex-wrap items-center">
-                          <Text className="text-xs text-gray-400">
-                            {fmtDateTime(log.logged_at)}
-                          </Text>
-                          {log.logged_by_name || log.logged_by ? (
-                            <>
-                              <Text className="mx-1 text-xs text-gray-300">·</Text>
-                              <Text className="text-xs font-medium text-[#002855]">
-                                {formatIssuePersonDisplayName({
-                                  fullName: log.logged_by_name,
-                                  userId: log.logged_by,
-                                })}
-                              </Text>
-                            </>
-                          ) : null}
-                          {log.log_source_label ? (
-                            <Text className="ml-1 text-xs text-gray-500">
-                              {' '}
-                              ({log.log_source_label})
-                            </Text>
-                          ) : null}
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              ))
-            )}
           </ScrollView>
 
           {/* FAB: thêm log / phản hồi phụ huynh (Sales) — khớp web */}
@@ -1184,6 +1260,50 @@ const CRMIssueDetailScreen: React.FC = () => {
       </View>
 
       {/* ====== MODALS ====== */}
+      <ApproveIssueSheet
+        visible={showApprove}
+        onClose={() => setShowApprove(false)}
+        issue={issue}
+        onConfirm={onApproveConfirm}
+        loading={actionLoading}
+      />
+      <ChangePicSheet
+        visible={showChangePic}
+        onClose={() => setShowChangePic(false)}
+        issueName={issue.name}
+        currentPic={issue.pic}
+        onConfirm={onChangePicConfirm}
+        loading={actionLoading}
+      />
+      <MultiPickerSheet
+        visible={showRelatedUsers}
+        onClose={() => {
+          setShowRelatedUsers(false);
+          void saveRelatedUsers(relatedUserDraft);
+        }}
+        title={t('crm_issue.related_users')}
+        options={relatedUserDraft.map((id) => ({
+          value: id,
+          label: relatedUserLabels[id] || id,
+        }))}
+        selected={relatedUserDraft}
+        searchPlaceholder={t('crm_issue.related_users_search_placeholder')}
+        onSearch={async (term) => {
+          const res = await searchUsersForPicker(term);
+          return res.data.map((u) => ({
+            value: u.name,
+            label: u.full_name || u.email,
+            subtitle: u.email,
+          }));
+        }}
+        onToggle={(value, option) => {
+          setRelatedUserLabels((prev) => ({ ...prev, [value]: option.label }));
+          setRelatedUserDraft((prev) =>
+            prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
+          );
+        }}
+        onClear={() => setRelatedUserDraft([])}
+      />
       <RejectModal
         visible={showReject}
         onClose={() => setShowReject(false)}
@@ -1195,6 +1315,8 @@ const CRMIssueDetailScreen: React.FC = () => {
         onClose={() => setShowStatus(false)}
         onConfirm={onStatusConfirm}
         loading={actionLoading}
+        allowedStatuses={allowedStatuses}
+        currentStatus={issue.status}
       />
       <ProcessLogModal
         visible={showLog}
@@ -1236,48 +1358,24 @@ const CRMIssueDetailScreen: React.FC = () => {
         onCancel={() => setShowFabMenu(false)}
       />
 
-      {/* Chọn phòng ban */}
-      <BottomSheetModal
+      {/* Đổi phòng ban liên quan — chọn nhiều, lưu khi đóng sheet */}
+      <MultiPickerSheet
         visible={showDeptSheet}
-        onClose={() => { setShowDeptSheet(false); setDeptSearchText(''); }}
-        maxHeightPercent={60}
-        fillHeight>
-        <View className="flex-1 px-4 pb-4 pt-4">
-          <Text className="mb-3 text-lg font-bold text-[#002855]">
-            {t('crm_issue.select_department')}
-          </Text>
-          <TextInput
-            className="mb-3 rounded-lg border border-gray-200 bg-[#F9FAFB] px-3 py-2.5 text-sm"
-            placeholder={t('crm_issue.dept_search_placeholder') || 'Tìm phòng ban...'}
-            value={deptSearchText}
-            onChangeText={setDeptSearchText}
-            placeholderTextColor="#9CA3AF"
-          />
-          <ScrollView className="flex-1" showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {filteredDepartments.length === 0 ? (
-              <Text className="py-4 text-center text-sm text-gray-400">
-                {deptSearchText.trim()
-                  ? t('common.no_results') || 'Không tìm thấy'
-                  : t('crm_issue.no_departments')}
-              </Text>
-            ) : (
-              filteredDepartments.map((d) => (
-                <TouchableOpacity
-                  key={d.name}
-                  onPress={() => { onPickDepartment(d.name); setDeptSearchText(''); }}
-                  className="flex-row items-center border-b border-gray-100 py-3">
-                  <Text className="min-w-0 flex-1 text-base font-medium text-[#002855]">
-                    {d.department_name}
-                  </Text>
-                  {issue && getIssueDepartmentDocnames(issue).includes(d.name) ? (
-                    <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                  ) : null}
-                </TouchableOpacity>
-              ))
-            )}
-          </ScrollView>
-        </View>
-      </BottomSheetModal>
+        onClose={() => {
+          setShowDeptSheet(false);
+          void saveDepartments(deptDraft);
+        }}
+        title={t('crm_issue.select_department')}
+        options={departmentPickerOptions}
+        selected={deptDraft}
+        searchPlaceholder={t('crm_issue.dept_search_placeholder')}
+        onToggle={(value) =>
+          setDeptDraft((prev) =>
+            prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
+          )
+        }
+        emptyText={t('crm_issue.no_departments')}
+      />
     </SafeAreaView>
   );
 };

@@ -25,7 +25,7 @@ import { SheetHeader } from '../../../components/Common/SheetHeader';
 import DatePickerModal from '../../../components/DatePickerModal';
 import TimePickerModal from '../../../components/TimePickerModal';
 import { useLanguage } from '../../../hooks/useLanguage';
-import type { CreateChatPollPayload } from '../../../types/chat';
+import type { ChatPoll, CreateChatPollPayload, UpdateChatPollPayload } from '../../../types/chat';
 import { MY_MESSAGE_BUBBLE_BG } from '../exchangeChatThreadUtils';
 
 const MIN_OPTIONS = 2;
@@ -36,6 +36,8 @@ const ACCENT_SOFT = 'rgba(13,148,136,0.08)';
 const REMIND_BEFORE_MINUTES = 10;
 
 type DeadlineMode = 'none' | '1d' | '3d' | '7d' | 'custom';
+/** `id` rỗng = phương án mới thêm (server sẽ cấp id); có id = phương án đang tồn tại. */
+type OptionDraft = { id: string; text: string };
 
 const DEADLINE_PRESET_HOURS: Record<Exclude<DeadlineMode, 'none' | 'custom'>, number> = {
   '1d': 24,
@@ -96,17 +98,29 @@ function CheckboxRow({
 export function CreatePollSheet({
   visible,
   submitting,
+  mode = 'create',
+  poll,
   onSubmit,
+  onUpdate,
   onClose,
 }: {
   visible: boolean;
   submitting?: boolean;
+  /** 'edit' = sửa bình chọn đang có (cần `poll`); mặc định là tạo mới. */
+  mode?: 'create' | 'edit';
+  poll?: ChatPoll | null;
   onSubmit: (payload: CreateChatPollPayload) => void;
+  /** Bắt buộc khi `mode='edit'`. */
+  onUpdate?: (payload: UpdateChatPollPayload) => void;
   onClose: () => void;
 }) {
   const { t } = useLanguage();
+  const isEdit = mode === 'edit' && Boolean(poll);
   const [question, setQuestion] = useState('');
-  const [options, setOptions] = useState<string[]>(['', '']);
+  const [options, setOptions] = useState<OptionDraft[]>([
+    { id: '', text: '' },
+    { id: '', text: '' },
+  ]);
   const [allowMultiple, setAllowMultiple] = useState(false);
   const [anonymous, setAnonymous] = useState(false);
   const [deadlineMode, setDeadlineMode] = useState<DeadlineMode>('none');
@@ -119,40 +133,73 @@ export function CreatePollSheet({
   /** iOS: chọn ngày xong rồi, đang đợi modal lịch đóng hẳn mới mở được modal giờ. */
   const waitingForTimeRef = useRef(false);
 
-  // Mở lại luôn là form trắng — tránh sót dữ liệu của lần tạo trước.
+  // Mở lại: tạo mới luôn là form trắng (tránh sót dữ liệu lần trước), sửa thì nạp từ poll hiện tại.
   useEffect(() => {
     if (!visible) return;
-    setQuestion('');
-    setOptions(['', '']);
-    setAllowMultiple(false);
-    setAnonymous(false);
-    setDeadlineMode('none');
-    setCustomAt(null);
-    setRemind(false);
+    const source = isEdit ? poll : null;
+    setQuestion(source?.question ?? '');
+    setOptions(
+      source
+        ? source.options.map((o) => ({ id: o.id, text: o.text }))
+        : [
+            { id: '', text: '' },
+            { id: '', text: '' },
+          ]
+    );
+    setAllowMultiple(Boolean(source?.allowMultiple));
+    setAnonymous(Boolean(source?.anonymous));
+    // Hạn cũ luôn nạp về mốc "tùy ý": chip nhanh (1/3/7 ngày) tính từ LÚC BẤM nên không tái hiện
+    // được một mốc đã cố định.
+    setDeadlineMode(source?.closesAt ? 'custom' : 'none');
+    setCustomAt(source?.closesAt ? new Date(source.closesAt) : null);
+    setRemind(source?.remindBeforeMinutes != null);
     setDatePickerOpen(false);
     setTimePickerOpen(false);
     setDraftDate(null);
     waitingForTimeRef.current = false;
+    // `poll` đổi theo từng lượt bỏ phiếu (rev) — chỉ nạp lại khi mở sheet, không đè lúc đang gõ.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
+  /** Số người đã bình chọn — >0 thì khoá câu hỏi và các phương án cũ. */
+  const voterCount = isEdit ? poll?.totalVoters ?? 0 : 0;
+  const locked = voterCount > 0;
+  /** Bình chọn đang ẩn danh mà GV tắt đi ⇒ danh tính người đã bầu sẽ lộ với phụ huynh. */
+  const revealsVoters = locked && Boolean(poll?.anonymous) && !anonymous;
+
+  /** Phương án đã bỏ dòng trống. Giữ nguyên trùng lặp để nơi dùng tự quyết cách xử lý. */
+  const filledOptions = useMemo(
+    () => options.map((o) => ({ ...o, text: o.text.trim() })).filter((o) => o.text),
+    [options]
+  );
+
+  /** Bản đã bỏ trùng — dùng khi TẠO MỚI (server cũng lược trùng im lặng, giữ nguyên hành vi cũ). */
   const cleanedOptions = useMemo(() => {
     const seen = new Set<string>();
-    const out: string[] = [];
-    for (const raw of options) {
-      const text = raw.trim();
-      if (!text) continue;
-      const key = text.toLowerCase();
+    const out: OptionDraft[] = [];
+    for (const option of filledOptions) {
+      const key = option.text.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push(text);
+      out.push(option);
     }
     return out;
-  }, [options]);
+  }, [filledOptions]);
 
   /** Mốc "custom" chỉ tính là có hạn khi đã chọn xong ngày giờ. */
   const hasDeadline = deadlineMode !== 'none' && (deadlineMode !== 'custom' || customAt != null);
+  const initialClosesAtMs = isEdit && poll?.closesAt ? new Date(poll.closesAt).getTime() : null;
+  /**
+   * Giữ nguyên hạn cũ (dù đã trôi qua) thì không tính là "hạn ở quá khứ" — nếu không, bình chọn
+   * đã hết hạn sẽ không sửa được thứ gì khác cho tới khi buộc phải đặt hạn mới.
+   */
+  const keepsOriginalDeadline =
+    deadlineMode === 'custom' && customAt != null && customAt.getTime() === initialClosesAtMs;
   const customInPast =
-    deadlineMode === 'custom' && customAt != null && customAt.getTime() <= Date.now();
+    deadlineMode === 'custom' &&
+    customAt != null &&
+    customAt.getTime() <= Date.now() &&
+    !keepsOriginalDeadline;
 
   const canSubmit =
     Boolean(question.trim()) &&
@@ -161,9 +208,10 @@ export function CreatePollSheet({
     !submitting;
 
   const setOption = (index: number, value: string) =>
-    setOptions((prev) => prev.map((o, i) => (i === index ? value : o)));
+    setOptions((prev) => prev.map((o, i) => (i === index ? { ...o, text: value } : o)));
 
-  const addOption = () => setOptions((prev) => (prev.length >= MAX_OPTIONS ? prev : [...prev, '']));
+  const addOption = () =>
+    setOptions((prev) => (prev.length >= MAX_OPTIONS ? prev : [...prev, { id: '', text: '' }]));
 
   const removeOption = (index: number) =>
     setOptions((prev) => (prev.length <= MIN_OPTIONS ? prev : prev.filter((_, i) => i !== index)));
@@ -176,14 +224,31 @@ export function CreatePollSheet({
 
   const handleSubmit = () => {
     if (!canSubmit) return;
+    const closesAt = resolveClosesAt();
+    // Bỏ hạn thì bỏ luôn nhắc — backend cũng từ chối nhắc khi không có hạn.
+    const remindBeforeMinutes = hasDeadline && remind ? REMIND_BEFORE_MINUTES : null;
+
+    if (isEdit) {
+      onUpdate?.({
+        question: question.trim(),
+        // Gửi nguyên danh sách (KHÔNG tự lược trùng): lược ở đây thì server chỉ thấy danh sách
+        // ngắn đi và báo "không xoá được phương án" — sai nguyên nhân. Để server báo đúng dòng trùng.
+        options: filledOptions.map((o) => (o.id ? { id: o.id, text: o.text } : { text: o.text })),
+        allowMultiple,
+        anonymous,
+        closesAt,
+        remindBeforeMinutes,
+      });
+      return;
+    }
+
     onSubmit({
       question: question.trim(),
-      options: cleanedOptions,
+      options: cleanedOptions.map((o) => o.text),
       allowMultiple,
       anonymous,
-      closesAt: resolveClosesAt(),
-      // Bỏ hạn thì bỏ luôn nhắc — backend cũng từ chối nhắc khi không có hạn.
-      remindBeforeMinutes: hasDeadline && remind ? REMIND_BEFORE_MINUTES : null,
+      closesAt,
+      remindBeforeMinutes,
     });
   };
 
@@ -246,7 +311,7 @@ export function CreatePollSheet({
           <SheetHeader
             icon="stats-chart-outline"
             iconColor={ACCENT}
-            title={t('exchange.poll_create_title')}
+            title={isEdit ? t('exchange.poll_edit_title') : t('exchange.poll_create_title')}
             closeLabel={t('common.close')}
             onClose={onClose}
           />
@@ -259,15 +324,32 @@ export function CreatePollSheet({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <Text className="mb-1.5 font-mulish-bold text-sm text-gray-700">
+            {locked ? (
+              <View className="mt-3 rounded-xl bg-gray-100 px-3 py-2.5">
+                <Text className="font-mulish-medium text-[11px] leading-4 text-gray-600">
+                  {t('exchange.poll_edit_locked_hint', { count: voterCount })}
+                </Text>
+              </View>
+            ) : null}
+            {revealsVoters ? (
+              <View className="mt-2 rounded-xl bg-amber-50 px-3 py-2.5">
+                <Text className="font-mulish-medium text-[11px] leading-4 text-amber-700">
+                  {t('exchange.poll_edit_reveal_warning')}
+                </Text>
+              </View>
+            ) : null}
+
+            <Text className="mb-1.5 mt-3 font-mulish-bold text-sm text-gray-700">
               {t('exchange.poll_question_label')}
             </Text>
             <TextInput
               value={question}
               onChangeText={setQuestion}
               maxLength={500}
+              editable={!locked}
               placeholder={t('exchange.poll_question_placeholder')}
               placeholderTextColor="#9CA3AF"
+              style={{ opacity: locked ? 0.55 : 1 }}
               className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 font-mulish-medium text-base text-gray-900"
             />
 
@@ -275,26 +357,33 @@ export function CreatePollSheet({
               {t('exchange.poll_options_label')}
             </Text>
             <View className="gap-2">
-              {options.map((option, index) => (
-                <View key={index} className="flex-row items-center gap-2">
-                  <TextInput
-                    value={option}
-                    onChangeText={(v) => setOption(index, v)}
-                    maxLength={200}
-                    placeholder={t('exchange.poll_option_placeholder', { index: index + 1 })}
-                    placeholderTextColor="#9CA3AF"
-                    className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 font-mulish-medium text-base text-gray-900"
-                  />
-                  <Pressable
-                    disabled={options.length <= MIN_OPTIONS}
-                    onPress={() => removeOption(index)}
-                    hitSlop={6}
-                    style={{ opacity: options.length <= MIN_OPTIONS ? 0.3 : 1 }}
-                  >
-                    <Ionicons name="close-circle-outline" size={22} color="#6B7280" />
-                  </Pressable>
-                </View>
-              ))}
+              {options.map((option, index) => {
+                // Phương án đã tồn tại (có id) bị khoá khi đã có phiếu; phương án mới thêm thì không.
+                const optionLocked = locked && Boolean(option.id);
+                const removeDisabled = optionLocked || options.length <= MIN_OPTIONS;
+                return (
+                  <View key={option.id || `new-${index}`} className="flex-row items-center gap-2">
+                    <TextInput
+                      value={option.text}
+                      onChangeText={(v) => setOption(index, v)}
+                      maxLength={200}
+                      editable={!optionLocked}
+                      placeholder={t('exchange.poll_option_placeholder', { index: index + 1 })}
+                      placeholderTextColor="#9CA3AF"
+                      style={{ opacity: optionLocked ? 0.55 : 1 }}
+                      className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 font-mulish-medium text-base text-gray-900"
+                    />
+                    <Pressable
+                      disabled={removeDisabled}
+                      onPress={() => removeOption(index)}
+                      hitSlop={6}
+                      style={{ opacity: removeDisabled ? 0.3 : 1 }}
+                    >
+                      <Ionicons name="close-circle-outline" size={22} color="#6B7280" />
+                    </Pressable>
+                  </View>
+                );
+              })}
             </View>
             {options.length < MAX_OPTIONS ? (
               <Pressable onPress={addOption} className="mt-2.5 flex-row items-center gap-1.5">
@@ -397,6 +486,10 @@ export function CreatePollSheet({
               <Text className="mt-1.5 font-mulish-medium text-[11px] text-red-500">
                 {t('exchange.poll_deadline_past')}
               </Text>
+            ) : isEdit && poll?.isClosed ? (
+              <Text className="mt-1.5 font-mulish-medium text-[11px] text-gray-500">
+                {t('exchange.poll_deadline_reopen_help')}
+              </Text>
             ) : null}
 
             <CheckboxRow
@@ -424,7 +517,7 @@ export function CreatePollSheet({
             >
               {submitting ? <ActivityIndicator size="small" color="#FFFFFF" /> : null}
               <Text className="font-mulish-bold text-base text-white">
-                {t('exchange.poll_create_submit')}
+                {isEdit ? t('exchange.poll_edit_submit') : t('exchange.poll_create_submit')}
               </Text>
             </Pressable>
           </View>
