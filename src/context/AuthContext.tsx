@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import * as SecureStore from 'expo-secure-store';
@@ -7,9 +7,29 @@ import { microsoftAuthService, MicrosoftAuthResponse } from '../services/microso
 import pushNotificationService from '../services/pushNotificationService';
 import { userService } from '../services/userService';
 import { normalizeUserData as normalizeUserName } from '../utils/nameFormatter';
+import { setSessionExpiredHandler } from '../utils/sessionExpiry';
 
 // Khóa cho thông tin đăng nhập sinh trắc học
 const CREDENTIALS_KEY = 'WELLSPRING_SECURE_CREDENTIALS';
+
+/** Trần thời gian chờ gỡ đăng ký push lúc đăng xuất — xem lý do ở `logout`. */
+const PUSH_UNREGISTER_TIMEOUT_MS = 3000;
+
+/**
+ * Bóc payload của get_current_user bất kể lớp bọc.
+ * Frappe trả về `{ message: <giá trị hàm trả về> }` cho /api/method, còn erp bọc thêm
+ * `{ success, data: { user, authenticated } }`. Đọc cả hai tầng để cờ `authenticated`
+ * không bị bỏ sót — đây chính là cờ trước đây không ai đọc.
+ */
+const unwrapCurrentUserResponse = (json: any) => {
+  const envelope = (json && json.message && typeof json.message === 'object' ? json.message : json) || {};
+  const payload = (envelope && envelope.data) || envelope;
+  return {
+    ok: envelope.success === true || envelope.status === 'success',
+    user: payload ? payload.user : undefined,
+    authenticated: payload ? payload.authenticated : undefined,
+  };
+};
 
 type AuthContextType = {
   isAuthenticated: boolean;
@@ -74,6 +94,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   console.log('🔄 [AuthProvider] AuthProvider component rendering');
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  // Bản sao đồng bộ của `user` để interceptor (chạy ngoài chu kỳ render) biết ngay còn phiên
+  // hay không. Dùng ref thay vì đọc AsyncStorage vì interceptor cũ xoá token trước khi báo,
+  // đọc storage sẽ luôn thấy rỗng và bỏ sót lần đăng xuất cần thiết.
+  const userRef = useRef<any>(null);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
   console.log('🔄 [AuthProvider] Initial state - user:', user, 'loading:', loading);
 
   // --- Avatar cache-bust helpers ---
@@ -156,19 +183,42 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       console.log('[refreshUserData] API response status:', resp.status);
 
+      // 401 = backend đã từ chối chữ ký token (ví dụ sau khi xoay jwt_secret).
+      // Token vẫn còn `exp` hợp lệ nên client không thể tự phát hiện, chỉ mã 401 mới nói lên
+      // sự thật. Trước đây chỗ này chỉ console.warn rồi return: app giữ nguyên user cache và
+      // mọi màn hình hiển thị rỗng. Với giáo viên, "lớp chưa ai điểm danh" là dữ liệu SAI mà
+      // trông như thật — tệ hơn nhiều so với việc bắt đăng nhập lại. Nên: dọn token, về login.
+      if (resp.status === 401) {
+        console.warn('[refreshUserData] Token bị từ chối (401) → phiên đã chết, đăng xuất');
+        await logout();
+        return;
+      }
+
       if (!resp.ok) {
         console.warn('[refreshUserData] API failed with status:', resp.status);
         return;
       }
 
       const data = await resp.json();
+      const unwrapped = unwrapCurrentUserResponse(data);
       console.log('[refreshUserData] API response structure:', {
-        success: data.success,
-        status: data.status,
-        hasData: !!data.data,
-        hasUser: !!(data.data?.user || data.user),
+        ok: unwrapped.ok,
+        authenticated: unwrapped.authenticated,
+        hasUser: !!unwrapped.user,
       });
 
+      // get_current_user là allow_guest → khi request tới được backend mà không mang danh tính,
+      // nó trả HTTP 200 kèm { user: null, authenticated: false } thay vì lỗi. Phải coi đây là
+      // phiên chết, nếu không app lại rơi vào đúng trạng thái "đăng nhập giả" nói trên.
+      // Chỉ tin cờ này khi nó nói rõ `false` — không suy diễn từ việc thiếu field, để một thay
+      // đổi shape phía backend không vô cớ đá hết người dùng ra ngoài.
+      if (unwrapped.authenticated === false) {
+        console.warn('[refreshUserData] Backend báo authenticated=false → phiên đã chết, đăng xuất');
+        await logout();
+        return;
+      }
+
+      // Giữ nguyên cách bóc dữ liệu cũ cho nhánh thành công (không đổi hành vi ngoài phạm vi 401).
       const ok = (data && data.success === true) || (data && data.status === 'success');
       const payload = (data && data.data) || data;
       const userData = payload && payload.user;
@@ -242,6 +292,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // Đăng xuất - wrapped in useCallback để ổn định dependency cho các hook khác
   const logout = useCallback(async () => {
     try {
+      // Đánh dấu "hết phiên" NGAY, trước mọi await. logout() còn gọi API huỷ đăng ký push —
+      // API đó cũng sẽ nhận 401 và bắn tín hiệu hết phiên ngược lại; nếu không chặn ở đây
+      // thì logout tự gọi lại chính nó thành vòng lặp.
+      userRef.current = null;
       setLoading(true);
       // Cleanup push notifications — PHẢI unregister token trên backend TRƯỚC khi
       // xoá authToken, nếu không token vẫn active và user cũ tiếp tục nhận push.
@@ -252,7 +306,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             const {
               unregisterDeviceOnNotificationService,
             } = require('../services/notificationApiClient');
-            await unregisterDeviceOnNotificationService(pushToken);
+
+            // Chặn trần thời gian chờ. Lời gọi này giữ đúng thứ tự cũ (chạy TRƯỚC khi
+            // xoá authToken, để request còn kèm token mà gỡ được đăng ký) — nhưng nó
+            // không thể chắn đường về màn đăng nhập: `setLoading(true)` ở trên khiến
+            // AppNavigator render null, và lời gọi Frappe trong notificationApiClient
+            // KHÔNG có timeout nào. Mạng chập chờn là giáo viên nhìn màn hình trắng
+            // hàng chục giây rồi mới thấy login. Đặc biệt tệ ở đường đăng xuất TỰ ĐỘNG
+            // (token bị từ chối), vì lúc đó lời gọi này chắc chắn thất bại.
+            await Promise.race([
+              unregisterDeviceOnNotificationService(pushToken),
+              new Promise((resolve) => setTimeout(resolve, PUSH_UNREGISTER_TIMEOUT_MS)),
+            ]);
             console.log('✅ [logout] Push token unregistered on backend');
           } catch (unregError) {
             console.warn('⚠️ [logout] Failed to unregister push token:', unregError);
@@ -412,8 +477,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             }
           );
 
+          // Token có nhưng backend từ chối chữ ký → dọn sạch ngay, đừng để token chết nằm lại
+          // trong máy và lặp lại kịch bản này ở mọi lần mở app sau.
+          if (response.status === 401) {
+            console.warn('❌ [checkAuth] Token bị từ chối (401) → phiên đã chết, đăng xuất');
+            await logout();
+            setLoading(false);
+            return false;
+          }
+
           if (response.ok) {
             const data = await response.json();
+            // Backend nói thẳng authenticated=false (HTTP 200 vì endpoint allow_guest):
+            // coi như phiên chết, không được đi tiếp sang fallback rồi vào app tay trắng.
+            if (unwrapCurrentUserResponse(data).authenticated === false) {
+              console.warn('❌ [checkAuth] Backend báo authenticated=false → đăng xuất');
+              await logout();
+              setLoading(false);
+              return false;
+            }
             if (data.status === 'success' && data.user && data.authenticated) {
               const userData = data.user;
               console.log('✅ [checkAuth] User data fetched from ERP endpoint');
@@ -550,6 +632,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     console.log('🔄 [checkAuth] Authentication check completed with result: false (end)');
     return false;
   }, [logout, attachAvatarCacheBust, refreshUserData]);
+
+  // Nhận tín hiệu 401 từ tầng network (axios interceptor) và đăng xuất.
+  // Chống lặp: nếu trong máy đã không còn authToken thì nghĩa là ta đang ở màn đăng nhập
+  // hoặc vừa đăng xuất xong — bỏ qua, không điều hướng thêm lần nữa. logout() xoá authToken
+  // ngay từ đầu nên các 401 song song của những request khác sẽ tự rơi vào nhánh bỏ qua này.
+  useEffect(() => {
+    setSessionExpiredHandler(async () => {
+      if (!userRef.current) {
+        // Chưa/không còn đăng nhập: đang ở màn đăng nhập hoặc vừa đăng xuất xong.
+        // Không điều hướng thêm — đây là chốt chống lặp.
+        console.log('[AuthProvider] 401 nhưng không còn phiên → bỏ qua (tránh lặp)');
+        return;
+      }
+      console.warn('[AuthProvider] Phiên đã chết (401) → đăng xuất, đưa về màn hình đăng nhập');
+      await logout();
+    });
+    return () => setSessionExpiredHandler(null);
+  }, [logout]);
 
   // Gọi checkAuth sau khi định nghĩa để tránh lỗi dùng trước khi khai báo
   useEffect(() => {
