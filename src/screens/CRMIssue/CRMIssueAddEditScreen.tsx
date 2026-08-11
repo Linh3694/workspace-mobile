@@ -37,6 +37,7 @@ import {
 import {
   createIssue,
   getIssue,
+  getIssueGroups,
   getModules,
   getIssuePicCandidates,
   previewIssueParticipants,
@@ -195,6 +196,10 @@ const CRMIssueAddEditScreen: React.FC = () => {
   const [schoolYears, setSchoolYears] = useState<SchoolYear[]>([]);
   const [schoolYearId, setSchoolYearId] = useState('');
   const [issueGroup, setIssueGroup] = useState<CRMIssueGroup | ''>('');
+  /** Nhóm vấn đề từ cấu hình (`CRM Issue Group`), fallback hằng số nếu API lỗi */
+  const [groupNameOptions, setGroupNameOptions] = useState<{ value: string; label: string }[]>(
+    CRM_ISSUE_GROUP_OPTIONS
+  );
   const [picItems, setPicItems] = useState<IssuePicCandidate[]>([]);
   const [pic, setPic] = useState('');
   /** Phụ huynh liên quan đã chọn */
@@ -230,15 +235,20 @@ const CRMIssueAddEditScreen: React.FC = () => {
   const [studentHits, setStudentHits] = useState<CrmStudentSearchHit[]>([]);
 
   const loadMeta = useCallback(async () => {
-    const [m, u, sy, p] = await Promise.all([
+    const [m, u, sy, p, g] = await Promise.all([
       getModules(),
       getIssueUnitOptions(),
       getAllSchoolYears(),
       getIssuePicCandidates(),
+      getIssueGroups(),
     ]);
     if (m.success && m.data) setModules(m.data);
     if (u.success) setUnitOptions(u.data);
     if (p.success && p.data) setPicItems(p.data);
+    // Nhóm vấn đề là dữ liệu cấu hình — hằng số chỉ là fallback khi API lỗi
+    if (g.success && g.data?.length) {
+      setGroupNameOptions(g.data.map((row) => ({ value: row.group_name, label: row.group_name })));
+    }
     if (sy.success && sy.data.length) {
       setSchoolYears(sy.data);
       // Tạo mới: mặc định năm học đang bật; sửa thì `loadDoc` ghi đè theo bản ghi
@@ -1253,7 +1263,7 @@ const CRMIssueAddEditScreen: React.FC = () => {
               <Text style={styles.sheetDoneText}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
-          {CRM_ISSUE_GROUP_OPTIONS.map((opt) => (
+          {groupNameOptions.map((opt) => (
             <TouchableOpacity
               key={opt.value}
               onPress={() => {

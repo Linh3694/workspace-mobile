@@ -2,6 +2,11 @@
  * Kiểu dữ liệu CRM Issue (đồng bộ với frappe-sis-frontend / backend erp.api.crm.issue)
  */
 
+/**
+ * Trạng thái xử lý. `'Dong'` (Đóng) đã BỎ khỏi luồng — "Hoàn thành" là trạng thái cuối.
+ * Giá trị vẫn ở đây (và trong labels/colors) để bản ghi cũ hiển thị đúng; đừng chuyển tới nó.
+ * Luồng hợp lệ: xem `screens/CRMIssue/shared/issueStatusTransitions`.
+ */
 export type CRMIssueStatus = 'Cho duyet' | 'Tiep nhan' | 'Dang xu ly' | 'Hoan thanh' | 'Dong';
 
 export type CRMIssueResult = 'Hai long' | 'Chua hai long';
@@ -41,9 +46,15 @@ export function labelForCrmIssuePriority(
 
 export type CRMIssueApprovalStatus = 'Cho duyet' | 'Da duyet' | 'Tu choi';
 
-/** Nhóm vấn đề — team care bắt buộc điền trước khi duyệt (backend approve_issue chặn nếu trống) */
-export type CRMIssueGroup = 'Góp ý' | 'Sự vụ';
+/**
+ * Nhóm vấn đề — team care bắt buộc điền trước khi duyệt (backend approve_issue chặn nếu trống).
+ *
+ * KHÔNG phải union cố định: nhóm là dữ liệu cấu hình (doctype `CRM Issue Group`). Union
+ * `'Góp ý' | 'Sự vụ'` cũ chặn mọi nhóm admin tự tạo.
+ */
+export type CRMIssueGroup = string;
 
+/** @deprecated Chỉ là fallback khi chưa tải được danh sách nhóm từ API */
 export const CRM_ISSUE_GROUP_OPTIONS: { value: CRMIssueGroup; label: string }[] = [
   { value: 'Góp ý', label: 'Góp ý' },
   { value: 'Sự vụ', label: 'Sự vụ' },
@@ -325,6 +336,12 @@ export interface CRMIssue {
   can_add_process_log?: boolean;
   can_edit_process_log?: boolean;
   can_reply_parent?: boolean;
+  /** Tiếp nhận → Đang xử lý (PIC / team Care / Sales) */
+  can_start_processing?: boolean;
+  /** Đang xử lý → Hoàn thành. CHỈ team Care — PIC ngoài Care chỉ ghi log được */
+  can_complete_issue?: boolean;
+  /** Hoàn thành → Đang xử lý (chỉ Care Admin) */
+  can_reopen_issue?: boolean;
   /** Sửa được danh sách Người liên quan chọn tay */
   can_edit_related_users?: boolean;
   /** API get_issue: có thấy scope hàng chờ (khi BE trả ngoài data) */

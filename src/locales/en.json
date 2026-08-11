@@ -533,6 +533,7 @@
     "update_processing": "Update processing",
     "update_processing_hint": "Change the status and record a processing note.",
     "no_status_transition": "No status change is available at the current stage.",
+    "nothing_to_save": "Select a new status or enter a note.",
     "status_current": "current",
     "status_note": "Note",
     "status_note_placeholder": "Briefly describe what was done (optional)...",

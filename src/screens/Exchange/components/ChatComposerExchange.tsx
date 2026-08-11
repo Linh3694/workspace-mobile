@@ -24,6 +24,7 @@ import {
   CHAT_MAX_ATTACHMENTS,
   type ChatAttachment,
   type ChatConversation,
+  type ChatFormat,
   type ChatMention,
   type ChatMessage,
 } from '../../../types/chat';
@@ -38,8 +39,31 @@ import {
   type ChatMentionCandidate,
   type ChatMentionTrigger,
 } from '../lib/chatMentions';
+import {
+  chatHighlightHex,
+  shiftFormats,
+  splitFormattedParts,
+  trimFormats,
+} from '../lib/chatFormats';
+import { ChatFormattedText, marksToStyle } from './ChatFormattedText';
 import { ChatEmojiPickerPanel } from './ChatEmojiPickerPanel';
+import { ChatFormatToolbar } from './ChatFormatToolbar';
 import { ChatVideoThumbnail } from './ChatVideoThumbnail';
+
+/**
+ * Cách cho người soạn thấy định dạng vừa áp.
+ *
+ * `false` (mặc định) — dải xem trước NGAY TRÊN ô nhập, ô nhập giữ nguyên là `<TextInput>` chữ
+ * phẳng controlled như trước giờ. An toàn tuyệt đối: không đổi một chút nào hành vi gõ đang chạy.
+ *
+ * `true` — chữ hiện đúng định dạng ngay trong ô nhập (children `<Text>` của `TextInput`). Đẹp hơn
+ * nhưng `TextInput` vừa nhận `value` vừa nhận children là chỗ Android ĐÃ TỪNG nhảy con trỏ khi
+ * children đổi liên tục. Bật lên thì phải thử trên máy Android thật: gõ chèn vào GIỮA một đoạn
+ * đã bôi đậm, kiểm tra con trỏ không nhảy về cuối.
+ *
+ * Đổi cờ này KHÔNG ảnh hưởng dữ liệu: `content` và `formats` gửi lên server giống hệt nhau.
+ */
+const RICH_COMPOSER_PREVIEW_INLINE = false;
 
 const ORANGE_CAMERA = '#F05023';
 const TEAL_ICON = '#0d9488';
@@ -83,6 +107,7 @@ export type ChatComposerExchangeProps = {
     attachments?: ChatAttachment[];
     replyToMessageId?: string;
     mentions?: ChatMention[];
+    formats?: ChatFormat[];
   }) => Promise<void>;
   /** Viewer là GVCN/phó của nhóm lớp → hiện nút tạo bình chọn. */
   canCreatePoll?: boolean;
@@ -180,6 +205,13 @@ export function ChatComposerExchange({
   const [sending, setSending] = useState(false);
   /** Nhắc tên (@): tag đã chèn, token đang gõ, và vị trí con trỏ mới nhất. */
   const [mentions, setMentions] = useState<ChatMention[]>([]);
+  /** Định dạng chữ đang soạn — neo theo offset của `value`, cùng cấu trúc với web. */
+  const [formats, setFormats] = useState<ChatFormat[]>([]);
+  /**
+   * Vùng bôi đen hiện tại. Thanh định dạng áp mark lên đúng dải này, nên phải theo dõi CẢ hai
+   * đầu chứ không chỉ vị trí con trỏ như `caretRef`.
+   */
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
   const [mentionTrigger, setMentionTrigger] = useState<ChatMentionTrigger | null>(null);
   const caretRef = useRef(0);
 
@@ -200,6 +232,7 @@ export function ChatComposerExchange({
       const shifted = mentions.map((m) => (m.start >= mentionTrigger.start ? { ...m, start: m.start + delta } : m));
       setValue(result.text);
       setMentions(syncMentions(result.text, [...shifted, result.mention]));
+      setFormats((prev) => (prev.length ? shiftFormats(value, result.text, prev) : prev));
       setMentionTrigger(null);
       caretRef.current = result.caret;
       // RN không cho set caret trực tiếp; giữ focus để người dùng gõ tiếp ngay sau tag.
@@ -380,11 +413,14 @@ export function ChatComposerExchange({
         content: text,
         attachments,
         replyToMessageId: replyTo?._id,
-        // Server trim `content` ⇒ neo lại offset theo đúng chuỗi sắp gửi.
+        // Server trim `content` ⇒ neo lại offset theo đúng chuỗi sắp gửi (cả tag lẫn định dạng).
         mentions: syncMentions(text, mentions),
+        formats: trimFormats(value, formats),
       });
       setValue('');
       setMentions([]);
+      setFormats([]);
+      setSelection({ start: 0, end: 0 });
       setMentionTrigger(null);
       setLocalPicks([]);
       setEmojiPanelOpen(false);
@@ -430,6 +466,11 @@ export function ChatComposerExchange({
    * Nút bình chọn nhường chỗ cho nút Gửi để pill không bị chật.
    */
   const showAttachToolbar = !locked && canWire;
+  /**
+   * Camera / emoji / ảnh / tệp / bình chọn chỉ hiện khi ô soạn TRỐNG — bắt đầu gõ là ẩn hết,
+   * nhường toàn bộ bề ngang cho chữ. Muốn đính kèm thì xoá chữ đi, các nút hiện lại ngay.
+   */
+  const showQuickActions = showAttachToolbar && !value.trim();
   const showPoll = canCreatePoll && !showSend;
 
   const replySnippet = replyTo ? replyQuoteSnippet(replyTo) : '';
@@ -528,17 +569,47 @@ export function ChatComposerExchange({
         </View>
       ) : null}
 
+      {/*
+        Dải xem trước: chỉ hiện khi tin THỰC SỰ có định dạng, nên tin thường không bị chiếm chỗ.
+        Bật RICH_COMPOSER_PREVIEW_INLINE thì bỏ dải này vì chữ đã hiện đúng ngay trong ô nhập.
+      */}
+      {!RICH_COMPOSER_PREVIEW_INLINE && !locked && formats.length > 0 ? (
+        <View className="mx-2 mb-1 rounded-lg bg-gray-50 px-3 py-2">
+          <Text className="mb-0.5 font-mulish-medium text-[10px] uppercase text-gray-400">
+            Xem trước
+          </Text>
+          <ChatFormattedText
+            content={value}
+            formats={formats}
+            className="font-mulish-medium text-sm text-gray-900"
+            disableLinks
+            numberOfLines={3}
+          />
+        </View>
+      ) : null}
+
       <View className="flex-row items-end">
         <View
-          className="min-w-0 flex-1 flex-row items-end gap-2 rounded-full border border-teal-600/20 bg-white/95 px-1.5 py-1.5 shadow-sm"
-          style={{ minHeight: 52 }}>
-          <Pressable
-            disabled={locked}
-            onPress={() => void openCamera()}
-            className="mb-0.5 size-11 shrink-0 items-center justify-center rounded-full active:opacity-90"
-            style={{ backgroundColor: ORANGE_CAMERA }}>
-            <Ionicons name="camera" size={22} color="#fff" />
-          </Pressable>
+          className="min-w-0 flex-1 flex-row items-end gap-2 border border-teal-600/20 bg-white/95 px-1.5 py-1.5 shadow-sm"
+          style={{
+            minHeight: 52,
+            /**
+             * KHÔNG dùng `rounded-full`: bán kính khi đó bằng NỬA CHIỀU CAO, nên tin nhiều dòng
+             * làm hai cạnh cong vào rất sâu và các nút tròn 44px thò hẳn ra ngoài khung.
+             * Chốt ở 26 = nửa chiều cao tối thiểu ⇒ một dòng vẫn tròn y như cũ, nhiều dòng thì
+             * cạnh thẳng và nút nằm gọn bên trong.
+             */
+            borderRadius: 26,
+          }}>
+          {showQuickActions ? (
+            <Pressable
+              disabled={locked}
+              onPress={() => void openCamera()}
+              className="mb-0.5 size-11 shrink-0 items-center justify-center rounded-full active:opacity-90"
+              style={{ backgroundColor: ORANGE_CAMERA }}>
+              <Ionicons name="camera" size={22} color="#fff" />
+            </Pressable>
+          ) : null}
 
           <TextInput
             ref={inputRef}
@@ -558,12 +629,16 @@ export function ChatComposerExchange({
               caretRef.current = nextCaret;
               setValue(t);
               setMentions((prev) => (prev.length ? syncMentions(t, prev) : prev));
+              // Định dạng không có token để dò lại như mention ⇒ phải dịch offset theo phần đã sửa.
+              setFormats((prev) => (prev.length ? shiftFormats(value, t, prev) : prev));
               setMentionTrigger(findMentionTrigger(t, nextCaret));
               if (!t.trim()) void onTypingStop();
               else onTyping();
             }}
             onSelectionChange={(event) => {
-              caretRef.current = event.nativeEvent.selection.end;
+              const next = event.nativeEvent.selection;
+              caretRef.current = next.end;
+              setSelection({ start: next.start, end: next.end });
             }}
             placeholder={locked ? 'Nhóm chỉ đọc' : placeholder}
             placeholderTextColor={INPUT_PLACEHOLDER_HEX}
@@ -573,10 +648,37 @@ export function ChatComposerExchange({
             style={{
               lineHeight: 22,
               textAlignVertical: 'center',
-            }}
-          />
+            }}>
+            {/*
+              RN không có contenteditable, nhưng `<TextInput>` nhận children `<Text>` có style —
+              nhờ vậy chữ hiện ĐÚNG định dạng ngay trong ô soạn thay vì phải xem trước ở chỗ khác.
+              `value` vẫn giữ để ô là controlled; children chỉ quyết định phần hiển thị.
 
-          {showAttachToolbar ? (
+              NẾU Android nhảy con trỏ khi gõ giữa đoạn đã định dạng: đặt
+              RICH_COMPOSER_PREVIEW_INLINE = false ở đầu file để quay về ô chữ phẳng — nội dung và
+              `formats` gửi đi KHÔNG đổi, chỉ mất phần xem trước tại chỗ.
+            */}
+            {RICH_COMPOSER_PREVIEW_INLINE && formats.length
+              ? splitFormattedParts(value, undefined, formats).map((part, index) => (
+                  <Text
+                    key={index}
+                    style={{
+                      // Dùng chung helper với bong bóng: in đậm/nghiêng phải đổi `fontFamily`,
+                      // `fontWeight` không có tác dụng khi font đã chỉ định theo tên họ.
+                      ...marksToStyle(part.marks),
+                      // <TextInput> KHÔNG nhúng <View> làm children được, nên nền tô sáng ở
+                      // ĐÂY buộc phải là dải vuông. Dải "Xem trước" bên trên mới bo góc.
+                      ...(chatHighlightHex(part.marks)
+                        ? { backgroundColor: chatHighlightHex(part.marks) }
+                        : null),
+                    }}>
+                    {part.text}
+                  </Text>
+                ))
+              : undefined}
+          </TextInput>
+
+          {showQuickActions ? (
             <View className="mb-0.5 flex-row shrink-0 items-center gap-0.5 pr-1">
               <Pressable
                 disabled={locked}
@@ -625,6 +727,23 @@ export function ChatComposerExchange({
           ) : null}
         </View>
       </View>
+
+      {/*
+        Thanh định dạng nằm DƯỚI ô nhập, không phải trên.
+        Bôi đen chữ là Android tự bung menu hệ thống ("Dịch / Cắt / Sao chép") ngay PHÍA TRÊN vùng
+        chọn — đúng chỗ thanh này từng đứng, nên nó bị che sạch đúng lúc cần dùng nhất. Đặt xuống
+        dưới thì hai thứ không tranh chỗ nữa.
+        Chỉ hiện khi đã có chữ — chat vẫn phải gõ nhanh, không chiếm chỗ sẵn.
+      */}
+      {!locked && value.trim().length > 0 ? (
+        <ChatFormatToolbar
+          text={value}
+          formats={formats}
+          selection={selection}
+          disabled={locked || sending}
+          onChange={setFormats}
+        />
+      ) : null}
 
       {emojiOpen ? (
         <View className="overflow-hidden" style={{ height: emojiPanelHeight, marginTop: EMOJI_PANEL_GAP }}>

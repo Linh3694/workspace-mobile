@@ -40,6 +40,7 @@ const getAxiosConfig = async (additionalConfig: { headers?: Record<string, strin
 
 const ISSUE_BASE = '/api/method/erp.api.crm.issue';
 const MODULE_BASE = '/api/method/erp.api.crm.issue_module';
+const GROUP_BASE = '/api/method/erp.api.crm.issue_group';
 // Phòng ban KHÔNG còn doctype riêng: `erp.api.crm.issue_department` đã bị gỡ khỏi backend,
 // nay là đơn vị Sơ đồ tổ chức — xem `organizationService`.
 
@@ -397,6 +398,31 @@ export async function getModules(): Promise<{
       return { success: true, data: msg.data as CRMIssueModule[] };
     }
     return { success: false, message: msg?.message || 'Không lấy được loại vấn đề' };
+  } catch (e: any) {
+    return { success: false, message: e?.response?.data?.message || e?.message || 'Lỗi kết nối' };
+  }
+}
+
+/**
+ * Danh sách Nhóm vấn đề đang bật.
+ *
+ * Nhóm là dữ liệu cấu hình (doctype `CRM Issue Group`), KHÔNG phải hằng số. Trước đây sheet
+ * duyệt trên mobile hiện cứng "Góp ý / Sự vụ" nên mọi nhóm admin tự tạo (vd "Hỗ trợ") không
+ * chọn được, và vấn đề đang mang nhóm đó không duyệt được từ mobile.
+ */
+export async function getIssueGroups(): Promise<{
+  success: boolean;
+  data?: { name: string; group_name: string; group_name_en?: string }[];
+  message?: string;
+}> {
+  try {
+    const config = await getAxiosConfig();
+    const response = await axios.get(`${GROUP_BASE}.get_groups?is_active=1`, config);
+    const msg = response?.data?.message ?? response?.data;
+    if (msg?.success === true && Array.isArray(msg.data)) {
+      return { success: true, data: msg.data };
+    }
+    return { success: false, message: msg?.message || 'Không lấy được nhóm vấn đề' };
   } catch (e: any) {
     return { success: false, message: e?.response?.data?.message || e?.message || 'Lỗi kết nối' };
   }

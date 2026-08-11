@@ -11,6 +11,7 @@ import type {
   ChatConversationAttachmentsData,
   ChatConversationWriteMode,
   ChatEmoji,
+  ChatFormat,
   ChatMessage,
   ChatMessageReadersData,
   ChatMessagesData,
@@ -280,6 +281,7 @@ class ChatService {
     content?: string;
     replyTo?: string;
     attachments?: ChatAttachment[];
+    formats?: ChatFormat[];
   }): Promise<{ message: ChatMessage; conversation: ChatConversation }> {
     const headers = await this.getAuthHeaders();
     const res = await fetch(
@@ -295,6 +297,7 @@ class ChatService {
           content: payload.content ?? '',
           replyTo: payload.replyTo,
           attachments: payload.attachments,
+          formats: payload.formats?.length ? payload.formats : undefined,
         }),
       },
     );
@@ -370,6 +373,7 @@ class ChatService {
         replyTo: contentOrPayload.replyTo,
         attachments: contentOrPayload.attachments,
         mentions: contentOrPayload.mentions?.length ? contentOrPayload.mentions : undefined,
+        formats: contentOrPayload.formats?.length ? contentOrPayload.formats : undefined,
       };
     }
     const res = await fetch(

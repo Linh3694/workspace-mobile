@@ -4,6 +4,11 @@
  * Backend `approve_issue` BẮT BUỘC `departments` và `issue_group`; trước đây mobile duyệt
  * thẳng bằng giá trị sẵn có nên vấn đề chưa có Nhóm vấn đề không bao giờ duyệt được.
  * Đồng bộ dialog duyệt của web `IssueDetailDialogsV2`.
+ *
+ * Hai thứ mobile từng thiếu so với web (đã bổ sung):
+ *   - Người liên quan: trước đây gửi cứng `related_users: []` nên người duyệt không kéo
+ *     thêm ai vào lúc duyệt được, phải mở lại vấn đề rồi sửa ở bước sau.
+ *   - Nhóm vấn đề: lấy từ API cấu hình thay vì hằng số "Góp ý / Sự vụ".
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
@@ -22,8 +27,13 @@ import {
   CRM_ISSUE_PRIORITY_ORDER,
   labelForCrmIssuePriority,
 } from '../../../types/crmIssue';
-import { getIssuePicCandidates, previewIssueParticipants } from '../../../services/crmIssueService';
+import {
+  getIssueGroups,
+  getIssuePicCandidates,
+  previewIssueParticipants,
+} from '../../../services/crmIssueService';
 import { getIssueUnitOptions, type IssueUnitOption } from '../../../services/organizationService';
+import { searchUsersForPicker } from '../../../services/userDirectoryService';
 import { descendantUnitsOf, keepGroupsUnderDepartments } from '../shared/issueOrgUnits';
 import { MultiPickerSheet, type PickerOption } from './MultiPickerSheet';
 import { IssueParticipantsPreview } from './IssueParticipantsPreview';
@@ -63,12 +73,20 @@ export const ApproveIssueSheet: React.FC<Props> = ({
   const [issueGroup, setIssueGroup] = useState<CRMIssueGroup | ''>('');
   const [priority, setPriority] = useState<CRMIssuePriority>('Trung binh');
   const [pic, setPic] = useState('');
+  /** Người liên quan chọn tay — mở rộng phạm vi nhận thông báo ngay lúc duyệt */
+  const [relatedUserIds, setRelatedUserIds] = useState<string[]>([]);
+  const [relatedUserLabels, setRelatedUserLabels] = useState<Record<string, string>>({});
+  /** Nhóm vấn đề từ cấu hình (`CRM Issue Group`), fallback hằng số nếu API lỗi */
+  const [groupNameOptions, setGroupNameOptions] = useState<{ value: string; label: string }[]>(
+    CRM_ISSUE_GROUP_OPTIONS
+  );
 
   const [participants, setParticipants] = useState<IssueParticipant[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
 
   const [showDept, setShowDept] = useState(false);
   const [showGroups, setShowGroups] = useState(false);
+  const [showRelatedUsers, setShowRelatedUsers] = useState(false);
 
   // Mở sheet: nạp danh mục + lấy giá trị hiện có của vấn đề làm điểm khởi đầu
   useEffect(() => {
@@ -85,14 +103,32 @@ export const ApproveIssueSheet: React.FC<Props> = ({
     setIssueGroup((issue.issue_group as CRMIssueGroup) || '');
     setPriority((issue.priority as CRMIssuePriority) || 'Trung binh');
     setPic(issue.pic || '');
+    // Giữ lại người đã được chọn tay trước đó; nhánh `auto` do phòng ban/nhóm suy ra nên bỏ
+    const manual = (issue.related_users ?? []).filter((r) => r.source !== 'auto');
+    setRelatedUserIds(manual.map((r) => r.user).filter(Boolean) as string[]);
+    setRelatedUserLabels(
+      manual.reduce<Record<string, string>>((acc, r) => {
+        if (r.user) acc[r.user] = r.full_name || r.user;
+        return acc;
+      }, {})
+    );
 
     let cancelled = false;
     setLoadingMeta(true);
-    void Promise.all([getIssueUnitOptions(), getIssuePicCandidates(issue.name)])
-      .then(([u, p]) => {
+    void Promise.all([
+      getIssueUnitOptions(),
+      getIssuePicCandidates(issue.name),
+      getIssueGroups(),
+    ])
+      .then(([u, p, g]) => {
         if (cancelled) return;
         if (u.success) setUnitOptions(u.data);
         if (p.success && p.data) setPicItems(p.data);
+        if (g.success && g.data?.length) {
+          setGroupNameOptions(
+            g.data.map((row) => ({ value: row.group_name, label: row.group_name }))
+          );
+        }
       })
       .finally(() => {
         if (!cancelled) setLoadingMeta(false);
@@ -112,14 +148,19 @@ export const ApproveIssueSheet: React.FC<Props> = ({
 
   useEffect(() => {
     if (!visible) return;
-    if (deptIds.length === 0 && groupIds.length === 0) {
+    if (deptIds.length === 0 && groupIds.length === 0 && relatedUserIds.length === 0) {
       setParticipants([]);
       return;
     }
     let cancelled = false;
     setLoadingParticipants(true);
     const timer = setTimeout(() => {
-      void previewIssueParticipants({ departments: deptIds, related_groups: groupIds })
+      // Gửi cả `related_users` để bản xem trước đúng với danh sách sẽ nhận thông báo
+      void previewIssueParticipants({
+        departments: deptIds,
+        related_groups: groupIds,
+        related_users: relatedUserIds,
+      })
         .then((res) => {
           if (cancelled) return;
           setParticipants(res.success && res.data ? res.data.participants : []);
@@ -132,7 +173,7 @@ export const ApproveIssueSheet: React.FC<Props> = ({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [visible, deptIds, groupIds]);
+  }, [visible, deptIds, groupIds, relatedUserIds]);
 
   const unitLabelById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -213,12 +254,29 @@ export const ApproveIssueSheet: React.FC<Props> = ({
               <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
             </TouchableOpacity>
 
+            {/* Người liên quan — chọn tay thêm ngoài phòng ban / nhóm */}
+            <Text className="mb-2 text-sm font-medium text-gray-600">
+              {t('crm_issue.related_users')}
+            </Text>
+            <TouchableOpacity
+              onPress={() => setShowRelatedUsers(true)}
+              className="mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-[#F9FAFB] px-3 py-3">
+              <Text
+                className={`min-w-0 flex-1 pr-2 text-sm ${relatedUserIds.length === 0 ? 'text-gray-400' : 'text-[#002855]'}`}
+                numberOfLines={2}>
+                {relatedUserIds.length === 0
+                  ? t('crm_issue.add_related_users')
+                  : relatedUserIds.map((id) => relatedUserLabels[id] || id).join(', ')}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+
             {/* Nhóm vấn đề — bắt buộc */}
             <Text className="mb-2 text-sm font-medium text-gray-600">
               {t('crm_issue.issue_group')} <Text className="text-red-500">*</Text>
             </Text>
             <View className="mb-4 flex-row flex-wrap gap-2">
-              {CRM_ISSUE_GROUP_OPTIONS.map((opt) => (
+              {groupNameOptions.map((opt) => (
                 <TouchableOpacity
                   key={opt.value}
                   onPress={() => setIssueGroup(opt.value)}
@@ -310,7 +368,7 @@ export const ApproveIssueSheet: React.FC<Props> = ({
                 onConfirm({
                   departments: deptIds,
                   related_groups: groupIds,
-                  related_users: [],
+                  related_users: relatedUserIds,
                   issue_group: issueGroup as CRMIssueGroup,
                   priority,
                   ...(pic ? { pic } : {}),
@@ -353,6 +411,34 @@ export const ApproveIssueSheet: React.FC<Props> = ({
         }
         emptyText={t('crm_issue.no_related_groups')}
         onClear={() => setGroupIds([])}
+      />
+
+      {/* Người liên quan: tìm theo thư mục user (giống sheet sửa nhóm ở trang chi tiết) */}
+      <MultiPickerSheet
+        visible={showRelatedUsers}
+        onClose={() => setShowRelatedUsers(false)}
+        title={t('crm_issue.related_users')}
+        options={relatedUserIds.map((id) => ({
+          value: id,
+          label: relatedUserLabels[id] || id,
+        }))}
+        selected={relatedUserIds}
+        searchPlaceholder={t('crm_issue.related_users_search_placeholder')}
+        onSearch={async (term) => {
+          const res = await searchUsersForPicker(term);
+          return res.data.map((u) => ({
+            value: u.name,
+            label: u.full_name || u.email,
+            subtitle: u.email,
+          }));
+        }}
+        onToggle={(value, option) => {
+          setRelatedUserLabels((prev) => ({ ...prev, [value]: option.label }));
+          setRelatedUserIds((prev) =>
+            prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
+          );
+        }}
+        onClear={() => setRelatedUserIds([])}
       />
     </>
   );

@@ -34,6 +34,7 @@ import type {
   ChatAttachment,
   ChatConversation,
   ChatEmoji,
+  ChatFormat,
   ChatMention,
   ChatMessage,
   ChatPoll,
@@ -1003,11 +1004,13 @@ export default function ExchangeChatScreen() {
     attachments,
     replyToMessageId,
     mentions,
+    formats,
   }: {
     content: string;
     attachments?: ChatAttachment[];
     replyToMessageId?: string;
     mentions?: ChatMention[];
+    formats?: ChatFormat[];
   }) => {
     const draftSend =
       isDraftTeacherGuardianThread &&
@@ -1028,6 +1031,7 @@ export default function ExchangeChatScreen() {
           content: content || (attachments?.length ? ' ' : ''),
           attachments: attachments?.length ? attachments : undefined,
           replyTo: replyToMessageId,
+          formats: formats?.length ? formats : undefined,
         });
         navigation.dispatch(
           StackActions.replace(ROUTES.SCREENS.EXCHANGE_CHAT, {
@@ -1044,6 +1048,7 @@ export default function ExchangeChatScreen() {
           attachments: attachments?.length ? attachments : undefined,
           replyTo: replyToMessageId,
           mentions: mentions?.length ? mentions : undefined,
+          formats: formats?.length ? formats : undefined,
         });
       }
       setReplyTo(null);

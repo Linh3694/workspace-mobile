@@ -546,6 +546,7 @@
     "update_processing": "Cập nhật xử lý",
     "update_processing_hint": "Chuyển trạng thái và ghi nhật ký xử lý.",
     "no_status_transition": "Chưa có bước xử lý nào khả dụng ở trạng thái hiện tại.",
+    "nothing_to_save": "Chọn trạng thái mới hoặc nhập ghi chú.",
     "status_current": "hiện tại",
     "status_note": "Ghi chú",
     "status_note_placeholder": "Mô tả ngắn việc đã xử lý (tuỳ chọn)...",

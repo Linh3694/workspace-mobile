@@ -64,6 +64,27 @@ Notifications.setNotificationHandler({
 
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
+/**
+ * Dấu vết cú bấm thông báo đã xử lý ở lần mở app trước — phải BỀN qua các lần
+ * khởi động, vì `getLastNotificationResponseAsync()` vẫn trả về đúng cú bấm cũ
+ * ở mọi lần mở lạnh tiếp theo (Android giữ Intent khởi chạy của task).
+ */
+const HANDLED_COLD_START_KEY = 'handled_coldstart_notification_v1';
+
+/** Khoá nhận dạng một response: id + payload, đủ ổn định qua các lần phát lại. */
+function coldStartResponseKey(response: Notifications.NotificationResponse): string {
+  const request = response.notification?.request;
+  const identifier = request?.identifier ?? '';
+  let payload = '';
+  try {
+    payload = JSON.stringify(request?.content?.data ?? {});
+  } catch {
+    // Payload có vòng lặp tham chiếu — hiếm, rơi về chỉ dùng identifier.
+    payload = '';
+  }
+  return `${identifier}|${payload}`.slice(0, 1024);
+}
+
 /** Sau khi đăng nhập + navigator mount, xử lý payload push lưu tạm (cold start / race) */
 function PendingPushNotificationConsumer() {
   const { isAuthenticated, loading } = useAuth();
@@ -116,6 +137,10 @@ export default function App() {
     'Mulish-Italic': require('./src/assets/fonts/Mulish-Italic.ttf'),
     'Mulish-Medium': require('./src/assets/fonts/Mulish-Medium.ttf'),
     'Mulish-Bold': require('./src/assets/fonts/Mulish-Bold.ttf'),
+    // Định dạng chữ trong chat: RN chọn font theo TÊN HỌ, `fontWeight`/`fontStyle` bị bỏ qua khi
+    // đã chỉ định fontFamily ⇒ in đậm/nghiêng phải có file riêng. Xem ChatFormattedText.
+    'Mulish-MediumItalic': require('./src/assets/fonts/Mulish-MediumItalic.ttf'),
+    'Mulish-BoldItalic': require('./src/assets/fonts/Mulish-BoldItalic.ttf'),
     'Mulish-SemiBold': require('./src/assets/fonts/Mulish-SemiBold.ttf'),
     'Mulish-ExtraBold': require('./src/assets/fonts/Mulish-ExtraBold.ttf'),
     'Mulish-Black': require('./src/assets/fonts/Mulish-Black.ttf'),
@@ -225,9 +250,24 @@ export default function App() {
     (async () => {
       try {
         const lastResponse = await Notifications.getLastNotificationResponseAsync();
-        if (lastResponse) {
-          handleNotificationResponse(lastResponse);
+        if (!lastResponse) return;
+
+        // Android giữ lại Intent khởi chạy của task (`launchMode="singleTask"`) và
+        // expo-notifications dựng lại "cú bấm" từ extras của Intent đó ở mỗi
+        // `onCreate`. `clearLastNotificationResponseAsync` chỉ xoá biến trong RAM
+        // của module native nên không sống qua lần mở app sau ⇒ mở app bằng icon
+        // cũng bị deep-link như vừa bấm thông báo. Phải tự nhớ cú đã xử lý.
+        const key = coldStartResponseKey(lastResponse);
+        const handledKey = await AsyncStorage.getItem(HANDLED_COLD_START_KEY);
+        if (handledKey === key) {
+          await Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
+          return;
         }
+        await AsyncStorage.setItem(HANDLED_COLD_START_KEY, key);
+
+        handleNotificationResponse(lastResponse);
+        // Trong CÙNG phiên này thì không phát lại nữa
+        await Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
       } catch (e) {
         console.warn('Could not get last notification response', e);
       }

@@ -195,6 +195,56 @@ function matchesEvent(data: PushNotificationPayload, events: readonly string[]):
 }
 
 /**
+ * Khoá đủ để khẳng định payload do backend WIS phát ra. Thêm khoá mới khi
+ * backend đổi tên, ĐỪNG nới thành "object không rỗng" — extras của launcher và
+ * vỏ FCM cũng là object không rỗng.
+ */
+const RECOGNIZED_PAYLOAD_KEYS = [
+  'type',
+  'action',
+  'screen',
+  'notificationId',
+  'conversationId',
+  'conversation_id',
+  'chatId',
+  'ticketId',
+  'ticket_id',
+  'feedbackId',
+  'feedback_id',
+  'issueId',
+  'issue_id',
+  'leaveRequestId',
+  'leave_request_id',
+  'postId',
+] as const;
+
+/**
+ * Payload này có thật sự là thông báo của WIS không?
+ *
+ * PHẢI hỏi trước khi điều hướng: "notification response" trên Android không
+ * phải lúc nào cũng đến từ việc người dùng bấm thông báo.
+ * `ExpoNotificationLifecycleListener.onCreate` của expo-notifications lấy
+ * NGUYÊN `activity.getIntent().getExtras()` rồi dựng thành response, không kiểm
+ * tra extras đó có phải của thông báo hay không. Cộng với
+ * `launchMode="singleTask"` — Android giữ lại Intent khởi chạy của task — nên
+ * sau MỘT lần mở app từ thông báo, mọi lần mở lạnh sau đó (bấm icon, mở từ
+ * recents) đều đọc lại đúng Intent cũ và phát lại "cú bấm" đó.
+ *
+ * Triệu chứng: mở app lên là nhảy thẳng vào Trung tâm thông báo thay vì ở trang
+ * chủ — payload dựng từ extras lạ không khớp loại nào nên rơi xuống fallback
+ * cuối của `navigateFromPushNotificationData`.
+ *
+ * LƯU Ý: không thay cho fallback đó. Thông báo THẬT mà app chưa hỗ trợ loại thì
+ * vẫn phải mở Trung tâm thông báo — im lặng ở ca đó mới là lỗi.
+ */
+export function isRecognizedNotificationPayload(
+  data: PushNotificationPayload | null | undefined
+): boolean {
+  if (!data) return false;
+  return RECOGNIZED_PAYLOAD_KEYS.some((key) => str(data[key]).length > 0);
+}
+
+/**
  * Thông báo chat: danh sách tường minh, HOẶC prefix `chat*`, HOẶC `action: 'open_chat'`.
  * Prefix + action là lưới an toàn cho loại chat backend thêm sau này.
  */
@@ -426,6 +476,15 @@ export async function navigateFromPushNotificationData(
   data: PushNotificationPayload,
   navigationRef: NavigationContainerRef<RootStackParamList> | null
 ): Promise<void> {
+  // Không mang khoá định tuyến nào ⇒ không phải thông báo của WIS mà là extras
+  // của Intent khởi chạy bị expo-notifications dựng nhầm thành response (xem
+  // `isRecognizedNotificationPayload`). Đứng yên — điều hướng ở đây là kéo người
+  // dùng ra khỏi màn đang xem dù họ không bấm gì.
+  if (!isRecognizedNotificationPayload(data)) {
+    console.log('📝 Bỏ qua response không nhận diện được:', data);
+    return;
+  }
+
   if (await shouldDeferNavigation(navigationRef)) {
     await persistPendingPushNotificationData(data);
     return;

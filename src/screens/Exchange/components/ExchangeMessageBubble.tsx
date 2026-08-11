@@ -26,6 +26,7 @@ import {
   SWIPE_REPLY_MAX_DRAG_PX,
   SWIPE_REPLY_THRESHOLD_PX,
   chatAttachmentsKey,
+  chatFormatsKey,
   chatReactionsKey,
   formatChatDisplayName,
   formatChatTimeVi,
@@ -37,7 +38,7 @@ import { ExchangeMessageAttachments } from './ExchangeMessageAttachments';
 import { ExchangePollCard } from './ExchangePollCard';
 import type { MessageActionAnchor } from './MessageActionOverlay';
 import { LinkedText, linkedChildren } from '../../../components/Common/LinkedText';
-import { splitMentionParts } from '../lib/chatMentions';
+import { ChatFormattedText } from './ChatFormattedText';
 
 const CHAT_AVATAR_SIZE = 40;
 const CHAT_AVATAR_COLUMN_WIDTH = CHAT_AVATAR_SIZE;
@@ -224,7 +225,7 @@ export const ExchangeMessageBubble = memo(
         className={
           isFrameless
             ? `${poll ? '' : 'px-3 '}${hasReactions ? 'pb-6' : ''}`
-            : `rounded-xl px-4 pt-3 ${isMine ? '' : 'bg-gray-100'} ${hasReactions ? 'pb-7' : 'pb-3'}`
+            : `rounded-xl px-4 pt-3 ${isMine ? 'bg-[#F0FDFA]' : 'bg-gray-100'} ${hasReactions ? 'pb-7' : 'pb-3'}`
         }
         style={[
           {
@@ -232,7 +233,9 @@ export const ExchangeMessageBubble = memo(
             ...(poll ? { width: bubbleMaxWidth } : {}),
             alignSelf: bubbleAlign,
           },
-          !isFrameless && isMine ? { backgroundColor: MY_MESSAGE_BUBBLE_BG } : {},
+          // Tin của mình LUÔN nền teal rất nhạt (phương án D) — chữ có màu/tô sáng đọc được
+          // y như phía phụ huynh, họ cũng nhìn trên nền sáng.
+          {},
         ]}>
         {showSenderName && (
           <Text className="mb-1 font-mulish-bold text-sm text-[#002855]">
@@ -241,19 +244,19 @@ export const ExchangeMessageBubble = memo(
         )}
         {message.replyTo && replyQuoteContent && !recalled ? (
           <View
-            className={`mb-2 rounded-lg border-l-4 px-3 py-2 ${isMine ? 'border-white/70 bg-white/10' : 'border-[#F97316] bg-white'}`}>
-            <Text className={`font-mulish-bold text-sm ${isMine ? 'text-white' : 'text-[#002855]'}`}>
+            className="mb-2 rounded-lg border-l-4 border-[#F97316] bg-white px-3 py-2">
+            <Text className="font-mulish-bold text-sm text-[#002855]">
               {replySenderDisplayName || formatChatDisplayName(message.replyTo.senderName)}
             </Text>
             <Text
               numberOfLines={3}
-              className={`font-mulish-medium text-sm ${isMine ? 'text-white/80' : 'text-gray-500'}`}>
+              className="font-mulish-medium text-sm text-gray-500">
               {replyQuoteContent}
             </Text>
           </View>
         ) : null}
         {recalled ? (
-          <Text className={`font-mulish-medium text-base italic ${isMine ? 'text-white/85' : 'text-gray-500'}`}>
+          <Text className="font-mulish-medium text-base italic text-gray-500">
             Tin nhắn đã thu hồi
           </Text>
         ) : (
@@ -295,28 +298,21 @@ export const ExchangeMessageBubble = memo(
                 // Android chỉ ngắt dòng ở '\n'; iOS còn ngắt ở U+2028/U+2029 nên tin dán từ nơi
                 // khác vào hiển thị đúng trên iOS mà dồn thành khối chữ trên Android.
                 const content = normalizeLineBreaks(message.content);
-                const textClass = `font-mulish-medium text-base ${isMine ? 'text-white' : 'text-gray-900'}`;
-                // Bong bóng của mình nền đậm ⇒ link phải sáng mới đọc được.
-                const linkClass = `underline ${isMine ? 'text-white' : 'text-[#0B63CE]'}`;
-                const mentionClass = `font-mulish-bold ${isMine ? 'text-white' : 'text-[#0d9488]'}`;
-                if (!message.mentions?.length) {
+                const textClass = 'font-mulish-medium text-base text-gray-900';
+                const linkClass = 'underline text-[#0B63CE]';
+                const mentionClass = 'font-mulish-bold text-[#0d9488]';
+                if (!message.mentions?.length && !message.formats?.length) {
                   return <LinkedText text={content} className={textClass} linkClassName={linkClass} />;
                 }
-                // Có nhắc tên: cắt theo offset trước, phần chữ còn lại vẫn tách link như cũ.
                 return (
-                  <Text className={textClass}>
-                    {splitMentionParts(content, message.mentions).map((part, index) => (
-                      part.mention ? (
-                        <Text key={`m-${index}`} className={mentionClass}>
-                          {part.text}
-                        </Text>
-                      ) : (
-                        <Text key={`t-${index}`}>
-                          {linkedChildren(part.text, { linkClassName: linkClass })}
-                        </Text>
-                      )
-                    ))}
-                  </Text>
+                  <ChatFormattedText
+                    content={content}
+                    mentions={message.mentions}
+                    formats={message.formats}
+                    className={textClass}
+                    linkClassName={linkClass}
+                    mentionClassName={mentionClass}
+                  />
                 );
               }
               return null;
@@ -328,9 +324,7 @@ export const ExchangeMessageBubble = memo(
           <View
             className={`mt-2 flex-row flex-wrap items-center gap-x-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
             <Text
-              className={`font-mulish-medium text-xs ${
-                isMine && !isFrameless ? 'text-white/70' : 'text-gray-400'
-              }`}>
+              className="font-mulish-medium text-xs text-gray-400">
               {formatChatTimeVi(message.createdAt)}
             </Text>
             {isMine && readReceiptLabel ? (
@@ -456,6 +450,8 @@ export const ExchangeMessageBubble = memo(
     prev.highlighted === next.highlighted &&
     chatAttachmentsKey(prev.message.attachments) === chatAttachmentsKey(next.message.attachments) &&
     chatReactionsKey(prev.message.reactions) === chatReactionsKey(next.message.reactions) &&
+    // `formats` không nằm trong `content` ⇒ thiếu dòng này thì memo nuốt thay đổi định dạng.
+    chatFormatsKey(prev.message.formats) === chatFormatsKey(next.message.formats) &&
     // Thiếu dòng này thì mọi cập nhật phiếu bị memo nuốt (rev/myVote/isClosed không nằm trong
     // content/attachments/reactions).
     pollStateKey(prev.message.poll) === pollStateKey(next.message.poll) &&

@@ -3,12 +3,15 @@
  *
  * Port từ `frappe-sis-frontend/src/pages/Admission/Issues/shared/issueStatusTransitions.ts`,
  * bám đúng luồng backend `change_issue_status` (`erp/api/crm/issue.py`):
- *   Tiếp nhận → Đang xử lý       (PIC / nhóm Care)
- *   Đang xử lý → Hoàn thành      (PIC hoặc Care Admin; bắt buộc có Kết quả)
- *   Hoàn thành → Đóng            (chỉ Care Admin)
+ *   Tiếp nhận → Đang xử lý       (PIC / team Care / Sales)
+ *   Đang xử lý → Hoàn thành      (CHỈ team Care; bắt buộc có Kết quả)
  *   Hoàn thành → Đang xử lý      (chỉ Care Admin — trả về xử lý tiếp)
  *
- * Trước đây mobile luôn hiện cứng 3 lựa chọn nên user chọn bước backend sẽ từ chối.
+ * Bước "Đóng" ĐÃ BỎ: "Hoàn thành" là trạng thái cuối. Giá trị `'Dong'` vẫn còn trong
+ * type/nhãn để bản ghi cũ hiển thị đúng, nhưng backend từ chối chuyển tới nó.
+ *
+ * Quyền đọc TRỰC TIẾP từ cờ `can_*` của API — không suy từ PIC/role ở client nữa, vì
+ * "được hoàn thành" giờ là team Care chứ không phải PIC.
  */
 
 import type { CRMIssue, CRMIssueStatus } from '../../../types/crmIssue';
@@ -17,13 +20,15 @@ import { CRM_ISSUE_STATUS_LABELS } from '../../../types/crmIssue';
 export type IssueStatusTransitionContext = {
   /** Nhóm Care/Admin — đổi Trạng thái / Kết quả */
   canEditSalesStatus: boolean;
-  /** Care Admin — suy từ cờ `can_edit_process_log` của API (khớp web) */
-  isCareAdmin: boolean;
-  /** User hiện tại là PIC của vấn đề */
-  isPic: boolean;
+  /** API `can_start_processing` — Tiếp nhận → Đang xử lý */
+  canStartProcessing: boolean;
+  /** API `can_complete_issue` — Đang xử lý → Hoàn thành. Chỉ team Care */
+  canCompleteIssue: boolean;
+  /** API `can_reopen_issue` — Hoàn thành → Đang xử lý. Chỉ Care Admin */
+  canReopenIssue: boolean;
 };
 
-const WORKFLOW_ORDER: CRMIssueStatus[] = ['Tiep nhan', 'Dang xu ly', 'Hoan thanh', 'Dong'];
+const WORKFLOW_ORDER: CRMIssueStatus[] = ['Tiep nhan', 'Dang xu ly', 'Hoan thanh'];
 
 export function getAllowedStatusTransitions(
   issue: Pick<CRMIssue, 'status' | 'approval_status'>,
@@ -36,18 +41,20 @@ export function getAllowedStatusTransitions(
   const st = issue.status;
   const set = new Set<CRMIssueStatus>([st]);
 
-  if (st === 'Tiep nhan') {
+  if (st === 'Tiep nhan' && ctx.canStartProcessing) {
     set.add('Dang xu ly');
   }
-  if (st === 'Dang xu ly' && (ctx.isPic || ctx.isCareAdmin)) {
+  if (st === 'Dang xu ly' && ctx.canCompleteIssue) {
     set.add('Hoan thanh');
   }
-  if (st === 'Hoan thanh' && ctx.isCareAdmin) {
+  if (st === 'Hoan thanh' && ctx.canReopenIssue) {
     set.add('Dang xu ly');
-    set.add('Dong');
   }
 
-  return WORKFLOW_ORDER.filter((s) => set.has(s));
+  const allowed = WORKFLOW_ORDER.filter((s) => set.has(s));
+  // Bản ghi cũ ở `'Dong'` không nằm trong WORKFLOW_ORDER -> filter trả rỗng, picker sẽ trắng.
+  // Trả lại chính trạng thái hiện tại để UI vẫn hiển thị được.
+  return allowed.length ? allowed : [st];
 }
 
 export function statusOptionsForSegment(statuses: CRMIssueStatus[]) {

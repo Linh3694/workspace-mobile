@@ -263,6 +263,33 @@ export type CreateChatPollPayload = {
   remindBeforeMinutes?: number | null;
 };
 
+/**
+ * Token màu CHỮ — tên màu Wellspring, KHÔNG phải hex (đổi hex chỉ sửa bảng map ở client).
+ * Chỉ có hai màu vì chỉ nhóm đậm của bộ Wellspring đủ tương phản để làm chữ 14px.
+ */
+export type ChatTextColor = "oxford-blue" | "teal";
+
+/**
+ * Token nền TÔ SÁNG — nhóm màu tươi của Wellspring. Làm màu chữ thì không đọc được,
+ * làm nền với chữ tối đè lên thì tương phản rất tốt.
+ */
+export type ChatHighlight = "amber" | "lime" | "honey";
+
+/**
+ * Một dải chữ được định dạng — khớp `ChatMessage.formats` của social-service.
+ * Cùng mô hình với `mentions`: `content` vẫn là text thuần, mảng này chỉ neo vị trí.
+ * Server luôn trả các dải RỜI NHAU và đã sắp theo `start`.
+ */
+export type ChatFormat = {
+  start: number;
+  length: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  color?: ChatTextColor;
+  highlight?: ChatHighlight;
+};
+
 export type ChatMessage = {
   _id: string;
   conversation: string;
@@ -281,6 +308,8 @@ export type ChatMessage = {
   };
   /** Nhắc tên (@) — rỗng/thiếu với tin không tag ai. */
   mentions?: ChatMention[];
+  /** Định dạng chữ — thiếu/rỗng với tin không định dạng. Client cũ bỏ qua và hiện text thuần. */
+  formats?: ChatFormat[];
   /** Chỉ GV nhận từ BE — danh sách userId đã đọc. */
   readBy?: Array<{ user: string; readAt: string }>;
   createdAt: string;
@@ -360,6 +389,8 @@ export type SendChatMessageInput = {
   attachments?: ChatAttachment[];
   /** Nhắc tên (@) — server xác thực lại offset/quyền, sai thì bỏ hoặc trả 403. */
   mentions?: ChatMention[];
+  /** Định dạng chữ — server clamp/chuẩn hoá lại offset, dải sai bị bỏ chứ không làm hỏng tin. */
+  formats?: ChatFormat[];
 };
 
 /** Snapshot môn dạy của GV bộ môn — phục vụ hiển thị trong picker. */

@@ -519,6 +519,17 @@ export function chatAttachmentsKey(attachments: ChatMessage['attachments'] | und
 }
 
 /**
+ * Định dạng chữ — cần cho memo của bong bóng: `formats` không nằm trong `content` nên bản
+ * optimistic và bản server trả về có thể khác định dạng mà `content` vẫn y hệt.
+ */
+export function chatFormatsKey(formats: ChatMessage['formats'] | undefined): string {
+  if (!formats?.length) return '';
+  return formats
+    .map((f) => `${f.start}-${f.length}:${f.bold ? 'b' : ''}${f.italic ? 'i' : ''}${f.underline ? 'u' : ''}${f.color || ''}`)
+    .join('|');
+}
+
+/**
  * Hòa giải cập nhật bình chọn.
  * Broadcast socket KHÔNG kèm `myVote` (một payload cho mọi người xem) nên phải giữ lại lựa chọn
  * đang có; `rev` tăng dần ở BE nên payload đến trễ bị bỏ.

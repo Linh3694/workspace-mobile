@@ -309,16 +309,19 @@ const CRMIssueDetailScreen: React.FC = () => {
   }, [issue, roles]);
 
   /**
-   * Bước trạng thái backend sẽ chấp nhận — khớp web.
-   * `isCareAdmin` suy từ cờ `can_edit_process_log` (chỉ Care Admin sửa được log của người khác),
-   * đúng cách web `IssueDetailV2` đang làm.
+   * Bước trạng thái backend sẽ chấp nhận — khớp web, đọc thẳng cờ `can_*` của API.
+   * `??` giữ hành vi cũ khi app đã cập nhật mà backend chưa (cờ mới chưa có trong payload):
+   * hoàn thành khi là PIC hoặc Care Admin — vẫn hẹp hơn quyền mới nên không mở rộng sai.
    */
   const allowedStatuses = useMemo(() => {
     if (!issue) return [] as CRMIssueStatus[];
+    const isPicLocal = !!sessionUserId && (issue.pic || '').trim() === sessionUserId;
+    const isCareAdminLocal = issue.can_edit_process_log === true;
     return getAllowedStatusTransitions(issue, {
       canEditSalesStatus: showStatusResultButton,
-      isCareAdmin: issue.can_edit_process_log === true,
-      isPic: !!sessionUserId && (issue.pic || '').trim() === sessionUserId,
+      canStartProcessing: issue.can_start_processing ?? true,
+      canCompleteIssue: issue.can_complete_issue ?? (isPicLocal || isCareAdminLocal),
+      canReopenIssue: issue.can_reopen_issue ?? isCareAdminLocal,
     });
   }, [issue, showStatusResultButton, sessionUserId]);
 
@@ -327,10 +330,9 @@ const CRMIssueDetailScreen: React.FC = () => {
     if (issue.can_add_process_log === true || issue.can_add_process_log === false) {
       return issue.can_add_process_log;
     }
+    // Ghi log được ở mọi trạng thái — chỉ chặn khi đã từ chối hoặc bản ghi cũ đã Đóng
     return (
-      canWriteIssue &&
-      issue.approval_status === 'Da duyet' &&
-      issue.status === 'Dang xu ly'
+      canWriteIssue && issue.approval_status !== 'Tu choi' && issue.status !== 'Dong'
     );
   }, [issue, canWriteIssue]);
 

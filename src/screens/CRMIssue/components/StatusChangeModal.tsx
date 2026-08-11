@@ -25,7 +25,10 @@ type Props = {
  *
  * Chỉ hiện bước backend chấp nhận: trước đây modal luôn liệt kê cứng
  * `Dang xu ly / Hoan thanh / Dong` nên user chọn bước sai rồi nhận lỗi kỹ thuật.
- * Ghi chú gửi kèm `change_issue_status`; backend ghi thành một dòng log "Cập nhật xử lý".
+ * Bước "Đóng" đã bỏ khỏi luồng — "Hoàn thành" là trạng thái cuối.
+ *
+ * Ghi chú là TUỲ CHỌN (chuyển trạng thái không cần giải trình); gửi kèm
+ * `change_issue_status` và backend ghi thành một dòng log "Cập nhật xử lý".
  */
 export const StatusChangeModal: React.FC<Props> = ({
   visible,
@@ -59,6 +62,12 @@ export const StatusChangeModal: React.FC<Props> = ({
   const confirm = () => {
     if (status === 'Hoan thanh' && (result === '' || result == null)) {
       Alert.alert(t('common.error'), t('crm_issue.result_required_when_complete'));
+      return;
+    }
+    // Ghi chú không bắt buộc, nhưng phải có ít nhất một trong hai: đổi trạng thái hoặc ghi chú.
+    // Nếu không, backend nhận status trùng trạng thái hiện tại rồi trả lỗi kỹ thuật.
+    if (status === currentStatus && !note.trim()) {
+      Alert.alert(t('common.error'), t('crm_issue.nothing_to_save'));
       return;
     }
     onConfirm(

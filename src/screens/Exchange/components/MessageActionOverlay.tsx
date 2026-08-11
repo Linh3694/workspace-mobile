@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RevokeIcon from '../../../assets/revoke.svg';
 import ReactionEmoji from '../../../components/Wislife/ReactionEmoji';
 import { ExchangeMessageAttachments } from './ExchangeMessageAttachments';
+import { ChatFormattedText } from './ChatFormattedText';
 import type { ChatEmoji, ChatMessage } from '../../../types/chat';
 import { parseChatWislifeStickerContent } from '../../../utils/chatWislifeSticker';
 import { CHAT_REACTION_EMOJIS, resolveChatReactionCode } from '../../../utils/emojiUtils';
@@ -192,12 +193,12 @@ export function MessageActionOverlay({
   }, [visible, onClose]);
 
   const recalled = Boolean(message.recalledAt);
-
   const bubbleInner = (
     <View
       style={[
         styles.bubble,
-        isMine ? { backgroundColor: MY_BUBBLE_BG } : { backgroundColor: '#F3F4F6' },
+        // Nền phải khớp bong bóng thật trong luồng chat, nếu không lúc nhấn giữ sẽ thấy đổi màu.
+        isMine ? { backgroundColor: '#F0FDFA' } : { backgroundColor: '#F3F4F6' },
         { maxWidth: bubbleMaxWidth, alignSelf: isMine ? 'flex-end' : 'flex-start' },
       ]}>
       {showSenderName && !isMine ? (
@@ -207,20 +208,20 @@ export function MessageActionOverlay({
       ) : null}
       {message.replyTo && replyQuoteContent && !recalled ? (
         <View
-          className={`mb-2 rounded-lg border-l-4 px-3 py-2 ${isMine ? 'border-white/70 bg-white/10' : 'border-[#F97316] bg-white'}`}>
-          <Text className={`font-mulish-bold text-sm ${isMine ? 'text-white' : 'text-[#002855]'}`}>
+          className="mb-2 rounded-lg border-l-4 border-[#F97316] bg-white px-3 py-2">
+          <Text className="font-mulish-bold text-sm text-[#002855]">
             {replySenderDisplayName || formatChatDisplayName(message.replyTo.senderName)}
           </Text>
           <Text
             numberOfLines={1}
-            className={`font-mulish-medium text-sm ${isMine ? 'text-white/80' : 'text-gray-500'}`}>
+            className="font-mulish-medium text-sm text-gray-500">
             {replyQuoteContent}
           </Text>
         </View>
       ) : null}
       {recalled ? (
         <Text
-          className={`font-mulish-medium text-base italic ${isMine ? 'text-white/85' : 'text-gray-500'}`}>
+          className="font-mulish-medium text-base italic text-gray-500">
           Tin nhắn đã thu hồi
         </Text>
       ) : (
@@ -238,11 +239,18 @@ export function MessageActionOverlay({
             );
           }
           if (message.content?.trim()) {
+            const textClass = 'font-mulish-medium text-base text-gray-900';
+            if (!message.formats?.length) {
+              return <Text className={textClass}>{message.content}</Text>;
+            }
+            // Có định dạng: cắt theo offset để bản xem trước khớp bong bóng thật.
             return (
-              <Text
-                className={`font-mulish-medium text-base ${isMine ? 'text-white' : 'text-gray-900'}`}>
-                {message.content}
-              </Text>
+              <ChatFormattedText
+                content={message.content}
+                formats={message.formats}
+                className={textClass}
+                disableLinks
+              />
             );
           }
           return null;
@@ -251,7 +259,7 @@ export function MessageActionOverlay({
       )}
       {showTimestamp ? (
         <Text
-          className={`mt-2 font-mulish-medium text-xs ${isMine ? 'text-white/70' : 'text-gray-400'}`}>
+          className="mt-2 font-mulish-medium text-xs text-gray-400">
           {message.createdAt
             ? new Date(message.createdAt).toLocaleTimeString('vi-VN', {
                 hour: '2-digit',
