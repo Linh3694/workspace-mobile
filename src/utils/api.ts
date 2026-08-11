@@ -3,6 +3,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import { API_BASE_URL } from '../config/constants';
+import { notifySessionExpired } from './sessionExpiry';
 
 // Tạo instance axios — withCredentials: false (mặc định đã set trong axiosDefaults, lặp lại cho rõ ràng)
 const api = axios.create({
@@ -68,7 +69,10 @@ api.interceptors.response.use(
       await AsyncStorage.removeItem('userRole');
       await AsyncStorage.removeItem('userRoles');
 
-      // TODO: Chuyển hướng về trang đăng nhập (cần thiết lập hệ thống navigation global)
+      // Xoá storage thôi là CHƯA ĐỦ: điều hướng dựa trên state `user` của AuthContext,
+      // storage rỗng mà `user` còn thì app vẫn ở màn hình đã đăng nhập với dữ liệu rỗng.
+      // Báo cho AuthContext để nó setUser(null) → navigator tự trả về màn đăng nhập.
+      notifySessionExpired('utils/api response interceptor');
       return Promise.reject(error);
     }
 
