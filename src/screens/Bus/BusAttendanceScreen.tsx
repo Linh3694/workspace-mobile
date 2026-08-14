@@ -27,9 +27,11 @@ import {
 } from '../../services/busService';
 import { getFullImageUrl } from '../../utils/imageUtils';
 import { toast } from '../../utils/toast';
+import { colors } from '../../theme';
 
 type RootStackParamList = {
   BusAttendance: { tripId: string; tripType: string };
+  FaceCamera: { tripId: string; tripType: string };
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -403,6 +405,25 @@ const BusAttendanceScreen: React.FC = () => {
         )}
       </ScrollView>
 
+      {/* Nút quét khuôn mặt. Không truyền callback qua navigation params như bản cũ
+          (React Navigation cảnh báo giá trị không tuần tự hoá được, và bản cũ khai
+          `onSuccess` rồi không bao giờ gọi): màn này vốn đã tự làm mới mỗi 5 giây
+          nên danh sách tự cập nhật sau khi quét xong. */}
+      <TouchableOpacity
+        style={styles.floatingFaceButton}
+        onPress={() => navigation.navigate('FaceCamera', { tripId, tripType })}
+        activeOpacity={0.8}>
+        <View style={styles.floatingFaceButtonInner}>
+          <Ionicons name="person" size={28} color="#FFFFFF" />
+          <View style={styles.scanCorners}>
+            <View style={[styles.scanCorner, styles.scanCornerTL]} />
+            <View style={[styles.scanCorner, styles.scanCornerTR]} />
+            <View style={[styles.scanCorner, styles.scanCornerBL]} />
+            <View style={[styles.scanCorner, styles.scanCornerBR]} />
+          </View>
+        </View>
+      </TouchableOpacity>
+
       {/* Status Change Modal */}
       <Modal
         visible={showStatusModal}
@@ -589,37 +610,59 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5E7EB',
     marginHorizontal: 16,
   },
-  faceRecognitionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F05023',
-    margin: 16,
-    padding: 16,
-    borderRadius: 16,
+  floatingFaceButton: {
+    position: 'absolute',
+    bottom: '5%',
+    alignSelf: 'center',
+    zIndex: 100,
   },
-  faceIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  floatingFaceButtonInner: {
+    width: 70,
+    height: 70,
+    borderRadius: 40,
+    backgroundColor: colors.secondary.DEFAULT,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    shadowColor: colors.secondary.DEFAULT,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  faceButtonContent: {
-    flex: 1,
+  scanCorners: {
+    position: 'absolute',
+    width: 36,
+    height: 36,
   },
-  faceButtonTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    fontFamily: 'Mulish',
+  scanCorner: {
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderColor: '#FFFFFF',
   },
-  faceButtonSubtitle: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.7)',
-    marginTop: 4,
-    fontFamily: 'Mulish',
+  scanCornerTL: {
+    top: 0,
+    left: 0,
+    borderTopWidth: 2,
+    borderLeftWidth: 2,
+  },
+  scanCornerTR: {
+    top: 0,
+    right: 0,
+    borderTopWidth: 2,
+    borderRightWidth: 2,
+  },
+  scanCornerBL: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: 2,
+    borderLeftWidth: 2,
+  },
+  scanCornerBR: {
+    bottom: 0,
+    right: 0,
+    borderBottomWidth: 2,
+    borderRightWidth: 2,
   },
   scrollView: {
     flex: 1,
