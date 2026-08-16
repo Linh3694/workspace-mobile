@@ -116,6 +116,92 @@ export interface TripDetailResponse {
   warnings: string[];
 }
 
+/** Năm kết quả của một lượt quét. Cả năm đều về theo đường `success: true` —
+ *  `success: false` chỉ dành cho lỗi xác thực, lỗi quyền, và lỗi dịch vụ. */
+export type FaceScanResultKind =
+  /** Đã điểm danh tự động */
+  | 'checked_in'
+  /** Có em khớp nhưng chưa đủ chắc — giám sát bấm xác nhận */
+  | 'confirm'
+  /** Không em nào trong chuyến khớp */
+  | 'unknown'
+  /** Không thấy khuôn mặt trong ảnh — chụp lại */
+  | 'no_face'
+  /** Em này đã được điểm danh từ trước */
+  | 'already';
+
+export interface FaceScanStudent {
+  student_id: string;
+  student_name: string;
+  student_code: string;
+  class_name?: string;
+  current_status: string;
+}
+
+export interface FaceScanData {
+  trip_id: string;
+  result: FaceScanResultKind;
+  /** `null` ở CẢ `unknown` lẫn `no_face` — backend cố ý không đưa ra một cái tên
+   *  gần như chắc chắn sai để giám sát khỏi bấm bừa theo gợi ý của máy. */
+  student: FaceScanStudent | null;
+  /** Không có ở `no_face` */
+  similarity?: number;
+  /** `null` khi tập ứng viên chỉ có một em */
+  margin?: number | null;
+  /** Nguồn ảnh đã đăng ký. Không phải `Bus` thì backend không bao giờ tự động
+   *  điểm danh — ảnh hồ sơ/FaceID là ảnh studio đã chỉnh sửa, khác mặt thật. */
+  photo_source?: 'Bus' | 'FaceID' | 'SIS' | null;
+  reason?: string;
+  status?: string;
+  method?: string;
+  timestamp?: string;
+  trip_auto_started?: boolean;
+  thresholds?: { high: number; low: number; min_margin: number };
+  elapsed_ms?: number | null;
+  candidates_searched?: number | null;
+  /** Chỉ có ở nhánh lỗi: `manual` = dịch vụ hỏng, chuyển sang điểm danh tay;
+   *  `retake` = ảnh không dùng được, chụp lại. */
+  fallback?: 'manual' | 'retake';
+}
+
+/** Backend trả `message` là chuỗi ở mọi nhánh bình thường, nhưng vài endpoint cũ
+ *  lỡ truyền cả dict vào đó. Đưa thẳng một object vào `<Text>` là màn hình trắng
+ *  kèm "Objects are not valid as a React child" — chặn ngay tại tầng service. */
+function toMessage(value: unknown, fallback: string): string {
+  if (typeof value === 'string' && value.trim()) return value;
+  return fallback;
+}
+
+/** Gỡ lớp bọc `message` của Frappe rồi chuẩn hoá envelope. */
+function normalizeBusResponse<T>(
+  raw: any,
+  fallbackMessage: string
+): { success: boolean; message?: string; data?: T; code?: string } {
+  const result = raw?.message ?? raw;
+  return {
+    success: Boolean(result?.success),
+    message: toMessage(result?.message, fallbackMessage),
+    data: result?.data,
+    code: typeof result?.code === 'string' ? result.code : undefined,
+  };
+}
+
+/** Lỗi mạng/timeout cũng phải ra `fallback: 'manual'` — với giám sát đứng trước
+ *  cửa xe thì "mất mạng" và "dịch vụ chết" là cùng một việc: chuyển sang bấm tay. */
+function busErrorToResult(
+  error: any,
+  fallbackMessage: string
+): { success: boolean; message?: string; data?: FaceScanData; code?: string } {
+  const body = error?.response?.data?.message ?? error?.response?.data;
+  const coMang = Boolean(error?.response);
+  return {
+    success: false,
+    message: toMessage(body?.message, coMang ? fallbackMessage : 'Mất kết nối tới hệ thống'),
+    code: typeof body?.code === 'string' ? body.code : coMang ? undefined : 'NETWORK_ERROR',
+    data: { ...(body?.data || {}), fallback: body?.data?.fallback || 'manual' } as FaceScanData,
+  };
+}
+
 export interface LoginResponse {
   success: boolean;
   message: string;
@@ -402,64 +488,51 @@ class BusService {
   }
 
   /**
-   * Check student in trip manually
+   * Quét một ảnh và điểm danh nếu hệ thống đủ chắc chắn.
+   *
+   * `imageBase64` là base64 TRẦN, không kèm tiền tố `data:image/jpeg;base64,`.
+   * Dịch vụ nhận diện chấp nhận cả hai dạng, nhưng giới hạn dung lượng được kiểm
+   * trên chính chuỗi base64 nên tiền tố chỉ làm ảnh "to" lên vô ích.
    */
-  async checkStudentIn(
-    studentId: string,
+  async scanCheckin(
     tripId: string,
-    method: 'face_recognition' | 'manual' = 'manual'
-  ): Promise<{ success: boolean; message?: string; data?: any }> {
+    imageBase64: string
+  ): Promise<{ success: boolean; message?: string; data?: FaceScanData; code?: string }> {
     try {
       const config = await getAxiosConfig();
       const response = await axios.post(
-        `${config.baseURL}${BUS_API}.face_recognition.check_student_in_trip`,
-        {
-          student_id: studentId,
-          trip_id: tripId,
-          method,
-        },
+        `${config.baseURL}${BUS_API}.face_scan.scan_checkin`,
+        { trip_id: tripId, image: imageBase64 },
         config
       );
-
-      const result = response.data?.message || response.data;
-      return result;
-    } catch (error: any) {
-      console.error('Check in error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Điểm danh thất bại',
-      };
+      return normalizeBusResponse(response.data, 'Không nhận diện được');
+    } catch (error) {
+      return busErrorToResult(error, 'Không nhận diện được');
     }
   }
 
   /**
-   * Mark student as absent
+   * Giám sát bấm xác nhận cho kết quả nằm ở vùng ngờ.
+   *
+   * Khoá theo `student_id` (docname CRM Student) chứ không phải id dòng con của
+   * chuyến — đúng bằng giá trị mà `scanCheckin` trả về trong `data.student`. Đây là
+   * hệ khoá thứ ba trong module này, bên cạnh `updateStudentStatus` (khoá theo dòng
+   * con) — dễ nhầm nên ghi rõ ở đây.
    */
-  async markStudentAbsent(
-    studentId: string,
+  async confirmScanCheckin(
     tripId: string,
-    reason: 'Nghỉ học' | 'Nghỉ ốm' | 'Nghỉ phép' | 'Lý do khác'
-  ): Promise<{ success: boolean; message?: string; data?: any }> {
+    studentId: string
+  ): Promise<{ success: boolean; message?: string; data?: FaceScanData; code?: string }> {
     try {
       const config = await getAxiosConfig();
       const response = await axios.post(
-        `${config.baseURL}${BUS_API}.face_recognition.mark_student_absent`,
-        {
-          student_id: studentId,
-          trip_id: tripId,
-          reason,
-        },
+        `${config.baseURL}${BUS_API}.face_scan.confirm_scan_checkin`,
+        { trip_id: tripId, student_id: studentId },
         config
       );
-
-      const result = response.data?.message || response.data;
-      return result;
-    } catch (error: any) {
-      console.error('Mark absent error:', error);
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Không thể đánh dấu vắng',
-      };
+      return normalizeBusResponse(response.data, 'Không điểm danh được');
+    } catch (error) {
+      return busErrorToResult(error, 'Không điểm danh được');
     }
   }
 
