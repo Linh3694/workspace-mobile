@@ -24,9 +24,9 @@ import MentionInput, { MentionUser, extractMentionIds, getMentionPlainText } fro
 
 // Config cho image compression
 const IMAGE_CONFIG = {
-  maxWidth: 1200,      // Max width để upload nhanh
-  maxHeight: 1200,     // Max height
-  quality: 0.7,        // 70% quality — cân bằng giữa chất lượng và kích thước
+  /** Cạnh dài tối đa — khớp trần CDN_IMAGE_MAX_WIDTH (2048) của social-service */
+  maxSize: 2048,
+  quality: 0.85,
 };
 
 /** Dòng phạm vi đăng trong modal: không lặp "Đăng vào lớp Lớp …" khi API đã có tiền tố Lớp */
@@ -38,39 +38,55 @@ function labelAudienceClassScope(className: string): string {
 }
 
 /**
- * Compress và resize ảnh để upload nhanh hơn
- * Giảm từ ~5MB xuống ~200-500KB
+ * Compress ảnh trước khi upload (giảm từ ~5MB xuống vài trăm KB).
+ *
+ * TUYỆT ĐỐI không truyền cả `width` lẫn `height` cho `resize`: manipulator ép
+ * cứng đúng hai số đó và ảnh méo. Truyền ĐÚNG MỘT chiều thì chiều còn lại được
+ * tính theo tỉ lệ gốc.
+ *
+ * Kích thước phải lấy từ asset của ImagePicker (đã áp EXIF orientation).
+ * `Image.getSize` từng dùng ở đây là nguồn gây méo: trên Android nó đọc bounds
+ * bitmap thô nên ảnh chụp dọc trả về chiều ngang, còn khi nó lỗi thì fallback
+ * vuông 1200×1200 bóp mọi ảnh thành hình vuông.
  */
-const compressImage = async (uri: string): Promise<{ uri: string; width: number; height: number }> => {
+const compressImage = async (
+  uri: string,
+  sourceWidth?: number,
+  sourceHeight?: number,
+): Promise<string> => {
   try {
-    // Lấy kích thước ảnh gốc
-    const imageInfo = await new Promise<{ width: number; height: number }>((resolve) => {
-      Image.getSize(uri, (width, height) => resolve({ width, height }), () => resolve({ width: 1200, height: 1200 }));
-    });
+    let width = sourceWidth;
+    let height = sourceHeight;
 
-    // Tính toán kích thước mới giữ tỉ lệ
-    let { width, height } = imageInfo;
-    const ratio = Math.min(IMAGE_CONFIG.maxWidth / width, IMAGE_CONFIG.maxHeight / height);
-    
-    if (ratio < 1) {
-      width = Math.round(width * ratio);
-      height = Math.round(height * ratio);
+    // Asset không kèm kích thước ⇒ hỏi chính manipulator, kết quả đã áp EXIF.
+    if (!width || !height) {
+      const probed = await ImageManipulator.manipulateAsync(uri, []);
+      width = probed.width;
+      height = probed.height;
     }
 
-    // Compress ảnh
-    const manipulated = await ImageManipulator.manipulateAsync(
-      uri,
-      [{ resize: { width, height } }],
-      { 
-        compress: IMAGE_CONFIG.quality, 
-        format: ImageManipulator.SaveFormat.JPEG 
-      }
-    );
+    // Ảnh đã nhỏ hơn ngưỡng thì chỉ nén: phóng to chỉ làm mờ và phình file.
+    const actions: ImageManipulator.Action[] =
+      Math.max(width, height) > IMAGE_CONFIG.maxSize
+        ? [
+            {
+              resize:
+                width >= height
+                  ? { width: IMAGE_CONFIG.maxSize }
+                  : { height: IMAGE_CONFIG.maxSize },
+            },
+          ]
+        : [];
 
-    return { uri: manipulated.uri, width, height };
+    const manipulated = await ImageManipulator.manipulateAsync(uri, actions, {
+      compress: IMAGE_CONFIG.quality,
+      format: ImageManipulator.SaveFormat.JPEG,
+    });
+
+    return manipulated.uri;
   } catch (error) {
     console.warn('[Compress] Failed, using original:', error);
-    return { uri, width: 0, height: 0 };
+    return uri;
   }
 };
 
@@ -171,6 +187,8 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
           type: asset.type === 'video' ? 'video/mp4' : 'image/jpeg',
           name: `media_${Date.now()}_${index}.${asset.type === 'video' ? 'mp4' : 'jpg'}`,
           size: asset.fileSize,
+          width: asset.width,
+          height: asset.height,
         }));
 
         // Trần media bài đăng — khớp social-service (30). Chế độ sửa tính cả media cũ giữ lại.
@@ -216,6 +234,8 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
           type: asset.type === 'video' ? 'video/mp4' : 'image/jpeg',
           name: `camera_${Date.now()}.${asset.type === 'video' ? 'mp4' : 'jpg'}`,
           size: asset.fileSize,
+          width: asset.width,
+          height: asset.height,
         };
 
         if (totalMediaCount >= MAX_MEDIA) {
@@ -270,10 +290,9 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
       for (let i = 0; i < imageFiles.length; i++) {
         setUploadProgress(`Đang nén ảnh ${i + 1}/${imageFiles.length}...`);
         const file = imageFiles[i];
-        const compressed = await compressImage(file.uri);
         compressedFiles.push({
           ...file,
-          uri: compressed.uri,
+          uri: await compressImage(file.uri, file.width, file.height),
         });
       }
     }

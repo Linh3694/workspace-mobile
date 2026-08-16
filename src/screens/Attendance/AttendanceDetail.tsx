@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { StudentAvatar } from '../../utils/studentAvatar';
+import { periodNameMatches } from '../../utils/attendancePeriod';
 import { attendanceApiService } from '../../services/attendanceApiService';
 import dailyHealthService, {
   type HealthStatusForPeriodResponse,
@@ -509,10 +510,20 @@ const AttendanceDetail = () => {
       }
 
       // Xử lý leaves
+      //
+      // API trả đơn nghỉ theo NGÀY. Đơn nghỉ theo tiết (`leave_scope = 'by_period'`) chỉ
+      // áp cho các tiết liệt kê trong `periods`; không lọc thì học sinh xin nghỉ tiết 2
+      // sẽ bị đánh "vắng có phép" ở mọi tiết trong ngày.
+      // Đơn nghỉ cả ngày (hoặc đơn cũ không có `leave_scope`) vẫn áp cho mọi tiết.
       if (leavesResult.success && leavesResult.data) {
         const leaveMap: Record<string, AttendanceStatus> = {};
-        Object.keys(leavesResult.data).forEach((studentId) => {
-          leaveMap[studentId] = 'excused';
+        Object.entries(leavesResult.data).forEach(([studentId, leaves]) => {
+          const applies = (leaves as any[])?.some((leave) => {
+            if ((leave?.leave_scope ?? 'full_day') !== 'by_period') return true;
+            const periods: string[] = leave?.periods ?? [];
+            return periods.some((p) => periodNameMatches(p, lessonPeriod));
+          });
+          if (applies) leaveMap[studentId] = 'excused';
         });
         setLeaveStatuses(leaveMap);
       } else {
@@ -575,15 +586,24 @@ const AttendanceDetail = () => {
     return !!h && ['left_class', 'at_clinic', 'examining', 'picked_up', 'transferred'].includes(h.status || '');
   };
 
-  // Đồng bộ LessonLog/ClassLog: Event > chỉnh tay GV > nghỉ phép > overlay Y tế > nền server (tiết/homeroom)
+  // Thứ tự ưu tiên (đồng bộ với web `useClassAttendancePage`):
+  //   GV sửa tay > Y tế > sự kiện > đơn nghỉ phép (đã lọc theo tiết) > nền server (tiết/homeroom)
+  //
+  // Việc ĐANG diễn ra thắng dự kiến từ trước: học sinh có đơn nghỉ buổi chiều nhưng
+  // sáng đang ở phòng Y tế thì tiết sáng phải hiện theo Y tế, không phải theo đơn.
+  //
+  // Sự kiện đứng dưới "GV sửa tay" ở đây chỉ là hình thức: `hasEventOverrideStatus`
+  // khoá thao tác sửa khi học sinh có sự kiện, nên trên thực tế không tồn tại đồng thời
+  // cả hai — trừ trường hợp sự kiện được tạo SAU khi giáo viên đã sửa tay, và khi đó
+  // quyết định của giáo viên đứng lớp là cái đúng.
   const getFinalStatus = (studentId: string): AttendanceStatus => {
-    if (eventStatuses[studentId]) return eventStatuses[studentId];
     if (Object.prototype.hasOwnProperty.call(userAttendanceOverrides, studentId)) {
       return userAttendanceOverrides[studentId];
     }
-    if (leaveStatuses[studentId]) return leaveStatuses[studentId];
     // Y tế còn trong luồng → ép excused kể cả khi nền server là present (DB chưa kịp excused)
     if (isAtHealthForStudent(studentId)) return 'excused';
+    if (eventStatuses[studentId]) return eventStatuses[studentId];
+    if (leaveStatuses[studentId]) return leaveStatuses[studentId];
     return serverAttendanceMap[studentId] || 'present';
   };
 
@@ -602,7 +622,11 @@ const AttendanceDetail = () => {
     );
   };
 
+  // Badge phải chỉ đúng nguồn đã THẮNG ở `getFinalStatus`, nên giữ cùng thứ tự với nó.
+  // Ngược lại giáo viên sẽ thấy nhãn "Nghỉ phép" trong khi trạng thái thật đến từ Y tế.
   const getOverrideBadge = (studentId: string): string | null => {
+    // Học sinh đang ở Y tế (chưa về lớp)
+    if (isAtHealthForStudent(studentId)) return 'Y tế';
     if (eventStatuses[studentId]) return 'Sự kiện';
     // Nếu có leave nhưng đã manual override thì hiện badge đặc biệt
     if (leaveStatuses[studentId]) {
@@ -611,8 +635,6 @@ const AttendanceDetail = () => {
       }
       return 'Nghỉ phép';
     }
-    // Học sinh đang ở Y tế (chưa về lớp)
-    if (isAtHealthForStudent(studentId)) return 'Y tế';
     return null;
   };
 

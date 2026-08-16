@@ -56,6 +56,13 @@ export interface MediaFile {
   type: string;
   name: string;
   size?: number;
+  /**
+   * Kích thước ảnh do ImagePicker trả về — đã áp EXIF orientation, nên đây là
+   * nguồn duy nhất đáng tin để tính khung nén. Không đo lại bằng
+   * `Image.getSize`: trên Android nó đọc bounds bitmap thô (chưa xoay).
+   */
+  width?: number;
+  height?: number;
 }
 
 export interface CreatePostData {

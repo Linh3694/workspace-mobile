@@ -264,7 +264,6 @@ export const ExchangeMessageBubble = memo(
             {(message.attachments?.length ?? 0) > 0 ? (
               <ExchangeMessageAttachments
                 attachments={message.attachments!}
-                isMine={isMine}
                 onLongPress={longPressMenuEnabled ? handleLongPress : undefined}
               />
             ) : null}
@@ -329,10 +328,8 @@ export const ExchangeMessageBubble = memo(
             </Text>
             {isMine && readReceiptLabel ? (
               <Pressable onPress={() => onOpenReaders?.(message)} hitSlop={8}>
-                <Text
-                  className={`font-mulish-semibold text-xs underline ${
-                    isMine && !isFrameless ? 'text-white/85' : 'text-[#0D9488]'
-                  }`}>
+                {/* Bong bóng của mình cũng là nền sáng ⇒ luôn dùng teal, chữ trắng sẽ chìm. */}
+                <Text className="font-mulish-semibold text-xs text-[#0D9488] underline">
                   {readReceiptLabel}
                 </Text>
               </Pressable>

@@ -227,7 +227,7 @@ export function MessageActionOverlay({
       ) : (
         <>
           {(message.attachments?.length ?? 0) > 0 ? (
-            <ExchangeMessageAttachments attachments={message.attachments!} isMine={isMine} />
+            <ExchangeMessageAttachments attachments={message.attachments!} />
           ) : null}
           {(() => {
           const wl = parseChatWislifeStickerContent(message.content);

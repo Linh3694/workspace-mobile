@@ -70,10 +70,43 @@ export function marksToStyle(marks: ChatFormatMarks | undefined): TextStyle {
 /**
  * Cắt một mảnh thành các mẩu KẾT THÚC ở chỗ được phép xuống dòng ("a b c" → ["a ", "b ", "c"]).
  * Khoảng trắng đi kèm từ đứng trước để nền tô sáng liền mạch, không hở giữa các từ.
+ *
+ * `[^\S\n]` = khoảng trắng NGANG, cố ý loại `\n`: xuống dòng do `splitFormattedLines` lo, mẩu
+ * chữ lọt vào đây không bao giờ được mang `\n` — xem giải thích ở hàm đó.
  */
 function splitWrapChunks(text: string): string[] {
-  const chunks = text.match(/\S+\s*|\s+/g);
+  const chunks = text.match(/\S+[^\S\n]*|[^\S\n]+/g);
   return chunks && chunks.length ? chunks : [text];
+}
+
+type FormattedPart = ReturnType<typeof splitFormattedParts>[number];
+
+/**
+ * Gom các mảnh thành TỪNG DÒNG, cắt ở `\n`.
+ *
+ * VÌ SAO PHẢI TÁCH DÒNG THỦ CÔNG — nhánh có nền tô sáng xếp chữ bằng hàng flex chứ không phải
+ * `<Text>`, mà hàng flex KHÔNG hiểu `\n`: nó chỉ xuống hàng khi hết bề ngang. Trước đây `\n` bị
+ * `\s*` nuốt vào cuối mẩu ("mến,\n") gây LIỀN MỘT LÚC HAI LỖI:
+ *
+ *  1. Mất hết xuống dòng — cả tin nhắn dồn thành một khối chữ chạy dài.
+ *  2. "Chữ bay" — mẩu chứa `\n` là `<Text>` CAO HAI DÒNG (dòng thứ hai rỗng), trong khi các ô
+ *     bên cạnh cao một dòng; hàng đang `alignItems: 'center'` nên ô hai dòng bị căn giữa và dòng
+ *     chữ đầu của nó đội lên trên đường chữ chung. Vì thế chỉ đúng từ NGAY TRƯỚC chỗ xuống dòng
+ *     mới bị nhấc lên.
+ *
+ * Trả về mảng dòng; dòng rỗng (hai `\n` liền nhau) là mảng rỗng, nơi gọi phải tự chèn ô giữ chiều
+ * cao, không thì dòng trống cao 0.
+ */
+function splitFormattedLines(parts: FormattedPart[]): FormattedPart[][] {
+  const lines: FormattedPart[][] = [[]];
+  for (const part of parts) {
+    const pieces = part.text.split('\n');
+    pieces.forEach((piece, pieceIndex) => {
+      if (pieceIndex > 0) lines.push([]);
+      if (piece) lines[lines.length - 1].push({ ...part, text: piece });
+    });
+  }
+  return lines;
 }
 
 type Props = {
@@ -124,50 +157,65 @@ export function ChatFormattedText({
     );
   }
 
-  return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
-      {parts.flatMap((part, index) => {
-        const style = marksToStyle(part.marks);
-        const background = chatHighlightHex(part.marks);
-        const chunks = splitWrapChunks(part.text);
-        /**
-         * `className` phải lặp lại ở TỪNG `<Text>`: ở nhánh này chúng là anh em trong flex chứ
-         * không phải con của một `<Text>` bao ngoài, nên không kế thừa cỡ chữ/họ font của ai.
-         * Thiếu là chữ nhỏ lại và lệch dòng.
-         */
-        const chunkClass = part.mention
-          ? `${className ?? ''} ${mentionClassName ?? ''}`.trim()
-          : className;
+  const renderPart = (part: FormattedPart, lineIndex: number, index: number) => {
+    const style = marksToStyle(part.marks);
+    const background = chatHighlightHex(part.marks);
+    const chunks = splitWrapChunks(part.text);
+    /**
+     * `className` phải lặp lại ở TỪNG `<Text>`: ở nhánh này chúng là anh em trong flex chứ
+     * không phải con của một `<Text>` bao ngoài, nên không kế thừa cỡ chữ/họ font của ai.
+     * Thiếu là chữ nhỏ lại và lệch dòng.
+     */
+    const chunkClass = part.mention
+      ? `${className ?? ''} ${mentionClassName ?? ''}`.trim()
+      : className;
 
-        return chunks.map((chunk, chunkIndex) => {
-          const inner = (
-            <Text className={chunkClass} style={style}>
-              {childrenOf(chunk, Boolean(part.mention))}
-            </Text>
-          );
-          if (!background) {
-            return <React.Fragment key={`t-${index}-${chunkIndex}`}>{inner}</React.Fragment>;
-          }
-          const first = chunkIndex === 0;
-          const last = chunkIndex === chunks.length - 1;
-          // Chỉ bo góc hai đầu đoạn — chỗ ngắt dòng có cạnh vuông, giống hệt cách trình duyệt
-          // bo góc một phần tử inline bị wrap.
-          const boxStyle: ViewStyle = {
-            backgroundColor: background,
-            borderTopLeftRadius: first ? HIGHLIGHT_RADIUS : 0,
-            borderBottomLeftRadius: first ? HIGHLIGHT_RADIUS : 0,
-            borderTopRightRadius: last ? HIGHLIGHT_RADIUS : 0,
-            borderBottomRightRadius: last ? HIGHLIGHT_RADIUS : 0,
-            paddingLeft: first ? HIGHLIGHT_PAD_X : 0,
-            paddingRight: last ? HIGHLIGHT_PAD_X : 0,
-          };
-          return (
-            <View key={`h-${index}-${chunkIndex}`} style={boxStyle}>
-              {inner}
-            </View>
-          );
-        });
-      })}
+    return chunks.map((chunk, chunkIndex) => {
+      const inner = (
+        <Text className={chunkClass} style={style}>
+          {childrenOf(chunk, Boolean(part.mention))}
+        </Text>
+      );
+      const key = `${lineIndex}-${index}-${chunkIndex}`;
+      if (!background) {
+        return <React.Fragment key={`t-${key}`}>{inner}</React.Fragment>;
+      }
+      const first = chunkIndex === 0;
+      const last = chunkIndex === chunks.length - 1;
+      // Chỉ bo góc hai đầu đoạn — chỗ ngắt dòng có cạnh vuông, giống hệt cách trình duyệt
+      // bo góc một phần tử inline bị wrap.
+      const boxStyle: ViewStyle = {
+        backgroundColor: background,
+        borderTopLeftRadius: first ? HIGHLIGHT_RADIUS : 0,
+        borderBottomLeftRadius: first ? HIGHLIGHT_RADIUS : 0,
+        borderTopRightRadius: last ? HIGHLIGHT_RADIUS : 0,
+        borderBottomRightRadius: last ? HIGHLIGHT_RADIUS : 0,
+        paddingLeft: first ? HIGHLIGHT_PAD_X : 0,
+        paddingRight: last ? HIGHLIGHT_PAD_X : 0,
+      };
+      return (
+        <View key={`h-${key}`} style={boxStyle}>
+          {inner}
+        </View>
+      );
+    });
+  };
+
+  // MỘT HÀNG FLEX CHO MỖI DÒNG. Hàng flex không hiểu `\n`, nên chỗ xuống dòng phải thành hàng
+  // riêng — xem `splitFormattedLines`.
+  return (
+    <View>
+      {splitFormattedLines(parts).map((line, lineIndex) => (
+        <View
+          key={`l-${lineIndex}`}
+          style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}
+        >
+          {line.length
+            ? line.flatMap((part, index) => renderPart(part, lineIndex, index))
+            : // Dòng trống: hàng flex rỗng cao 0px, phải có chữ mới giữ đúng chiều cao dòng.
+              <Text className={className}> </Text>}
+        </View>
+      ))}
     </View>
   );
 }

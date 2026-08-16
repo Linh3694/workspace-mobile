@@ -37,11 +37,9 @@ function formatChatFileSize(bytes?: number): string {
 
 export function ExchangeMessageAttachments({
   attachments,
-  isMine,
   onLongPress,
 }: {
   attachments: ChatAttachment[];
-  isMine: boolean;
   /** Long-press attachment → mở overlay reaction/hành động (giống bubble text). */
   onLongPress?: () => void;
 }) {
@@ -103,8 +101,6 @@ export function ExchangeMessageAttachments({
     }
     setPreviewIndex(index);
   };
-
-  const subMuted = isMine ? 'text-white/75' : 'text-gray-500';
 
   return (
     <View className="mb-2 gap-2">
@@ -240,7 +236,10 @@ export function ExchangeMessageAttachments({
 
       {/* Tap = xem ngay trong app (tải về cache GIỮ TÊN GỐC rồi mở QuickLook/intent);
           không mở được thì rơi xuống bảng chia sẻ. Mở URL trực tiếp thì tệp lưu ra
-          mang tên hash của CDN. */}
+          mang tên hash của CDN.
+
+          Thẻ tệp KHÔNG đổi màu theo bên gửi: từ khi bong bóng của mình chuyển sang nền
+          teal rất nhạt (#F0FDFA), cả hai chiều đều là nền sáng nên chữ trắng sẽ chìm. */}
       {files.map((f) => (
         <Pressable
           key={f.url}
@@ -248,24 +247,22 @@ export function ExchangeMessageAttachments({
           disabled={downloadingUrl === f.url}
           onLongPress={onLongPress}
           delayLongPress={420}
-          className={`flex-row items-center gap-2 rounded-xl px-3 py-2 ${
-            isMine ? 'bg-white/15' : 'bg-white/85'
-          }`}
+          className="flex-row items-center gap-2 rounded-xl bg-white/85 px-3 py-2"
           style={{ width: fileCardW }}>
           {downloadingUrl === f.url ? (
-            <ActivityIndicator size="small" color={isMine ? '#fff' : '#0f766e'} />
+            <ActivityIndicator size="small" color="#0f766e" />
           ) : (
-            <Ionicons name="document-outline" size={22} color={isMine ? '#fff' : '#0f766e'} />
+            <Ionicons name="document-outline" size={22} color="#0f766e" />
           )}
           <View className="min-w-0" style={{ flexShrink: 1, width: fileCardW - 56 }}>
             <Text
               numberOfLines={1}
               ellipsizeMode="tail"
-              className={`font-mulish-semibold text-sm ${isMine ? 'text-white' : 'text-[#002855]'}`}>
+              className="font-mulish-semibold text-sm text-[#002855]">
               {f.name || 'Tệp đính kèm'}
             </Text>
             {f.size != null ? (
-              <Text className={`font-mulish-medium text-xs ${subMuted}`}>{formatChatFileSize(f.size)}</Text>
+              <Text className="font-mulish-medium text-xs text-gray-500">{formatChatFileSize(f.size)}</Text>
             ) : null}
           </View>
         </Pressable>
