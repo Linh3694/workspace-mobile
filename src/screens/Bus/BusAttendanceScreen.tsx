@@ -52,8 +52,7 @@ const BusAttendanceScreen: React.FC = () => {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showAbsentReasonModal, setShowAbsentReasonModal] = useState(false);
   const [absentReasonText, setAbsentReasonText] = useState('');
-  const [showNotesModal, setShowNotesModal] = useState(false);
-  const [notesDraft, setNotesDraft] = useState('');
+  const [notesStudent, setNotesStudent] = useState<BusDailyTripStudent | null>(null);
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -171,38 +170,6 @@ const BusAttendanceScreen: React.FC = () => {
     setShowAbsentReasonModal(true);
   };
 
-  const openNotesModal = (student: BusDailyTripStudent) => {
-    setSelectedStudent(student);
-    setNotesDraft(student.notes || '');
-    setShowStatusModal(false);
-    setShowNotesModal(true);
-  };
-
-  const handleSaveNotes = async () => {
-    if (!selectedStudent) return;
-
-    const studentName = selectedStudent.student_name;
-    setIsUpdating(true);
-    setShowNotesModal(false);
-
-    try {
-      const response = await busService.updateStudentNotes(selectedStudent.name, notesDraft);
-
-      if (response.success) {
-        toast.success(`Đã lưu nhận xét ${studentName}`);
-        loadTripDetail(false);
-      } else {
-        toast.error(response.message || 'Không thể lưu nhận xét');
-      }
-    } catch {
-      toast.error('Có lỗi xảy ra');
-    } finally {
-      setIsUpdating(false);
-      setSelectedStudent(null);
-      setNotesDraft('');
-    }
-  };
-
   // const getStatusColor = (status: string) => {
   //   switch (status) {
   //     case 'Not Boarded':
@@ -294,24 +261,16 @@ const BusAttendanceScreen: React.FC = () => {
                 {student.student_code} • {student.class_name || 'N/A'}
               </Text>
             </View>
-            <TouchableOpacity
-              onPress={() => openNotesModal(student)}
-              style={styles.notesButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons
-                name={student.notes?.trim() ? 'chatbubble' : 'chatbubble-outline'}
-                size={20}
-                color={student.notes?.trim() ? '#002855' : '#9CA3AF'}
-              />
-            </TouchableOpacity>
+            {student.notes?.trim() ? (
+              <TouchableOpacity
+                onPress={() => setNotesStudent(student)}
+                style={styles.notesButton}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="chatbubble" size={20} color="#002855" />
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
-
-        {student.notes?.trim() ? (
-          <Text style={styles.monitorNote} numberOfLines={3}>
-            {student.notes}
-          </Text>
-        ) : null}
 
         {student.student_status === 'Absent' && student.absent_reason && (
           <Text style={styles.absentReason}>Lý do: {student.absent_reason}</Text>
@@ -532,13 +491,6 @@ const BusAttendanceScreen: React.FC = () => {
                 <Ionicons name="close-circle" size={24} color="#FFFFFF" />
                 <Text style={styles.statusOptionText}>Vắng</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.statusOption, styles.statusOptionNotes]}
-                onPress={() => selectedStudent && openNotesModal(selectedStudent)}>
-                <Ionicons name="chatbubble" size={24} color="#FFFFFF" />
-                <Text style={styles.statusOptionText}>Nhận xét</Text>
-              </TouchableOpacity>
             </View>
 
             <TouchableOpacity
@@ -591,44 +543,27 @@ const BusAttendanceScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Monitor nhận xét học sinh — admin đọc ở /bus/operation/daily-trip */}
+      {/* Chỉ đọc nhận xét admin dành cho học sinh */}
       <Modal
-        visible={showNotesModal}
+        visible={!!notesStudent}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowNotesModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        onRequestClose={() => setNotesStudent(null)}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setNotesStudent(null)}>
+          <TouchableOpacity activeOpacity={1} style={styles.modalContent} onPress={() => undefined}>
             <Text style={styles.modalTitle}>Nhận xét</Text>
-            <Text style={styles.modalSubtitle}>{selectedStudent?.student_name}</Text>
-
-            <TextInput
-              style={styles.reasonTextInput}
-              placeholder="Ghi nhận xét cho chuyến này…"
-              placeholderTextColor="#9CA3AF"
-              value={notesDraft}
-              onChangeText={setNotesDraft}
-              multiline
-              maxLength={500}
-              numberOfLines={4}
-              textAlignVertical="top"
-            />
-
-            <TouchableOpacity style={styles.saveNotesButton} onPress={handleSaveNotes}>
-              <Text style={styles.saveNotesButtonText}>Lưu nhận xét</Text>
-            </TouchableOpacity>
-
+            <Text style={styles.modalSubtitle}>{notesStudent?.student_name}</Text>
+            <Text style={styles.adminNoteBody}>{notesStudent?.notes?.trim()}</Text>
             <TouchableOpacity
               style={styles.cancelButton}
-              onPress={() => {
-                setShowNotesModal(false);
-                setSelectedStudent(null);
-                setNotesDraft('');
-              }}>
-              <Text style={styles.cancelButtonText}>Hủy</Text>
+              onPress={() => setNotesStudent(null)}>
+              <Text style={styles.statusModalCancelText}>Đóng</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {isUpdating && (
@@ -890,11 +825,12 @@ const styles = StyleSheet.create({
   notesButton: {
     padding: 8,
   },
-  monitorNote: {
-    fontSize: 13,
-    color: '#002855',
-    marginTop: 8,
+  adminNoteBody: {
+    fontSize: 16,
+    color: '#111827',
     fontFamily: 'Mulish',
+    lineHeight: 22,
+    marginBottom: 8,
   },
   statusBadge: {
     paddingHorizontal: 10,
@@ -1077,21 +1013,6 @@ const styles = StyleSheet.create({
   },
   statusOptionAbsent: {
     backgroundColor: '#EF4444',
-  },
-  statusOptionNotes: {
-    backgroundColor: '#002855',
-  },
-  saveNotesButton: {
-    backgroundColor: '#002855',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  saveNotesButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    fontFamily: 'Mulish',
   },
   statusOptionText: {
     fontSize: 16,
