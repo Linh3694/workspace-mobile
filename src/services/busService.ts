@@ -487,6 +487,33 @@ class BusService {
     }
   }
 
+  /** Monitor ghi nhận xét — chỉ sửa `notes`, không đổi trạng thái điểm danh. */
+  async updateStudentNotes(
+    dailyTripStudentId: string,
+    notes: string
+  ): Promise<{ success: boolean; message?: string; data?: { notes?: string } }> {
+    try {
+      const config = await getAxiosConfig();
+      const response = await axios.post(
+        `${config.baseURL}${BUS_API}.daily_trip.update_student_notes`,
+        {
+          daily_trip_student_id: dailyTripStudentId,
+          notes,
+        },
+        config
+      );
+
+      const result = response.data?.message || response.data;
+      return result;
+    } catch (error: any) {
+      console.error('Update student notes error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Không thể lưu nhận xét',
+      };
+    }
+  }
+
   /**
    * Quét một ảnh và điểm danh nếu hệ thống đủ chắc chắn.
    *
