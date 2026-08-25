@@ -52,6 +52,7 @@ const BusAttendanceScreen: React.FC = () => {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showAbsentReasonModal, setShowAbsentReasonModal] = useState(false);
   const [absentReasonText, setAbsentReasonText] = useState('');
+  const [notesStudent, setNotesStudent] = useState<BusDailyTripStudent | null>(null);
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -260,6 +261,14 @@ const BusAttendanceScreen: React.FC = () => {
                 {student.student_code} • {student.class_name || 'N/A'}
               </Text>
             </View>
+            {student.notes?.trim() ? (
+              <TouchableOpacity
+                onPress={() => setNotesStudent(student)}
+                style={styles.notesButton}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="chatbubble" size={20} color="#002855" />
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
 
@@ -534,6 +543,29 @@ const BusAttendanceScreen: React.FC = () => {
         </View>
       </Modal>
 
+      {/* Chỉ đọc nhận xét admin dành cho học sinh */}
+      <Modal
+        visible={!!notesStudent}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNotesStudent(null)}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setNotesStudent(null)}>
+          <TouchableOpacity activeOpacity={1} style={styles.modalContent} onPress={() => undefined}>
+            <Text style={styles.modalTitle}>Nhận xét</Text>
+            <Text style={styles.modalSubtitle}>{notesStudent?.student_name}</Text>
+            <Text style={styles.adminNoteBody}>{notesStudent?.notes?.trim()}</Text>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => setNotesStudent(null)}>
+              <Text style={styles.statusModalCancelText}>Đóng</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       {isUpdating && (
         <View style={styles.updatingOverlay}>
           <ActivityIndicator size="large" color="#FFFFFF" />
@@ -789,6 +821,16 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 2,
     fontFamily: 'Mulish',
+  },
+  notesButton: {
+    padding: 8,
+  },
+  adminNoteBody: {
+    fontSize: 16,
+    color: '#111827',
+    fontFamily: 'Mulish',
+    lineHeight: 22,
+    marginBottom: 8,
   },
   statusBadge: {
     paddingHorizontal: 10,
