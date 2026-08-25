@@ -305,7 +305,16 @@ export default function App() {
               <NotificationInboxSocketProvider>
               <ChatMessageNotificationProvider>
                 <VersionChecker>
-                  <NavigationContainer linking={linking} ref={navigationRef}>
+                  <NavigationContainer
+                    linking={linking}
+                    ref={navigationRef}
+                    // Tín hiệu DUY NHẤT cho biết Stack đã mount thật. `AppNavigator` trả
+                    // `<SplashScreen/>` trong ~2,9 giây đầu (không có navigator nào ⇒
+                    // `isReady()` false), nên mọi cú bấm push lúc mở lạnh đều phải chờ
+                    // mốc này; thiếu nó thì payload nằm lại pending và app đứng ở trang chủ.
+                    onReady={() => {
+                      consumePendingPushNotificationIfAny(navigationRef);
+                    }}>
                     <AppNavigator />
                     <PendingPushNotificationConsumer />
                   </NavigationContainer>

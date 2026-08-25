@@ -12,7 +12,7 @@ import {
   Platform,
   Switch,
 } from 'react-native';
-import { TouchableOpacity } from '../../../components/Common';
+import { TouchableOpacity, ZoomableImage } from '../../../components/Common';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Video, ResizeMode } from 'expo-av';
@@ -541,11 +541,13 @@ const FeedbackProcessing: React.FC<FeedbackProcessingProps> = ({
               <Ionicons name="close" size={24} color="white" />
             </TouchableOpacity>
             {previewImage && (
-              <Image
-                source={{ uri: previewImage }}
-                style={{ width: '90%', height: '70%' }}
-                resizeMode="contain"
-              />
+              <ZoomableImage style={{ alignSelf: 'stretch' }} resetKey={previewImage}>
+                <Image
+                  source={{ uri: previewImage }}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="contain"
+                />
+              </ZoomableImage>
             )}
           </View>
         </Modal>

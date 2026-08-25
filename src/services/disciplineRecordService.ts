@@ -7,8 +7,11 @@ import { normalizeCampusIdForBackend } from '../utils/campusIdUtils';
 
 const BASE_URL = '/method/erp.api.erp_sis.discipline';
 
-/** Điểm trừ nhập tay per đối tượng (đồng bộ Select backend) */
-export type DisciplineDeductionPoints = '1' | '5' | '10' | '15';
+/**
+ * Điểm trừ per đối tượng. Chuỗi rỗng = KHÔNG ghi đè: server lấy điểm từ bậc thang
+ * cấu hình của vi phạm. Trước đây mobile gửi cứng '10' nên số liệu lệch bản web.
+ */
+export type DisciplineDeductionPoints = string;
 
 // Bản ghi ghi nhận lỗi
 export interface DisciplineRecordItem {
@@ -26,14 +29,18 @@ export interface DisciplineRecordItem {
     student_code?: string;
     student_class_title?: string;
     student_photo_url?: string | null;
-    /** Điểm trừ đã lưu (1/5/10/15) */
+    /** Điểm trừ đã lưu — server tính theo bậc thang lúc lưu */
     deduction_points?: DisciplineDeductionPoints | string;
+    /** Cấp độ tier đã áp dụng khi ghi nhận */
+    applied_level?: string;
   }>;
   target_class_ids?: string[];
   /** Chi tiết điểm trừ theo lớp */
   target_class_entries?: Array<{
     class_id: string;
     deduction_points?: DisciplineDeductionPoints | string;
+    /** Cấp độ tier đã áp dụng khi ghi nhận (lớp) */
+    applied_level?: string;
   }>;
   target_class_titles?: string[];
   student_name?: string;
@@ -73,7 +80,7 @@ export interface CreateDisciplineRecordParams {
   target_student?: string;
   target_student_ids?: string[];
   target_class_ids?: string[];
-  /** Map student_id -> điểm trừ (1|5|10|15) */
+  /** Map student_id -> điểm trừ; '' = để server tính theo bậc thang cấu hình */
   target_student_points?: Record<string, DisciplineDeductionPoints | string>;
   /** Map class_id -> điểm trừ */
   target_class_points?: Record<string, DisciplineDeductionPoints | string>;
@@ -110,6 +117,25 @@ export interface DisciplineViolationItem {
 export interface DisciplineFormItem {
   name: string;
   title: string;
+}
+
+/** Ngữ cảnh rule nâng cấp theo tháng — dùng cho thẻ đối tượng ở form ghi nhận */
+export interface StudentMonthlyDisciplineContext {
+  prior_level1_count_month: number;
+  prior_same_violation_count_month: number;
+  suggested_level: string;
+  suggested_deduction_points: string;
+  level_label: string;
+  would_escalate_monthly: boolean;
+  escalation_highlight: boolean;
+}
+
+/** Thống kê vi phạm trả về từ get_student/class_violation_stats */
+export interface DisciplineViolationStats {
+  count: number;
+  level: string;
+  level_label: string;
+  points: number;
 }
 
 class DisciplineRecordService {
@@ -429,14 +455,45 @@ class DisciplineRecordService {
     }
   }
 
+  /**
+   * Ngữ cảnh rule nâng cấp theo tháng của 1 học sinh — nguồn của điểm trừ và cấp độ
+   * hiển thị trên thẻ đối tượng (đồng bộ web DisciplineTargetCard).
+   */
+  async getStudentMonthlyDisciplineContext(
+    studentId: string,
+    violationId: string,
+    date: string,
+    excludeRecord?: string
+  ): Promise<{ success: boolean; data?: StudentMonthlyDisciplineContext; message?: string }> {
+    try {
+      const response = await api.post(
+        `${BASE_URL}.get_student_monthly_discipline_context`,
+        {
+          student_id: studentId,
+          violation_id: violationId,
+          date,
+          ...(excludeRecord ? { exclude_record: excludeRecord } : {}),
+        }
+      );
+      const res = response.data?.message ?? response.data;
+      if (res?.success && res.data) {
+        return { success: true, data: res.data };
+      }
+      return { success: false, message: res?.message || 'Không thể lấy ngữ cảnh tháng' };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Không thể lấy ngữ cảnh tháng';
+      return { success: false, message: msg };
+    }
+  }
+
   /** Thống kê vi phạm của lớp cho 1 loại vi phạm (tùy chọn date_from/date_to, giống backend) */
   async getClassViolationStats(
     classId: string,
     violationId: string,
-    options?: { date_from?: string; date_to?: string }
+    options?: { date_from?: string; date_to?: string; tier_count?: number }
   ): Promise<{
     success: boolean;
-    data?: { count: number; level: string; level_label: string; points: number };
+    data?: DisciplineViolationStats;
     message?: string;
   }> {
     try {
@@ -445,6 +502,7 @@ class DisciplineRecordService {
         violation_id: violationId,
         ...(options?.date_from ? { date_from: options.date_from } : {}),
         ...(options?.date_to ? { date_to: options.date_to } : {}),
+        ...(options?.tier_count != null ? { tier_count: options.tier_count } : {}),
       });
       const res = response.data?.message ?? response.data;
       if (res?.success && res.data) {
@@ -468,10 +526,10 @@ class DisciplineRecordService {
   async getStudentViolationStats(
     studentId: string,
     violationId: string,
-    options?: { date_from?: string; date_to?: string }
+    options?: { date_from?: string; date_to?: string; tier_count?: number }
   ): Promise<{
     success: boolean;
-    data?: { count: number; level: string; level_label: string; points: number };
+    data?: DisciplineViolationStats;
     message?: string;
   }> {
     try {
@@ -480,6 +538,7 @@ class DisciplineRecordService {
         violation_id: violationId,
         ...(options?.date_from ? { date_from: options.date_from } : {}),
         ...(options?.date_to ? { date_to: options.date_to } : {}),
+        ...(options?.tier_count != null ? { tier_count: options.tier_count } : {}),
       });
       const res = response.data?.message ?? response.data;
       if (res?.success && res.data) {

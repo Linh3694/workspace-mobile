@@ -22,6 +22,21 @@
         "buildType": "apk"
       }
     },
+    "staging": {
+      "autoIncrement": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease -x lint"
+      },
+      "ios": {
+        "autoIncrement": true
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "staging",
+        "EXPO_PUBLIC_APP_UPDATE_FORCE": "false"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "channel": "production",
@@ -31,6 +46,10 @@
       },
       "ios": {
         "autoIncrement": true
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_APP_UPDATE_FORCE": "false"
       }
     },
     "production-apk": {
@@ -42,6 +61,10 @@
       },
       "ios": {
         "autoIncrement": true
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_APP_UPDATE_FORCE": "false"
       }
     }
   },

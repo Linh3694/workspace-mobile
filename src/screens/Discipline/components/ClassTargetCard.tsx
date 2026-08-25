@@ -1,27 +1,24 @@
 /**
- * Thẻ đối tượng lớp - hiển thị trong danh sách đối tượng vi phạm (scroll ngang)
- * Chuẩn hóa giống frappe-sis-frontend DisciplineClassTargetCard: có thống kê Số lần đã vi phạm, Cấp độ hiện tại, Điểm đã trừ
+ * Thẻ đối tượng lớp - hiển thị trong danh sách đối tượng vi phạm (scroll ngang).
+ * Chuẩn hóa giống frappe-sis-frontend DisciplineClassTargetCard: Lần vi phạm, Cấp độ,
+ * và điểm trừ CHỈ HIỂN THỊ do bậc thang `class_points` của vi phạm quyết định.
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { TouchableOpacity } from '../../../components/Common';
 import { Ionicons } from '@expo/vector-icons';
 import disciplineRecordService from '../../../services/disciplineRecordService';
+import {
+  DisciplineLevelChip,
+  computeOccurrenceCount,
+  formatDeductionDisplay,
+  formatOccurrenceDisplay,
+  levelLabelFromSeverity,
+  resolveOccurrenceLevelView,
+  violationStatsRangeFromRecordDate,
+} from './disciplineLevel';
 
 const MULISH = 'Mulish';
-const PRIMARY = '#002855';
-
-const DEDUCTION_OPTIONS = ['1', '5', '10', '15'] as const;
-
-/** Đầu tháng của ngày ghi nhận → ngày ghi nhận (đồng bộ get_class_violation_stats / student_points) */
-function violationStatsRangeFromRecordDate(recordDate: string | undefined): { date_from: string; date_to: string } | undefined {
-  if (!recordDate?.trim()) return undefined;
-  const d = recordDate.trim().split('T')[0]?.split(' ')[0] ?? '';
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return undefined;
-  const [y, m] = d.split('-');
-  const date_from = `${y}-${m}-01`;
-  return { date_from, date_to: d };
-}
 
 export interface ClassTargetCardProps {
   classId: string;
@@ -30,8 +27,8 @@ export interface ClassTargetCardProps {
   violationId: string;
   /** Ngày ghi nhận form: khoảng đếm đầu tháng → ngày này */
   referenceDate?: string;
-  deductionPoints: string;
-  onDeductionPointsChange: (value: string) => void;
+  /** Điểm trừ đã lưu trên bản ghi; trống nghĩa là chưa lưu nên chưa có số để hiện */
+  deductionPoints?: string;
   onRemove?: () => void;
   showRemove?: boolean;
 }
@@ -43,39 +40,62 @@ export const ClassTargetCard: React.FC<ClassTargetCardProps> = ({
   violationId,
   referenceDate,
   deductionPoints,
-  onDeductionPointsChange,
   onRemove,
   showRemove = true,
 }) => {
-  const [stats, setStats] = useState<{
-    count: number;
-    level: string;
-    level_label: string;
-    points: number;
-  } | null>(null);
+  const [priorCount, setPriorCount] = useState<number | null>(null);
+  const [tierLevel, setTierLevel] = useState<string | undefined>();
+  const [tierLevelLabel, setTierLevelLabel] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!classId || !violationId) {
-      setStats({ count: 0, level: '1', level_label: 'Cấp độ 1', points: 0 });
+      setPriorCount(0);
+      setTierLevel('1');
+      setTierLevelLabel(levelLabelFromSeverity('1'));
       setLoading(false);
       return;
     }
     let cancelled = false;
     setLoading(true);
     const range = violationStatsRangeFromRecordDate(referenceDate);
-    disciplineRecordService
-      .getClassViolationStats(classId, violationId, range)
-      .then((res) => {
-        if (!cancelled && res.data) setStats(res.data);
-      })
-      .finally(() => {
+
+    (async () => {
+      try {
+        const res = await disciplineRecordService.getClassViolationStats(
+          classId,
+          violationId,
+          range
+        );
+        if (cancelled || !res.data) return;
+        const prior = res.data.count;
+        setPriorCount(prior);
+        // Tier tính trên lượt vi phạm sau khi lưu bản ghi này (giống web)
+        const occurrence = computeOccurrenceCount(prior, { addCurrentInList: true });
+        const tierRes = await disciplineRecordService.getClassViolationStats(classId, violationId, {
+          ...range,
+          tier_count: occurrence,
+        });
+        if (!cancelled && tierRes.data) {
+          setTierLevel(tierRes.data.level);
+          setTierLevelLabel(tierRes.data.level_label);
+        }
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
   }, [classId, violationId, referenceDate]);
+
+  const dpVal = deductionPoints == null ? '' : String(deductionPoints);
+  const occurrence = computeOccurrenceCount(priorCount, { addCurrentInList: true });
+  const levelView = resolveOccurrenceLevelView(occurrence, {
+    statsLevel: tierLevel,
+    statsLevelLabel: tierLevelLabel,
+  });
 
   return (
     <View style={styles.card}>
@@ -110,45 +130,36 @@ export const ClassTargetCard: React.FC<ClassTargetCardProps> = ({
               Đang tải...
             </Text>
           </View>
-        ) : stats ? (
+        ) : (
           <>
             <View style={styles.statRow}>
               <Text style={styles.statLabel} numberOfLines={1} ellipsizeMode="tail">
-                Số lần đã vi phạm:
+                Lần vi phạm:
               </Text>
-              <Text style={styles.statValue} numberOfLines={1} ellipsizeMode="tail">
-                {stats.count}
+              <Text style={styles.statValue} numberOfLines={1}>
+                {formatOccurrenceDisplay(occurrence)}
               </Text>
+            </View>
+            <View style={[styles.statRow, styles.levelRow]}>
+              <Text style={styles.statLabel} numberOfLines={1} ellipsizeMode="tail">
+                Cấp độ:
+              </Text>
+              {occurrence > 0 && levelView.level ? (
+                <DisciplineLevelChip level={levelView.level} label={levelView.levelLabel} compact />
+              ) : (
+                <Text style={styles.statValue}>-</Text>
+              )}
             </View>
             <View style={styles.statRow}>
               <Text style={styles.statLabel} numberOfLines={1} ellipsizeMode="tail">
-                Cấp độ hiện tại:
-              </Text>
-              <Text style={styles.statValue} numberOfLines={1} ellipsizeMode="tail">
-                {stats.count === 0 ? '-' : stats.level_label || `Cấp độ ${stats.level}`}
-              </Text>
-            </View>
-            <View style={[styles.statRow, styles.deductionRow]}>
-              <Text style={[styles.statLabel, styles.deductionStatLabel]} numberOfLines={2} ellipsizeMode="tail">
                 Điểm trừ:
               </Text>
-              <View style={styles.chipsWrap}>
-                {DEDUCTION_OPTIONS.map((opt) => {
-                  const selected = String(deductionPoints) === opt;
-                  return (
-                    <TouchableOpacity
-                      key={opt}
-                      onPress={() => onDeductionPointsChange(opt)}
-                      style={[styles.chip, selected && styles.chipSelected]}
-                      hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}>
-                      <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{opt}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              <Text style={styles.deductionValue} numberOfLines={1}>
+                {formatDeductionDisplay(dpVal)}
+              </Text>
             </View>
           </>
-        ) : null}
+        )}
       </View>
     </View>
   );
@@ -178,7 +189,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#EDEDED',
+    backgroundColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -200,8 +211,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#6B7280',
     fontFamily: MULISH,
-    textAlign: 'center',
     width: '100%',
+    textAlign: 'center',
   },
   subtitlePlaceholder: {
     height: 14,
@@ -218,8 +229,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 3,
+    marginBottom: 4,
     minHeight: 18,
+  },
+  levelRow: {
+    minHeight: 22,
   },
   statLabel: {
     fontSize: 10,
@@ -229,48 +243,20 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   statValue: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
     color: '#111827',
     fontFamily: MULISH,
     minWidth: 24,
+    textAlign: 'right',
   },
-  deductionRow: {
-    alignItems: 'flex-start',
-    marginBottom: 0,
-  },
-  deductionStatLabel: {
-    flex: 0,
-    maxWidth: 86,
-  },
-  chipsWrap: {
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-end',
-    gap: 4,
-    minWidth: 0,
-  },
-  chip: {
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#fff',
-  },
-  chipSelected: {
-    borderColor: PRIMARY,
-    backgroundColor: '#E8EDF3',
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#374151',
+  deductionValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#DC2626',
     fontFamily: MULISH,
-  },
-  chipTextSelected: {
-    color: PRIMARY,
+    minWidth: 24,
+    textAlign: 'right',
   },
 });
 

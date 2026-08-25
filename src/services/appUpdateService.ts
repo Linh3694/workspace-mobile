@@ -1,16 +1,27 @@
 /**
  * Kiểm tra phiên bản mới đã phát hành trên App Store / Google Play.
  *
- * Thứ tự ưu tiên nguồn dữ liệu:
- * 1) Remote config JSON (EXPO_PUBLIC_APP_UPDATE_CONFIG_URL) — nguồn tin cậy nhất,
- *    cho phép nhà trường ép buộc cập nhật (minimumVersion) và tự viết nội dung thay đổi.
- * 2) iTunes Lookup API (iOS) — Apple cung cấp chính thức, trả về version + link store.
- * 3) HTML trang Google Play (Android) — Google không có API công khai nên phải dò chuỗi;
- *    khi Google đổi layout thì bước này trả về null và app im lặng bỏ qua (không popup sai).
+ * Hai lớp dữ liệu, tách bạch nhau:
+ *
+ * A) CHÍNH SÁCH (remote config JSON) — quyết định "có nhắc không, có ép không".
+ *    Đọc từ máy chủ MỖI LẦN kiểm tra nên đổi lúc nào áp lúc đó, KHÔNG cần build lại
+ *    app. Xem `getRemoteConfigUrls()`.
+ *
+ * B) PHIÊN BẢN MỚI NHẤT — nếu chính sách không ghi `latestVersion` thì hỏi lần lượt:
+ *    1) Backend Frappe `erp.api.erp_sis.app_version.get_latest_version` — nguồn chuẩn
+ *       cho app này vì bản iOS là Unlisted, iTunes Lookup có thể không thấy.
+ *    2) iTunes Lookup API (iOS) — Apple cung cấp chính thức.
+ *    3) HTML trang Google Play (Android) — Google không có API công khai nên phải dò
+ *       chuỗi; Google đổi layout thì trả null và app im lặng bỏ qua (không popup sai).
+ *
+ * Nhờ tách hai lớp, phát hành bản mới KHÔNG cần sửa chính sách, còn đổi mức độ ép
+ * buộc thì KHÔNG cần phát hành bản mới.
  */
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import { Platform } from 'react-native';
+
+import { API_BASE_URL } from '../config/constants';
 
 /** Ngôn ngữ app đang dùng — khớp với i18n (src/config/i18n.ts). */
 export type AppLanguage = 'vi' | 'en';
@@ -45,6 +56,11 @@ export interface StoreVersionInfo {
   releaseNotes?: string;
   /** Dưới phiên bản này thì bắt buộc cập nhật (popup không cho bỏ qua). */
   minimumVersion?: string;
+  /**
+   * Remote config nói rõ ép hay không ép MỌI bản mới.
+   * `undefined` → chưa có ý kiến, dùng mặc định build-time (`isForcedUpdateEnabled`).
+   */
+  force?: boolean;
 }
 
 /** Kết quả so sánh phiên bản hiện tại với store. */
@@ -73,6 +89,29 @@ const IOS_FALLBACK_STORE_URL = 'https://apps.apple.com/app/id6746143732';
  */
 const PLAY_STORE_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
+
+/** `app_id` của app này trong bảng `APP_VERSIONS` phía backend. */
+const BACKEND_APP_ID = 'wis_staff';
+
+/**
+ * MẶC ĐỊNH lúc build khi remote config chưa nói gì: CHỈ NHẮC — popup vẫn có nút
+ * "Để sau" (chốt 17/08/2026). Đặt EXPO_PUBLIC_APP_UPDATE_FORCE=true để build ra bản
+ * mặc định ép buộc.
+ *
+ * Mặc định hiền vì đây là đường dự phòng: nó chỉ được dùng khi máy chủ không trả
+ * được chính sách (mất mạng, chưa dựng file). Lúc đó ép cả trường vào màn hình không
+ * đóng được là rủi ro lớn hơn nhiều so với việc nhắc hụt một bản.
+ *
+ * Chỉ là mặc định: remote config (`force: true|false`) ghi đè giá trị này lúc chạy,
+ * nên KHÔNG cần build lại app để đổi mức độ ép buộc.
+ */
+export function isForcedUpdateEnabled(): boolean {
+  return (
+    String(process.env.EXPO_PUBLIC_APP_UPDATE_FORCE ?? '')
+      .toLowerCase()
+      .trim() === 'true'
+  );
+}
 
 /** Bật kiểm tra khi chạy dev/Expo Go (mặc định tắt để không làm phiền lúc phát triển). */
 export function isUpdateCheckEnabled(): boolean {
@@ -157,10 +196,11 @@ async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Respon
 }
 
 /* ------------------------------------------------------------------ */
-/* Nguồn 1 — remote config                                             */
+/* Lớp A — chính sách đọc từ remote config                             */
 /* ------------------------------------------------------------------ */
 
 interface RemoteUpdateEntry {
+  /** Ghi đè phiên bản mới nhất — bỏ trống thì hỏi backend/store (khuyên bỏ trống). */
   latestVersion?: string;
   /** Alias của latestVersion */
   version?: string;
@@ -168,15 +208,48 @@ interface RemoteUpdateEntry {
   /** Alias của minimumVersion */
   minVersion?: string;
   storeUrl?: string;
+  storeDeepLink?: string;
   releaseNotes?: string | { vi?: string; en?: string };
-  /** false → tắt popup từ xa mà không cần build lại app. */
+  /** false → tắt hẳn popup từ xa, kể cả khi store đã có bản mới. */
   enabled?: boolean;
+  /** true → ép mọi bản mới; false → chỉ nhắc. Bỏ trống = theo mặc định build-time. */
+  force?: boolean;
+  /** Alias của force */
+  forceUpdate?: boolean;
 }
 
 type RemoteUpdateConfig = RemoteUpdateEntry & {
   ios?: RemoteUpdateEntry;
   android?: RemoteUpdateEntry;
 };
+
+/** Chính sách đã gộp phần chung với phần riêng của nền tảng đang chạy. */
+interface RemoteUpdatePolicy {
+  enabled: boolean;
+  latestVersion?: string;
+  minimumVersion?: string;
+  storeUrl?: string;
+  storeDeepLink?: string;
+  releaseNotes?: string;
+  force?: boolean;
+}
+
+/**
+ * Các URL chứa chính sách, thử lần lượt tới khi đọc được JSON hợp lệ.
+ *
+ * Không set EXPO_PUBLIC_APP_UPDATE_CONFIG_URL thì app tự dựng URL từ base API đã
+ * nhúng sẵn trong binary — nhờ vậy MỌI bản build đều tự nghe máy chủ, không phải nhớ
+ * thêm biến môi trường lúc build (đúng chỗ đã làm cơ chế này chết cứng trước đây).
+ *
+ * Tên file khác app phụ huynh (`app-update.json`) vì hai app dùng chung một host
+ * nhưng phiên bản hoàn toàn khác nhau — dùng chung file là ép nhầm nhau.
+ */
+export function getRemoteConfigUrls(): string[] {
+  const explicit = process.env.EXPO_PUBLIC_APP_UPDATE_CONFIG_URL?.trim();
+  if (explicit) return [explicit];
+
+  return [`${API_BASE_URL}/files/app-update-wis.json`];
+}
 
 function pickReleaseNotes(
   notes: RemoteUpdateEntry['releaseNotes'],
@@ -187,37 +260,96 @@ function pickReleaseNotes(
   return (notes[language] ?? notes.vi ?? notes.en)?.trim() || undefined;
 }
 
-async function fetchRemoteConfigVersion(language: AppLanguage): Promise<StoreVersionInfo | null> {
-  const url = process.env.EXPO_PUBLIC_APP_UPDATE_CONFIG_URL?.trim();
-  if (!url) return null;
+/** Bóc vỏ `{ message: ... }` của whitelisted method Frappe; JSON tĩnh thì giữ nguyên. */
+function unwrapFrappeMessage(payload: unknown): unknown {
+  return payload && typeof payload === 'object' && 'message' in payload
+    ? (payload as { message?: unknown }).message
+    : payload;
+}
 
-  const response = await fetchWithTimeout(url, {
-    headers: { Accept: 'application/json' },
+async function fetchJsonNoCache(url: string): Promise<unknown | null> {
+  // `t` phá cache CDN/proxy — đổi chính sách phải ăn ngay chứ không chờ hết TTL.
+  const separator = url.includes('?') ? '&' : '?';
+  const response = await fetchWithTimeout(`${url}${separator}t=${Date.now()}`, {
+    headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
   });
   if (!response.ok) return null;
+  return unwrapFrappeMessage(await response.json());
+}
 
-  const raw = (await response.json()) as RemoteUpdateConfig;
+function normalizePolicy(raw: RemoteUpdateConfig, language: AppLanguage): RemoteUpdatePolicy {
+  // Khối riêng của nền tảng ghi đè khối chung — cho phép iOS và Android khác nhau.
   const platformEntry = Platform.OS === 'ios' ? raw.ios : raw.android;
   const entry: RemoteUpdateEntry = { ...raw, ...(platformEntry ?? {}) };
 
-  if (entry.enabled === false) return null;
+  return {
+    enabled: entry.enabled !== false,
+    latestVersion: (entry.latestVersion ?? entry.version)?.trim() || undefined,
+    minimumVersion: (entry.minimumVersion ?? entry.minVersion)?.trim() || undefined,
+    storeUrl: entry.storeUrl?.trim() || undefined,
+    storeDeepLink: entry.storeDeepLink?.trim() || undefined,
+    releaseNotes: pickReleaseNotes(entry.releaseNotes, language),
+    force: entry.force ?? entry.forceUpdate,
+  };
+}
 
-  const latestVersion = (entry.latestVersion ?? entry.version)?.trim();
+/** Đọc chính sách từ URL đầu tiên trả về JSON hợp lệ; không có thì null. */
+async function fetchRemotePolicy(language: AppLanguage): Promise<RemoteUpdatePolicy | null> {
+  for (const url of getRemoteConfigUrls()) {
+    try {
+      const raw = await fetchJsonNoCache(url);
+      if (!raw || typeof raw !== 'object') continue;
+      return normalizePolicy(raw as RemoteUpdateConfig, language);
+    } catch (error) {
+      console.warn('[appUpdate] Không đọc được remote config:', url, error);
+    }
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Lớp B, nguồn 1 — backend Frappe (bảng APP_VERSIONS)                  */
+/* ------------------------------------------------------------------ */
+
+interface BackendVersionResponse {
+  success?: boolean;
+  version?: string;
+  min_version?: string;
+  store_url?: string;
+}
+
+/**
+ * `erp.api.erp_sis.app_version.get_latest_version` — đã có sẵn phía backend, cho
+ * phép gọi không đăng nhập. Đây là nguồn chuẩn cho app này vì bản iOS phát hành
+ * dạng Unlisted, iTunes Lookup không phải lúc nào cũng thấy.
+ *
+ * Sửa version/min_version = sửa `APP_VERSIONS` trong `erp/api/erp_sis/app_version.py`
+ * rồi deploy backend — nhanh hơn phát hành app, nhưng vẫn chậm hơn sửa file tĩnh.
+ */
+async function fetchBackendVersion(): Promise<StoreVersionInfo | null> {
+  const platform = Platform.OS === 'ios' ? 'ios' : 'android';
+  const url =
+    `${API_BASE_URL}/api/method/erp.api.erp_sis.app_version.get_latest_version` +
+    `?app_id=${BACKEND_APP_ID}&platform=${platform}`;
+
+  const raw = (await fetchJsonNoCache(url)) as BackendVersionResponse | null;
+  if (!raw || raw.success === false) return null;
+
+  const latestVersion = raw.version?.trim();
   if (!latestVersion) return null;
 
-  const storeUrl = entry.storeUrl?.trim() || getFallbackStoreUrl();
+  const storeUrl = raw.store_url?.trim() || getFallbackStoreUrl();
   if (!storeUrl) return null;
 
   return {
     latestVersion,
     storeUrl,
-    minimumVersion: (entry.minimumVersion ?? entry.minVersion)?.trim() || undefined,
-    releaseNotes: pickReleaseNotes(entry.releaseNotes, language),
+    minimumVersion: raw.min_version?.trim() || undefined,
   };
 }
 
 /* ------------------------------------------------------------------ */
-/* Nguồn 2 — App Store (iTunes Lookup API)                             */
+/* Lớp B, nguồn 2 — App Store (iTunes Lookup API)                       */
 /* ------------------------------------------------------------------ */
 
 interface ITunesLookupResult {
@@ -263,7 +395,7 @@ async function fetchAppStoreVersion(): Promise<StoreVersionInfo | null> {
 }
 
 /* ------------------------------------------------------------------ */
-/* Nguồn 3 — Google Play (dò HTML)                                     */
+/* Lớp B, nguồn 3 — Google Play (dò HTML)                               */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -323,12 +455,15 @@ const NO_UPDATE: AppUpdateStatus = {
 export async function checkAppUpdate(language: AppLanguage = 'vi'): Promise<AppUpdateStatus> {
   if (!isUpdateCheckEnabled()) return NO_UPDATE;
 
-  const info = await resolveStoreVersion(language);
+  const info = await resolveVersionInfo(language);
   if (!info) return NO_UPDATE;
 
   const updateAvailable = isVersionNewer(info.latestVersion, APP_VERSION);
+  // Remote config có ý kiến thì nghe remote; im lặng thì theo mặc định build-time.
+  const forceAll = info.force ?? isForcedUpdateEnabled();
   const mandatory =
-    updateAvailable && !!info.minimumVersion && isVersionNewer(info.minimumVersion, APP_VERSION);
+    updateAvailable &&
+    (forceAll || (!!info.minimumVersion && isVersionNewer(info.minimumVersion, APP_VERSION)));
 
   return {
     currentVersion: APP_VERSION,
@@ -341,15 +476,87 @@ export async function checkAppUpdate(language: AppLanguage = 'vi'): Promise<AppU
   };
 }
 
-/** Lần lượt thử remote config → store; nguồn nào lỗi thì bỏ qua, không chặn nguồn sau. */
-async function resolveStoreVersion(language: AppLanguage): Promise<StoreVersionInfo | null> {
-  try {
-    const remote = await fetchRemoteConfigVersion(language);
-    if (remote) return remote;
-  } catch (error) {
-    console.warn('[appUpdate] Không đọc được remote config:', error);
-  }
+/**
+ * Gộp chính sách (remote config) với phiên bản mới nhất (chính sách → backend → store).
+ *
+ * Chính sách luôn được đọc trước và luôn thắng: tắt popup, đổi mức ép buộc, đổi link
+ * store — tất cả áp dụng ngay ở lần kiểm tra kế tiếp, không cần phát hành bản mới.
+ */
+async function resolveVersionInfo(language: AppLanguage): Promise<StoreVersionInfo | null> {
+  const policy = await fetchRemotePolicy(language);
 
+  // Tắt từ xa: không hỏi backend/store nữa, popup im hoàn toàn.
+  if (policy && !policy.enabled) return null;
+
+  let base = buildInfoFromPolicy(policy);
+  if (!base) {
+    const [backend, store] = await Promise.all([
+      fetchBackendVersionSafe(),
+      fetchStoreVersionSafe(),
+    ]);
+    base = mergeVersionSources(backend, store);
+  }
+  base = base ?? buildInfoFromMinimum(policy);
+  if (!base) return null;
+
+  return {
+    ...base,
+    storeUrl: policy?.storeUrl ?? base.storeUrl,
+    storeDeepLink: policy?.storeDeepLink ?? base.storeDeepLink,
+    releaseNotes: policy?.releaseNotes ?? base.releaseNotes,
+    minimumVersion: policy?.minimumVersion ?? base.minimumVersion,
+    force: policy?.force,
+  };
+}
+
+/**
+ * Gộp hai nguồn phiên bản: lấy bản CAO HƠN.
+ *
+ * Bảng `APP_VERSIONS` phía backend là dữ liệu chép tay nên hay bị quên (17/08/2026:
+ * backend ghi 1.5.28 trong khi App Store đã 1.5.41) — tin backend một mình là bỏ sót
+ * bản mới. Ngược lại chỉ tin store thì mất `min_version`, và Play Store dò bằng HTML
+ * có thể hỏng bất cứ lúc nào. Lấy cái cao hơn, giữ `minimumVersion` của backend.
+ */
+function mergeVersionSources(
+  backend: StoreVersionInfo | null,
+  store: StoreVersionInfo | null
+): StoreVersionInfo | null {
+  if (!backend) return store;
+  if (!store) return backend;
+
+  const newest = isVersionNewer(store.latestVersion, backend.latestVersion) ? store : backend;
+  return { ...newest, minimumVersion: backend.minimumVersion ?? newest.minimumVersion };
+}
+
+/** Chính sách ghi hẳn `latestVersion` → khỏi hỏi backend/store. */
+function buildInfoFromPolicy(policy: RemoteUpdatePolicy | null): StoreVersionInfo | null {
+  if (!policy?.latestVersion) return null;
+  const storeUrl = policy.storeUrl ?? getFallbackStoreUrl();
+  if (!storeUrl) return null;
+  return { latestVersion: policy.latestVersion, storeUrl };
+}
+
+/**
+ * Không nguồn nào tra được phiên bản nhưng chính sách có `minimumVersion` → vẫn ép
+ * được: coi minimumVersion là bản cần lên.
+ */
+function buildInfoFromMinimum(policy: RemoteUpdatePolicy | null): StoreVersionInfo | null {
+  if (!policy?.minimumVersion) return null;
+  const storeUrl = policy.storeUrl ?? getFallbackStoreUrl();
+  if (!storeUrl) return null;
+  return { latestVersion: policy.minimumVersion, storeUrl };
+}
+
+async function fetchBackendVersionSafe(): Promise<StoreVersionInfo | null> {
+  try {
+    return await fetchBackendVersion();
+  } catch (error) {
+    console.warn('[appUpdate] Không hỏi được phiên bản từ backend:', error);
+    return null;
+  }
+}
+
+async function fetchStoreVersionSafe(): Promise<StoreVersionInfo | null> {
   try {
     return Platform.OS === 'ios' ? await fetchAppStoreVersion() : await fetchPlayStoreVersion();
   } catch (error) {
@@ -363,7 +570,9 @@ export const appUpdateService = {
   compareVersions,
   isVersionNewer,
   isUpdateCheckEnabled,
+  isForcedUpdateEnabled,
   getFallbackStoreUrl,
+  getRemoteConfigUrls,
 };
 
 export default appUpdateService;

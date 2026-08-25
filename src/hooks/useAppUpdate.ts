@@ -28,8 +28,15 @@ const REMIND_AFTER_MS = 24 * 60 * 60 * 1000;
 /** Chờ splash + load font chạy xong rồi mới gọi store. */
 const CHECK_START_DELAY_MS = 3500;
 
-/** Kết quả tra store coi là còn "tươi" trong 6 tiếng. */
-const UPDATE_STALE_TIME_MS = 6 * 60 * 60 * 1000;
+/**
+ * Kết quả coi là còn "tươi" trong 1 tiếng.
+ *
+ * Mỗi lần tra kèm luôn việc đọc chính sách ép cập nhật từ remote config, nên con số
+ * này cũng là độ trễ tối đa để một thay đổi chính sách ăn vào phiên đang mở (app quay
+ * lại foreground thì tra lại). Mở lạnh app thì đọc mới ngay — cache chỉ sống theo
+ * vòng đời process.
+ */
+const UPDATE_STALE_TIME_MS = 60 * 60 * 1000;
 
 interface SnoozeRecord {
   version: string;

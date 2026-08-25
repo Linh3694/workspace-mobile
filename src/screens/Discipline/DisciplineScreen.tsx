@@ -395,7 +395,13 @@ const DisciplineScreen: React.FC = () => {
           <View className="flex-1 items-center justify-center">
             <Text className="text-xl font-bold text-[#002855]">Ghi nhận lỗi</Text>
           </View>
-          <View style={{ width: 40 }} />
+          {/* Sự vụ kỷ luật — mục "Hàng ngày 2.2" của hub Kỷ luật bên web */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate(ROUTES.SCREENS.DISCIPLINE_CASE_LIST as any)}
+            className="items-center justify-center p-2"
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <MaterialIcons name="gavel" size={22} color="#002855" />
+          </TouchableOpacity>
         </View>
 
         {/* Date Selector - giống Sức khoẻ */}

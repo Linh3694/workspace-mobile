@@ -471,23 +471,26 @@ async function shouldDeferNavigation(
 /**
  * Điều hướng từ payload push/in-app notification.
  * Nếu navigation chưa sẵn sàng hoặc chưa có token → lưu pending để PendingPushNotificationConsumer xử lý sau.
+ *
+ * @returns `true` khi đã xử lý xong (đã điều hướng, hoặc payload rác không cần giữ lại);
+ *          `false` khi phải HOÃN — payload đã được lưu pending và người gọi PHẢI giữ nó lại.
  */
 export async function navigateFromPushNotificationData(
   data: PushNotificationPayload,
   navigationRef: NavigationContainerRef<RootStackParamList> | null
-): Promise<void> {
+): Promise<boolean> {
   // Không mang khoá định tuyến nào ⇒ không phải thông báo của WIS mà là extras
   // của Intent khởi chạy bị expo-notifications dựng nhầm thành response (xem
   // `isRecognizedNotificationPayload`). Đứng yên — điều hướng ở đây là kéo người
   // dùng ra khỏi màn đang xem dù họ không bấm gì.
   if (!isRecognizedNotificationPayload(data)) {
     console.log('📝 Bỏ qua response không nhận diện được:', data);
-    return;
+    return true;
   }
 
   if (await shouldDeferNavigation(navigationRef)) {
     await persistPendingPushNotificationData(data);
-    return;
+    return false;
   }
 
   const nav = (name: string, params?: object) => {
@@ -497,7 +500,7 @@ export async function navigateFromPushNotificationData(
   const target = await resolveNotificationTarget(data);
   if (target) {
     nav(target.screen, target.params);
-    return;
+    return true;
   }
 
   // Không có màn đích (loại chưa hỗ trợ, wislife đã ẩn, hoặc payload thiếu id) → Trung tâm thông báo.
@@ -506,21 +509,37 @@ export async function navigateFromPushNotificationData(
     screen: ROUTES.MAIN.NOTIFICATIONS,
     params: data?.notificationId ? { notificationId: data.notificationId } : undefined,
   });
+  return true;
 }
+
+/** Chặn hai đường gọi (onReady + effect theo auth) cùng đọc pending một lúc → điều hướng hai lần. */
+let consumingPending = false;
 
 /**
  * Gọi sau khi đăng nhập + navigation ready để xử lý payload đã lưu khi cold start.
+ *
+ * CHỈ xoá pending khi đã điều hướng THẬT SỰ. Trước đây hàm này xoá trước rồi mới gọi
+ * navigate: mở lạnh thì `AppNavigator` còn đang trả `<SplashScreen/>` (~2,9 giây, chưa có
+ * Stack nào mount ⇒ `isReady()` false) nên navigate rơi vào nhánh hoãn, payload bị ghi lại
+ * và KHÔNG ai đọc nữa trong phiên đó — người dùng bấm thông báo tin nhắn nhưng app đứng ở
+ * trang chủ, còn lần mở app SAU thì lại nhảy vào đoạn chat cũ.
  */
 export async function consumePendingPushNotificationIfAny(
   navigationRef: NavigationContainerRef<RootStackParamList> | null
 ): Promise<void> {
+  if (consumingPending) return;
+  consumingPending = true;
   try {
     const raw = await AsyncStorage.getItem(PENDING_PUSH_NOTIFICATION_DATA_KEY);
     if (!raw) return;
-    await AsyncStorage.removeItem(PENDING_PUSH_NOTIFICATION_DATA_KEY);
     const data = JSON.parse(raw) as PushNotificationPayload;
-    await navigateFromPushNotificationData(data, navigationRef);
+    const handled = await navigateFromPushNotificationData(data, navigationRef);
+    if (handled) {
+      await AsyncStorage.removeItem(PENDING_PUSH_NOTIFICATION_DATA_KEY);
+    }
   } catch (e) {
     console.warn('⚠️ consumePendingPushNotificationIfAny:', e);
+  } finally {
+    consumingPending = false;
   }
 }

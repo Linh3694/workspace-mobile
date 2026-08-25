@@ -10,7 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { TouchableOpacity } from '../../../components/Common';
+import { TouchableOpacity, ZoomableImage } from '../../../components/Common';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -418,7 +418,13 @@ const TicketMessaging: React.FC<TicketMessagingProps> = ({ ticketId }) => {
             <Ionicons name="close" size={24} color="white" />
           </TouchableOpacity>
           {previewImage && (
-            <Image source={{ uri: previewImage }} className="h-full w-full" resizeMode="contain" />
+            <ZoomableImage style={{ alignSelf: 'stretch' }} resetKey={previewImage}>
+              <Image
+                source={{ uri: previewImage }}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="contain"
+              />
+            </ZoomableImage>
           )}
         </View>
       </Modal>

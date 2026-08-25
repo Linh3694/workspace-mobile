@@ -24,6 +24,7 @@ import timetableService, {
   getMondayOfWeek,
 } from '../../services/timetableService';
 import { getFullImageUrl } from '../../utils/imageUtils';
+import { normalizeVietnameseName } from '../../utils/nameFormatter';
 
 // Subject colors mapping (from parent-portal)
 const CURRICULUM_COLORS: Record<string, { color: string; bg: string }> = {
@@ -62,18 +63,19 @@ const getTeacherInitials = (name?: string): string => {
   return parts[parts.length - 1]?.charAt(0)?.toUpperCase() || 'T';
 };
 
-// Format teacher name with gender prefix (Vietnamese style)
+/**
+ * "Cô/Thầy" + họ tên giáo viên theo thứ tự Việt (Họ Đệm Tên).
+ *
+ * KHÔNG đảo mù từ đầu ra cuối như trước: API thời khoá biểu đã trả sẵn thứ tự
+ * Việt, nên đảo lần nữa biến "Lê Thị Anh Vân" thành "Thị Anh Vân Lê", và biến
+ * cả tên giáo viên nước ngoài "John Smith" thành "Smith John".
+ * `normalizeVietnameseName` dò họ Việt rồi mới quyết định: đúng thứ tự thì giữ
+ * nguyên, chỉ đảo khi nguồn trả kiểu AD ("Hiếu Nguyễn Duy").
+ */
 const formatTeacherDisplayName = (name?: string, gender?: string): string => {
   if (!name) return 'Giáo viên';
 
-  // Rearrange Vietnamese name: move first word (family name) to end
-  const parts = name.trim().split(' ');
-  let rearranged = name;
-  if (parts.length > 1) {
-    const firstName = parts[0];
-    const rest = parts.slice(1).join(' ');
-    rearranged = `${rest} ${firstName}`;
-  }
+  const rearranged = normalizeVietnameseName(name) || name;
 
   // Add prefix based on gender
   const genderLower = (gender || '').toLowerCase();

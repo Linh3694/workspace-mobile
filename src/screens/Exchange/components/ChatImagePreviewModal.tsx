@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { InlineToast, useInlineToast } from '../../../components/Common';
+import { InlineToast, useInlineToast, ZoomableImage } from '../../../components/Common';
 import { resolveChatAttachmentUrl } from '../../../services/chatService';
 import { saveMediaToDevice } from '../../../utils/mediaDownload';
 
@@ -33,9 +33,16 @@ export function ChatImagePreviewModal({
   onClose: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [index, setIndex] = useState(initialIndex);
   const [downloading, setDownloading] = useState(false);
+  /** Đang phóng ảnh thì khoá vuốt ngang, nếu không kéo ảnh sẽ lật sang ảnh khác. */
+  const [zoomed, setZoomed] = useState(false);
+  /** Khung ảnh còn lại sau khi trừ safe area và thanh tiêu đề (h-14 = 56pt). */
+  const viewportH = Math.max(
+    200,
+    windowHeight - Math.max(insets.top, 16) - insets.bottom - 56
+  );
   const { toast, showToast, hideToast } = useInlineToast();
 
   // SIS-129: tải/lưu ảnh đang xem vào album của máy (thiếu quyền/module → bảng chia sẻ).
@@ -98,18 +105,24 @@ export function ChatImagePreviewModal({
           getItemLayout={(_, i) => ({ length: windowWidth, offset: windowWidth * i, index: i })}
           keyExtractor={(item, i) => `${item.url}-${i}`}
           showsHorizontalScrollIndicator={false}
+          scrollEnabled={!zoomed}
           onMomentumScrollEnd={(event) => {
             const next = Math.round(event.nativeEvent.contentOffset.x / windowWidth);
             setIndex(next);
           }}
           renderItem={({ item }) => (
-            <View className="items-center justify-center" style={{ width: windowWidth }}>
+            <ZoomableImage
+              width={windowWidth}
+              height={viewportH}
+              /* Đổi ảnh thì mọi trang về 1x — chỉ trang đang phóng mới báo lại. */
+              resetKey={index}
+              onZoomChange={setZoomed}>
               <Image
                 source={{ uri: resolveChatAttachmentUrl(item.url) }}
-                style={{ width: windowWidth, height: '88%' }}
+                style={{ width: windowWidth, height: viewportH }}
                 resizeMode="contain"
               />
-            </View>
+            </ZoomableImage>
           )}
         />
         {toast ? (

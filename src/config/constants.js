@@ -6,22 +6,55 @@
  * đã được chuyển sang: src/config/ticketConstants.ts
  */
 
+/**
+ * Base URL theo môi trường (không có dấu / cuối) — chọn bằng EXPO_PUBLIC_APP_ENV.
+ *
+ * Thứ tự ưu tiên:
+ *   1) EXPO_PUBLIC_API_BASE_URL / EXPO_PUBLIC_BASE_URL — ghi đè tất cả (máy local, ngrok…)
+ *   2) EXPO_PUBLIC_APP_ENV — chọn bảng dưới đây (script `npm run *:staging`, eas.json)
+ *   3) Không set gì: __DEV__ → staging, bản release → production
+ */
+export const ENVIRONMENT_URLS = {
+  staging: 'https://admin.sis.wellspring.edu.vn',
+  production: 'https://prod.sis.wellspring.edu.vn',
+};
+
 // Production API Base URL
-const PROD_API_URL = 'https://prod.sis.wellspring.edu.vn';
+const PROD_API_URL = ENVIRONMENT_URLS.production;
+
+/** 'staging' | 'production' — xem thứ tự ưu tiên ở ENVIRONMENT_URLS */
+function resolveAppEnvironment() {
+  const raw = (process.env.EXPO_PUBLIC_APP_ENV || '').trim().toLowerCase();
+  if (raw === 'staging' || raw === 'stage') return 'staging';
+  if (raw === 'production' || raw === 'prod') return 'production';
+  return typeof __DEV__ !== 'undefined' && __DEV__ ? 'staging' : 'production';
+}
+
+/** Môi trường app đang trỏ tới */
+export const APP_ENV = resolveAppEnvironment();
+
+const DEFAULT_BASE_URL = ENVIRONMENT_URLS[APP_ENV];
+
+/** Bỏ dấu / cuối để nối path không sinh ra `//` */
+const normalizeBaseUrl = (url) =>
+  String(url || '')
+    .trim()
+    .replace(/\/+$/, '');
 
 // Main API Base URL - có thể override bằng environment variable
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || PROD_API_URL;
+export const API_BASE_URL = normalizeBaseUrl(
+  process.env.EXPO_PUBLIC_API_BASE_URL || DEFAULT_BASE_URL
+);
 
 /** Gateway chung — notification-service cùng host Nginx (override bằng EXPO_PUBLIC_NOTIFICATION_API_BASE_URL) */
 export const NOTIFICATION_API_BASE_URL =
   process.env.EXPO_PUBLIC_NOTIFICATION_API_BASE_URL || API_BASE_URL;
 
 /** Ghi song song DocType Mobile Device Token trên Frappe (rollback) */
-export const DEVICE_TOKEN_DUAL_WRITE =
-  process.env.EXPO_PUBLIC_DEVICE_TOKEN_DUAL_WRITE === 'true';
+export const DEVICE_TOKEN_DUAL_WRITE = process.env.EXPO_PUBLIC_DEVICE_TOKEN_DUAL_WRITE === 'true';
 
 // Base URL cho tất cả services (Frappe + Microservices)
-export const BASE_URL = process.env.EXPO_PUBLIC_BASE_URL || PROD_API_URL;
+export const BASE_URL = normalizeBaseUrl(process.env.EXPO_PUBLIC_BASE_URL || DEFAULT_BASE_URL);
 
 /** Tên site Frappe (thư mục sites/…) cho namespace Socket.IO — ưu tiên EXPO_PUBLIC_FRAPPE_SITE_NAME */
 function resolveFrappeSiteName() {
@@ -54,6 +87,15 @@ export const USER_API_BASE = `${API_BASE_URL}/api/method/erp.api.erp_common_user
 // Environment URLs cho development và testing
 export const API_URLS = {
   PROD: PROD_API_URL,
+  STAGING: ENVIRONMENT_URLS.staging,
   LOCAL: 'http://localhost:8000',
   LOCAL_NETWORK: 'http://10.1.33.214:8000',
 };
+
+// `EXPO_PUBLIC_*` được NHÚNG vào bundle lúc transform chứ không đọc lúc chạy: đổi cờ mà
+// Metro còn giữ cache cũ thì app vẫn gọi môi trường trước đó — im lặng, biểu hiện ra ngoài
+// chỉ là "không đăng nhập được". Dòng log này để nhìn phát biết ngay (các script npm đã
+// kèm sẵn bước xoá metro-cache).
+if (typeof __DEV__ !== 'undefined' && __DEV__) {
+  console.log(`🌐 [constants] env=${APP_ENV} · api=${API_BASE_URL} · base=${BASE_URL}`);
+}

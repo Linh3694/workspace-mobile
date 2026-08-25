@@ -3,7 +3,7 @@
  */
 import React, { useState } from 'react';
 import { View, Text, Image, Modal } from 'react-native';
-import { TouchableOpacity } from '../../../components/Common';
+import { TouchableOpacity, ZoomableImage } from '../../../components/Common';
 import { Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
 import { useTranslation } from 'react-i18next';
@@ -177,11 +177,13 @@ export const LinkedFeedbackConversation: React.FC<Props> = ({ data, loading }) =
             <Ionicons name="close" size={24} color="white" />
           </TouchableOpacity>
           {previewImage ? (
-            <Image
-              source={{ uri: previewImage }}
-              style={{ width: '90%', height: '70%' }}
-              resizeMode="contain"
-            />
+            <ZoomableImage style={{ alignSelf: 'stretch' }} resetKey={previewImage}>
+              <Image
+                source={{ uri: previewImage }}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="contain"
+              />
+            </ZoomableImage>
           ) : null}
         </View>
       </Modal>

@@ -60,6 +60,9 @@ interface FormData {
 
 type ProofImage = { type: 'file'; uri: string; name: string } | { type: 'url'; url: string };
 
+/** Rỗng = không ghi đè; server lấy điểm từ bậc thang cấu hình của vi phạm (đồng bộ web) */
+const DEFAULT_DP = '';
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const formatDateForInput = (d: Date): string => {
@@ -628,7 +631,7 @@ const DisciplineAddEditScreen: React.FC = () => {
     description: '',
   });
 
-  /** Điểm trừ nhập tay per học sinh / lớp (mặc định 10) */
+  /** Điểm trừ per học sinh / lớp — '' nghĩa là để server tính theo bậc thang cấu hình */
   const [targetStudentPoints, setTargetStudentPoints] = useState<Record<string, string>>({});
   const [targetClassPoints, setTargetClassPoints] = useState<Record<string, string>>({});
 
@@ -756,26 +759,27 @@ const DisciplineAddEditScreen: React.FC = () => {
         });
         setStudentDetailsMap(map);
 
+        // Giữ nguyên điểm đã lưu của bản ghi cũ; thiếu thì để trống cho server tự tính
         const sp: Record<string, string> = {};
         targets.forEach((t) => {
           if (t.student_id) {
-            sp[t.student_id] = String(t.deduction_points ?? '10');
+            sp[t.student_id] = String(t.deduction_points ?? DEFAULT_DP);
           }
+        });
+        (d.target_student_ids || []).forEach((sid) => {
+          if (sp[sid] === undefined) sp[sid] = DEFAULT_DP;
         });
         setTargetStudentPoints(sp);
 
         const classEntries = (d as { target_class_entries?: { class_id: string; deduction_points?: string }[] })
           .target_class_entries;
         const cp: Record<string, string> = {};
-        if (classEntries && classEntries.length > 0) {
-          classEntries.forEach((ce) => {
-            if (ce.class_id) cp[ce.class_id] = String(ce.deduction_points ?? '10');
-          });
-        } else {
-          (d.target_class_ids || []).forEach((cid) => {
-            cp[cid] = '10';
-          });
-        }
+        (classEntries || []).forEach((ce) => {
+          if (ce.class_id) cp[ce.class_id] = String(ce.deduction_points ?? DEFAULT_DP);
+        });
+        (d.target_class_ids || []).forEach((cid) => {
+          if (cp[cid] === undefined) cp[cid] = DEFAULT_DP;
+        });
         setTargetClassPoints(cp);
       } else {
         Alert.alert('Lỗi', res.message || 'Không tìm thấy bản ghi', [
@@ -983,11 +987,11 @@ const DisciplineAddEditScreen: React.FC = () => {
 
       const target_student_points: Record<string, string> = {};
       formData.target_student_ids.forEach((id) => {
-        target_student_points[id] = targetStudentPoints[id] ?? '10';
+        target_student_points[id] = targetStudentPoints[id] ?? DEFAULT_DP;
       });
       const target_class_points: Record<string, string> = {};
       formData.target_class_ids.forEach((id) => {
-        target_class_points[id] = targetClassPoints[id] ?? '10';
+        target_class_points[id] = targetClassPoints[id] ?? DEFAULT_DP;
       });
 
       const basePayload = {
@@ -1224,7 +1228,7 @@ const DisciplineAddEditScreen: React.FC = () => {
                   if (!v.includes(k)) delete next[k];
                 });
                 v.forEach((id) => {
-                  if (next[id] == null) next[id] = '10';
+                  if (next[id] == null) next[id] = DEFAULT_DP;
                 });
                 return next;
               });
@@ -1248,7 +1252,7 @@ const DisciplineAddEditScreen: React.FC = () => {
                   if (!v.includes(k)) delete next[k];
                 });
                 v.forEach((id) => {
-                  if (next[id] == null) next[id] = '10';
+                  if (next[id] == null) next[id] = DEFAULT_DP;
                 });
                 return next;
               });
@@ -1281,10 +1285,7 @@ const DisciplineAddEditScreen: React.FC = () => {
                       classTitle={item?.title || item?.name || classId}
                       violationId={formData.violation}
                       referenceDate={formData.date}
-                      deductionPoints={targetClassPoints[classId] ?? '10'}
-                      onDeductionPointsChange={(pts) =>
-                        setTargetClassPoints((p) => ({ ...p, [classId]: pts }))
-                      }
+                      deductionPoints={targetClassPoints[classId] ?? DEFAULT_DP}
                       onRemove={() => {
                         setFormData((p) => ({
                           ...p,
@@ -1317,10 +1318,8 @@ const DisciplineAddEditScreen: React.FC = () => {
                       schoolYearId={enabledSchoolYearId}
                       violationId={formData.violation}
                       referenceDate={formData.date}
-                      deductionPoints={targetStudentPoints[studentId] ?? '10'}
-                      onDeductionPointsChange={(pts) =>
-                        setTargetStudentPoints((p) => ({ ...p, [studentId]: pts }))
-                      }
+                      excludeRecordId={recordId}
+                      deductionPoints={targetStudentPoints[studentId] ?? DEFAULT_DP}
                       onRemove={() => {
                         setFormData((p) => ({
                           ...p,

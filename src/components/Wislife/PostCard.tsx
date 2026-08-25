@@ -18,7 +18,7 @@ import {
   PanResponder,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TouchableOpacity } from '../Common';
+import { TouchableOpacity, ZoomableImage } from '../Common';
 import { Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
 import LottieView from 'lottie-react-native';
@@ -96,6 +96,8 @@ const PostCard: React.FC<PostCardProps> = ({
   const mediaScrollRef = useRef<ScrollView>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  /** Đang phóng ảnh thì khoá vuốt ngang, nếu không kéo ảnh sẽ lật sang ảnh khác. */
+  const [mediaZoomed, setMediaZoomed] = useState(false);
   
   // Animation cho swipe to close image modal
   const imageModalTranslateY = useRef(new Animated.Value(0)).current;
@@ -722,6 +724,8 @@ const PostCard: React.FC<PostCardProps> = ({
               showsHorizontalScrollIndicator={false}
               onScroll={handleImageScroll}
               scrollEventThrottle={16}
+              /* Đang phóng thì kéo là để dời ảnh, không phải để lật trang. */
+              scrollEnabled={!mediaZoomed}
               // `contentOffset` CHỈ chạy trên iOS — Android bỏ qua nên bấm ảnh thứ 5
               // vẫn mở ảnh đầu. Cuộn bằng ref trong onLayout thì cả hai nền tảng
               // đều nhảy đúng trang.
@@ -759,11 +763,18 @@ const PostCard: React.FC<PostCardProps> = ({
                       isLooping={false}
                     />
                   ) : (
-                    <Image
-                      source={{ uri: resolveSocialMediaUrl(item.url, API_BASE_URL) }}
-                      style={{ width, height: mediaViewportHeight }}
-                      resizeMode="contain"
-                    />
+                    <ZoomableImage
+                      width={width}
+                      height={mediaViewportHeight}
+                      /* Đổi trang thì mọi ảnh về 1x. */
+                      resetKey={currentImageIndex}
+                      onZoomChange={setMediaZoomed}>
+                      <Image
+                        source={{ uri: resolveSocialMediaUrl(item.url, API_BASE_URL) }}
+                        style={{ width, height: mediaViewportHeight }}
+                        resizeMode="contain"
+                      />
+                    </ZoomableImage>
                   )}
                 </View>
               ))}

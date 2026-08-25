@@ -56,6 +56,9 @@ export const ROUTES = {
     DISCIPLINE_ADD: 'DisciplineAdd',
     DISCIPLINE_DETAIL: 'DisciplineDetail',
     DISCIPLINE_EDIT: 'DisciplineEdit',
+    /** Sự vụ kỷ luật — sinh tự động khi HS chạm ngưỡng điểm trừ trong tháng */
+    DISCIPLINE_CASE_LIST: 'DisciplineCaseList',
+    DISCIPLINE_CASE_DETAIL: 'DisciplineCaseDetail',
     // AI Assistant
     AI_ASSISTANT: 'AIAssistant',
     // CRM Issue (Vấn đề)

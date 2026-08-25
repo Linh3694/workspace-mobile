@@ -26,6 +26,10 @@ import disciplineRecordService, {
 import { normalizeVietnameseName } from '../../utils/nameFormatter';
 import { getFullImageUrl } from '../../utils/imageUtils';
 import { StudentAvatar } from '../../utils/studentAvatar';
+import {
+  DisciplineLevelChip,
+  formatDeductionDisplay,
+} from './components/disciplineLevel';
 import { useAuth } from '../../context/AuthContext';
 import {
   hasMobileDisciplineAccess,
@@ -250,7 +254,8 @@ const DisciplineDetailScreen: React.FC = () => {
                         style={{ marginTop: i > 0 ? 4 : 0 }}>
                         • {t}{' '}
                         <Text className="text-sm font-normal text-gray-600">
-                          (Điểm trừ: {ce.deduction_points ?? '10'})
+                          (Điểm trừ: {formatDeductionDisplay(ce.deduction_points)}
+                          {ce.applied_level ? ` · Cấp độ ${ce.applied_level}` : ''})
                         </Text>
                       </Text>
                     );
@@ -288,9 +293,16 @@ const DisciplineDetailScreen: React.FC = () => {
                         {st.student_code ? (
                           <Text className="mt-0.5 text-xs text-gray-500">Mã HS: {st.student_code}</Text>
                         ) : null}
-                        <Text className="mt-1 text-xs font-semibold text-[#002855]">
-                          Điểm trừ: {st.deduction_points ?? '10'}
-                        </Text>
+                        <View className="mt-1 flex-row items-center">
+                          <Text className="text-xs font-semibold text-[#002855]">
+                            Điểm trừ: {formatDeductionDisplay(st.deduction_points)}
+                          </Text>
+                          {st.applied_level ? (
+                            <View className="ml-2">
+                              <DisciplineLevelChip level={st.applied_level} compact />
+                            </View>
+                          ) : null}
+                        </View>
                       </View>
                     </View>
                   ))}
@@ -333,9 +345,16 @@ const DisciplineDetailScreen: React.FC = () => {
                       {st.student_code ? (
                         <Text className="mt-0.5 text-xs text-gray-500">Mã HS: {st.student_code}</Text>
                       ) : null}
-                      <Text className="mt-1 text-xs font-semibold text-[#002855]">
-                        Điểm trừ: {st.deduction_points ?? '10'}
-                      </Text>
+                      <View className="mt-1 flex-row items-center">
+                        <Text className="text-xs font-semibold text-[#002855]">
+                          Điểm trừ: {formatDeductionDisplay(st.deduction_points)}
+                        </Text>
+                        {st.applied_level ? (
+                          <View className="ml-2">
+                            <DisciplineLevelChip level={st.applied_level} compact />
+                          </View>
+                        ) : null}
+                      </View>
                     </View>
                   </View>
                 ))}
@@ -374,7 +393,8 @@ const DisciplineDetailScreen: React.FC = () => {
                         style={{ marginTop: i > 0 ? 6 : 0 }}>
                         • {t}{' '}
                         <Text className="text-sm font-normal text-gray-600">
-                          (Điểm trừ: {ce.deduction_points ?? '10'})
+                          (Điểm trừ: {formatDeductionDisplay(ce.deduction_points)}
+                          {ce.applied_level ? ` · Cấp độ ${ce.applied_level}` : ''})
                         </Text>
                       </Text>
                     );

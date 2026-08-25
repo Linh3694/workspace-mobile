@@ -6,3 +6,5 @@ export { default as BottomSheetModal } from './BottomSheetModal';
 export { default as SheetHeader } from './SheetHeader';
 export { default as InlineToast, useInlineToast } from './InlineToast';
 export type { InlineToastType, InlineToastState } from './InlineToast';
+export { default as ZoomableImage } from './ZoomableImage';
+export type { ZoomableImageProps } from './ZoomableImage';

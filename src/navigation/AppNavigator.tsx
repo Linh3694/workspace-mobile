@@ -54,6 +54,8 @@ import { TimetableEntry } from '../services/timetableService';
 import DisciplineScreen from '../screens/Discipline/DisciplineScreen';
 import DisciplineDetailScreen from '../screens/Discipline/DisciplineDetailScreen';
 import DisciplineAddEditScreen from '../screens/Discipline/DisciplineAddEditScreen';
+import DisciplineCaseListScreen from '../screens/DisciplineCase/DisciplineCaseListScreen';
+import DisciplineCaseDetailScreen from '../screens/DisciplineCase/DisciplineCaseDetailScreen';
 import { AIAssistantScreen } from '../screens/AIAssistant';
 import {
   CRMIssueListScreen,
@@ -198,6 +200,8 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.DISCIPLINE_ADD]: undefined;
   [ROUTES.SCREENS.DISCIPLINE_DETAIL]: { recordId: string; record?: any };
   [ROUTES.SCREENS.DISCIPLINE_EDIT]: { recordId: string; record?: any };
+  [ROUTES.SCREENS.DISCIPLINE_CASE_LIST]: undefined;
+  [ROUTES.SCREENS.DISCIPLINE_CASE_DETAIL]: { caseId: string };
   // Wislife Module Routes
   PostDetail: { post: Post; onUpdate?: (post: Post) => void };
   // AI Assistant
@@ -574,6 +578,16 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.DISCIPLINE_EDIT}
             component={DisciplineAddEditScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.DISCIPLINE_CASE_LIST}
+            component={DisciplineCaseListScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.DISCIPLINE_CASE_DETAIL}
+            component={DisciplineCaseDetailScreen}
             options={{ headerShown: false }}
           />
           {/* Wislife Module Screen */}

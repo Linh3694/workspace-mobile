@@ -150,6 +150,42 @@ function localPickFromMediaAsset(
   };
 }
 
+/** Tối thiểu API react-native-compressor ta dùng — tránh import package ở top-level */
+type VideoCompressorModule = {
+  Video: {
+    compress: (
+      uri: string,
+      options: { compressionMethod: 'auto'; maxSize?: number }
+    ) => Promise<string>;
+  };
+  getVideoMetaData: (path: string) => Promise<{
+    width: number;
+    height: number;
+    /** Byte. */
+    size: number;
+    duration: number;
+    extension: string;
+  }>;
+};
+
+/**
+ * Trần cạnh dài khi nén — tương đương 1080p ở cả ảnh ngang lẫn ảnh dọc.
+ *
+ * BẮT BUỘC truyền: bỏ trống thì thư viện lấy mặc định **640**, tức mọi clip 1080p
+ * bị hạ xuống 640×360 ở bitrate 0,5–0,9 Mbps — đúng thứ người dùng báo là "mờ".
+ * 1920 khớp với PP web (`parent-portal/src/lib/videoCompress.ts`) và trần transcode
+ * của social-service (`CDN_TRANSCODE_MAX_HEIGHT`), để mọi đường gửi cho ra cùng mức.
+ */
+const VIDEO_MAX_LONG_SIDE = 1920;
+
+/**
+ * Đã ≤1080p mà nhẹ hơn mức này thì gửi nguyên bản.
+ *
+ * Mã hoá lại một video vốn đã vừa vặn chỉ tốn thêm một lần nén mất dữ liệu mà
+ * chẳng tiết kiệm được bao nhiêu. Cùng ngưỡng với PP web.
+ */
+const VIDEO_SKIP_COMPRESS_BYTES = 100 * 1024 * 1024;
+
 /**
  * SIS-125: nén video trước khi upload để tránh vượt giới hạn dung lượng server và timeout.
  * react-native-compressor là native module → không có trong Expo Go, và nó tạo
@@ -158,8 +194,33 @@ function localPickFromMediaAsset(
  */
 async function compressVideoUri(uri: string): Promise<string> {
   try {
-    const { Video: VideoCompressor } = require('react-native-compressor');
-    const out = await VideoCompressor.compress(uri, { compressionMethod: 'auto' });
+    const compressor = require('react-native-compressor') as VideoCompressorModule;
+    const { Video: VideoCompressor, getVideoMetaData } = compressor;
+
+    try {
+      // `naturalSize` chưa áp xoay ⇒ so bằng CẠNH DÀI, không so riêng chiều cao,
+      // để clip quay dọc không bị coi nhầm là quá khổ.
+      const meta = await getVideoMetaData(uri);
+      const longSide = Math.max(meta?.width ?? 0, meta?.height ?? 0);
+      const bytes = meta?.size ?? 0;
+      if (
+        longSide > 0 &&
+        longSide <= VIDEO_MAX_LONG_SIDE &&
+        bytes > 0 &&
+        bytes < VIDEO_SKIP_COMPRESS_BYTES
+      ) {
+        return uri;
+      }
+    } catch (err) {
+      // Không đo được thì cứ nén: thà nén thừa còn hơn để lọt một clip 4K 500MB
+      // cho cả nhóm phụ huynh tải bằng 4G.
+      console.warn('[ChatComposerExchange] không đọc được thông số video, vẫn nén', err);
+    }
+
+    const out = await VideoCompressor.compress(uri, {
+      compressionMethod: 'auto',
+      maxSize: VIDEO_MAX_LONG_SIDE,
+    });
     return typeof out === 'string' && out.length > 0 ? out : uri;
   } catch (err) {
     console.warn('[ChatComposerExchange] nén video không khả dụng, dùng file gốc', err);

@@ -14,7 +14,7 @@ import {
   StatusBar,
   RefreshControl,
 } from 'react-native';
-import { TouchableOpacity } from '../../../components/Common';
+import { TouchableOpacity, ZoomableImage } from '../../../components/Common';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -661,11 +661,13 @@ const TicketComments: React.FC<TicketCommentsProps> = ({ ticketId }) => {
           {/* Image */}
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
             {previewImage && (
-              <Image
-                source={{ uri: previewImage }}
-                style={{ width: '100%', height: '100%' }}
-                resizeMode="contain"
-              />
+              <ZoomableImage style={{ alignSelf: 'stretch' }} resetKey={previewImage}>
+                <Image
+                  source={{ uri: previewImage }}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="contain"
+                />
+              </ZoomableImage>
             )}
           </View>
         </View>

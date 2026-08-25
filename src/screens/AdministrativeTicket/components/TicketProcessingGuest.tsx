@@ -13,7 +13,7 @@ import {
   TouchableWithoutFeedback,
   Modal,
 } from 'react-native';
-import { TouchableOpacity } from '../../../components/Common';
+import { TouchableOpacity, ZoomableImage } from '../../../components/Common';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
 import { Video, ResizeMode } from 'expo-av';
@@ -917,11 +917,13 @@ const TicketProcessingGuest: React.FC<TicketProcessingGuestProps> = ({ ticketId 
             <Ionicons name="close" size={24} color="white" />
           </TouchableOpacity>
           {previewImage && (
-            <Image
-              source={{ uri: previewImage }}
-              style={{ width: '90%', height: '70%' }}
-              resizeMode="contain"
-            />
+            <ZoomableImage style={{ alignSelf: 'stretch' }} resetKey={previewImage}>
+              <Image
+                source={{ uri: previewImage }}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="contain"
+              />
+            </ZoomableImage>
           )}
         </View>
       </Modal>
