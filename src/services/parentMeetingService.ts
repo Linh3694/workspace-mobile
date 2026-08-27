@@ -18,6 +18,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL } from '../config/constants';
 import { parseFrappeApiError } from './administrativeTicketService';
+import { normalizeVietnameseName } from '../utils/nameFormatter';
 import type {
   PTCancelSlotResult,
   PTMeetingEventListItem,
@@ -55,10 +56,57 @@ const PARENT_MEETING = '/api/method/erp.api.erp_sis.parent_meeting';
  * Fallback `response.data` phòng khi Frappe trả thẳng (lỗi ở tầng framework,
  * chưa vào tới hàm của app).
  */
+/**
+ * Khoá mang tên GIÁO VIÊN trong payload của module.
+ *
+ * `homeroom_teacher_name` backend chưa trả (xem ghi chú «CÒN THIẾU» ở
+ * `PTWaitlistRow`), khai sẵn ở đây vì nó là tên giáo viên đúng nghĩa: ngày backend
+ * nối thêm khoá đó, bảng danh sách chờ sẽ hiển thị đúng thứ tự mà không ai phải nhớ
+ * quay lại sửa chỗ này. Khoá không tồn tại thì vòng lặp không bao giờ chạm tới.
+ */
+const TEACHER_NAME_KEYS = new Set(['teacher_name', 'homeroom_teacher_name']);
+
+/**
+ * Chuẩn hoá MỌI tên giáo viên trong payload máy chủ trả về, sửa tại chỗ.
+ *
+ * Tên giáo viên đi thẳng từ `User.full_name`, mà tài khoản đồng bộ từ Microsoft/AD hay
+ * mang thứ tự "Tên + Họ đệm" ("Linh Nguyễn Hải" thay vì "Nguyễn Hải Linh"). Đảo lại ngay
+ * tại chỗ NHẬN payload chứ không phải ở từng chỗ hiển thị: module này vẽ tên GV ở lưới
+ * lịch, danh sách ca của giáo viên, báo cáo đăng ký và màn biên bản — chỗ thứ N+1 chắc
+ * chắn sẽ quên.
+ *
+ * Chỉ đụng khoá trong `TEACHER_NAME_KEYS`. Cố ý KHÔNG đụng `student_name`: tên học sinh
+ * nhập tay theo đúng thứ tự VN rồi, đảo thêm lần nữa là làm hỏng tên đang đúng.
+ *
+ * Giữ khớp với ba client còn lại (WIS web, parent portal web/app) — cùng một đợt họp mà
+ * giáo vụ và phụ huynh đọc ra hai cách viết tên là loại lệch không ai báo lỗi nhưng ai
+ * cũng thấy gợn.
+ */
+function normalizeTeacherNames(node: unknown): void {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    node.forEach(normalizeTeacherNames);
+    return;
+  }
+  const record = node as Record<string, unknown>;
+  for (const [key, value] of Object.entries(record)) {
+    if (TEACHER_NAME_KEYS.has(key)) {
+      // Chuỗi rỗng / null giữ nguyên: đó là nguyện vọng chọn theo NHÓM, và màn hình đang
+      // dựa vào chỗ trống đó để rơi về nhãn nhóm.
+      if (typeof value === 'string' && value.trim()) {
+        record[key] = normalizeVietnameseName(value);
+      }
+      continue;
+    }
+    if (value && typeof value === 'object') normalizeTeacherNames(value);
+  }
+}
+
 function unwrap<T>(response: {
   data?: { message?: { success?: boolean; data?: T; message?: string }; exc?: string };
 }): { success: boolean; data?: T; message?: string } {
   const msg = response?.data?.message ?? response?.data;
+  normalizeTeacherNames(msg);
   if (msg && typeof msg === 'object' && 'success' in msg && (msg as { success?: boolean }).success === true) {
     const m = msg as { data?: T; message?: string };
     return { success: true, data: m.data, message: typeof m.message === 'string' ? m.message : undefined };
