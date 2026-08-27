@@ -617,6 +617,10 @@
     "tile_title": "Room booking",
     "tile_desc": "Book a meeting / function room"
   },
+  "parent_meeting": {
+    "tile_title": "Parent meeting",
+    "tile_desc": "1:1 meeting schedule with parents"
+  },
   "class_activity": {
     "tile_title": "Class activity",
     "tile_desc": "Class newsfeed journal",

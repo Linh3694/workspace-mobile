@@ -80,6 +80,12 @@ export const ROUTES = {
     /** Đặt phòng (ERP Room Booking) */
     ROOM_BOOKING: 'RoomBooking',
     ROOM_BOOKING_CREATE: 'RoomBookingCreate',
+    /** Họp phụ huynh 1:1 (SIS PT Meeting) — lịch ca của giáo viên */
+    PARENT_MEETING: 'ParentMeeting',
+    /** Ghi meeting note sau ca họp (chỉ BGH đọc được nội dung) */
+    PARENT_MEETING_NOTE: 'ParentMeetingNote',
+    /** Tổng hợp đợt họp + danh sách chờ (BGH + giáo vụ đọc) — nút xuất bản chỉ giáo vụ/SM */
+    PARENT_MEETING_ADMIN: 'ParentMeetingAdmin',
   },
   // Tab names trong bottom navigation
   TABS: {

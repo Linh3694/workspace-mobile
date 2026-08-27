@@ -69,6 +69,11 @@ import ExchangeChatInfoScreen from '../screens/Exchange/ExchangeChatInfoScreen';
 import ExchangeChatMembersScreen from '../screens/Exchange/ExchangeChatMembersScreen';
 import ExchangeChatAttachmentsScreen from '../screens/Exchange/ExchangeChatAttachmentsScreen';
 import { RoomBookingScreen, RoomBookingCreateScreen } from '../screens/RoomBooking';
+import {
+  ParentMeetingScreen,
+  ParentMeetingNoteScreen,
+  ParentMeetingAdminScreen,
+} from '../screens/ParentMeeting';
 import type { ChatConversation } from '../types/chat';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -114,6 +119,9 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST]: undefined;
   [ROUTES.SCREENS.ROOM_BOOKING]: undefined;
   [ROUTES.SCREENS.ROOM_BOOKING_CREATE]: { roomId?: string; buildingId?: string } | undefined;
+  [ROUTES.SCREENS.PARENT_MEETING]: undefined;
+  [ROUTES.SCREENS.PARENT_MEETING_NOTE]: { slotId: string } | undefined;
+  [ROUTES.SCREENS.PARENT_MEETING_ADMIN]: undefined;
   [ROUTES.SCREENS.DEVICES]: { refresh?: boolean } | undefined;
   [ROUTES.SCREENS.DEVICE_DETAIL]: {
     deviceId: string;
@@ -418,6 +426,21 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.ROOM_BOOKING_CREATE}
             component={RoomBookingCreateScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.PARENT_MEETING}
+            component={ParentMeetingScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.PARENT_MEETING_NOTE}
+            component={ParentMeetingNoteScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.PARENT_MEETING_ADMIN}
+            component={ParentMeetingAdminScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen
