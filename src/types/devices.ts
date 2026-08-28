@@ -85,6 +85,68 @@ export interface AssignmentHistory {
   revokedBy?: User;
   revokedReason?: string[];
   document?: string;
+  documentFileUrl?: string;
+  signingStatus?: HandoverSigningStatus;
+  receiverConfirmedOn?: string;
+  managerApprovedBy?: User;
+  managerApprovedOn?: string;
+  receiverRejectReason?: string;
+  managerRejectReason?: string;
+}
+
+/** Trạng thái xác nhận điện tử của biên bản bàn giao. Rỗng = hồ sơ cũ. */
+export type HandoverSigningStatus =
+  | ''
+  | 'pending_receiver'
+  | 'pending_manager'
+  | 'completed'
+  | 'rejected'
+  | 'manual'
+  | 'cancelled';
+
+/** Một hồ sơ bàn giao ở màn "Thiết bị của tôi" */
+export interface HandoverRecord {
+  _id: string;
+  name: string;
+  device: {
+    _id: string;
+    deviceType: DeviceType;
+    name: string;
+    serial: string;
+    manufacturer?: string;
+    releaseYear?: number;
+    status: string;
+    specs?: Record<string, string>;
+    room?: string;
+  };
+  action: 'assigned' | 'revoked';
+  signingStatus: HandoverSigningStatus;
+  signingMethod?: 'digital' | 'manual' | '';
+  receiver?: User;
+  receiverFullname: string;
+  receiverJobTitle: string;
+  assignedBy?: User;
+  approvedBy?: User;
+  startDate: string;
+  endDate?: string;
+  receiverConfirmedOn?: string;
+  managerApprovedOn?: string;
+  receiverRejectReason?: string;
+  managerRejectReason?: string;
+  notes?: string;
+  revokedReason?: string[];
+  documentFileUrl?: string;
+  documentHash?: string;
+  canConfirm: boolean;
+  canApprove: boolean;
+}
+
+export interface MyHandoversPayload {
+  toConfirm: HandoverRecord[];
+  toApprove: HandoverRecord[];
+  myDevices: HandoverRecord[];
+  history: HandoverRecord[];
+  isApprover: boolean;
 }
 
 // Base device interface matching inventory service

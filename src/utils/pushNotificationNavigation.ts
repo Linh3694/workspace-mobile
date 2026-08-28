@@ -68,6 +68,14 @@ const TICKET_EVENTS: readonly string[] = [
   'event_facility_reminder',
 ];
 
+// Bàn giao thiết bị IT — xác nhận / phê duyệt biên bản điện tử
+const INVENTORY_HANDOVER_EVENTS: readonly string[] = [
+  'inventory_handover_pending_approval',
+  'inventory_handover_pending_receiver',
+  'inventory_handover_completed',
+  'inventory_handover_rejected',
+];
+
 const FEEDBACK_EVENTS: readonly string[] = [
   'feedback_created',
   'feedback_new',
@@ -184,6 +192,9 @@ export type PushNotificationPayload = {
   feedbackId?: string;
   feedback_id?: string;
   feedbackCode?: string;
+  /** Biên bản bàn giao thiết bị (ERP Inventory Handover Log, vd INV-HO-00123) */
+  handoverId?: string;
+  handover_id?: string;
   leaveRequestId?: string;
   leave_request_id?: string;
   studentId?: string;
@@ -416,6 +427,12 @@ export async function resolveNotificationTarget(
       ? await getAdministrativeTicketDetailScreenName()
       : await getTicketDetailScreenName();
     return { screen, params: { ticketId } };
+  }
+
+  // === BÀN GIAO THIẾT BỊ — mở "Thiết bị của tôi" đúng hồ sơ ===
+  if (matchesEvent(data, INVENTORY_HANDOVER_EVENTS)) {
+    const handoverId = str(data.handover_id) || str(data.handoverId);
+    return { screen: ROUTES.SCREENS.MY_HANDOVERS, params: { handoverId: handoverId || undefined } };
   }
 
   // === FEEDBACK / Góp ý ===

@@ -19,6 +19,7 @@ import AdministrativeTicketGuestDetail from '../screens/AdministrativeTicket/Tic
 import DevicesScreen from '../screens/Devices/DevicesScreen';
 import DevicesDetailScreen from '../screens/Devices/DevicesDetailScreen';
 import DeviceAssignmentHistoryScreen from '../screens/Devices/DeviceAssignmentHistoryScreen';
+import MyHandoversScreen from '../screens/Devices/MyHandoversScreen';
 import { useAuth } from '../context/AuthContext';
 import AttendanceHome from '../screens/Attendance/AttendanceHome';
 import AttendanceDetail from '../screens/Attendance/AttendanceDetail';
@@ -132,6 +133,8 @@ export type RootStackParamList = {
     deviceType: 'laptop' | 'monitor' | 'printer' | 'projector' | 'tool';
     deviceName: string;
   };
+  /** `handoverId` từ deep link push — mở đúng hồ sơ cần xác nhận/duyệt */
+  [ROUTES.SCREENS.MY_HANDOVERS]: { handoverId?: string } | undefined;
   [ROUTES.SCREENS.ATTENDANCE_HOME]: undefined;
   [ROUTES.SCREENS.ATTENDANCE_DETAIL]: { classId: string; date: string };
   [ROUTES.SCREENS.LEAVE_REQUESTS]:
@@ -456,6 +459,11 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.DEVICE_ASSIGNMENT_HISTORY}
             component={DeviceAssignmentHistoryScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.MY_HANDOVERS}
+            component={MyHandoversScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen
