@@ -104,7 +104,7 @@ export type HandoverSigningStatus =
   | 'manual'
   | 'cancelled';
 
-/** Một hồ sơ bàn giao ở màn "Thiết bị của tôi" */
+/** Một hồ sơ bàn giao ở màn "Tài sản của tôi" */
 export interface HandoverRecord {
   _id: string;
   name: string;

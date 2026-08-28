@@ -70,7 +70,7 @@ const formatDateTime = (value?: string) => {
 };
 
 /**
- * "Thiết bị của tôi" — nhân viên xác nhận biên bản bàn giao, Trưởng phòng IT
+ * "Tài sản của tôi" — nhân viên xác nhận biên bản bàn giao, Trưởng phòng IT
  * phê duyệt từ xa. Thay cho việc in A4 ký tươi.
  */
 const MyHandoversScreen = () => {
@@ -342,7 +342,7 @@ const MyHandoversScreen = () => {
                     <MaterialCommunityIcons name="arrow-left" size={24} color="#002855" />
                 </TouchableOpacity>
                 <View className="flex-1 mr-10">
-                    <Text className="text-xl font-bold text-primary text-center">Thiết bị của tôi</Text>
+                    <Text className="text-xl font-bold text-primary text-center">Tài sản của tôi</Text>
                 </View>
             </View>
 

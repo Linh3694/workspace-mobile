@@ -22,7 +22,7 @@ export const ROUTES = {
     DEVICES: 'Devices',
     DEVICE_DETAIL: 'DeviceDetail',
     DEVICE_ASSIGNMENT_HISTORY: 'DeviceAssignmentHistory',
-    /** "Thiết bị của tôi" — xác nhận / phê duyệt biên bản bàn giao điện tử */
+    /** "Tài sản của tôi" — xác nhận / phê duyệt biên bản bàn giao điện tử */
     MY_HANDOVERS: 'MyHandovers',
     WISLIFE: 'Social',
     ATTENDANCE_HOME: 'AttendanceHome',

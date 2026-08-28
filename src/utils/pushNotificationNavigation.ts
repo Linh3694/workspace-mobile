@@ -429,7 +429,7 @@ export async function resolveNotificationTarget(
     return { screen, params: { ticketId } };
   }
 
-  // === BÀN GIAO THIẾT BỊ — mở "Thiết bị của tôi" đúng hồ sơ ===
+  // === BÀN GIAO THIẾT BỊ — mở "Tài sản của tôi" đúng hồ sơ ===
   if (matchesEvent(data, INVENTORY_HANDOVER_EVENTS)) {
     const handoverId = str(data.handover_id) || str(data.handoverId);
     return { screen: ROUTES.SCREENS.MY_HANDOVERS, params: { handoverId: handoverId || undefined } };
