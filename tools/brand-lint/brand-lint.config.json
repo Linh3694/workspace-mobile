@@ -63,7 +63,8 @@
   ],
   "allowlistPathsByRule": {
     "subbrand-name": ["**/locales/**", "**/assets/**"],
-    "brand-name": ["**/locales/**"]
+    "brand-name": ["**/locales/**"],
+    "brand-hex": ["**/src/theme/tokens.js"]
   },
   "inlineIgnoreMarker": "brand-lint-disable-next-line"
 }

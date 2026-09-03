@@ -17,6 +17,7 @@ import * as Device from 'expo-device';
 import SelectModal from '../../components/SelectModal';
 import attendanceService from '../../services/attendanceService';
 import { getAppVersionFullLabel } from '../../services/appUpdateService';
+import { canSwitchUiVersion, setUiV2Enabled, useUiV2Enabled } from '../../config/uiV2';
 import { openAppStore, useAppUpdateStatus } from '../../hooks/useAppUpdate';
 import {
   sendTestLocalNotification,
@@ -46,6 +47,9 @@ const ProfileScreen = () => {
   // Tra store để biết có bản mới không — quyết định hiện nút "Cập nhật" ở hàng Phiên bản.
   const { status: updateStatus } = useAppUpdateStatus();
   const updateAvailable = !!updateStatus?.updateAvailable;
+  // Công tắc giao diện cũ ↔ mới: chỉ quản trị hệ thống mới thấy hàng này.
+  const uiV2Enabled = useUiV2Enabled();
+  const canSwitchUi = canSwitchUiVersion((user as any)?.roles);
   // Debug user avatar fields when user changes
   useEffect(() => {
     if (user) {
@@ -529,6 +533,33 @@ const ProfileScreen = () => {
                 <Ionicons name="chevron-down" size={16} color="#757575" />
               </View>
             </TouchableOpacity>
+
+            {/* Giao diện cũ ↔ mới. Ẩn hoàn toàn với vai trò khác — xem canSwitchUiVersion. */}
+            {canSwitchUi ? (
+              <View className="flex-row items-center justify-between">
+                <View className="flex-1 flex-row items-center">
+                  <Ionicons name="color-palette-outline" size={20} color="#757575" />
+                  <View className="ml-5 flex-1 pr-3">
+                    <Text className="text-black" style={{ fontFamily: 'Mulish-Medium' }}>
+                      {t('profile.ui_version')}
+                    </Text>
+                    <Text
+                      className="mt-1 text-xs text-[#757575]"
+                      style={{ fontFamily: 'Mulish-Medium' }}>
+                      {t('profile.ui_version_hint')}
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  trackColor={{ false: '#D1D5DB', true: '#F97316' }}
+                  thumbColor={'#FFFFFF'}
+                  value={uiV2Enabled}
+                  onValueChange={(value) => {
+                    void setUiV2Enabled(value);
+                  }}
+                />
+              </View>
+            ) : null}
 
             {/* Version + nút cập nhật khi store có bản mới */}
             <View className="flex-row items-center justify-between">

@@ -27,6 +27,14 @@ interface BottomSheetModalProps {
   keyboardAvoiding?: boolean;
   /** Px cộng thêm sau safe-area đáy; sheet ít nút nên dùng 6–10 để khỏi trống phía dưới */
   bottomPaddingExtra?: number;
+  /**
+   * Gọi SAU KHI animation đóng chạy xong và `Modal` đã thật sự tháo khỏi cây.
+   *
+   * Cần cho việc mở sheet nối tiếp nhau: trên iOS, mở `Modal` thứ hai trong khi
+   * `Modal` thứ nhất chưa tháo xong sẽ TREO APP (Android không sao). Muốn đóng
+   * sheet này rồi mở sheet khác thì phải chờ callback này, không dùng `onClose`.
+   */
+  onClosed?: () => void;
 }
 
 const BottomSheetModal: React.FC<BottomSheetModalProps> = ({
@@ -37,12 +45,20 @@ const BottomSheetModal: React.FC<BottomSheetModalProps> = ({
   fillHeight = false,
   keyboardAvoiding = true,
   bottomPaddingExtra = 16,
+  onClosed,
 }) => {
   const insets = useSafeAreaInsets();
   const [modalVisible, setModalVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+
+  // Giữ qua ref: effect animation chỉ phụ thuộc `visible`, nếu đưa `onClosed` vào
+  // deps thì mỗi lần callsite tạo lại closure là animation chạy lại từ đầu.
+  const onClosedRef = useRef(onClosed);
+  useEffect(() => {
+    onClosedRef.current = onClosed;
+  }, [onClosed]);
 
   // Lắng nghe bàn phím: thu nhỏ sheet khi keyboard hiện để không tràn màn hình
   useEffect(() => {
@@ -96,6 +112,9 @@ const BottomSheetModal: React.FC<BottomSheetModalProps> = ({
         }),
       ]).start(() => {
         setModalVisible(false);
+        // Sau frame này Modal mới thật sự tháo khỏi cây — chỉ khi đó mới an toàn
+        // để mở Modal kế tiếp trên iOS.
+        requestAnimationFrame(() => onClosedRef.current?.());
       });
     }
   }, [visible]);

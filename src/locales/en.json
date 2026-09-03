@@ -12,6 +12,8 @@
     "change_language": "Change Language",
     "language_changed": "Language changed successfully",
     "campus": "Campus",
+    "ui_version": "New interface",
+    "ui_version_hint": "Preview build — only system admins see this option",
     "version": "Version",
     "update": "Update",
     "update_available": "Version {version} is available"

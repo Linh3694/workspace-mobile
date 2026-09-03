@@ -14,6 +14,30 @@
     "paths": {
       "~/*": [
         "src/*"
+      ],
+      "@atoms": [
+        "src/components/ui-v2/level-0-atoms"
+      ],
+      "@atoms/*": [
+        "src/components/ui-v2/level-0-atoms/*"
+      ],
+      "@molecules": [
+        "src/components/ui-v2/level-1-molecules"
+      ],
+      "@molecules/*": [
+        "src/components/ui-v2/level-1-molecules/*"
+      ],
+      "@organisms": [
+        "src/components/ui-v2/level-2-organisms"
+      ],
+      "@organisms/*": [
+        "src/components/ui-v2/level-2-organisms/*"
+      ],
+      "@templates": [
+        "src/components/ui-v2/level-3-templates"
+      ],
+      "@templates/*": [
+        "src/components/ui-v2/level-3-templates/*"
       ]
     },
     "moduleResolution": "bundler",

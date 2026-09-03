@@ -20,6 +20,9 @@ export const ROUTES = {
     ADMINISTRATIVE_TICKET_ADMIN: 'AdministrativeTicketAdmin',
     ADMINISTRATIVE_TICKET_GUEST: 'AdministrativeTicketGuest',
     DEVICES: 'Devices',
+    /** Bản ui-v2 chạy song song với DEVICES để đối chiếu. Gỡ khi V2 thay hẳn V1. */
+    DEVICES_V2: 'DevicesV2',
+    DEVICE_CREATE: 'DeviceCreate',
     DEVICE_DETAIL: 'DeviceDetail',
     DEVICE_ASSIGNMENT_HISTORY: 'DeviceAssignmentHistory',
     WISLIFE: 'Social',

@@ -17,6 +17,9 @@ import AdministrativeTicketCreate from '../screens/AdministrativeTicket/TicketCr
 import AdministrativeTicketAdminDetail from '../screens/AdministrativeTicket/TicketAdminDetail';
 import AdministrativeTicketGuestDetail from '../screens/AdministrativeTicket/TicketGuestDetail';
 import DevicesScreen from '../screens/Devices/DevicesScreen';
+import DevicesScreenV2 from '../screens/Devices/DevicesScreenV2';
+import DeviceCreateScreen from '../screens/Devices/DeviceCreateScreen';
+import type { DeviceType } from '../types/devices';
 import DevicesDetailScreen from '../screens/Devices/DevicesDetailScreen';
 import DeviceAssignmentHistoryScreen from '../screens/Devices/DeviceAssignmentHistoryScreen';
 import { useAuth } from '../context/AuthContext';
@@ -115,6 +118,8 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.ROOM_BOOKING]: undefined;
   [ROUTES.SCREENS.ROOM_BOOKING_CREATE]: { roomId?: string; buildingId?: string } | undefined;
   [ROUTES.SCREENS.DEVICES]: { refresh?: boolean } | undefined;
+  [ROUTES.SCREENS.DEVICES_V2]: { refresh?: boolean } | undefined;
+  [ROUTES.SCREENS.DEVICE_CREATE]: { deviceType: DeviceType };
   [ROUTES.SCREENS.DEVICE_DETAIL]: {
     deviceId: string;
     deviceType: 'laptop' | 'monitor' | 'printer' | 'projector' | 'tool';
@@ -424,6 +429,18 @@ const AppNavigator = () => {
             name={ROUTES.SCREENS.DEVICES}
             component={DevicesScreen}
             options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.DEVICES_V2}
+            component={DevicesScreenV2}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.DEVICE_CREATE}
+            component={DeviceCreateScreen}
+            // Trình bày kiểu modal (trượt từ dưới): đây là việc tự chứa, làm xong
+            // thì đóng lại — khác với đi sâu vào một nhánh nội dung.
+            options={{ headerShown: false, presentation: 'modal' }}
           />
           <Stack.Screen
             name={ROUTES.SCREENS.DEVICE_DETAIL}

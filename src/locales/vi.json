@@ -12,6 +12,8 @@
     "change_language": "Đổi ngôn ngữ",
     "language_changed": "Đã thay đổi ngôn ngữ thành công",
     "campus": "Campus",
+    "ui_version": "Giao diện mới",
+    "ui_version_hint": "Bản thử nghiệm — chỉ quản trị hệ thống thấy tuỳ chọn này",
     "version": "Phiên bản",
     "update": "Cập nhật",
     "update_available": "Đã có phiên bản {version}"

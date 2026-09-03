@@ -26,6 +26,7 @@ import { useNavigation, useRoute, useFocusEffect, useIsFocused } from '@react-na
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
+import { devicesRoute } from '../../config/uiV2';
 import { Ionicons, MaterialIcons, FontAwesome, Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
@@ -323,7 +324,9 @@ const HomeScreen = () => {
   };
 
   const navigateToDevices = () => {
-    navigation.navigate(ROUTES.SCREENS.DEVICES);
+    // Công tắc V1/V2 ở src/config/uiV2.ts (bật trong Hồ sơ, chỉ System Manager
+    // thấy) — xoá khi V2 thay hẳn V1.
+    navigation.navigate(devicesRoute(user?.roles) as never);
   };
 
   const navigateToAttendance = () => {
