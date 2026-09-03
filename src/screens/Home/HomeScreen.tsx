@@ -56,6 +56,8 @@ import DisciplineIcon from '../../assets/discipline.svg';
 import IssueIcon from '../../assets/issue.svg';
 import ClassActivitySvg from '../../assets/class_activity.svg';
 import RoomBookingIcon from '../../assets/room-booking.svg';
+// Icon tile Họp phụ huynh 1:1 (SIS PT Meeting)
+import ParentMeetingIcon from '../../assets/parent-meeting.svg';
 import { hasCrmAccess } from '../../utils/crmIssuePermissions';
 import {
   applyMenuTap,
@@ -385,6 +387,16 @@ const HomeScreen = () => {
     navigation.navigate(ROUTES.SCREENS.ROOM_BOOKING);
   };
 
+  /**
+   * Vào thẳng màn lịch ca của giáo viên, KHÔNG vào màn tổng hợp đợt họp.
+   * Màn lịch tự hiện lối vào ParentMeetingAdmin khi user có role BGH/giáo vụ — để Home
+   * quyết định đích theo role thì sẽ có hai nguồn phán quyền lệch nhau, và BGH kiêm giảng dạy
+   * (rất phổ biến ở WIS) sẽ mất lối vào chính ca họp của họ.
+   */
+  const navigateToParentMeeting = () => {
+    navigation.navigate(ROUTES.SCREENS.PARENT_MEETING);
+  };
+
   // Role-based menu configuration
   const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
   const hasMobileTeacher = roles.includes('Mobile Teacher');
@@ -534,6 +546,14 @@ const HomeScreen = () => {
       onPress: navigateToRoomBooking,
       key: 'room_booking',
     },
+    {
+      id: 18,
+      title: t('parent_meeting.tile_title'),
+      component: ParentMeetingIcon,
+      description: t('parent_meeting.tile_desc'),
+      onPress: navigateToParentMeeting,
+      key: 'parent_meeting',
+    },
   ];
 
   // Thu thập tất cả các keys được phép dựa trên tất cả roles của user
@@ -541,6 +561,8 @@ const HomeScreen = () => {
 
   if (hasMobileBOD) {
     // Mobile BOD: tất cả tile, gồm Bảng tin (xem được mọi lớp, read-only nếu không phải GVCN/phó)
+    // và Họp PH 1:1 — BGH là nhóm DUY NHẤT đọc được meeting note, nên tile này phải luôn nằm
+    // trong nhóm BOD; nếu sau này thu hẹp forEach bên dưới thì phải thêm lại 'parent_meeting' tay.
     allItems.forEach((item) => {
       allowedKeys.add(item.key);
     });
@@ -577,6 +599,9 @@ const HomeScreen = () => {
       'calendar',
       'class_log',
       'teacher_health',
+      // Họp PH 1:1: nghiệp vụ của giáo viên (bấm "Bắt đầu họp", ghi meeting note) — cố tình
+      // KHÔNG nằm trong nhóm mặc định/Mobile User, vì người không dạy lớp nào mở ra chỉ thấy rỗng.
+      'parent_meeting',
     ].forEach((key) => allowedKeys.add(key));
     if (hasClassActivityAccess) allowedKeys.add('class_activity');
   }
@@ -618,6 +643,21 @@ const HomeScreen = () => {
     ['tickets', 'administrative_tickets', 'room_booking', 'menu', 'calendar'].forEach((key) =>
       allowedKeys.add(key)
     );
+  }
+
+  /**
+   * Họp PH 1:1 cho GIÁO VỤ (`SIS TDC`) — role Frappe, không phải role mobile.
+   *
+   * Giáo vụ là nhóm DUY NHẤT được xuất bản lịch (backend chỉ cấp `write` trên
+   * `SIS PT Meeting Event` cho `System Manager` + `SIS TDC`), nhưng app chưa có role
+   * `Mobile TDC` để nhận diện họ; đối chiếu thẳng role backend là cách duy nhất hiện có —
+   * cùng cách tile "Vấn đề CRM" đang làm ở trên.
+   *
+   * ĐẶT SAU nhánh `allowedKeys.size === 0` là có chủ đích: nếu thêm trước, một giáo vụ không
+   * mang role mobile nào sẽ có set khác rỗng và mất luôn bộ tile tối thiểu (Ticket/Menu/Lịch).
+   */
+  if (roles.includes('SIS TDC') || roles.includes('System Manager')) {
+    allowedKeys.add('parent_meeting');
   }
 
   // Filter menu items dựa trên tất cả các keys được phép

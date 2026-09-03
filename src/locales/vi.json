@@ -632,6 +632,10 @@
     "tile_title": "Đặt phòng",
     "tile_desc": "Đặt phòng họp / phòng chức năng"
   },
+  "parent_meeting": {
+    "tile_title": "Họp phụ huynh",
+    "tile_desc": "Lịch họp 1:1 với phụ huynh"
+  },
   "class_activity": {
     "tile_title": "Hoạt động",
     "tile_desc": "Nhật ký bảng tin lớp",

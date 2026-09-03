@@ -22,6 +22,7 @@ import DeviceCreateScreen from '../screens/Devices/DeviceCreateScreen';
 import type { DeviceType } from '../types/devices';
 import DevicesDetailScreen from '../screens/Devices/DevicesDetailScreen';
 import DeviceAssignmentHistoryScreen from '../screens/Devices/DeviceAssignmentHistoryScreen';
+import MyHandoversScreen from '../screens/Devices/MyHandoversScreen';
 import { useAuth } from '../context/AuthContext';
 import AttendanceHome from '../screens/Attendance/AttendanceHome';
 import AttendanceDetail from '../screens/Attendance/AttendanceDetail';
@@ -72,6 +73,11 @@ import ExchangeChatInfoScreen from '../screens/Exchange/ExchangeChatInfoScreen';
 import ExchangeChatMembersScreen from '../screens/Exchange/ExchangeChatMembersScreen';
 import ExchangeChatAttachmentsScreen from '../screens/Exchange/ExchangeChatAttachmentsScreen';
 import { RoomBookingScreen, RoomBookingCreateScreen } from '../screens/RoomBooking';
+import {
+  ParentMeetingScreen,
+  ParentMeetingNoteScreen,
+  ParentMeetingAdminScreen,
+} from '../screens/ParentMeeting';
 import type { ChatConversation } from '../types/chat';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -117,6 +123,9 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST]: undefined;
   [ROUTES.SCREENS.ROOM_BOOKING]: undefined;
   [ROUTES.SCREENS.ROOM_BOOKING_CREATE]: { roomId?: string; buildingId?: string } | undefined;
+  [ROUTES.SCREENS.PARENT_MEETING]: undefined;
+  [ROUTES.SCREENS.PARENT_MEETING_NOTE]: { slotId: string } | undefined;
+  [ROUTES.SCREENS.PARENT_MEETING_ADMIN]: undefined;
   [ROUTES.SCREENS.DEVICES]: { refresh?: boolean } | undefined;
   [ROUTES.SCREENS.DEVICES_V2]: { refresh?: boolean } | undefined;
   [ROUTES.SCREENS.DEVICE_CREATE]: { deviceType: DeviceType };
@@ -129,6 +138,8 @@ export type RootStackParamList = {
     deviceType: 'laptop' | 'monitor' | 'printer' | 'projector' | 'tool';
     deviceName: string;
   };
+  /** `handoverId` từ deep link push — mở đúng hồ sơ cần xác nhận/duyệt */
+  [ROUTES.SCREENS.MY_HANDOVERS]: { handoverId?: string } | undefined;
   [ROUTES.SCREENS.ATTENDANCE_HOME]: undefined;
   [ROUTES.SCREENS.ATTENDANCE_DETAIL]: { classId: string; date: string };
   [ROUTES.SCREENS.LEAVE_REQUESTS]:
@@ -426,6 +437,21 @@ const AppNavigator = () => {
             options={{ headerShown: false }}
           />
           <Stack.Screen
+            name={ROUTES.SCREENS.PARENT_MEETING}
+            component={ParentMeetingScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.PARENT_MEETING_NOTE}
+            component={ParentMeetingNoteScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.PARENT_MEETING_ADMIN}
+            component={ParentMeetingAdminScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
             name={ROUTES.SCREENS.DEVICES}
             component={DevicesScreen}
             options={{ headerShown: false }}
@@ -450,6 +476,11 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.DEVICE_ASSIGNMENT_HISTORY}
             component={DeviceAssignmentHistoryScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.MY_HANDOVERS}
+            component={MyHandoversScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen

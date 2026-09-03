@@ -11,6 +11,8 @@ import {
   Projector,
   Tool,
   Phone,
+  HandoverRecord,
+  MyHandoversPayload,
 } from '../types/devices';
 
 // API configuration
@@ -605,6 +607,66 @@ class DeviceService {
       reasons,
       status,
     });
+  }
+
+  // ===== Xác nhận điện tử biên bản bàn giao (erp.api.erp_inventory.handover_sign) =====
+  // Các endpoint này trả success_response/single_item_response → payload nằm trong `.data`,
+  // khác device.* (trả dict thẳng) nên phải bóc thêm một lớp.
+  private unwrapData<T>(payload: any): T {
+    if (payload && typeof payload === 'object' && 'data' in payload) {
+      return payload.data as T;
+    }
+    return payload as T;
+  }
+
+  /** Hồ sơ chờ tôi xác nhận / chờ tôi duyệt / thiết bị tôi đang giữ */
+  async getMyHandovers(): Promise<MyHandoversPayload> {
+    const payload = await this.invGet<any>('handover_sign.get_my_pending_handovers');
+    const data = this.unwrapData<MyHandoversPayload>(payload);
+    return {
+      toConfirm: data?.toConfirm || [],
+      toApprove: data?.toApprove || [],
+      myDevices: data?.myDevices || [],
+      history: data?.history || [],
+      isApprover: Boolean(data?.isApprover),
+    };
+  }
+
+  async getHandoverForSigning(handoverId: string): Promise<HandoverRecord> {
+    const payload = await this.invGet<any>('handover_sign.get_handover_for_signing', {
+      handover_id: handoverId,
+    });
+    return this.unwrapData<HandoverRecord>(payload);
+  }
+
+  async confirmHandover(handoverId: string): Promise<HandoverRecord> {
+    const payload = await this.invPost<any>('handover_sign.receiver_confirm', {
+      handover_id: handoverId,
+    });
+    return this.unwrapData<HandoverRecord>(payload);
+  }
+
+  async rejectHandoverAsReceiver(handoverId: string, reason: string): Promise<HandoverRecord> {
+    const payload = await this.invPost<any>('handover_sign.receiver_reject', {
+      handover_id: handoverId,
+      reason,
+    });
+    return this.unwrapData<HandoverRecord>(payload);
+  }
+
+  async approveHandover(handoverId: string): Promise<HandoverRecord> {
+    const payload = await this.invPost<any>('handover_sign.approve_handover', {
+      handover_id: handoverId,
+    });
+    return this.unwrapData<HandoverRecord>(payload);
+  }
+
+  async rejectHandoverAsManager(handoverId: string, reason: string): Promise<HandoverRecord> {
+    const payload = await this.invPost<any>('handover_sign.manager_reject', {
+      handover_id: handoverId,
+      reason,
+    });
+    return this.unwrapData<HandoverRecord>(payload);
   }
 
   // Update device status

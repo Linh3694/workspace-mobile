@@ -1,6 +1,6 @@
 {
   "name": "wis-mobile",
-  "version": "1.5.42",
+  "version": "1.5.43",
   "scripts": {
     "android": "npm run copy-firebase && rm -rf \"${TMPDIR:-/tmp}/metro-cache\" && EXPO_PUBLIC_APP_ENV=production EXPO_PUBLIC_API_BASE_URL=https://prod.sis.wellspring.edu.vn EXPO_PUBLIC_BASE_URL=https://prod.sis.wellspring.edu.vn expo run:android",
     "android:staging": "npm run copy-firebase && rm -rf \"${TMPDIR:-/tmp}/metro-cache\" && EXPO_PUBLIC_APP_ENV=staging EXPO_PUBLIC_API_BASE_URL=https://admin.sis.wellspring.edu.vn EXPO_PUBLIC_BASE_URL=https://admin.sis.wellspring.edu.vn expo run:android",

@@ -68,6 +68,14 @@ const TICKET_EVENTS: readonly string[] = [
   'event_facility_reminder',
 ];
 
+// Bàn giao thiết bị IT — xác nhận / phê duyệt biên bản điện tử
+const INVENTORY_HANDOVER_EVENTS: readonly string[] = [
+  'inventory_handover_pending_approval',
+  'inventory_handover_pending_receiver',
+  'inventory_handover_completed',
+  'inventory_handover_rejected',
+];
+
 const FEEDBACK_EVENTS: readonly string[] = [
   'feedback_created',
   'feedback_new',
@@ -121,6 +129,32 @@ const TEACHER_HEALTH_ONLY_EVENTS: readonly string[] = [
 ];
 
 /**
+ * Họp phụ huynh 1:1 (SIS PT Meeting).
+ *
+ * Ba nhóm người nhận rất khác nhau nên một danh sách phẳng là đủ, việc rẽ nhánh để ở
+ * `resolveNotificationTarget`:
+ *   - `pt_meeting_published`            — lịch vừa xuất bản, gửi cho GV lẫn PH
+ *   - `pt_meeting_cancelled_by_parent`  — PH huỷ ca, gửi GV của ca đó
+ *   - `pt_meeting_waitlist`             — có PH vào danh sách chờ, gửi BGH/giáo vụ/GVCN
+ *   - `pt_meeting_no_show`              — ca tự huỷ do GV không bấm "Bắt đầu họp"
+ *   - `pt_meeting_note_required`        — nhắc GV ghi meeting note sau ca họp
+ * Tập này được so với CẢ `type` LẪN `action` (xem `eventKeys`) vì backend không thống nhất.
+ */
+const PT_MEETING_EVENTS: readonly string[] = [
+  'pt_meeting_published',
+  'pt_meeting_cancelled_by_parent',
+  'pt_meeting_waitlist',
+  'pt_meeting_no_show',
+  'pt_meeting_note_required',
+];
+
+/**
+ * Sự kiện của luồng điều hành đợt họp, KHÔNG gắn với một ca cụ thể: người nhận cần thấy bức
+ * tranh toàn đợt (ai đang chờ slot) chứ không phải lịch dạy của riêng mình.
+ */
+const PT_MEETING_ADMIN_EVENTS: readonly string[] = ['pt_meeting_waitlist'];
+
+/**
  * Wislife đã ẩn khỏi bottom tab (SIS-109) — nhận diện để KHÔNG điều hướng vào tab không còn
  * hiển thị. Giữ danh sách để bật lại khi mở lại module.
  */
@@ -158,6 +192,9 @@ export type PushNotificationPayload = {
   feedbackId?: string;
   feedback_id?: string;
   feedbackCode?: string;
+  /** Biên bản bàn giao thiết bị (ERP Inventory Handover Log, vd INV-HO-00123) */
+  handoverId?: string;
+  handover_id?: string;
   leaveRequestId?: string;
   leave_request_id?: string;
   studentId?: string;
@@ -170,6 +207,12 @@ export type PushNotificationPayload = {
   issue_id?: string;
   postId?: string;
   commentId?: string;
+  /** Ca họp PH 1:1 (SIS PT Meeting Slot) — có id ca thì mở thẳng màn ghi meeting note */
+  slotId?: string;
+  slot_id?: string;
+  /** Đợt họp PH 1:1 (SIS PT Meeting Event) — dùng cho thông báo cấp đợt (danh sách chờ) */
+  eventId?: string;
+  event_id?: string;
 };
 
 /** Màn đích đã phân giải xong; `null` = không có màn riêng, caller tự quyết. */
@@ -216,6 +259,13 @@ const RECOGNIZED_PAYLOAD_KEYS = [
   'leaveRequestId',
   'leave_request_id',
   'postId',
+  // Họp PH 1:1 — bắt buộc có mặt ở đây, KHÔNG chỉ khai trong PushNotificationPayload.
+  // Thiếu thì `isRecognizedNotificationPayload` trả false và cú bấm push lúc Android cold-start
+  // bị coi là extras rác rồi bỏ qua im lặng — lỗi chỉ tái hiện được khi app đang tắt hẳn.
+  'slotId',
+  'slot_id',
+  'eventId',
+  'event_id',
 ] as const;
 
 /**
@@ -379,6 +429,12 @@ export async function resolveNotificationTarget(
     return { screen, params: { ticketId } };
   }
 
+  // === BÀN GIAO THIẾT BỊ — mở "Tài sản của tôi" đúng hồ sơ ===
+  if (matchesEvent(data, INVENTORY_HANDOVER_EVENTS)) {
+    const handoverId = str(data.handover_id) || str(data.handoverId);
+    return { screen: ROUTES.SCREENS.MY_HANDOVERS, params: { handoverId: handoverId || undefined } };
+  }
+
   // === FEEDBACK / Góp ý ===
   if (matchesEvent(data, FEEDBACK_EVENTS)) {
     const feedbackId = str(data.feedbackId) || str(data.feedback_id);
@@ -427,6 +483,29 @@ export async function resolveNotificationTarget(
     }
     // GVCN / Giám thị / BOD không có Mobile Medical → Sức khoẻ (read)
     return resolveTeacherHealthTarget(data);
+  }
+
+  // === HỌP PHỤ HUYNH 1:1 ===
+  if (matchesEvent(data, PT_MEETING_EVENTS)) {
+    // Danh sách chờ là thông báo cấp ĐỢT, không phải cấp ca: BGH cần màn tổng hợp để thấy ai
+    // đang chờ slot. Người nhận không phải BGH (GVCN) không mở được màn đó — nó tự chặn theo
+    // role — nên đưa họ về lịch ca của mình thay vì đá vào một màn hình rỗng.
+    if (matchesEvent(data, PT_MEETING_ADMIN_EVENTS)) {
+      const roles = await getStoredRoles();
+      if (roles.includes('Mobile BOD')) {
+        return { screen: ROUTES.SCREENS.PARENT_MEETING_ADMIN };
+      }
+      return { screen: ROUTES.SCREENS.PARENT_MEETING };
+    }
+
+    // Chỉ các sự kiện gắn với một ca cụ thể (`pt_meeting_note_required`, và no-show/huỷ ca khi
+    // backend kèm id) mới mang `slot_id`. Có id thì đi thẳng màn ghi note — đây là hành động
+    // GV phải làm ngay, bắt họ tự dò lại ca trong danh sách là mất luôn cái note.
+    const slotId = str(data.slotId) || str(data.slot_id);
+    if (slotId) {
+      return { screen: ROUTES.SCREENS.PARENT_MEETING_NOTE, params: { slotId } };
+    }
+    return { screen: ROUTES.SCREENS.PARENT_MEETING };
   }
 
   // === Bảng tin lớp (khác Wislife toàn trường đã ẩn) → Hoạt động lớp ===
