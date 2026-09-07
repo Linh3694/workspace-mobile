@@ -87,6 +87,7 @@ export interface AssignmentHistory {
   document?: string;
   documentFileUrl?: string;
   signingStatus?: HandoverSigningStatus;
+  signingMethod?: 'digital' | 'manual' | '';
   receiverConfirmedOn?: string;
   managerApprovedBy?: User;
   managerApprovedOn?: string;
@@ -158,6 +159,8 @@ export interface BaseDevice {
   releaseYear?: number;
   assigned?: User[];
   assignmentHistory?: AssignmentHistory[];
+  /** Hồ sơ bàn giao đang mở — backend gửi kèm để dựng tiến độ ký */
+  currentHandover?: AssignmentHistory | null;
   room?: Room;
   status: 'Active' | 'Standby' | 'Broken' | 'PendingDocumentation';
   brokenReason?: string;

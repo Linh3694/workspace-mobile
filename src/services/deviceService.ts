@@ -684,6 +684,26 @@ class DeviceService {
     return this.unwrapData<HandoverRecord>(payload);
   }
 
+  /** IT gửi lại hồ sơ bị từ chối — quay về đầu chuỗi (Trưởng phòng duyệt lại) */
+  async resendHandover(handoverId: string): Promise<HandoverRecord> {
+    const payload = await this.invPost<any>('handover_sign.resend_handover', {
+      handover_id: handoverId,
+    });
+    return this.unwrapData<HandoverRecord>(payload);
+  }
+
+  /**
+   * Máy đã giao theo biên bản giấy (trước khi có ký điện tử) → mở hồ sơ xác nhận
+   * điện tử cho đúng người đang giữ; scan giấy cũ chuyển vào lịch sử.
+   */
+  async startDigitalHandover(deviceType: DeviceType, deviceId: string): Promise<HandoverRecord> {
+    const payload = await this.invPost<any>('handover_sign.start_digital_handover', {
+      device_type: deviceType,
+      device_id: deviceId,
+    });
+    return this.unwrapData<HandoverRecord>(payload);
+  }
+
   // Update device status
   async updateDeviceStatus(
     deviceType: DeviceType,
