@@ -2,7 +2,7 @@
  * Tạo / sửa vấn đề CRM — giao diện theo DisciplineAddEditScreen; nghiệp vụ khớp web AddEditIssue (HTML nội dung, đính kèm upload khi Lưu).
  * PIC do server gán (module / học sinh / phòng ban) — khách hàng không chọn PIC trên mobile.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TouchableOpacity, BottomSheetModal, ActionSheet } from '../../components/Common';
+import { TouchableOpacity, ActionSheet } from '../../components/Common';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -72,9 +72,13 @@ import { descendantUnitsOf, keepGroupsUnderDepartments } from './shared/issueOrg
 import { MultiPickerSheet, type PickerOption } from './components/MultiPickerSheet';
 import { IssueParticipantsPreview } from './components/IssueParticipantsPreview';
 import { normalizeStudentClassTitle } from '../../utils/studentClassUtils';
+import { getPicDisplayName } from '../../utils/nameUtils';
 
 /** Loại vấn đề "Góp ý" sinh từ Parent Portal — ẩn khỏi danh sách chọn như web */
 const MODULE_NAME_FEEDBACK = 'Góp ý';
+
+/** Số học sinh render mỗi lượt trong sheet tìm — cuộn tới đáy thì nới thêm bấy nhiêu */
+const STUDENT_PAGE_SIZE = 30;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type RAdd = RouteProp<RootStackParamList, typeof ROUTES.SCREENS.CRM_ISSUE_ADD>;
@@ -231,8 +235,14 @@ const CRMIssueAddEditScreen: React.FC = () => {
   const [students, setStudents] = useState<
     { name: string; student_name: string; student_code?: string; current_class_title?: string }[]
   >([]);
-  const [studentSheetSearch, setStudentSheetSearch] = useState('');
-  const [studentHits, setStudentHits] = useState<CrmStudentSearchHit[]>([]);
+  /**
+   * Kết quả `search_students` của từ khoá gần nhất. API trả HẾT trong một lời gọi nên
+   * giữ lại đây để cắt trang ở client — cuộn tới đáy không phải hỏi server lại.
+   */
+  const studentHitsRef = useRef<{ term: string; rows: CrmStudentSearchHit[] }>({
+    term: '',
+    rows: [],
+  });
 
   const loadMeta = useCallback(async () => {
     const [m, u, sy, p, g] = await Promise.all([
@@ -358,20 +368,6 @@ const CRMIssueAddEditScreen: React.FC = () => {
     };
     run();
   }, [isEdit, issueId, navigation, roles, sessionUserId, t]);
-
-  // Tìm học sinh trong sheet (chỉ khi sheet mở — khớp web)
-  useEffect(() => {
-    if (!showStudents) return;
-    const timer = setTimeout(async () => {
-      if (studentSheetSearch.trim().length < 2) {
-        setStudentHits([]);
-        return;
-      }
-      const r = await searchCrmStudents(studentSheetSearch);
-      if (r.success) setStudentHits(r.data);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [studentSheetSearch, showStudents]);
 
   // Bỏ phòng ban nào thì nhóm con của nó cũng rời khỏi lựa chọn
   useEffect(() => {
@@ -573,21 +569,65 @@ const CRMIssueAddEditScreen: React.FC = () => {
     );
   };
 
-  const toggleStudent = (s: CrmStudentSearchHit) => {
+  /** Dòng phụ của học sinh: "Lớp • Mã" — gộp một dòng cho sheet gọn */
+  const studentMetaLine = (
+    classTitle?: string | null,
+    code?: string | null
+  ): string | undefined =>
+    [normalizeStudentClassTitle(classTitle || undefined), code].filter(Boolean).join(' • ') ||
+    undefined;
+
+  /** Học sinh đang chọn — picker luôn xếp nhóm này lên đầu để còn bỏ chọn được */
+  const studentPickerSelected = useMemo<PickerOption[]>(
+    () =>
+      students.map((s) => ({
+        value: s.name,
+        label: s.student_name?.trim() || s.student_code || s.name,
+        subtitle: studentMetaLine(s.current_class_title, s.student_code),
+      })),
+    [students]
+  );
+
+  /**
+   * Một trang kết quả học sinh. `search_students` không phân trang mà trả hết, nên chỉ
+   * gọi server ở trang 1 rồi cắt từ bộ nhớ cho các trang sau.
+   */
+  const searchStudentPage = useCallback(async (term: string, page: number) => {
+    const key = term.trim();
+    if (page === 1 || studentHitsRef.current.term !== key) {
+      const r = await searchCrmStudents(key);
+      studentHitsRef.current = { term: key, rows: r.success ? r.data : [] };
+    }
+    const rows = studentHitsRef.current.rows;
+    const start = (page - 1) * STUDENT_PAGE_SIZE;
+    return {
+      items: rows.slice(start, start + STUDENT_PAGE_SIZE).map((h) => ({
+        value: h.name,
+        // Học sinh chưa có tên trong hồ sơ thì lấy mã làm tiêu đề, tránh dòng trắng
+        label: h.student_name?.trim() || h.student_code || h.name,
+        subtitle: studentMetaLine(h.current_class_title, h.student_code),
+      })),
+      hasMore: start + STUDENT_PAGE_SIZE < rows.length,
+    };
+  }, []);
+
+  const toggleStudentByOption = useCallback((value: string, option: PickerOption) => {
     setStudents((prev) => {
-      const exists = prev.find((x) => x.name === s.name);
-      if (exists) return prev.filter((x) => x.name !== s.name);
+      if (prev.some((x) => x.name === value)) return prev.filter((x) => x.name !== value);
+      const hit = studentHitsRef.current.rows.find((h) => h.name === value);
       return [
         ...prev,
-        {
-          name: s.name,
-          student_name: s.student_name,
-          student_code: s.student_code,
-          current_class_title: s.current_class_title,
-        },
+        hit
+          ? {
+              name: hit.name,
+              student_name: hit.student_name,
+              student_code: hit.student_code,
+              current_class_title: hit.current_class_title,
+            }
+          : { name: value, student_name: option.label },
       ];
     });
-  };
+  }, []);
 
   const onSubmit = async () => {
     // Phòng ban / Nhóm vấn đề chỉ bắt buộc khi Care tạo trực tiếp (tự duyệt) — khớp web.
@@ -940,7 +980,12 @@ const CRMIssueAddEditScreen: React.FC = () => {
                 onPress={() => { Keyboard.dismiss(); setTimeout(() => setShowPic(true), 100); }}
                 style={styles.inputRow}>
                 <Text style={[styles.inputText, !pic && styles.placeholder]} numberOfLines={1}>
-                  {picItems.find((u) => u.user_id === pic)?.full_name || t('crm_issue.select_pic')}
+                  {(() => {
+                    const picked = picItems.find((u) => u.user_id === pic);
+                    return picked
+                      ? getPicDisplayName(picked.full_name, picked.email)
+                      : t('crm_issue.select_pic');
+                  })()}
                 </Text>
                 <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
               </TouchableOpacity>
@@ -1028,114 +1073,32 @@ const CRMIssueAddEditScreen: React.FC = () => {
       />
 
       {/* Bottom sheet: học sinh liên quan — tìm ≥2 ký tự, chọn nhiều */}
-      <BottomSheetModal
+      {/* Học sinh liên quan — tìm ở server, cuộn tới đáy thì lấy tiếp từ kết quả đã tải */}
+      <MultiPickerSheet
         visible={showStudents}
-        onClose={() => {
-          setShowStudents(false);
-          setStudentSheetSearch('');
-          setStudentHits([]);
-        }}
-        maxHeightPercent={70}
-        fillHeight>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.sheetKeyboard}>
-          <View style={styles.sheetInner}>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>{t('crm_issue.students')}</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowStudents(false);
-                  setStudentSheetSearch('');
-                  setStudentHits([]);
-                }}
-                style={styles.sheetDone}>
-                <Text style={styles.sheetDoneText}>{t('common.close')}</Text>
-              </TouchableOpacity>
-            </View>
-            <TextInput
-              placeholder={t('crm_issue.student_search_placeholder')}
-              value={studentSheetSearch}
-              onChangeText={setStudentSheetSearch}
-              style={styles.searchInput}
-              placeholderTextColor="#9CA3AF"
-            />
-            {studentSheetSearch.trim().length < 2 ? (
-              <Text style={styles.sheetHint}>{t('crm_issue.student_sheet_min_chars')}</Text>
-            ) : studentHits.length === 0 ? (
-              <Text style={styles.sheetHint}>{t('crm_issue.student_sheet_empty')}</Text>
-            ) : null}
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              style={styles.sheetScrollFlex}
-              onScrollBeginDrag={() => Keyboard.dismiss()}>
-              {studentHits.map((h) => {
-                const selected = students.some((s) => s.name === h.name);
-                return (
-                  <TouchableOpacity
-                    key={h.name}
-                    onPress={() => toggleStudent(h)}
-                    style={[styles.sheetItem, selected && styles.sheetItemSelected]}>
-                    <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
-                      {selected ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[styles.sheetItemText, selected && styles.sheetItemTextSelected]}
-                        numberOfLines={1}>
-                        {h.student_name}
-                      </Text>
-                      <Text style={styles.studentCodeSub} numberOfLines={1}>
-                        {h.student_code}
-                      </Text>
-                      {normalizeStudentClassTitle(h.current_class_title) ? (
-                        <Text style={styles.studentClassSub} numberOfLines={2}>
-                          {normalizeStudentClassTitle(h.current_class_title)}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </BottomSheetModal>
+        onClose={() => setShowStudents(false)}
+        title={t('crm_issue.students')}
+        options={studentPickerSelected}
+        selected={students.map((s) => s.name)}
+        searchPlaceholder={t('crm_issue.student_search_placeholder')}
+        onSearch={searchStudentPage}
+        emptyText={t('crm_issue.student_sheet_empty')}
+        onToggle={(value, option) => toggleStudentByOption(value, option)}
+        onClear={() => setStudents([])}
+      />
 
       {/* Bottom sheet: loại vấn đề */}
-      <BottomSheetModal visible={showModule} onClose={() => setShowModule(false)} maxHeightPercent={50} keyboardAvoiding={false} fillHeight>
-        <View style={styles.sheetInner}>
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>{t('crm_issue.select_module')}</Text>
-            <TouchableOpacity onPress={() => setShowModule(false)} style={styles.sheetDone}>
-              <Text style={styles.sheetDoneText}>{t('common.close')}</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
-            {moduleOptions.length === 0 ? (
-              <Text style={styles.sheetHint}>{t('crm_issue.no_modules')}</Text>
-            ) : null}
-            {moduleOptions.map((m) => (
-              <TouchableOpacity
-                key={m.name}
-                onPress={() => {
-                  setModuleId(m.name);
-                  setShowModule(false);
-                }}
-                style={[styles.sheetItem, moduleId === m.name && styles.sheetItemSelected]}>
-                <Text
-                  style={[styles.sheetItemText, moduleId === m.name && styles.sheetItemTextSelected]}
-                  numberOfLines={2}>
-                  {m.module_name}
-                </Text>
-                {moduleId === m.name ? (
-                  <Ionicons name="checkmark-circle" size={22} color={PRIMARY} />
-                ) : null}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      </BottomSheetModal>
+      {/* Loại vấn đề */}
+      <MultiPickerSheet
+        visible={showModule}
+        onClose={() => setShowModule(false)}
+        mode="single"
+        title={t('crm_issue.select_module')}
+        options={moduleOptions.map((m) => ({ value: m.name, label: m.module_name }))}
+        selected={moduleId ? [moduleId] : []}
+        emptyText={t('crm_issue.no_modules')}
+        onToggle={(value) => setModuleId(value)}
+      />
 
       {/* Phòng ban liên quan — đơn vị cấp "Phòng" của Sơ đồ tổ chức */}
       <MultiPickerSheet
@@ -1174,15 +1137,18 @@ const CRMIssueAddEditScreen: React.FC = () => {
         options={relatedUserPickerSelected}
         selected={relatedUserIds}
         searchPlaceholder={t('crm_issue.related_users_search_placeholder')}
-        onSearch={async (term) => {
-          const res = await searchUsersForPicker(term);
-          return res.data
-            .filter((u) => !autoParticipantIds.has(u.name))
-            .map((u) => ({
-              value: u.name,
-              label: u.full_name || u.email,
-              subtitle: u.email,
-            }));
+        onSearch={async (term, page) => {
+          const res = await searchUsersForPicker(term, page);
+          return {
+            items: res.data
+              .filter((u) => !autoParticipantIds.has(u.name))
+              .map((u) => ({
+                value: u.name,
+                label: u.display_name,
+                subtitle: u.email,
+              })),
+            hasMore: res.hasMore,
+          };
         }}
         onToggle={(value, option) => {
           setRelatedUserLabels((prev) => ({ ...prev, [value]: option.label }));
@@ -1201,13 +1167,16 @@ const CRMIssueAddEditScreen: React.FC = () => {
         options={guardianPickerSelected}
         selected={guardians.map((g) => g.name)}
         searchPlaceholder={t('crm_issue.guardians_search_placeholder')}
-        onSearch={async (term) => {
-          const res = await searchGuardiansForPicker(term);
-          return res.data.map((g) => ({
-            value: g.name,
-            label: g.guardian_name || g.name,
-            subtitle: g.phone_number,
-          }));
+        onSearch={async (term, page) => {
+          const res = await searchGuardiansForPicker(term, page);
+          return {
+            items: res.data.map((g) => ({
+              value: g.name,
+              label: g.guardian_name || g.name,
+              subtitle: g.phone_number,
+            })),
+            hasMore: res.hasMore,
+          };
         }}
         onToggle={(value, option) => {
           setGuardians((prev) =>
@@ -1220,151 +1189,61 @@ const CRMIssueAddEditScreen: React.FC = () => {
       />
 
       {/* Năm học */}
-      <BottomSheetModal visible={showSchoolYear} onClose={() => setShowSchoolYear(false)} maxHeightPercent={50} keyboardAvoiding={false} fillHeight>
-        <View style={styles.sheetInner}>
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>{t('crm_issue.select_school_year')}</Text>
-            <TouchableOpacity onPress={() => setShowSchoolYear(false)} style={styles.sheetDone}>
-              <Text style={styles.sheetDoneText}>{t('common.close')}</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
-            {schoolYears.map((y) => (
-              <TouchableOpacity
-                key={y.name}
-                onPress={() => {
-                  setSchoolYearId(y.name);
-                  setShowSchoolYear(false);
-                }}
-                style={[styles.sheetItem, schoolYearId === y.name && styles.sheetItemSelected]}>
-                <Text
-                  style={[
-                    styles.sheetItemText,
-                    schoolYearId === y.name && styles.sheetItemTextSelected,
-                  ]}
-                  numberOfLines={1}>
-                  {schoolYearLabel(y)}
-                </Text>
-                {schoolYearId === y.name ? (
-                  <Ionicons name="checkmark-circle" size={22} color={PRIMARY} />
-                ) : null}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      </BottomSheetModal>
+      {/* Năm học */}
+      <MultiPickerSheet
+        visible={showSchoolYear}
+        onClose={() => setShowSchoolYear(false)}
+        mode="single"
+        title={t('crm_issue.select_school_year')}
+        options={schoolYears.map((y) => ({ value: y.name, label: schoolYearLabel(y) }))}
+        selected={schoolYearId ? [schoolYearId] : []}
+        onToggle={(value) => setSchoolYearId(value)}
+      />
 
       {/* Nhóm vấn đề */}
-      <BottomSheetModal visible={showIssueGroup} onClose={() => setShowIssueGroup(false)} maxHeightPercent={35} keyboardAvoiding={false}>
-        <View style={styles.sheetInner}>
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>{t('crm_issue.select_issue_group')}</Text>
-            <TouchableOpacity onPress={() => setShowIssueGroup(false)} style={styles.sheetDone}>
-              <Text style={styles.sheetDoneText}>{t('common.close')}</Text>
-            </TouchableOpacity>
-          </View>
-          {groupNameOptions.map((opt) => (
-            <TouchableOpacity
-              key={opt.value}
-              onPress={() => {
-                setIssueGroup(opt.value);
-                setShowIssueGroup(false);
-              }}
-              style={[styles.sheetItem, issueGroup === opt.value && styles.sheetItemSelected]}>
-              <Text
-                style={[
-                  styles.sheetItemText,
-                  issueGroup === opt.value && styles.sheetItemTextSelected,
-                ]}>
-                {opt.label}
-              </Text>
-              {issueGroup === opt.value ? (
-                <Ionicons name="checkmark-circle" size={22} color={PRIMARY} />
-              ) : null}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </BottomSheetModal>
+      {/* Nhóm vấn đề */}
+      <MultiPickerSheet
+        visible={showIssueGroup}
+        onClose={() => setShowIssueGroup(false)}
+        mode="single"
+        title={t('crm_issue.select_issue_group')}
+        options={groupNameOptions}
+        selected={issueGroup ? [issueGroup] : []}
+        onToggle={(value) => setIssueGroup(value)}
+      />
 
       {/* Người thực hiện (PIC) — chỉ khi Care tạo trực tiếp */}
-      <BottomSheetModal visible={showPic} onClose={() => setShowPic(false)} maxHeightPercent={55} keyboardAvoiding={false} fillHeight>
-        <View style={styles.sheetInner}>
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>{t('crm_issue.select_pic')}</Text>
-            <TouchableOpacity onPress={() => setShowPic(false)} style={styles.sheetDone}>
-              <Text style={styles.sheetDoneText}>{t('common.close')}</Text>
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity
-            onPress={() => {
-              setPic('');
-              setShowPic(false);
-            }}
-            style={styles.sheetItem}>
-            <Text style={styles.clearText}>{t('crm_issue.clear_pic')}</Text>
-          </TouchableOpacity>
-          <ScrollView keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
-            {picItems.length === 0 ? (
-              <Text style={styles.sheetHint}>{t('crm_issue.no_pic_candidates')}</Text>
-            ) : null}
-            {picItems.map((u) => (
-              <TouchableOpacity
-                key={u.user_id}
-                onPress={() => {
-                  setPic(u.user_id);
-                  setShowPic(false);
-                }}
-                style={[styles.sheetItem, pic === u.user_id && styles.sheetItemSelected]}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text
-                    style={[styles.sheetItemText, pic === u.user_id && styles.sheetItemTextSelected]}
-                    numberOfLines={1}>
-                    {u.full_name || u.email}
-                  </Text>
-                  {u.job_title ? (
-                    <Text style={styles.sheetHint} numberOfLines={1}>
-                      {u.job_title}
-                    </Text>
-                  ) : null}
-                </View>
-                {pic === u.user_id ? (
-                  <Ionicons name="checkmark-circle" size={22} color={PRIMARY} />
-                ) : null}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      </BottomSheetModal>
+      {/* Người thực hiện (PIC) — chỉ khi Care tạo trực tiếp */}
+      <MultiPickerSheet
+        visible={showPic}
+        onClose={() => setShowPic(false)}
+        mode="single"
+        title={t('crm_issue.select_pic')}
+        options={picItems.map((u) => ({
+          value: u.user_id,
+          label: getPicDisplayName(u.full_name, u.email),
+          subtitle: u.job_title || undefined,
+        }))}
+        selected={pic ? [pic] : []}
+        emptyText={t('crm_issue.no_pic_candidates')}
+        onToggle={(value) => setPic(value)}
+        onClear={() => setPic('')}
+        clearLabel={t('crm_issue.clear_pic')}
+      />
 
-      <BottomSheetModal visible={showPriority} onClose={() => setShowPriority(false)} maxHeightPercent={40} keyboardAvoiding={false}>
-        <View style={styles.sheetInner}>
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>{t('crm_issue.priority')}</Text>
-            <TouchableOpacity onPress={() => setShowPriority(false)} style={styles.sheetDone}>
-              <Text style={styles.sheetDoneText}>{t('common.close')}</Text>
-            </TouchableOpacity>
-          </View>
-          {CRM_ISSUE_PRIORITY_ORDER.map((value) => ({
-            value,
-            label: labelForCrmIssuePriority(value, t),
-          })).map((item) => (
-            <TouchableOpacity
-              key={item.value}
-              onPress={() => {
-                setPriority(item.value);
-                setShowPriority(false);
-              }}
-              style={[styles.sheetItem, priority === item.value && styles.sheetItemSelected]}>
-              <Text style={[styles.sheetItemText, priority === item.value && styles.sheetItemTextSelected]}>
-                {item.label}
-              </Text>
-              {priority === item.value ? (
-                <Ionicons name="checkmark-circle" size={22} color={PRIMARY} />
-              ) : null}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </BottomSheetModal>
+      {/* Mức độ */}
+      <MultiPickerSheet
+        visible={showPriority}
+        onClose={() => setShowPriority(false)}
+        mode="single"
+        title={t('crm_issue.priority')}
+        options={CRM_ISSUE_PRIORITY_ORDER.map((value) => ({
+          value,
+          label: labelForCrmIssuePriority(value, t),
+        }))}
+        selected={[priority]}
+        onToggle={(value) => setPriority(value as CRMIssuePriority)}
+      />
 
       <ActionSheet
         visible={showAttachSheet}
@@ -1451,46 +1330,6 @@ const styles = StyleSheet.create({
     fontFamily: MULISH,
   },
   placeholder: { color: '#9CA3AF' },
-  sheetKeyboard: {
-    flex: 1,
-    minHeight: 200,
-  },
-  sheetScrollFlex: {
-    flex: 1,
-  },
-  sheetHint: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 8,
-    fontFamily: MULISH,
-  },
-  studentCodeSub: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2,
-    fontFamily: MULISH,
-  },
-  /** Dòng lớp trong sheet tìm học sinh — cùng logic phụ đề web */
-  studentClassSub: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2,
-    fontFamily: MULISH,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#D1D5DB',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  checkboxSelected: {
-    borderColor: PRIMARY,
-    backgroundColor: PRIMARY,
-  },
   textInput: {
     borderWidth: 1,
     borderColor: '#E5E7EB',
@@ -1604,67 +1443,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: MULISH,
   },
-  sheetInner: {
-    padding: 16,
-    flex: 1,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sheetTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: PRIMARY,
-    fontFamily: MULISH,
-    flex: 1,
-  },
-  sheetDone: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  sheetDoneText: {
-    color: PRIMARY,
-    fontWeight: '600',
-    fontFamily: MULISH,
-  },
-  searchInput: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    marginBottom: 8,
-    fontFamily: MULISH,
-  },
-  sheetItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-    gap: 8,
-  },
-  sheetItemSelected: {
-    backgroundColor: '#EFF6FF',
-    marginHorizontal: -8,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-  },
-  sheetItemText: {
-    flex: 1,
-    fontSize: 15,
-    color: '#374151',
-    fontFamily: MULISH,
-  },
-  sheetItemTextSelected: {
-    fontWeight: '600',
-    color: PRIMARY,
-  },
-  clearText: { fontSize: 14, color: '#6B7280', fontFamily: MULISH },
 });
 
 export default CRMIssueAddEditScreen;

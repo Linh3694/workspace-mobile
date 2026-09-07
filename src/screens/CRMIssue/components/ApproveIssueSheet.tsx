@@ -34,6 +34,7 @@ import {
 } from '../../../services/crmIssueService';
 import { getIssueUnitOptions, type IssueUnitOption } from '../../../services/organizationService';
 import { searchUsersForPicker } from '../../../services/userDirectoryService';
+import { getPicDisplayName } from '../../../utils/nameUtils';
 import { descendantUnitsOf, keepGroupsUnderDepartments } from '../shared/issueOrgUnits';
 import { MultiPickerSheet, type PickerOption } from './MultiPickerSheet';
 import { IssueParticipantsPreview } from './IssueParticipantsPreview';
@@ -337,7 +338,7 @@ export const ApproveIssueSheet: React.FC<Props> = ({
                   <Text
                     className={`text-sm ${pic === u.user_id ? 'font-semibold text-[#002855]' : 'text-gray-700'}`}
                     numberOfLines={1}>
-                    {u.full_name || u.email}
+                    {getPicDisplayName(u.full_name, u.email)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -381,65 +382,75 @@ export const ApproveIssueSheet: React.FC<Props> = ({
             </TouchableOpacity>
           </View>
         </View>
+
+        {/*
+          Ba picker phải nằm TRONG bottom sheet. Trên iOS mỗi Modal là một UIViewController,
+          present từ VC gần nhất: để ngoài thì chúng present từ VC gốc — mà VC gốc đang bận
+          present chính sheet duyệt → iOS từ chối, picker không hiện nên không chọn được phòng
+          ban. Nằm trong thì present từ VC của sheet nên xếp chồng đúng. (Android Modal là
+          Dialog nên kiểu nào cũng chạy — vì vậy bug chỉ thấy ở iOS.)
+        */}
+        <MultiPickerSheet
+          visible={showDept}
+          onClose={() => setShowDept(false)}
+          title={t('crm_issue.select_department')}
+          options={departmentOptions}
+          selected={deptIds}
+          onToggle={(value) =>
+            setDeptIds((prev) =>
+              prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
+            )
+          }
+          emptyText={t('crm_issue.no_departments')}
+          onClear={() => setDeptIds([])}
+        />
+
+        <MultiPickerSheet
+          visible={showGroups}
+          onClose={() => setShowGroups(false)}
+          title={t('crm_issue.related_groups')}
+          options={groupOptions}
+          selected={groupIds}
+          onToggle={(value) =>
+            setGroupIds((prev) =>
+              prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
+            )
+          }
+          emptyText={t('crm_issue.no_related_groups')}
+          onClear={() => setGroupIds([])}
+        />
+
+        {/* Người liên quan: tìm theo thư mục user (giống sheet sửa nhóm ở trang chi tiết) */}
+        <MultiPickerSheet
+          visible={showRelatedUsers}
+          onClose={() => setShowRelatedUsers(false)}
+          title={t('crm_issue.related_users')}
+          options={relatedUserIds.map((id) => ({
+            value: id,
+            label: relatedUserLabels[id] || id,
+          }))}
+          selected={relatedUserIds}
+          searchPlaceholder={t('crm_issue.related_users_search_placeholder')}
+          onSearch={async (term, page) => {
+            const res = await searchUsersForPicker(term, page);
+            return {
+              items: res.data.map((u) => ({
+                value: u.name,
+                label: u.display_name,
+                subtitle: u.email,
+              })),
+              hasMore: res.hasMore,
+            };
+          }}
+          onToggle={(value, option) => {
+            setRelatedUserLabels((prev) => ({ ...prev, [value]: option.label }));
+            setRelatedUserIds((prev) =>
+              prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
+            );
+          }}
+          onClear={() => setRelatedUserIds([])}
+        />
       </BottomSheetModal>
-
-      <MultiPickerSheet
-        visible={showDept}
-        onClose={() => setShowDept(false)}
-        title={t('crm_issue.select_department')}
-        options={departmentOptions}
-        selected={deptIds}
-        onToggle={(value) =>
-          setDeptIds((prev) =>
-            prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
-          )
-        }
-        emptyText={t('crm_issue.no_departments')}
-        onClear={() => setDeptIds([])}
-      />
-
-      <MultiPickerSheet
-        visible={showGroups}
-        onClose={() => setShowGroups(false)}
-        title={t('crm_issue.related_groups')}
-        options={groupOptions}
-        selected={groupIds}
-        onToggle={(value) =>
-          setGroupIds((prev) =>
-            prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
-          )
-        }
-        emptyText={t('crm_issue.no_related_groups')}
-        onClear={() => setGroupIds([])}
-      />
-
-      {/* Người liên quan: tìm theo thư mục user (giống sheet sửa nhóm ở trang chi tiết) */}
-      <MultiPickerSheet
-        visible={showRelatedUsers}
-        onClose={() => setShowRelatedUsers(false)}
-        title={t('crm_issue.related_users')}
-        options={relatedUserIds.map((id) => ({
-          value: id,
-          label: relatedUserLabels[id] || id,
-        }))}
-        selected={relatedUserIds}
-        searchPlaceholder={t('crm_issue.related_users_search_placeholder')}
-        onSearch={async (term) => {
-          const res = await searchUsersForPicker(term);
-          return res.data.map((u) => ({
-            value: u.name,
-            label: u.full_name || u.email,
-            subtitle: u.email,
-          }));
-        }}
-        onToggle={(value, option) => {
-          setRelatedUserLabels((prev) => ({ ...prev, [value]: option.label }));
-          setRelatedUserIds((prev) =>
-            prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]
-          );
-        }}
-        onClear={() => setRelatedUserIds([])}
-      />
     </>
   );
 };

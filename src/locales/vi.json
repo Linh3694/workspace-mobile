@@ -35,6 +35,7 @@
     "next": "Tiếp theo",
     "previous": "Trước",
     "close": "Đóng",
+    "retry": "Thử lại",
     "search": "Bạn cần tìm kiếm gì",
     "search_placeholder": "Hỏi WIS",
     "filter": "Lọc",
@@ -609,7 +610,14 @@
     "feed_reply_parent": "Phụ huynh phản hồi",
     "feed_parent_name": "Phụ huynh {{name}}",
     "feed_parent_link_warning": "Chưa liên kết góp ý",
-    "feed_parent_link_warning_content": "Vấn đề thuộc luồng Góp ý phụ huynh nhưng chưa liên kết bản ghi góp ý — không gửi phản hồi tới phụ huynh được."
+    "feed_parent_link_warning_content": "Vấn đề thuộc luồng Góp ý phụ huynh nhưng chưa liên kết bản ghi góp ý — không gửi phản hồi tới phụ huynh được.",
+    "sla_met": "Đạt SLA",
+    "sla_breached": "Quá SLA",
+    "sla_due_soon": "Sắp quá SLA",
+    "sla_on_track": "Đúng tiến độ",
+    "sla_due_at": "Hết hạn: {{at}}",
+    "sla_due_soon_banner": "Sắp quá SLA — còn {{remaining}} trước {{at}}",
+    "sla_breached_banner": "Quá SLA — đã trễ {{overdue}}. Cần xử lý ngay."
   },
   "family_relationship": {
     "father": "Bố",

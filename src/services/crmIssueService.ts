@@ -578,7 +578,14 @@ export type CrmStudentSearchHit = {
   current_class_title?: string;
 };
 
-/** Tìm CRM Student — dùng whitelisted API giống web (tránh 417 permission) */
+/**
+ * Tìm học sinh cho picker "Học sinh liên quan" — qua whitelisted API như web (tránh 417 permission).
+ *
+ * `erp.api.erp_sis.student.search_students` KHÔNG có tham số phân trang — docstring của nó
+ * ghi thẳng "returns all matching results without pagination", nên một lời gọi là có đủ mọi
+ * kết quả. Việc phân trang do UI lo: sheet chỉ render dần từng khúc khi người dùng cuộn tới
+ * (xem `STUDENT_PAGE_SIZE` ở `CRMIssueAddEditScreen`), không tốn thêm request nào.
+ */
 export async function searchCrmStudents(searchTerm: string): Promise<{
   success: boolean;
   data: CrmStudentSearchHit[];

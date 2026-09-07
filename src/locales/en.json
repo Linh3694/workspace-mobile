@@ -35,6 +35,7 @@
     "next": "Next",
     "previous": "Previous",
     "close": "Close",
+    "retry": "Retry",
     "search": "Search",
     "search_placeholder": "Ask WIS",
     "filter": "Filter",
@@ -596,7 +597,14 @@
     "feed_reply_parent": "Guardian replied",
     "feed_parent_name": "Guardian {{name}}",
     "feed_parent_link_warning": "Feedback not linked",
-    "feed_parent_link_warning_content": "This issue follows the guardian feedback flow but is not linked to a feedback record — replies cannot be sent to the guardian."
+    "feed_parent_link_warning_content": "This issue follows the guardian feedback flow but is not linked to a feedback record — replies cannot be sent to the guardian.",
+    "sla_met": "Met SLA",
+    "sla_breached": "SLA overdue",
+    "sla_due_soon": "SLA due soon",
+    "sla_on_track": "On schedule",
+    "sla_due_at": "Due: {{at}}",
+    "sla_due_soon_banner": "SLA due soon — {{remaining}} left, due {{at}}",
+    "sla_breached_banner": "SLA overdue by {{overdue}}. Needs attention now."
   },
   "family_relationship": {
     "father": "Father",

@@ -16,7 +16,6 @@ type Props = {
   onConfirm: (content: string) => void;
   /** Khi có — chế độ sửa log (API update_process_log) */
   editLogName?: string | null;
-  initialTitle?: string;
   initialContent?: string;
   loading?: boolean;
 };

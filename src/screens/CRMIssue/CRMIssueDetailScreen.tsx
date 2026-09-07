@@ -1,7 +1,7 @@
 /**
  * Chi tiết vấn đề CRM — redesign theo pattern Ticket/Feedback mobile + web IssueDetail
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -56,6 +56,7 @@ import type {
 import {
   CRM_ISSUE_RESULT_CHIP_STYLES,
   CRM_ISSUE_RESULT_NONE_CHIP_STYLE,
+  CRM_ISSUE_STATUS_LABELS,
   labelForCrmIssuePriority,
   labelForCrmIssueResult,
 } from '../../types/crmIssue';
@@ -185,13 +186,18 @@ const CRMIssueDetailScreen: React.FC = () => {
   const [showChangePic, setShowChangePic] = useState(false);
   /** Menu FAB: thêm log vs phản hồi phụ huynh (khi có source_feedback) */
   const [showFabMenu, setShowFabMenu] = useState(false);
+  /**
+   * Hành động đã chọn ở menu FAB, chờ menu tháo hẳn mới chạy. Trên iOS mở sheet kế
+   * ngay trong lượt đóng menu sẽ present khi VC cũ còn đang dismiss → treo app.
+   * Cùng cách làm với sheet đính kèm ở `CRMIssueAddEditScreen`.
+   */
+  const pendingFabAction = useRef<string | null>(null);
   const [showReplyFeedback, setShowReplyFeedback] = useState(false);
   const [linkedFeedbackData, setLinkedFeedbackData] = useState<LinkedFeedbackPayload | null>(null);
   const [loadingLinkedFeedback, setLoadingLinkedFeedback] = useState(false);
   /** Email thành viên các phòng ban issue — canWriteCrmIssue */
   const [deptMemberEmails, setDeptMemberEmails] = useState<string[]>([]);
   const [editLogName, setEditLogName] = useState<string | null>(null);
-  const [initialLogTitle, setInitialLogTitle] = useState('');
   const [initialLogContent, setInitialLogContent] = useState('');
 
   const load = useCallback(
@@ -398,7 +404,30 @@ const CRMIssueDetailScreen: React.FC = () => {
     if (!issue) return;
     setActionLoading(true);
     try {
-      const res = await changeIssueStatus(issue.name, status, result, note);
+      /**
+       * Giữ nguyên trạng thái mà chỉ ghi chú thì PHẢI đi `add_process_log`.
+       * `change_issue_status` từ chối "chuyển" sang chính trạng thái đang có — mọi nhánh
+       * đều chết ở backend (`Chi duoc chuyen sang Dang xu ly tu Tiep nhan hoac Hoan thanh`,
+       * `Chi duoc hoan thanh van de tu trang thai Dang xu ly`, `Khong duoc chuyen thu cong
+       * sang ... Tiep nhan`), nên trước đây ghi chú đơn thuần luôn báo lỗi kỹ thuật.
+       * Chia nhánh y hệt web `useIssueDetailV2.handleSubmitUpdate`.
+       */
+      const statusChanged = status !== issue.status;
+      const res = statusChanged
+        ? await changeIssueStatus(
+            issue.name,
+            status,
+            result,
+            // Nội dung log lưu vào DB nên để nguyên tiếng Việt như web, không qua i18n
+            note
+              ? `${note}\n\nChuyển trạng thái → ${CRM_ISSUE_STATUS_LABELS[status] || status}.`
+              : undefined
+          )
+        : await addProcessLog({
+            issue_name: issue.name,
+            title: 'Cập nhật xử lý',
+            content: (note || '').trim(),
+          });
       setShowStatus(false);
       if (res.success) {
         Alert.alert(t('common.success'), res.message || '');
@@ -422,7 +451,6 @@ const CRMIssueDetailScreen: React.FC = () => {
         : await addProcessLog({ issue_name: issue.name, content });
       setShowLog(false);
       setEditLogName(null);
-      setInitialLogTitle('');
       setInitialLogContent('');
       if (res.success) await load();
       else Alert.alert(t('common.error'), res.message || '');
@@ -744,7 +772,10 @@ const CRMIssueDetailScreen: React.FC = () => {
         {issue.approval_status === 'Da duyet' && issue.sla_status === 'Warning' && issue.sla_deadline ? (
           <View className="mx-4 mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
             <Text className="text-sm text-amber-950">
-              Sắp quá SLA — còn {formatSlaRemainingVi(issue.sla_deadline)} trước {fmtDateTime(issue.sla_deadline)}
+              {t('crm_issue.sla_due_soon_banner', {
+                remaining: formatSlaRemainingVi(issue.sla_deadline),
+                at: fmtDateTime(issue.sla_deadline),
+              })}
             </Text>
           </View>
         ) : null}
@@ -752,13 +783,15 @@ const CRMIssueDetailScreen: React.FC = () => {
           <View className="mx-4 mb-3 flex-row items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5">
             <Ionicons name="warning" size={18} color="#B91C1C" style={{ marginTop: 2 }} />
             <Text className="flex-1 text-sm text-red-950">
-              Quá SLA — đã trễ {formatSlaOverdueVi(issue.sla_deadline)}. Cần xử lý ngay.
+              {t('crm_issue.sla_breached_banner', {
+                overdue: formatSlaOverdueVi(issue.sla_deadline),
+              })}
             </Text>
           </View>
         ) : null}
         {issue.approval_status === 'Da duyet' && issue.sla_status === 'Passed' ? (
           <View className="mx-4 mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-            <Text className="text-sm font-medium text-emerald-900">Đạt SLA</Text>
+            <Text className="text-sm font-medium text-emerald-900">{t('crm_issue.sla_met')}</Text>
           </View>
         ) : null}
 
@@ -965,18 +998,18 @@ const CRMIssueDetailScreen: React.FC = () => {
                               : '#002855',
                     }}>
                     {issue.sla_status === 'Passed'
-                      ? 'Đạt SLA'
+                      ? t('crm_issue.sla_met')
                       : issue.sla_status === 'Breached'
-                        ? 'Quá SLA'
+                        ? t('crm_issue.sla_breached')
                         : issue.sla_status === 'Warning'
-                          ? 'Sắp quá SLA'
+                          ? t('crm_issue.sla_due_soon')
                           : issue.sla_status === 'On track'
-                            ? 'Đúng tiến độ'
+                            ? t('crm_issue.sla_on_track')
                             : '—'}
                   </Text>
                   {issue.sla_deadline ? (
                     <Text className="mt-1 text-right text-sm text-gray-500">
-                      Hết hạn: {fmtDateTime(issue.sla_deadline)}
+                      {t('crm_issue.sla_due_at', { at: fmtDateTime(issue.sla_deadline) })}
                     </Text>
                   ) : (
                     <Text className="mt-1 text-right text-sm text-gray-400">—</Text>
@@ -1214,7 +1247,6 @@ const CRMIssueDetailScreen: React.FC = () => {
               canEditLog={issue.can_edit_process_log === true}
               onEditLog={(log) => {
                 setEditLogName(log.name || null);
-                setInitialLogTitle(log.title || '');
                 setInitialLogContent(log.content || '');
                 setShowLog(true);
               }}
@@ -1232,7 +1264,6 @@ const CRMIssueDetailScreen: React.FC = () => {
                   setShowReplyFeedback(true);
                 } else if (canAddLog) {
                   setEditLogName(null);
-                  setInitialLogTitle('');
                   setInitialLogContent('');
                   setShowLog(true);
                 }
@@ -1290,13 +1321,16 @@ const CRMIssueDetailScreen: React.FC = () => {
         }))}
         selected={relatedUserDraft}
         searchPlaceholder={t('crm_issue.related_users_search_placeholder')}
-        onSearch={async (term) => {
-          const res = await searchUsersForPicker(term);
-          return res.data.map((u) => ({
-            value: u.name,
-            label: u.full_name || u.email,
-            subtitle: u.email,
-          }));
+        onSearch={async (term, page) => {
+          const res = await searchUsersForPicker(term, page);
+          return {
+            items: res.data.map((u) => ({
+              value: u.name,
+              label: u.display_name,
+              subtitle: u.email,
+            })),
+            hasMore: res.hasMore,
+          };
         }}
         onToggle={(value, option) => {
           setRelatedUserLabels((prev) => ({ ...prev, [value]: option.label }));
@@ -1325,12 +1359,10 @@ const CRMIssueDetailScreen: React.FC = () => {
         onClose={() => {
           setShowLog(false);
           setEditLogName(null);
-          setInitialLogTitle('');
           setInitialLogContent('');
         }}
         onConfirm={onLogConfirm}
         editLogName={editLogName}
-        initialTitle={initialLogTitle}
         initialContent={initialLogContent}
         loading={actionLoading}
       />
@@ -1348,16 +1380,24 @@ const CRMIssueDetailScreen: React.FC = () => {
           ...(canReplyParent ? [{ label: t('crm_issue.reply_parent'), value: 'reply' }] : []),
         ]}
         onSelect={(value) => {
+          pendingFabAction.current = value;
           setShowFabMenu(false);
-          if (value === 'log') {
+        }}
+        onCancel={() => {
+          pendingFabAction.current = null;
+          setShowFabMenu(false);
+        }}
+        onDismiss={() => {
+          const action = pendingFabAction.current;
+          if (!action) return;
+          pendingFabAction.current = null;
+          if (action === 'log') {
             setEditLogName(null);
-            setInitialLogTitle('');
             setInitialLogContent('');
             setShowLog(true);
           }
-          if (value === 'reply') setShowReplyFeedback(true);
+          if (action === 'reply') setShowReplyFeedback(true);
         }}
-        onCancel={() => setShowFabMenu(false)}
       />
 
       {/* Đổi phòng ban liên quan — chọn nhiều, lưu khi đóng sheet */}
