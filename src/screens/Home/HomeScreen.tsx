@@ -58,6 +58,7 @@ import ClassActivitySvg from '../../assets/class_activity.svg';
 import RoomBookingIcon from '../../assets/room-booking.svg';
 // Icon tile Họp phụ huynh 1:1 (SIS PT Meeting)
 import ParentMeetingIcon from '../../assets/parent-meeting.svg';
+import MyAssetsIcon from '../../assets/assign-devices.svg';
 import { hasCrmAccess } from '../../utils/crmIssuePermissions';
 import {
   applyMenuTap,
@@ -331,6 +332,15 @@ const HomeScreen = () => {
     navigation.navigate(devicesRoute(user?.roles) as never);
   };
 
+  /**
+   * "Tài sản của tôi" — xác nhận biên bản bàn giao thiết bị, và phê duyệt nếu
+   * người dùng là Lãnh đạo đơn vị IT trên Sơ đồ tổ chức. Màn tự ẩn tab "Chờ
+   * duyệt" với người không có quyền, nên tile hiện cho mọi người là đúng.
+   */
+  const navigateToMyAssets = () => {
+    navigation.navigate(ROUTES.SCREENS.MY_HANDOVERS);
+  };
+
   const navigateToAttendance = () => {
     navigation.navigate(ROUTES.SCREENS.ATTENDANCE_HOME);
   };
@@ -425,6 +435,14 @@ const HomeScreen = () => {
       description: 'Quản lý thiết bị',
       onPress: navigateToDevices,
       key: 'devices',
+    },
+    {
+      id: 19,
+      title: 'Tài sản của tôi',
+      component: MyAssetsIcon,
+      description: 'Xác nhận bàn giao thiết bị',
+      onPress: navigateToMyAssets,
+      key: 'assets',
     },
     {
       id: 4,
@@ -644,6 +662,16 @@ const HomeScreen = () => {
       allowedKeys.add(key)
     );
   }
+
+  /**
+   * "Tài sản của tôi" — hiện cho MỌI người: ai cũng có thể được bàn giao thiết bị,
+   * và màn tự quyết định có hiện tab "Chờ duyệt" hay không dựa trên Sơ đồ tổ chức.
+   *
+   * ĐẶT SAU nhánh `allowedKeys.size === 0` vì cùng lý do với Họp PH 1:1 bên dưới:
+   * thêm trước sẽ khiến set khác rỗng và người không có role mobile nào mất luôn
+   * bộ tile tối thiểu (Ticket/Menu/Lịch).
+   */
+  allowedKeys.add('assets');
 
   /**
    * Họp PH 1:1 cho GIÁO VỤ (`SIS TDC`) — role Frappe, không phải role mobile.
