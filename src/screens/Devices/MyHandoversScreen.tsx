@@ -173,6 +173,11 @@ const MyHandoversScreen = () => {
             });
     }, [pendingAction?.type, terms]);
 
+    // Không có nội dung thì KHÔNG cho tích: trước đây hộp rỗng vẫn tích được (nội dung
+    // ngắn hơn khung -> coi như đã đọc), nên người dùng đồng ý với một tờ giấy trắng.
+    const termsLines = terms?.text?.vi ?? [];
+    const hasTerms = termsLines.length > 0 || (terms?.sections?.length ?? 0) > 0;
+
     const needsReason =
         pendingAction?.type === 'receiver-reject' || pendingAction?.type === 'manager-reject';
 
@@ -180,6 +185,13 @@ const MyHandoversScreen = () => {
         if (!pendingAction) return;
         if (needsReason && !reason.trim()) {
             Alert.alert('Thiếu thông tin', 'Vui lòng nhập lý do từ chối.');
+            return;
+        }
+        if (pendingAction.type === 'confirm' && !hasTerms) {
+            Alert.alert(
+                'Chưa thể xác nhận',
+                'Bản cam kết chưa có nội dung. Vui lòng báo phòng IT soạn và xuất bản trước.'
+            );
             return;
         }
         if (pendingAction.type === 'confirm' && !acceptedTerms) {
@@ -487,7 +499,7 @@ const MyHandoversScreen = () => {
                                     onContentSizeChange={(_w, h) => {
                                         // Nội dung ngắn hơn khung thì không có gì để cuộn — coi như
                                         // đã đọc, nếu không người dùng kẹt vĩnh viễn không tích được.
-                                        if (h <= 220) setReadToEnd(true);
+                                        if (h <= 220 && hasTerms) setReadToEnd(true);
                                     }}
                                     scrollEventThrottle={16}
                                 >
@@ -498,6 +510,24 @@ const MyHandoversScreen = () => {
                                     ) : !terms ? (
                                         <Text className="text-sm text-gray-500">
                                             Đang tải điều khoản…
+                                        </Text>
+                                    ) : termsLines.length > 0 ? (
+                                        termsLines.map((line, i) => (
+                                            <Text
+                                                key={`${i}-${line.slice(0, 24)}`}
+                                                className={
+                                                    line.startsWith('•')
+                                                        ? 'text-sm text-gray-700 mb-1'
+                                                        : 'text-sm font-semibold text-gray-800 mt-2 mb-1'
+                                                }
+                                            >
+                                                {line}
+                                            </Text>
+                                        ))
+                                    ) : terms.sections.length === 0 ? (
+                                        <Text className="text-sm text-red-600">
+                                            Bản cam kết chưa có nội dung. Vui lòng báo phòng IT soạn
+                                            và xuất bản trước khi xác nhận.
                                         </Text>
                                     ) : (
                                         terms.sections.map((sec) => (
@@ -528,10 +558,12 @@ const MyHandoversScreen = () => {
                                     </Text>
                                 ) : null}
                                 <TouchableOpacity
-                                    onPress={() => readToEnd && setAcceptedTerms((v) => !v)}
-                                    disabled={!readToEnd}
+                                    onPress={() =>
+                                        readToEnd && hasTerms && setAcceptedTerms((v) => !v)
+                                    }
+                                    disabled={!readToEnd || !hasTerms}
                                     className={`flex-row items-start mb-3 ${
-                                        readToEnd ? '' : 'opacity-50'
+                                        readToEnd && hasTerms ? '' : 'opacity-50'
                                     }`}
                                 >
                                     <View

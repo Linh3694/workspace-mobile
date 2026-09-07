@@ -149,6 +149,10 @@ export interface HandoverRecord {
 export interface HandoverTerms {
   titleVi: string;
   titleEn: string;
+  version?: number;
+  /** Nội dung dạng dòng — app không render HTML được nên backend dựng sẵn */
+  text?: { vi: string[]; en: string[] } | null;
+  /** Chỉ dùng khi chưa ai xuất bản văn bản */
   sections: Array<{
     titleVi: string;
     titleEn: string;
