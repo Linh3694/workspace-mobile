@@ -404,11 +404,15 @@ class DeviceService {
   // Get device by ID (updated endpoint)
   async getDeviceById(deviceType: DeviceType, id: string): Promise<Device | null> {
     try {
-      const data = await this.invGet<Device>('device.get_device_by_id', {
+      // get_device_by_id bọc single_item_response → payload nằm trong `.data`,
+      // khác get_devices (trả dict thẳng). Thiếu bước này thì màn chi tiết nhận
+      // nguyên envelope: name/status undefined → tiêu đề trắng, trạng thái
+      // "Không xác định", mất luôn dãy nút thao tác.
+      const payload = await this.invGet<any>('device.get_device_by_id', {
         device_type: deviceType,
         device_id: id,
       });
-      return data || null;
+      return this.unwrapData<Device>(payload) || null;
     } catch (error) {
       console.error('Error fetching device by ID:', error);
       return null;
@@ -609,11 +613,22 @@ class DeviceService {
     });
   }
 
-  // ===== Xác nhận điện tử biên bản bàn giao (erp.api.erp_inventory.handover_sign) =====
-  // Các endpoint này trả success_response/single_item_response → payload nằm trong `.data`,
-  // khác device.* (trả dict thẳng) nên phải bóc thêm một lớp.
+  // Bóc lớp envelope { success, message, data } của api_response.py.
+  //
+  // Backend erp_inventory KHÔNG đồng nhất: phần lớn endpoint trả dict thẳng
+  // (paginated_devices_response, room.get_all_rooms, inspection.*…), nhưng
+  // device.get_device_by_id và toàn bộ handover_sign.* lại bọc qua
+  // single_item_response/success_response. Nhận diện envelope bằng cờ `success`
+  // chứ không phải sự tồn tại của key `data`, để không cắt nhầm payload thật.
+  //
+  // Khi success=false thì NÉM lỗi thay vì trả envelope: caller có try/catch để
+  // báo người dùng, còn trả về sẽ khiến màn hình render một object rỗng — đúng
+  // triệu chứng tên thiết bị trắng và trạng thái "Không xác định".
   private unwrapData<T>(payload: any): T {
-    if (payload && typeof payload === 'object' && 'data' in payload) {
+    if (payload && typeof payload === 'object' && 'success' in payload) {
+      if (payload.success === false) {
+        throw new Error(payload.message || 'Yêu cầu không thành công');
+      }
       return payload.data as T;
     }
     return payload as T;
