@@ -60,6 +60,30 @@ const DEVICE_TYPE_LABELS: Record<string, string> = {
     tool: 'Công cụ',
 };
 
+// Khớp `_specs_from_doc` ở backend; chỉ in dòng có giá trị nên dùng chung cả 6 loại.
+const SPEC_LABELS: Array<[string, string]> = [
+    ['processor', 'Bộ xử lý'],
+    ['ram', 'RAM'],
+    ['storage', 'Bộ nhớ'],
+    ['display', 'Màn hình'],
+    ['ip', 'Địa chỉ IP'],
+    ['imei1', 'IMEI 1'],
+    ['imei2', 'IMEI 2'],
+    ['phone_number', 'Số điện thoại'],
+];
+
+const deviceSpecRows = (device: HandoverRecord['device']) => {
+    const rows: Array<{ label: string; value: string }> = [];
+    if (device.manufacturer) rows.push({ label: 'Hãng', value: device.manufacturer });
+    if (device.releaseYear) rows.push({ label: 'Năm sản xuất', value: String(device.releaseYear) });
+    const specs = device.specs || {};
+    for (const [key, label] of SPEC_LABELS) {
+        const v = specs[key];
+        if (v && String(v).trim()) rows.push({ label, value: String(v) });
+    }
+    return rows;
+};
+
 const formatDateTime = (value?: string) => {
     if (!value) return '—';
     const date = new Date(value);
@@ -83,7 +107,10 @@ const MyHandoversScreen = () => {
     const [payload, setPayload] = useState<MyHandoversPayload | null>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [tab, setTab] = useState<TabKey>('to-confirm');
+    // `null` = chưa chọn -> tự chọn theo dữ liệu; có giá trị = tôn trọng lựa chọn.
+    // Bản trước ghi đè "có hồ sơ chờ thì luôn về Chờ xác nhận" trên mọi lần render,
+    // nên hễ có hồ sơ chờ là bấm tab nào cũng không chuyển được.
+    const [tab, setTab] = useState<TabKey | null>(null);
     const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
     const [reason, setReason] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -135,7 +162,8 @@ const MyHandoversScreen = () => {
         return null;
     }, [focusHandoverId, toConfirm, toApprove, myDevices, history]);
 
-    const activeTab: TabKey = focusedTab ?? (toConfirm.length > 0 ? 'to-confirm' : tab);
+    const activeTab: TabKey =
+        focusedTab ?? tab ?? (toConfirm.length > 0 ? 'to-confirm' : 'in-use');
 
     const tabs: Array<{ key: TabKey; label: string; count?: number }> = [
         { key: 'to-confirm', label: 'Chờ xác nhận', count: toConfirm.length },
@@ -255,8 +283,7 @@ const MyHandoversScreen = () => {
     const renderRecord = (record: HandoverRecord) => {
         const badge = record.signingStatus ? SIGNING_LABELS[record.signingStatus] : null;
         const highlighted = record.name === focusHandoverId;
-        const specs = record.device.specs || {};
-        const specText = [specs.processor, specs.ram, specs.storage].filter(Boolean).join(' · ');
+        const specRows = deviceSpecRows(record.device);
 
         return (
             <View
@@ -274,9 +301,7 @@ const MyHandoversScreen = () => {
                             {DEVICE_TYPE_LABELS[record.device.deviceType] || record.device.deviceType}
                             {record.device.serial ? ` · ${record.device.serial}` : ''}
                         </Text>
-                        {specText ? (
-                            <Text className="text-sm text-gray-500 mt-0.5">{specText}</Text>
-                        ) : null}
+
                     </View>
                     {badge ? (
                         <View className={`px-2 py-1 rounded-full ${badge.bg}`}>
@@ -284,6 +309,20 @@ const MyHandoversScreen = () => {
                         </View>
                     ) : null}
                 </View>
+
+                {specRows.length > 0 ? (
+                    <View className="bg-gray-50 rounded-lg px-3 py-2 mb-2">
+                        <Text className="text-xs font-semibold text-gray-700 mb-1">Cấu hình</Text>
+                        {specRows.map((r) => (
+                            <View key={r.label} className="flex-row justify-between mb-0.5">
+                                <Text className="text-sm text-gray-500">{r.label}</Text>
+                                <Text className="text-sm text-gray-800 font-medium ml-3 flex-shrink text-right">
+                                    {r.value}
+                                </Text>
+                            </View>
+                        ))}
+                    </View>
+                ) : null}
 
                 <View className="border-t border-gray-200 pt-2">
                     <Text className="text-sm text-gray-600">
@@ -478,12 +517,24 @@ const MyHandoversScreen = () => {
                                   ? 'Phê duyệt biên bản bàn giao'
                                   : 'Từ chối biên bản'}
                         </Text>
-                        <Text className="text-sm text-gray-600 mb-3">
+                        <Text className="text-sm text-gray-600 mb-2">
                             {pendingAction?.record.device.name}
                             {pendingAction?.record.device.serial
                                 ? ` · ${pendingAction.record.device.serial}`
                                 : ''}
                         </Text>
+                        {pendingAction && deviceSpecRows(pendingAction.record.device).length > 0 ? (
+                            <View className="bg-gray-50 rounded-lg px-3 py-2 mb-3">
+                                {deviceSpecRows(pendingAction.record.device).map((r) => (
+                                    <View key={r.label} className="flex-row justify-between mb-0.5">
+                                        <Text className="text-sm text-gray-500">{r.label}</Text>
+                                        <Text className="text-sm text-gray-800 font-medium ml-3 flex-shrink text-right">
+                                            {r.value}
+                                        </Text>
+                                    </View>
+                                ))}
+                            </View>
+                        ) : null}
 
                         {pendingAction?.type === 'confirm' ? (
                             <>
