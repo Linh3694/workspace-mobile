@@ -58,7 +58,7 @@ import ClassActivitySvg from '../../assets/class_activity.svg';
 import RoomBookingIcon from '../../assets/room-booking.svg';
 // Icon tile Họp phụ huynh 1:1 (SIS PT Meeting)
 import ParentMeetingIcon from '../../assets/parent-meeting.svg';
-import MyAssetsIcon from '../../assets/assign-devices.svg';
+import MyAssetsIcon from '../../assets/my-assets.svg';
 import { hasCrmAccess } from '../../utils/crmIssuePermissions';
 import {
   applyMenuTap,
