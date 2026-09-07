@@ -317,13 +317,13 @@ export function canWriteNote(slot: PTTeacherSlot): boolean {
  *
  * ⚠️ DANH SÁCH NÀY PHẢI NẰM TRỌN trong nhóm được `_report_scope` (backend) cho xem cả đợt:
  * `REPORT_READER_ROLES` của `erp/api/erp_sis/parent_meeting.py` (`System Manager`, `SIS BOD`,
- * `Mobile BOD`) cộng nhóm có quyền GHI trên đợt (`SIS TDC`). Thừa một role ở đây là hỏng theo
+ * `Mobile BOD`) cộng nhóm có quyền GHI trên đợt (`SIS Manager`). Thừa một role ở đây là hỏng theo
  * kiểu tệ nhất: client cho vào màn hình, backend trả 403, và người dùng đọc được một con số
  * sai chứ không phải một thông báo lỗi. Thêm role ở đây thì phải thêm ở đó trước.
  */
 export const PT_ADMIN_VIEW_ROLES = [
   'System Manager',
-  'SIS TDC',
+  'SIS Manager',
   'SIS BOD',
   'Mobile BOD',
 ] as const;
@@ -332,12 +332,12 @@ export const PT_ADMIN_VIEW_ROLES = [
  * Nhóm được XUẤT BẢN lịch — CỐ TÌNH không có BGH.
  *
  * Backend `publish_schedule` chốt bằng `frappe.has_permission("SIS PT Meeting Event", "write")`,
- * mà DocType chỉ cấp `write` cho `System Manager` và `SIS TDC` (giáo vụ); `SIS BOD` là read-only.
+ * mà DocType chỉ cấp `write` cho `System Manager` và `SIS Manager` (giáo vụ); `SIS BOD` là read-only.
  * Đây không phải chi tiết kỹ thuật mà là nghiệp vụ: xuất bản gửi thông báo cho toàn bộ phụ huynh
  * và KHÔNG rút lại được, nên chỉ người nắm tình trạng danh sách chờ (giáo vụ) mới được bấm.
  * Giữ đúng một nguồn phán quyền với web (`roleUtils.canManageParentMeeting`).
  */
-export const PT_PUBLISH_ROLES = ['System Manager', 'SIS TDC'] as const;
+export const PT_PUBLISH_ROLES = ['System Manager', 'SIS Manager'] as const;
 
 function hasAnyRole(roles: string[], allowed: readonly string[]): boolean {
   return allowed.some((r) => roles.includes(r));

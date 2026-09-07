@@ -71,7 +71,6 @@ type Props = {
   viewerIsHomeroom?: boolean;
   onTogglePollOption?: (message: ChatMessage, optionId: string) => void;
   onOpenPollVoters?: (message: ChatMessage) => void;
-  onClosePoll?: (message: ChatMessage) => void;
   /** Bỏ trống = không hiện nút sửa (vd nhóm chỉ đọc). */
   onEditPoll?: (message: ChatMessage) => void;
 };
@@ -113,7 +112,6 @@ export const ExchangeMessageBubble = memo(
     viewerIsHomeroom,
     onTogglePollOption,
     onOpenPollVoters,
-    onClosePoll,
     onEditPoll,
   }: Props) {
     const bubbleWrapRef = useRef<View>(null);
@@ -194,8 +192,15 @@ export const ExchangeMessageBubble = memo(
       return order.slice(0, 3);
     }, [message.reactions]);
 
+    // Khai báo TRƯỚC `hasReactions` vì nhánh cảm xúc phụ thuộc vào nó.
+    // Bình chọn render KHÔNG khung bong bóng: bubble "của mình" nền teal chữ trắng sẽ nuốt mất
+    // thanh phần trăm. `content` ("[Bình chọn] …") chỉ để preview/bản app cũ nên không in ra.
+    const poll = !recalled ? (message.poll ?? null) : null;
+
     const reactionTotal = message.reactions?.length ?? 0;
-    const hasReactions = reactionUniq.length > 0 || reactionTotal > 0;
+    // Tin bình chọn không nhận cảm xúc — chip cũ (nếu có từ trước) cũng ẩn cho khớp app PH,
+    // vốn đã chặn cả chip lẫn bảng emoji trong overlay.
+    const hasReactions = !poll && (reactionUniq.length > 0 || reactionTotal > 0);
     // Chip cảm xúc nổi ở `bottom: -8` (thò 8px xuống dưới bong bóng) nên `mb-1` không đủ chỗ
     // — tin kế tiếp đè lên chip. Có chip thì nới đáy ra (đồng bộ 3 app còn lại).
     const rowMb = hasReactions ? 'mb-4' : baseRowMb;
@@ -215,9 +220,6 @@ export const ExchangeMessageBubble = memo(
       !message.replyTo &&
       atts.length === 0 &&
       !!parseChatWislifeStickerContent(message.content);
-    // Bình chọn cũng render KHÔNG khung: bubble "của mình" nền teal chữ trắng sẽ nuốt mất thanh
-    // phần trăm. `content` ("[Bình chọn] …") chỉ để preview/bản app cũ nên không in ra.
-    const poll = !recalled ? (message.poll ?? null) : null;
     const isFrameless = isMediaOnly || isStickerOnly || !!poll;
 
     const bubbleInner = (
@@ -273,14 +275,12 @@ export const ExchangeMessageBubble = memo(
                   <ExchangePollCard
                     poll={poll}
                     pending={pollPending}
-                    canClose={isMine || viewerIsHomeroom}
                     canEdit={(isMine || viewerIsHomeroom) && !pollReadOnly}
                     readOnly={pollReadOnly}
                     maxWidth={bubbleMaxWidth}
                     timeLabel={showTimestamp ? formatChatTimeVi(message.createdAt) : undefined}
                     onToggleOption={(optionId) => onTogglePollOption?.(message, optionId)}
                     onOpenVoters={() => onOpenPollVoters?.(message)}
-                    onClose={() => onClosePoll?.(message)}
                     onEdit={onEditPoll ? () => onEditPoll(message) : undefined}
                   />
                 );
@@ -457,7 +457,6 @@ export const ExchangeMessageBubble = memo(
     prev.viewerIsHomeroom === next.viewerIsHomeroom &&
     prev.onTogglePollOption === next.onTogglePollOption &&
     prev.onOpenPollVoters === next.onOpenPollVoters &&
-    prev.onClosePoll === next.onClosePoll &&
     prev.onEditPoll === next.onEditPoll &&
     prev.isMine === next.isMine &&
     prev.replyDisabled === next.replyDisabled &&

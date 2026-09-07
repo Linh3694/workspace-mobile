@@ -102,6 +102,8 @@ export function CreatePollSheet({
   poll,
   onSubmit,
   onUpdate,
+  onClosePoll,
+  onReopenPoll,
   onClose,
 }: {
   visible: boolean;
@@ -112,6 +114,14 @@ export function CreatePollSheet({
   onSubmit: (payload: CreateChatPollPayload) => void;
   /** Bắt buộc khi `mode='edit'`. */
   onUpdate?: (payload: UpdateChatPollPayload) => void;
+  /**
+   * Kết thúc bình chọn (mode edit, bình chọn đang mở). Bỏ trống = ẩn thao tác.
+   * Đặt trong sheet chứ không trên thẻ: hàng tiêu đề thẻ chỉ đủ chỗ cho một nút, và chỗ đó
+   * dành cho "Sửa" — không có nó thì GV mất luôn đường vào đây.
+   */
+  onClosePoll?: () => void;
+  /** Mở lại bình chọn đã kết thúc (mode edit). Bỏ trống = ẩn thao tác. */
+  onReopenPoll?: () => void;
   onClose: () => void;
 }) {
   const { t } = useLanguage();
@@ -292,6 +302,32 @@ export function CreatePollSheet({
   ];
 
   const customActive = deadlineMode === 'custom';
+
+  /**
+   * "Kết thúc" ↔ "Mở lại" là hai chiều của cùng một thao tác nên dùng chung một chỗ ở chân sheet,
+   * không bao giờ hiện cùng lúc. Trên thẻ chỉ còn ổ khóa báo trạng thái.
+   */
+  const lifecycleAction = useMemo<
+    { icon: keyof typeof Ionicons.glyphMap; label: string; color: string; onPress: () => void } | null
+  >(() => {
+    if (!isEdit) return null;
+    if (poll?.isClosed) {
+      if (!onReopenPoll) return null;
+      return {
+        icon: 'lock-open-outline',
+        label: t('exchange.poll_reopen_action'),
+        color: ACCENT,
+        onPress: onReopenPoll,
+      };
+    }
+    if (!onClosePoll) return null;
+    return {
+      icon: 'lock-closed-outline',
+      label: t('exchange.poll_close_action_full'),
+      color: '#B45309',
+      onPress: onClosePoll,
+    };
+  }, [isEdit, poll?.isClosed, onReopenPoll, onClosePoll, t]);
 
   return (
     <>
@@ -509,6 +545,28 @@ export function CreatePollSheet({
             style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E5E7EB' }}
             className="px-4 pb-1 pt-3"
           >
+            {/* Vòng đời bình chọn — chỉ ở mode sửa. Mở lại là thao tác nghịch của Kết thúc nên
+                hai nút dùng chung một chỗ, không bao giờ hiện cùng lúc. */}
+            {isEdit && lifecycleAction ? (
+              <Pressable
+                disabled={Boolean(submitting)}
+                onPress={lifecycleAction.onPress}
+                style={{
+                  borderColor: lifecycleAction.color,
+                  opacity: submitting ? 0.5 : 1,
+                }}
+                className="mb-2 flex-row items-center justify-center gap-2 rounded-xl border py-2.5"
+              >
+                <Ionicons name={lifecycleAction.icon} size={16} color={lifecycleAction.color} />
+                <Text
+                  style={{ color: lifecycleAction.color }}
+                  className="font-mulish-bold text-sm"
+                >
+                  {lifecycleAction.label}
+                </Text>
+              </Pressable>
+            ) : null}
+
             <Pressable
               disabled={!canSubmit}
               onPress={handleSubmit}

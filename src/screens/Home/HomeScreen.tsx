@@ -646,17 +646,17 @@ const HomeScreen = () => {
   }
 
   /**
-   * Họp PH 1:1 cho GIÁO VỤ (`SIS TDC`) — role Frappe, không phải role mobile.
+   * Họp PH 1:1 cho GIÁO VỤ (`SIS Manager`) — role Frappe, không phải role mobile.
    *
    * Giáo vụ là nhóm DUY NHẤT được xuất bản lịch (backend chỉ cấp `write` trên
-   * `SIS PT Meeting Event` cho `System Manager` + `SIS TDC`), nhưng app chưa có role
-   * `Mobile TDC` để nhận diện họ; đối chiếu thẳng role backend là cách duy nhất hiện có —
+   * `SIS PT Meeting Event` cho `System Manager` + `SIS Manager`), nhưng app chưa có role
+   * mobile tương ứng để nhận diện họ; đối chiếu thẳng role backend là cách duy nhất hiện có —
    * cùng cách tile "Vấn đề CRM" đang làm ở trên.
    *
    * ĐẶT SAU nhánh `allowedKeys.size === 0` là có chủ đích: nếu thêm trước, một giáo vụ không
    * mang role mobile nào sẽ có set khác rỗng và mất luôn bộ tile tối thiểu (Ticket/Menu/Lịch).
    */
-  if (roles.includes('SIS TDC') || roles.includes('System Manager')) {
+  if (roles.includes('SIS Manager') || roles.includes('System Manager')) {
     allowedKeys.add('parent_meeting');
   }
 

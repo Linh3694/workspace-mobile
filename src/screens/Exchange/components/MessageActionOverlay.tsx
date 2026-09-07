@@ -23,11 +23,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RevokeIcon from '../../../assets/revoke.svg';
 import ReactionEmoji from '../../../components/Wislife/ReactionEmoji';
 import { ExchangeMessageAttachments } from './ExchangeMessageAttachments';
+import { ExchangePollCard } from './ExchangePollCard';
 import { ChatFormattedText } from './ChatFormattedText';
 import type { ChatEmoji, ChatMessage } from '../../../types/chat';
 import { parseChatWislifeStickerContent } from '../../../utils/chatWislifeSticker';
 import { CHAT_REACTION_EMOJIS, resolveChatReactionCode } from '../../../utils/emojiUtils';
-import { formatChatDisplayName } from '../exchangeChatThreadUtils';
+import { formatChatDisplayName, formatChatTimeVi } from '../exchangeChatThreadUtils';
 
 const GAP = 10;
 const CARD_PAD_V = 24;
@@ -58,6 +59,11 @@ type Props = {
   senderDisplayName?: string;
   replySenderDisplayName?: string;
   locked: boolean;
+  /**
+   * Ẩn riêng bảng cảm xúc mà vẫn giữ nguyên hàng hành động (dùng cho tin bình chọn — loại tin
+   * không nhận cảm xúc). Bỏ trống thì bám theo `locked` như trước.
+   */
+  reactionsDisabled?: boolean;
   /** Hiện nút Thu hồi (tin của mình, chưa thu hồi, nhóm không locked). */
   showRecallButton: boolean;
   /** Còn trong khung 15 phút — nếu false vẫn hiện icon nhưng mờ / bấm báo hết hạn. */
@@ -86,6 +92,7 @@ export function MessageActionOverlay({
   senderDisplayName,
   replySenderDisplayName,
   locked,
+  reactionsDisabled,
   showRecallButton,
   canRecall,
   bubbleMaxWidth,
@@ -104,12 +111,18 @@ export function MessageActionOverlay({
   const cardScale = useRef(new Animated.Value(0.94)).current;
   const cardY = useRef(new Animated.Value(8)).current;
 
+  const recalled = Boolean(message.recalledAt);
+  /** Tin bình chọn — bản xem trước phải là chính thẻ, không phải chuỗi nội bộ "[Bình chọn] …". */
+  const poll = !recalled ? (message.poll ?? null) : null;
+  /** Nhóm khoá thì ẩn cảm xúc như cũ; tin bình chọn cũng ẩn (khớp app PH). */
+  const hideReactions = reactionsDisabled ?? locked;
+
   /** Một hàng: Trả lời + Sao chép + Thu hồi (nếu có). */
   const stackHeight = useMemo(() => {
     const actionOnly = CARD_PAD_V + ACTION_ROW_H;
-    if (locked) return actionOnly;
+    if (hideReactions) return actionOnly;
     return EMOJI_PILL_H + PILL_TO_ACTION_GAP + actionOnly;
-  }, [locked]);
+  }, [hideReactions]);
 
   const flipUp = useMemo(() => {
     const bottomLimit = windowH - insets.bottom - 24;
@@ -192,8 +205,36 @@ export function MessageActionOverlay({
     return () => sub.remove();
   }, [visible, onClose]);
 
-  const recalled = Boolean(message.recalledAt);
-  const bubbleInner = (
+  const bubbleInner = poll ? (
+    /*
+      Bình chọn: bản xem trước phải là CHÍNH THẺ. Trước đây không có nhánh này nên rơi xuống
+      nhánh `message.content` và in ra chuỗi nội bộ "[Bình chọn] <câu hỏi>" trong một bong bóng
+      có khung, hẹp và lệch sang phải — đè lên thẻ thật đang mờ ở nền.
+      Dựng KHÔNG khung và rộng đúng `bubbleMaxWidth` như thẻ thật để nằm chồng khít lên nó.
+      `interactive={false}`: bản này chỉ để nhìn, không có nút Sửa và không bấm bỏ phiếu được.
+    */
+    <View
+      style={{
+        width: bubbleMaxWidth,
+        maxWidth: bubbleMaxWidth,
+        alignSelf: isMine ? 'flex-end' : 'flex-start',
+      }}>
+      {showSenderName && !isMine ? (
+        <Text className="mb-1 font-mulish-bold text-sm text-[#002855]">
+          {senderDisplayName || formatChatDisplayName(message.senderSnapshot?.name)}
+        </Text>
+      ) : null}
+      <ExchangePollCard
+        poll={poll}
+        maxWidth={bubbleMaxWidth}
+        interactive={false}
+        /* Giờ gửi nằm sẵn trong thẻ ⇒ KHÔNG thêm dòng giờ riêng, nếu không sẽ in 2 lần. */
+        timeLabel={showTimestamp ? formatChatTimeVi(message.createdAt) : undefined}
+        onToggleOption={() => {}}
+        onOpenVoters={() => {}}
+      />
+    </View>
+  ) : (
     <View
       style={[
         styles.bubble,
@@ -321,7 +362,7 @@ export function MessageActionOverlay({
                   transform: [{ scale: cardScale }, { translateY: cardY }],
                 },
               ]}>
-              {!locked ? (
+              {!hideReactions ? (
                 <View style={[styles.emojiPill, { width: emojiPillWidth }]}>
                   <ScrollView
                     horizontal
@@ -350,7 +391,7 @@ export function MessageActionOverlay({
                 </View>
               ) : null}
 
-              {!locked ? <View style={{ height: PILL_TO_ACTION_GAP }} /> : null}
+              {!hideReactions ? <View style={{ height: PILL_TO_ACTION_GAP }} /> : null}
 
               <View style={styles.actionCard}>
                 {!locked ? (

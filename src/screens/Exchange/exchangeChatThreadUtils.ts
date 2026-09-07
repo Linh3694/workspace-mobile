@@ -591,7 +591,20 @@ export function overlayPreviewPlainText(content: string | undefined, recalledAt?
   if (recalledAt) return 'Tin nhắn đã thu hồi';
   const wl = parseChatWislifeStickerContent(content);
   if (wl) return getEmojiFallbackText(wl);
-  return String(content || '');
+  return stripPollContentPrefix(content);
+}
+
+/** Tiền tố backend nhét vào `content` tin bình chọn để preview/push/bản app cũ còn đọc được. */
+const POLL_CONTENT_PREFIX = '[Bình chọn]';
+
+/**
+ * Bỏ tiền tố "[Bình chọn]" khỏi `content` — đây là chuỗi nội bộ, sao chép ra ngoài thì người
+ * dùng dán được nguyên cái nhãn kỹ thuật. Trích dẫn trả lời thì GIỮ tiền tố: ở đó nó cùng loại
+ * với "[Hình ảnh]" / "[Tệp đính kèm]" và là thứ duy nhất cho biết đang trích một bình chọn.
+ */
+export function stripPollContentPrefix(content: string | undefined): string {
+  const s = String(content || '');
+  return s.startsWith(POLL_CONTENT_PREFIX) ? s.slice(POLL_CONTENT_PREFIX.length).trim() : s;
 }
 
 /** Optimistic reaction — chờ server (giống GuardianChatScreen). */

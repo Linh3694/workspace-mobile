@@ -246,7 +246,7 @@ export interface PTWaitlistEntry extends PTTeacherGroupLabels {
  * Ghi chú sau họp (giáo viên -> BGH) — `get_meeting_notes`.
  *
  * Quyền đọc chốt ở BACKEND: `System Manager`/`SIS BOD` đọc mọi ghi chú của đợt,
- * `SIS Teacher` chỉ đọc của chính mình, giáo vụ (`SIS TDC`) không đọc dòng nào.
+ * `SIS Teacher` chỉ đọc của chính mình, giáo vụ (`SIS Manager`) không đọc dòng nào.
  * Ẩn nút trên giao diện KHÔNG phải biện pháp bảo vệ — nội dung ở đây là nhận
  * định thẳng thắn về học sinh và gia đình, lộ ra là chuyện không thu hồi được.
  */

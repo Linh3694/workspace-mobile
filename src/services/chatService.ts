@@ -612,6 +612,20 @@ class ChatService {
     return this.parseJson(res);
   }
 
+  /**
+   * Mở lại bình chọn đã kết thúc — người tạo hoặc GVCN/phó.
+   * Hạn cũ đã trôi qua thì backend xoá luôn hạn (nếu không, luật đóng-lười đóng lại ngay).
+   */
+  async reopenPoll(messageId: string): Promise<{ messageId: string; poll: ChatPoll }> {
+    const headers = await this.getAuthHeaders();
+    const res = await fetch(`${BASE_URL}/api/social/chat/messages/${messageId}/poll/reopen`, {
+      method: 'POST',
+      headers,
+      body: '{}',
+    });
+    return this.parseJson(res);
+  }
+
   /** Danh sách người bầu theo phương án — PH nhận 403 khi bình chọn ẩn danh. */
   async getPollVoters(messageId: string): Promise<ChatPollVotersData> {
     const headers = await this.getAuthHeaders();

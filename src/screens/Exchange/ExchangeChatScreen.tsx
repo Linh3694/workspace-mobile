@@ -906,18 +906,33 @@ export default function ExchangeChatScreen() {
     [markPollPending, patchPollFromServer, t]
   );
 
-  const handleClosePoll = useCallback(
-    async (message: ChatMessage) => {
-      const messageId = normalizeMongoId(message._id);
+  /**
+   * Kết thúc / mở lại bình chọn — cả hai gọi từ TRONG sheet Sửa (thẻ chỉ còn nút "Sửa" + ổ khoá).
+   * Đóng sheet sau khi xong: state của sheet nạp một lần lúc mở, thao tác này đổi `closesAt`
+   * (mở lại một bình chọn quá hạn thì backend xoá luôn hạn) nên để sheet mở là hiện dữ liệu cũ.
+   */
+  const runPollLifecycle = useCallback(
+    async (messageId: string, action: 'close' | 'reopen') => {
       if (!messageId) return;
       markPollPending(messageId, true);
       try {
-        const data = await chatService.closePoll(messageId);
+        setSavingPoll(true);
+        const data =
+          action === 'close'
+            ? await chatService.closePoll(messageId)
+            : await chatService.reopenPoll(messageId);
         patchPollFromServer(messageId, data.poll);
+        setEditPollFor(null);
       } catch (error) {
-        console.warn('[ExchangeChat] closePoll error:', error);
-        Alert.alert(t('common.error'), t('exchange.poll_close_failed'));
+        console.warn(`[ExchangeChat] ${action}Poll error:`, error);
+        const serverMessage = (error as { message?: string })?.message;
+        Alert.alert(
+          t('common.error'),
+          serverMessage ||
+            t(action === 'close' ? 'exchange.poll_close_failed' : 'exchange.poll_reopen_failed')
+        );
       } finally {
+        setSavingPoll(false);
         markPollPending(messageId, false);
       }
     },
@@ -1262,7 +1277,6 @@ export default function ExchangeChatScreen() {
           onTogglePollOption={handleTogglePollOption}
           onOpenPollVoters={handleOpenPollVoters}
           onOpenReactions={handleOpenReactions}
-          onClosePoll={handleClosePoll}
           onEditPoll={locked || viewerReadOnly ? undefined : handleEditPoll}
           onReply={() => !locked && setReplyTo(msgItem)}
         />
@@ -1279,7 +1293,6 @@ export default function ExchangeChatScreen() {
       pendingPollIds,
       handleTogglePollOption,
       handleOpenPollVoters,
-      handleClosePoll,
       handleEditPoll,
       handleOpenActionMenu,
       highlightedMessageId,
@@ -1612,6 +1625,8 @@ export default function ExchangeChatScreen() {
                 : undefined
             }
             locked={locked}
+            // Tin bình chọn không nhận cảm xúc — ẩn bảng emoji nhưng vẫn giữ hàng hành động.
+            reactionsDisabled={locked || Boolean(overlayMessage.poll)}
             showRecallButton={overlayShowRecallButton}
             canRecall={overlayCanRecall}
             bubbleMaxWidth={overlayBubbleMaxWidth}
@@ -1646,6 +1661,12 @@ export default function ExchangeChatScreen() {
             onSubmit={(payload) => void handleCreatePoll(payload)}
             onUpdate={(payload) =>
               void handleUpdatePoll(normalizeMongoId(editPollTarget._id), payload)
+            }
+            onClosePoll={() =>
+              void runPollLifecycle(normalizeMongoId(editPollTarget._id), 'close')
+            }
+            onReopenPoll={() =>
+              void runPollLifecycle(normalizeMongoId(editPollTarget._id), 'reopen')
             }
             onClose={() => setEditPollFor(null)}
           />
