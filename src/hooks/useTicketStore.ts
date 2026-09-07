@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
+import { subscribeCampusChange } from '../utils/campusStore';
 import type { Ticket, Message, SubTask, SupportTeamMember } from '../services/ticketService';
 import {
   getTicketDetail,
@@ -575,3 +576,10 @@ export const useSupportTeam = () =>
       fetch: state.fetchSupportTeam,
     }))
   );
+
+// Đổi campus → xoá dữ liệu cache của campus cũ. Store zustand sống ngoài cây navigator nên
+// reset navigation (CampusContext.switchCampus) không đụng tới nó; không dọn thì màn hình
+// mở lại sẽ chớp danh sách của campus cũ trước khi fetch xong.
+subscribeCampusChange(() => {
+  useTicketStore.getState().reset();
+});

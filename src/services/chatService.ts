@@ -3,6 +3,7 @@ import { io, type Socket } from 'socket.io-client';
 
 import { BASE_URL } from '../config/constants';
 import { normalizeCampusIdForBackend } from '../utils/campusIdUtils';
+import { getCurrentCampusIdSync } from '../utils/campusStore';
 import type {
   AddableTeacher,
   ChatAttachment,
@@ -61,6 +62,10 @@ class ChatService {
    * Web luôn gửi header này (X-Campus-Id); mobile phải gửi tương tự.
    */
   private async getCampusId(): Promise<string> {
+    // Ưu tiên store trong bộ nhớ (CampusContext cập nhật ngay khi đổi); storage chỉ là dự phòng
+    // cho trường hợp service được gọi trước khi context kịp nạp.
+    const fromStore = getCurrentCampusIdSync();
+    if (fromStore) return fromStore;
     const raw = (await AsyncStorage.getItem('currentCampusId')) || '';
     return normalizeCampusIdForBackend(raw);
   }

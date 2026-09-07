@@ -1,5 +1,6 @@
 import { getApiBaseUrl } from '../config/constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { campusHeaders } from '../utils/campusStore';
 
 // Types for API response data
 export interface MenuCategoryDetails {
@@ -101,6 +102,7 @@ class MenuService {
     return {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      ...campusHeaders(),
     };
   }
 

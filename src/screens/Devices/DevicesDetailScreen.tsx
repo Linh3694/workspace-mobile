@@ -1,4 +1,3 @@
-import UploadDocumentModal from '../../components/UploadDocumentModal';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
@@ -18,7 +17,13 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { ROUTES } from '../../constants/routes';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Device, DeviceType, DeviceActivity, DeviceInspection } from '../../types/devices';
+import {
+  Device,
+  DeviceType,
+  DeviceActivity,
+  DeviceInspection,
+  HandoverSigningStatus,
+} from '../../types/devices';
 import deviceService from '../../services/deviceService';
 import InputModal from '../../components/InputModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -29,8 +34,6 @@ import AssignModal from './components/AssignModal';
 import ReportBrokenModal from './components/ReportBrokenModal';
 import FilePreviewModal from './components/FilePreviewModal';
 import AddActivityModal from './components/AddActivityModal';
-import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
 import RevokeIcon from '../../assets/revoke-devices.svg';
 import AssignIcon from '../../assets/assign-devices.svg';
 import BrokenIcon from '../../assets/broken-devices.svg';
@@ -45,6 +48,36 @@ type DeviceDetailScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
   typeof ROUTES.SCREENS.DEVICE_DETAIL
 >;
+
+/** Nhãn + màu pill theo trạng thái ký — trùng bảng ở MyHandoversScreen */
+const SIGNING_META: Record<string, { text: string; bg: string }> = {
+  pending_manager: { text: 'Chờ Trưởng phòng duyệt', bg: 'bg-blue-500' },
+  pending_receiver: { text: 'Chờ người nhận xác nhận', bg: 'bg-amber-500' },
+  completed: { text: 'Đã hoàn tất', bg: 'bg-green-600' },
+  rejected: { text: 'Bị từ chối', bg: 'bg-red-500' },
+  manual: { text: 'Biên bản giấy', bg: 'bg-gray-500' },
+  '': { text: 'Chưa xác nhận điện tử', bg: 'bg-gray-500' },
+};
+
+const STEP_DOT_CLASS = {
+  done: 'bg-green-400',
+  current: 'bg-amber-400',
+  todo: 'bg-white/30',
+  failed: 'bg-red-400',
+} as const;
+
+const formatSigningTime = (value?: string): string => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
 
 interface DeviceLog {
   _id: string;
@@ -88,7 +121,6 @@ const DevicesDetailScreen = () => {
   const [revokeModalVisible, setRevokeModalVisible] = useState(false);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [reportBrokenModalVisible, setReportBrokenModalVisible] = useState(false);
-  const [uploadDocumentModalVisible, setUploadDocumentModalVisible] = useState(false);
   const [addActivityModalVisible, setAddActivityModalVisible] = useState(false);
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
 
@@ -104,8 +136,8 @@ const DevicesDetailScreen = () => {
   const [newActivityTitle, setNewActivityTitle] = useState('');
   const [newActivityDescription, setNewActivityDescription] = useState('');
 
-  // Upload states
-  const [isUploading, setIsUploading] = useState(false);
+  // Xác nhận điện tử
+  const [isStartingDigital, setIsStartingDigital] = useState(false);
   const [previewFileUrl, setPreviewFileUrl] = useState<string>('');
   const [authToken, setAuthToken] = useState<string>('');
 
@@ -523,114 +555,6 @@ const DevicesDetailScreen = () => {
     }
   };
 
-  const handleCameraUpload = async () => {
-    try {
-      if (!device || isUploading) return;
-      setIsUploading(true);
-
-      // Request camera permissions
-      const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
-      if (cameraPermission.status !== 'granted') {
-        Alert.alert('Lỗi', 'Cần cấp quyền truy cập camera để chụp ảnh');
-        setIsUploading(false);
-        return;
-      }
-
-      const cameraResult = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
-
-      if (!cameraResult.canceled && cameraResult.assets && cameraResult.assets[0]) {
-        await uploadFile(cameraResult.assets[0].uri, `camera_${Date.now()}.jpg`, 'image/jpeg');
-      }
-    } catch (error) {
-      console.error('Error with camera upload:', error);
-      Alert.alert(
-        'Lỗi',
-        'Có lỗi xảy ra khi chụp ảnh: ' +
-          (error instanceof Error ? error.message : 'Lỗi không xác định')
-      );
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleGalleryUpload = async () => {
-    try {
-      if (!device || isUploading) return;
-      setIsUploading(true);
-
-      // Request media library permissions
-      const mediaPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (mediaPermission.status !== 'granted') {
-        Alert.alert('Lỗi', 'Cần cấp quyền truy cập thư viện ảnh');
-        return;
-      }
-
-      const galleryResult = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-        quality: 0.7,
-      });
-
-      if (!galleryResult.canceled && galleryResult.assets && galleryResult.assets[0]) {
-        await uploadFile(
-          galleryResult.assets[0].uri,
-          galleryResult.assets[0].fileName || `gallery_${Date.now()}.jpg`,
-          galleryResult.assets[0].mimeType || 'image/jpeg'
-        );
-      }
-    } catch (error) {
-      console.error('Error with gallery upload:', error);
-      Alert.alert(
-        'Lỗi',
-        'Có lỗi xảy ra khi chọn ảnh từ thư viện: ' +
-          (error instanceof Error ? error.message : 'Lỗi không xác định')
-      );
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleDocumentUpload = async () => {
-    try {
-      if (!device || isUploading) return;
-      setIsUploading(true);
-
-      const documentResult = await DocumentPicker.getDocumentAsync({
-        type: [
-          'application/pdf',
-          'image/*',
-          'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        ],
-        copyToCacheDirectory: true,
-      });
-
-      if (!documentResult.canceled && documentResult.assets && documentResult.assets[0]) {
-        await uploadFile(
-          documentResult.assets[0].uri,
-          documentResult.assets[0].name,
-          documentResult.assets[0].mimeType || 'application/octet-stream'
-        );
-      } else {
-      }
-    } catch (error) {
-      console.error('Error with document upload:', error);
-      Alert.alert(
-        'Lỗi',
-        'Có lỗi xảy ra khi chọn tài liệu: ' +
-          (error instanceof Error ? error.message : 'Lỗi không xác định')
-      );
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   const getDeviceEndpoint = (deviceType: DeviceType) => {
     // Map device types to their correct API endpoints
     const endpointMap = {
@@ -758,71 +682,179 @@ const DevicesDetailScreen = () => {
     }
   };
 
-  const uploadFile = async (fileUri: string, fileName: string, fileType: string) => {
-    try {
-      if (!device) {
-        return;
-      }
+  /** Hồ sơ bàn giao đang mở (backend gửi `currentHandover`; fallback dò trong lịch sử). */
+  const getOpenHandover = () =>
+    device?.currentHandover ?? device?.assignmentHistory?.find((hist) => !hist.endDate) ?? null;
 
-      const token = await AsyncStorage.getItem('authToken');
-      const endpoint = getDeviceEndpoint(deviceType);
-      const uploadUrl = `${API_BASE_URL}/api/${endpoint}/upload`;
-
-      // Bỏ qua test endpoint vì function đã được xóa
-
-      const formData = new FormData();
-      formData.append('file', {
-        uri: fileUri,
-        type: fileType,
-        name: fileName,
-      } as any);
-
-      const deviceIdParam = `${deviceType}Id`;
-      formData.append(deviceIdParam, device._id);
-
-      const currentUser = getCurrentUser();
-      if (currentUser) {
-        formData.append('userId', currentUser._id);
-        formData.append('username', normalizeVietnameseName(currentUser.fullname));
-      } else {
-        throw new Error('Không tìm thấy thông tin người dùng');
-      }
-
-      const response = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
+  const handleStartDigitalHandover = () => {
+    if (!device || isStartingDigital) return;
+    Alert.alert(
+      'Bàn giao theo quy trình mới',
+      'Gửi hồ sơ xác nhận điện tử cho người đang giữ máy? Biên bản giấy cũ sẽ chuyển vào lịch sử.',
+      [
+        { text: 'Huỷ', style: 'cancel' },
+        {
+          text: 'Gửi',
+          onPress: async () => {
+            try {
+              setIsStartingDigital(true);
+              await deviceService.startDigitalHandover(deviceType, device._id);
+              await loadDeviceData(false);
+              Alert.alert('Thành công', 'Đã gửi hồ sơ để Trưởng phòng phê duyệt');
+            } catch (error) {
+              Alert.alert('Lỗi', error instanceof Error ? error.message : 'Không thể gửi hồ sơ');
+            } finally {
+              setIsStartingDigital(false);
+            }
+          },
         },
-        body: formData,
-      });
+      ]
+    );
+  };
 
-      if (!response.ok) {
-        let errorMessage = 'Không thể tải lên biên bản';
-
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorMessage;
-        } catch {
-          try {
-            const errorText = await response.text();
-            errorMessage = `Lỗi server ${response.status}: ${errorText.substring(0, 100)}`;
-          } catch {
-            errorMessage = `Lỗi server ${response.status}: Không thể đọc response`;
-          }
-        }
-        throw new Error(errorMessage);
-      }
-
-      await fetchDeviceDetail();
-      Alert.alert('Thành công', 'Tải lên biên bản thành công!');
+  const handleResendHandover = async () => {
+    const openHandover = getOpenHandover();
+    if (!openHandover?._id || isStartingDigital) return;
+    try {
+      setIsStartingDigital(true);
+      await deviceService.resendHandover(openHandover._id);
+      await loadDeviceData(false);
+      Alert.alert('Thành công', 'Đã gửi lại hồ sơ để phê duyệt');
     } catch (error) {
-      console.error('Error uploading file:', error);
-      Alert.alert(
-        'Lỗi',
-        'Có lỗi xảy ra khi tải lên biên bản: ' +
-          (error instanceof Error ? error.message : 'Lỗi không xác định')
-      );
+      Alert.alert('Lỗi', error instanceof Error ? error.message : 'Không thể gửi lại hồ sơ');
+    } finally {
+      setIsStartingDigital(false);
     }
+  };
+
+  /**
+   * Khối tiến độ xác nhận điện tử trong card "Thông tin bàn giao":
+   * IT bàn giao → Trưởng phòng duyệt → Người nhận xác nhận. Máy giao theo biên bản
+   * giấy (không có signingStatus / `manual`) thì mời chuyển sang quy trình mới.
+   */
+  const renderSigningBlock = () => {
+    const openHandover = getOpenHandover();
+    const status = (openHandover?.signingStatus || '') as HandoverSigningStatus;
+    const isDigital = ['pending_manager', 'pending_receiver', 'completed', 'rejected'].includes(
+      status
+    );
+    const meta = SIGNING_META[status] || SIGNING_META[''];
+    const rejected = status === 'rejected';
+    const approvedDone = status === 'pending_receiver' || status === 'completed';
+    const confirmedDone = status === 'completed';
+    const holderName = normalizeVietnameseName(getCurrentUser()?.fullname) || '';
+
+    const steps: Array<{ label: string; state: 'done' | 'current' | 'todo' | 'failed'; detail: string }> = [
+      {
+        label: 'IT bàn giao',
+        state: 'done',
+        detail: [getAssignedByUser(), formatSigningTime(openHandover?.startDate)]
+          .filter((v) => v && v !== 'Không xác định')
+          .join(' · '),
+      },
+      {
+        label: 'Trưởng phòng duyệt',
+        state: approvedDone ? 'done' : rejected ? 'failed' : status === 'pending_manager' ? 'current' : 'todo',
+        detail: approvedDone
+          ? [
+              normalizeVietnameseName(openHandover?.managerApprovedBy?.fullname),
+              formatSigningTime(openHandover?.managerApprovedOn),
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          : '',
+      },
+      {
+        label: 'Người nhận xác nhận',
+        state: confirmedDone
+          ? 'done'
+          : rejected && approvedDone
+            ? 'failed'
+            : status === 'pending_receiver'
+              ? 'current'
+              : 'todo',
+        detail: confirmedDone
+          ? [holderName, formatSigningTime(openHandover?.receiverConfirmedOn)].filter(Boolean).join(' · ')
+          : '',
+      },
+    ];
+    const rejectReason = openHandover?.receiverRejectReason || openHandover?.managerRejectReason;
+
+    return (
+      <View className="mt-3 rounded-lg bg-white/10 p-3">
+        <View className="mb-2 flex-row items-center justify-between">
+          <Text className="font-bold text-sm text-white">Biên bản bàn giao</Text>
+          <View className={`rounded-full px-2 py-0.5 ${meta.bg}`}>
+            <Text className="text-xs font-bold text-white">{meta.text}</Text>
+          </View>
+        </View>
+        {isDigital ? (
+          <>
+            {steps.map((step, index) => (
+              <View key={step.label} className="flex-row">
+                <View className="w-4 items-center">
+                  <View
+                    className={`mt-1 h-2.5 w-2.5 rounded-full ${STEP_DOT_CLASS[step.state]}`}
+                  />
+                  {index < steps.length - 1 ? (
+                    <View className="my-0.5 w-px flex-1 bg-white/30" />
+                  ) : null}
+                </View>
+                <View
+                  className={`ml-2 flex-1 flex-row items-start justify-between ${
+                    index < steps.length - 1 ? 'pb-2' : ''
+                  }`}>
+                  <Text
+                    className={`text-sm ${
+                      step.state === 'todo' ? 'text-[#BEBEBE]' : 'font-bold text-white'
+                    }`}>
+                    {step.label}
+                  </Text>
+                  <Text
+                    className={`ml-2 shrink text-right text-xs ${
+                      step.state === 'failed' ? 'text-red-300' : 'text-[#BEBEBE]'
+                    }`}>
+                    {step.detail ||
+                      (step.state === 'current' ? 'Đang chờ' : step.state === 'failed' ? 'Từ chối' : '')}
+                  </Text>
+                </View>
+              </View>
+            ))}
+            {rejectReason ? (
+              <Text className="mt-2 text-xs text-red-300">Lý do từ chối: {rejectReason}</Text>
+            ) : null}
+            {rejected ? (
+              <TouchableOpacity
+                onPress={handleResendHandover}
+                disabled={isStartingDigital}
+                className="mt-3 items-center rounded-lg bg-[#F05023] py-2"
+                style={{ opacity: isStartingDigital ? 0.6 : 1 }}>
+                <Text className="font-bold text-sm text-white">
+                  {isStartingDigital ? 'Đang gửi…' : 'Gửi lại yêu cầu xác nhận'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <Text className="text-xs text-[#BEBEBE]">
+              {getHandoverDocument()
+                ? 'Máy được giao theo biên bản giấy, chưa xác nhận điện tử. Biên bản cũ vẫn xem được trong lịch sử sau khi chuyển.'
+                : 'Máy được giao trước khi có xác nhận điện tử và chưa có biên bản.'}
+            </Text>
+            <TouchableOpacity
+              onPress={handleStartDigitalHandover}
+              disabled={isStartingDigital}
+              className="mt-3 items-center rounded-lg bg-[#F05023] py-2"
+              style={{ opacity: isStartingDigital ? 0.6 : 1 }}>
+              <Text className="font-bold text-sm text-white">
+                {isStartingDigital ? 'Đang gửi…' : 'Bàn giao theo quy trình mới'}
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    );
   };
 
   const handleDisposeDevice = async () => {
@@ -1151,14 +1183,9 @@ const DevicesDetailScreen = () => {
           </>
         )}
 
-        {/* PendingDocumentation Status: Cập nhật biên bản */}
+        {/* PendingDocumentation: đang chờ duyệt/xác nhận điện tử — chỉ còn Thu hồi / Báo hỏng */}
         {device.status === 'PendingDocumentation' && (
           <>
-            <TouchableOpacity
-              onPress={() => setUploadDocumentModalVisible(true)}
-              className="h-12 w-12 items-center justify-center rounded-full bg-[#002855]">
-              <MaterialCommunityIcons name="file-document" size={24} color="white" />
-            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setRevokeModalVisible(true)}
               className="h-12 w-12 items-center justify-center rounded-full bg-[#EAA300]">
@@ -1302,6 +1329,7 @@ const DevicesDetailScreen = () => {
                   Người bàn giao: {getAssignedByUser()}
                 </Text>
               </View>
+              {renderSigningBlock()}
             </View>
           ) : (
             <View className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-100 p-4">
@@ -1391,14 +1419,6 @@ const DevicesDetailScreen = () => {
         onClose={() => setReportBrokenModalVisible(false)}
         onConfirm={handleReportBroken}
         deviceName={device?.name || ''}
-      />
-      <UploadDocumentModal
-        visible={uploadDocumentModalVisible}
-        onClose={() => setUploadDocumentModalVisible(false)}
-        onCamera={handleCameraUpload}
-        onGallery={handleGalleryUpload}
-        onDocument={handleDocumentUpload}
-        isUploading={isUploading}
       />
       {/* File Preview Modal */}
       <FilePreviewModal

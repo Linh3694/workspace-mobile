@@ -16,6 +16,12 @@ interface SelectModalProps<T> {
     renderLabel: (item: T) => string;
     onCancel: () => void;
     onSelect: (item: T) => void;
+    /** Khoá của mục đang chọn sẵn khi mở modal (để người dùng thấy mình đang ở đâu). */
+    selectedKey?: string | null;
+    cancelLabel?: string;
+    confirmLabel?: string;
+    /** Khoá nút Ok (vd. đang gọi API đổi campus). */
+    confirming?: boolean;
 }
 
 function SelectModal<T>({
@@ -25,21 +31,32 @@ function SelectModal<T>({
     keyExtractor,
     renderLabel,
     onCancel,
-    onSelect
+    onSelect,
+    selectedKey,
+    cancelLabel = 'Hủy',
+    confirmLabel = 'Ok',
+    confirming = false,
 }: SelectModalProps<T>) {
     const [selectedItem, setSelectedItem] = useState<T | null>(null);
 
     useEffect(() => {
         if (!visible) {
             setSelectedItem(null);
+            return;
         }
-    }, [visible]);
+        if (selectedKey) {
+            const preset = options.find((o) => keyExtractor(o) === selectedKey) || null;
+            setSelectedItem(preset);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visible, selectedKey]);
 
     const handleConfirm = () => {
-        if (selectedItem) {
+        if (selectedItem && !confirming) {
             onSelect(selectedItem);
         }
     };
+    const canConfirm = !!selectedItem && !confirming;
 
     return (
         <Modal
@@ -92,19 +109,19 @@ function SelectModal<T>({
                             onPress={onCancel}
                         >
                             <Text className="font-medium text-[17px] text-gray-600">
-                                Hủy
+                                {cancelLabel}
                             </Text>
                         </TouchableOpacity>
                         <View className="w-px bg-gray-200" />
                         <TouchableOpacity
                             className="flex-1 items-center justify-center bg-transparent py-4"
                             onPress={handleConfirm}
-                            disabled={!selectedItem}
+                            disabled={!canConfirm}
                         >
                             <Text
-                                className={`font-semibold text-[17px] ${selectedItem ? 'text-[#F05023]' : 'text-gray-400'}`}
+                                className={`font-semibold text-[17px] ${canConfirm ? 'text-[#F05023]' : 'text-gray-400'}`}
                             >
-                                Ok
+                                {confirmLabel}
                             </Text>
                         </TouchableOpacity>
                     </View>

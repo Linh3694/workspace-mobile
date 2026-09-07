@@ -25,6 +25,7 @@ import { normalizeVietnameseName } from '../../utils/nameFormatter';
 import type {
     HandoverRecord,
     HandoverSigningStatus,
+    HandoverTerms,
     MyHandoversPayload,
 } from '../../types/devices';
 
@@ -59,6 +60,30 @@ const DEVICE_TYPE_LABELS: Record<string, string> = {
     tool: 'Công cụ',
 };
 
+// Khớp `_specs_from_doc` ở backend; chỉ in dòng có giá trị nên dùng chung cả 6 loại.
+const SPEC_LABELS: Array<[string, string]> = [
+    ['processor', 'Bộ xử lý'],
+    ['ram', 'RAM'],
+    ['storage', 'Bộ nhớ'],
+    ['display', 'Màn hình'],
+    ['ip', 'Địa chỉ IP'],
+    ['imei1', 'IMEI 1'],
+    ['imei2', 'IMEI 2'],
+    ['phone_number', 'Số điện thoại'],
+];
+
+const deviceSpecRows = (device: HandoverRecord['device']) => {
+    const rows: Array<{ label: string; value: string }> = [];
+    if (device.manufacturer) rows.push({ label: 'Hãng', value: device.manufacturer });
+    if (device.releaseYear) rows.push({ label: 'Năm sản xuất', value: String(device.releaseYear) });
+    const specs = device.specs || {};
+    for (const [key, label] of SPEC_LABELS) {
+        const v = specs[key];
+        if (v && String(v).trim()) rows.push({ label, value: String(v) });
+    }
+    return rows;
+};
+
 const formatDateTime = (value?: string) => {
     if (!value) return '—';
     const date = new Date(value);
@@ -82,10 +107,22 @@ const MyHandoversScreen = () => {
     const [payload, setPayload] = useState<MyHandoversPayload | null>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [tab, setTab] = useState<TabKey>('to-confirm');
+    // `null` = chưa chọn -> tự chọn theo dữ liệu; có giá trị = tôn trọng lựa chọn.
+    // Bản trước ghi đè "có hồ sơ chờ thì luôn về Chờ xác nhận" trên mọi lần render,
+    // nên hễ có hồ sơ chờ là bấm tab nào cũng không chuyển được.
+    const [tab, setTab] = useState<TabKey | null>(null);
     const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
     const [reason, setReason] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [terms, setTerms] = useState<HandoverTerms | null>(null);
+    const [termsError, setTermsError] = useState(false);
+    const [readToEnd, setReadToEnd] = useState(false);
+    const [acceptedTerms, setAcceptedTerms] = useState(false);
+    // Chiều cao THẬT của khung cuộn (đã trừ padding). So với hằng 220 là sai: khung
+    // maxHeight 220 nhưng p-3 ăn 24px, nội dung 196–220px vẫn bị cắt dòng cuối mà
+    // lại bị coi là "ngắn hơn khung, đã đọc".
+    const [termsBoxHeight, setTermsBoxHeight] = useState(0);
+    const [termsContentHeight, setTermsContentHeight] = useState(0);
 
     const fetchData = useCallback(async () => {
         try {
@@ -125,7 +162,8 @@ const MyHandoversScreen = () => {
         return null;
     }, [focusHandoverId, toConfirm, toApprove, myDevices, history]);
 
-    const activeTab: TabKey = focusedTab ?? (toConfirm.length > 0 ? 'to-confirm' : tab);
+    const activeTab: TabKey =
+        focusedTab ?? tab ?? (toConfirm.length > 0 ? 'to-confirm' : 'in-use');
 
     const tabs: Array<{ key: TabKey; label: string; count?: number }> = [
         { key: 'to-confirm', label: 'Chờ xác nhận', count: toConfirm.length },
@@ -152,6 +190,35 @@ const MyHandoversScreen = () => {
         'to-approve': 'Không có biên bản nào chờ bạn phê duyệt',
     };
 
+    // Chỉ nạp điều khoản khi thực sự mở bước xác nhận — không tải kèm danh sách.
+    useEffect(() => {
+        if (pendingAction?.type !== 'confirm') return;
+        setReadToEnd(false);
+        setAcceptedTerms(false);
+        setTermsError(false);
+        setTermsContentHeight(0);
+        if (terms) return;
+        deviceService
+            .getHandoverTerms()
+            .then(setTerms)
+            .catch((e) => {
+                console.error('Error loading handover terms:', e);
+                setTermsError(true);
+            });
+    }, [pendingAction?.type, terms]);
+
+    // Nội dung ngắn hơn khung thì không có gì để cuộn — coi như đã đọc, nếu không
+    // người dùng kẹt vĩnh viễn không tích được. Dùng số đo thật, không dùng hằng.
+    useEffect(() => {
+        if (!termsBoxHeight || !termsContentHeight) return;
+        if (termsContentHeight <= termsBoxHeight - 24 + 2) setReadToEnd(true);
+    }, [termsBoxHeight, termsContentHeight]);
+
+    // Không có nội dung thì KHÔNG cho tích: trước đây hộp rỗng vẫn tích được (nội dung
+    // ngắn hơn khung -> coi như đã đọc), nên người dùng đồng ý với một tờ giấy trắng.
+    const termsLines = terms?.text?.vi ?? [];
+    const hasTerms = termsLines.length > 0 || (terms?.sections?.length ?? 0) > 0;
+
     const needsReason =
         pendingAction?.type === 'receiver-reject' || pendingAction?.type === 'manager-reject';
 
@@ -159,6 +226,17 @@ const MyHandoversScreen = () => {
         if (!pendingAction) return;
         if (needsReason && !reason.trim()) {
             Alert.alert('Thiếu thông tin', 'Vui lòng nhập lý do từ chối.');
+            return;
+        }
+        if (pendingAction.type === 'confirm' && !hasTerms) {
+            Alert.alert(
+                'Chưa thể xác nhận',
+                'Bản cam kết chưa có nội dung. Vui lòng báo phòng IT soạn và xuất bản trước.'
+            );
+            return;
+        }
+        if (pendingAction.type === 'confirm' && !acceptedTerms) {
+            Alert.alert('Thiếu thông tin', 'Vui lòng đọc và đồng ý Bản cam kết sử dụng tài sản.');
             return;
         }
         setSubmitting(true);
@@ -205,8 +283,7 @@ const MyHandoversScreen = () => {
     const renderRecord = (record: HandoverRecord) => {
         const badge = record.signingStatus ? SIGNING_LABELS[record.signingStatus] : null;
         const highlighted = record.name === focusHandoverId;
-        const specs = record.device.specs || {};
-        const specText = [specs.processor, specs.ram, specs.storage].filter(Boolean).join(' · ');
+        const specRows = deviceSpecRows(record.device);
 
         return (
             <View
@@ -224,9 +301,7 @@ const MyHandoversScreen = () => {
                             {DEVICE_TYPE_LABELS[record.device.deviceType] || record.device.deviceType}
                             {record.device.serial ? ` · ${record.device.serial}` : ''}
                         </Text>
-                        {specText ? (
-                            <Text className="text-sm text-gray-500 mt-0.5">{specText}</Text>
-                        ) : null}
+
                     </View>
                     {badge ? (
                         <View className={`px-2 py-1 rounded-full ${badge.bg}`}>
@@ -234,6 +309,20 @@ const MyHandoversScreen = () => {
                         </View>
                     ) : null}
                 </View>
+
+                {specRows.length > 0 ? (
+                    <View className="bg-gray-50 rounded-lg px-3 py-2 mb-2">
+                        <Text className="text-xs font-semibold text-gray-700 mb-1">Cấu hình</Text>
+                        {specRows.map((r) => (
+                            <View key={r.label} className="flex-row justify-between mb-0.5">
+                                <Text className="text-sm text-gray-500">{r.label}</Text>
+                                <Text className="text-sm text-gray-800 font-medium ml-3 flex-shrink text-right">
+                                    {r.value}
+                                </Text>
+                            </View>
+                        ))}
+                    </View>
+                ) : null}
 
                 <View className="border-t border-gray-200 pt-2">
                     <Text className="text-sm text-gray-600">
@@ -252,6 +341,15 @@ const MyHandoversScreen = () => {
                         <Text className="text-sm text-gray-600 mt-0.5">
                             Phê duyệt: {normalizeVietnameseName(record.approvedBy?.fullname) || '—'} ·{' '}
                             {formatDateTime(record.managerApprovedOn)}
+                        </Text>
+                    ) : null}
+                    {record.signingStatus === 'pending_manager' ? (
+                        <Text className="text-sm text-gray-600 mt-0.5">
+                            {record.pendingApprovers?.length
+                                ? `Chờ duyệt bởi: ${record.pendingApprovers
+                                      .map((u) => normalizeVietnameseName(u.fullname) || u.fullname)
+                                      .join(', ')}`
+                                : 'Chưa xác định được người duyệt — Phòng IT cần có Lãnh đạo khác người nhận trên Sơ đồ tổ chức.'}
                         </Text>
                     ) : null}
                     {record.notes ? (
@@ -419,19 +517,136 @@ const MyHandoversScreen = () => {
                                   ? 'Phê duyệt biên bản bàn giao'
                                   : 'Từ chối biên bản'}
                         </Text>
-                        <Text className="text-sm text-gray-600 mb-3">
+                        <Text className="text-sm text-gray-600 mb-2">
                             {pendingAction?.record.device.name}
                             {pendingAction?.record.device.serial
                                 ? ` · ${pendingAction.record.device.serial}`
                                 : ''}
                         </Text>
+                        {pendingAction && deviceSpecRows(pendingAction.record.device).length > 0 ? (
+                            <View className="bg-gray-50 rounded-lg px-3 py-2 mb-3">
+                                {deviceSpecRows(pendingAction.record.device).map((r) => (
+                                    <View key={r.label} className="flex-row justify-between mb-0.5">
+                                        <Text className="text-sm text-gray-500">{r.label}</Text>
+                                        <Text className="text-sm text-gray-800 font-medium ml-3 flex-shrink text-right">
+                                            {r.value}
+                                        </Text>
+                                    </View>
+                                ))}
+                            </View>
+                        ) : null}
 
                         {pendingAction?.type === 'confirm' ? (
-                            <Text className="text-sm text-gray-600 mb-3">
-                                Khi xác nhận, bạn đồng ý đã nhận đúng thiết bị nêu trên và cam kết bảo
-                                quản, sử dụng theo quy định. Xác nhận này thay cho chữ ký trên biên bản
-                                giấy và được lưu vết kèm thời điểm, tài khoản của bạn.
-                            </Text>
+                            <>
+                                <Text className="text-sm text-gray-600 mb-2">
+                                    Khi xác nhận, bạn đồng ý đã nhận đúng thiết bị nêu trên. Xác nhận
+                                    này thay cho chữ ký trên biên bản giấy và được lưu vết kèm thời
+                                    điểm, tài khoản của bạn.
+                                </Text>
+                                <Text className="text-sm font-semibold text-[#002855] mb-1">
+                                    {terms?.titleVi || 'Bản cam kết sử dụng tài sản'}
+                                </Text>
+                                {/* Bắt buộc cuộn hết mới cho tích — tích được ngay thì ô đồng ý
+                                    chỉ là hình thức, không chứng minh được người nhận đã xem. */}
+                                <ScrollView
+                                    className="border border-gray-300 rounded-lg p-3 mb-2"
+                                    style={{ maxHeight: 220 }}
+                                    nestedScrollEnabled
+                                    onScroll={({ nativeEvent: e }) => {
+                                        if (
+                                            e.contentOffset.y + e.layoutMeasurement.height >=
+                                            e.contentSize.height - 12
+                                        ) {
+                                            setReadToEnd(true);
+                                        }
+                                    }}
+                                    onLayout={(e) => setTermsBoxHeight(e.nativeEvent.layout.height)}
+                                    onContentSizeChange={(_w, h) => setTermsContentHeight(h)}
+                                    scrollEventThrottle={16}
+                                >
+                                    {termsError ? (
+                                        <Text className="text-sm text-red-600">
+                                            Không tải được điều khoản. Vui lòng đóng và thử lại.
+                                        </Text>
+                                    ) : !terms ? (
+                                        <Text className="text-sm text-gray-500">
+                                            Đang tải điều khoản…
+                                        </Text>
+                                    ) : termsLines.length > 0 ? (
+                                        termsLines.map((line, i) => (
+                                            <Text
+                                                key={`${i}-${line.slice(0, 24)}`}
+                                                className={
+                                                    line.startsWith('•')
+                                                        ? 'text-sm text-gray-700 mb-1'
+                                                        : 'text-sm font-semibold text-gray-800 mt-2 mb-1'
+                                                }
+                                            >
+                                                {line}
+                                            </Text>
+                                        ))
+                                    ) : terms.sections.length === 0 ? (
+                                        <Text className="text-sm text-red-600">
+                                            Bản cam kết chưa có nội dung. Vui lòng báo phòng IT soạn
+                                            và xuất bản trước khi xác nhận.
+                                        </Text>
+                                    ) : (
+                                        terms.sections.map((sec) => (
+                                            <View key={sec.titleVi} className="mb-3">
+                                                <Text className="text-sm font-semibold text-gray-800">
+                                                    {sec.titleVi}
+                                                </Text>
+                                                <Text className="text-xs italic text-gray-500 mb-1">
+                                                    {sec.titleEn}
+                                                </Text>
+                                                {sec.bullets.map((b) => (
+                                                    <View key={b.vi} className="mb-1">
+                                                        <Text className="text-sm text-gray-700">
+                                                            • {b.vi}
+                                                        </Text>
+                                                        <Text className="text-xs italic text-gray-500 ml-3">
+                                                            {b.en}
+                                                        </Text>
+                                                    </View>
+                                                ))}
+                                            </View>
+                                        ))
+                                    )}
+                                </ScrollView>
+                                {/* Ô tích luôn hiện nhưng MỜ và khoá tới khi cuộn hết, rồi sáng
+                                    lên có khung — cùng cách web đang làm. Không kèm câu nhắc:
+                                    trạng thái mờ đã nói đủ. */}
+                                {hasTerms ? (
+                                <TouchableOpacity
+                                    onPress={() => readToEnd && setAcceptedTerms((v) => !v)}
+                                    disabled={!readToEnd}
+                                    className={`flex-row items-start mb-3 rounded-lg border p-3 ${
+                                        readToEnd
+                                            ? 'border-[#002855] bg-[#F0F4FA]'
+                                            : 'border-gray-200 opacity-40'
+                                    }`}
+                                >
+                                    <View
+                                        className={`w-5 h-5 rounded border-2 mr-2 items-center justify-center ${
+                                            acceptedTerms
+                                                ? 'bg-[#002855] border-[#002855]'
+                                                : 'border-gray-400'
+                                        }`}
+                                    >
+                                        {acceptedTerms ? (
+                                            <MaterialCommunityIcons
+                                                name="check"
+                                                size={14}
+                                                color="#ffffff"
+                                            />
+                                        ) : null}
+                                    </View>
+                                    <Text className="text-sm text-gray-700 flex-1">
+                                        Tôi đã đọc và đồng ý với Bản cam kết sử dụng tài sản nêu trên.
+                                    </Text>
+                                </TouchableOpacity>
+                                ) : null}
+                            </>
                         ) : null}
 
                         {needsReason ? (
@@ -460,8 +675,15 @@ const MyHandoversScreen = () => {
                                 onPress={() => void submitAction()}
                                 className={`px-4 py-2 rounded-lg ${
                                     needsReason ? 'bg-red-500' : 'bg-[#002855]'
+                                } ${
+                                    pendingAction?.type === 'confirm' && !acceptedTerms
+                                        ? 'opacity-50'
+                                        : ''
                                 }`}
-                                disabled={submitting}
+                                disabled={
+                                    submitting ||
+                                    (pendingAction?.type === 'confirm' && !acceptedTerms)
+                                }
                             >
                                 {submitting ? (
                                     <ActivityIndicator size="small" color="#ffffff" />

@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
 // @ts-ignore
-import { View, Text, Switch, Alert, Image, ScrollView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  Switch,
+  Alert,
+  Image,
+  ScrollView,
+  Platform,
+  RefreshControl,
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TouchableOpacity } from '../../components/Common';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -15,7 +24,9 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import SelectModal from '../../components/SelectModal';
-import attendanceService from '../../services/attendanceService';
+import { useCampus } from '../../context/CampusContext';
+import { campusDisplayTitle } from '../../utils/campusStore';
+import { toast } from '../../components/Toast';
 import { getAppVersionFullLabel } from '../../services/appUpdateService';
 import { canSwitchUiVersion, setUiV2Enabled, useUiV2Enabled } from '../../config/uiV2';
 import { openAppStore, useAppUpdateStatus } from '../../hooks/useAppUpdate';
@@ -39,11 +50,29 @@ const ProfileScreen = () => {
   // const [showPassword, setShowPassword] = useState(false);
   // const [isLoading, setIsLoading] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
-  const [campusOptions, setCampusOptions] = useState<
-    { name: string; title_vn?: string; title_en?: string }[]
-  >([]);
+  // Campus: đọc/ghi qua CampusContext — nguồn sự thật chung cho interceptor và mọi màn khác.
+  const {
+    campuses: campusOptions,
+    currentCampusId,
+    currentCampus,
+    switchCampus,
+    switching: campusSwitching,
+    refreshCampuses,
+  } = useCampus();
   const [campusSelectorVisible, setCampusSelectorVisible] = useState(false);
-  const [selectedCampus, setSelectedCampus] = useState<string | null>(null); // stores campus_id like campus-1
+  // Kéo xuống để đồng bộ lại hồ sơ + role + campus từ server — thay cho việc phải đăng xuất.
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefreshProfile = React.useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refreshUserData(), refreshCampuses()]);
+      toast.success(t('profile.refreshed'));
+    } catch (e) {
+      console.warn('[Profile] refresh lỗi:', e);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshUserData, refreshCampuses, t]);
   // Tra store để biết có bản mới không — quyết định hiện nút "Cập nhật" ở hàng Phiên bản.
   const { status: updateStatus } = useAppUpdateStatus();
   const updateAvailable = !!updateStatus?.updateAvailable;
@@ -62,57 +91,6 @@ const ProfileScreen = () => {
       });
     }
   }, [user]);
-
-  // Helper: derive campuses from roles like web FE
-  const buildCampusesFromRoles = React.useCallback(() => {
-    try {
-      const roles: string[] = Array.isArray((user as any)?.roles) ? (user as any).roles : [];
-      const campusRoles = roles.filter((r) => typeof r === 'string' && r.startsWith('Campus '));
-      return campusRoles.map((role: string, idx: number) => {
-        const title = role.replace('Campus ', '').trim();
-        return { name: `campus-${idx + 1}`, title_vn: title, title_en: title };
-      });
-    } catch {
-      return [] as { name: string; title_vn?: string; title_en?: string }[];
-    }
-  }, [user?.roles]);
-
-  // Load campuses for selector
-  useEffect(() => {
-    (async () => {
-      try {
-        const cachedId = await AsyncStorage.getItem('currentCampusId');
-        if (cachedId) setSelectedCampus(cachedId);
-      } catch {}
-      try {
-        let rows = await attendanceService.fetchCampuses();
-        if (!rows || rows.length === 0) {
-          rows = buildCampusesFromRoles();
-        }
-        setCampusOptions(rows || []);
-        // Default selection: try saved title mapping or first
-        if (!selectedCampus && rows && rows.length > 0) {
-          const savedTitle = await AsyncStorage.getItem('selectedCampus');
-          if (savedTitle) {
-            const hit = rows.find(
-              (c) => c.title_vn === savedTitle || c.title_en === savedTitle || c.name === savedTitle
-            );
-            if (hit) {
-              await AsyncStorage.setItem('currentCampusId', hit.name);
-              setSelectedCampus(hit.name);
-              return;
-            }
-          }
-          await AsyncStorage.setItem('currentCampusId', rows[0].name);
-          await AsyncStorage.setItem(
-            'selectedCampus',
-            rows[0].title_vn || rows[0].title_en || rows[0].name
-          );
-          setSelectedCampus(rows[0].name);
-        }
-      } catch {}
-    })();
-  }, [buildCampusesFromRoles]);
 
   // Kiểm tra xem sinh trắc học có được bật không
   // Biometric toggle removed
@@ -406,7 +384,16 @@ const ProfileScreen = () => {
           <View style={{ width: 44, height: 44 }} />
         </View>
       </View>
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}>
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefreshProfile}
+            tintColor="#F05023"
+          />
+        }>
         {/* Profile Section */}
         <View className="mx-4 mt-6 items-center rounded-2xl p-6">
           {/* Avatar - chỉ hiển thị, không cho phép thay đổi */}
@@ -516,7 +503,13 @@ const ProfileScreen = () => {
             {/* Campus selector */}
             <TouchableOpacity
               className="flex-row items-center justify-between"
-              onPress={() => setCampusSelectorVisible(true)}>
+              onPress={() => {
+                if (campusOptions.length === 0) {
+                  toast.info(t('profile.campus_no_options'));
+                  return;
+                }
+                setCampusSelectorVisible(true);
+              }}>
               <View className="flex-1 flex-row items-center">
                 <Ionicons name="school-outline" size={20} color="#757575" />
                 <Text className="ml-5 text-black" style={{ fontFamily: 'Mulish-Medium' }}>
@@ -525,10 +518,7 @@ const ProfileScreen = () => {
               </View>
               <View className="flex-row items-center">
                 <Text className="mr-2 text-black" style={{ fontFamily: 'Mulish-Medium' }}>
-                  {(() => {
-                    const cur = campusOptions.find((c) => c.name === selectedCampus);
-                    return cur?.title_vn || cur?.title_en || selectedCampus || '—';
-                  })()}
+                  {campusDisplayTitle(currentCampus) || currentCampusId || '—'}
                 </Text>
                 <Ionicons name="chevron-down" size={16} color="#757575" />
               </View>
@@ -617,20 +607,27 @@ const ProfileScreen = () => {
       {/* Campus Select Modal */}
       <SelectModal
         visible={campusSelectorVisible}
-        title={t('profile.select_campus') || 'Chọn Trường/Campus'}
+        title={t('profile.select_campus')}
         options={campusOptions}
         keyExtractor={(c) => c.name}
-        renderLabel={(c) => c.title_vn || c.title_en || c.name}
+        renderLabel={(c) => campusDisplayTitle(c)}
+        selectedKey={currentCampusId}
+        cancelLabel={t('common.cancel')}
+        confirmLabel={t('common.confirm')}
+        confirming={campusSwitching}
         onCancel={() => setCampusSelectorVisible(false)}
         onSelect={async (item) => {
-          try {
-            const id = (item as any).name;
-            const title = (item as any).title_vn || (item as any).title_en || id;
-            await AsyncStorage.setItem('currentCampusId', id);
-            await AsyncStorage.setItem('selectedCampus', String(title));
-            setSelectedCampus(id);
-          } catch {}
+          // switchCampus: lưu server + store, rồi reset app về Trang chủ để mọi màn nạp
+          // lại theo campus mới (giống web reload trang). Thất bại thì giữ nguyên campus cũ.
+          const res = await switchCampus(item.name);
           setCampusSelectorVisible(false);
+          if (res.ok) {
+            toast.success(
+              t('profile.campus_changed', { campus: campusDisplayTitle(res.campus || item) })
+            );
+          } else {
+            toast.error(res.message || t('profile.campus_change_failed'));
+          }
         }}
       />
     </SafeAreaView>

@@ -70,6 +70,19 @@ if [ -f "./android/app/build.gradle" ]; then
     echo -e "${GREEN}✅ Updated android/app/build.gradle (versionName)${NC}"
 fi
 
+# runtimeVersion cho expo-updates nằm ở 2 file native nữa. Không bump ở đây thì
+# EAS prebuild tự sửa trong lúc build và để lại cây bẩn sau khi script chạy xong
+# (đã dính ở bản 1.5.45: pull --rebase bị chặn vì 2 file này chưa commit).
+if [ -f "./ios/Wis/Supporting/Expo.plist" ]; then
+    /usr/libexec/PlistBuddy -c "Set :EXUpdatesRuntimeVersion ${NEW_VERSION}" "./ios/Wis/Supporting/Expo.plist" 2>/dev/null \
+        && echo -e "${GREEN}✅ Updated ios/Wis/Supporting/Expo.plist (EXUpdatesRuntimeVersion)${NC}"
+fi
+if [ -f "./android/app/src/main/res/values/strings.xml" ]; then
+    sed -i '' "s|<string name=\"expo_runtime_version\">.*</string>|<string name=\"expo_runtime_version\">${NEW_VERSION}</string>|" \
+        "./android/app/src/main/res/values/strings.xml"
+    echo -e "${GREEN}✅ Updated android strings.xml (expo_runtime_version)${NC}"
+fi
+
 # Git commit version bump
 echo -e "${BLUE}📝 Committing version bump...${NC}"
 git add app.json package.json
@@ -79,6 +92,8 @@ fi
 if [ -f "./android/app/build.gradle" ]; then
     git add ./android/app/build.gradle
 fi
+[ -f "./ios/Wis/Supporting/Expo.plist" ] && git add ./ios/Wis/Supporting/Expo.plist
+[ -f "./android/app/src/main/res/values/strings.xml" ] && git add ./android/app/src/main/res/values/strings.xml
 git commit -m "chore: bump version to ${NEW_VERSION} [ios + android]" || echo -e "${YELLOW}No changes to commit${NC}"
 
 # Function to rollback version on failure

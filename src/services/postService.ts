@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL } from '../config/constants';
+import { campusHeaders } from '../utils/campusStore';
 import { Post, PostsResponse, CreatePostResponse, CreatePostData, MediaFile } from '../types/post';
 
 class PostService {
@@ -8,6 +9,7 @@ class PostService {
     return {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      ...campusHeaders(),
     };
   }
 
@@ -16,6 +18,7 @@ class PostService {
     return {
       Authorization: `Bearer ${token}`,
       // Don't set Content-Type for multipart, let fetch set it
+      ...campusHeaders(),
     };
   }
 

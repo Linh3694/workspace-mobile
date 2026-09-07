@@ -87,6 +87,7 @@ export interface AssignmentHistory {
   document?: string;
   documentFileUrl?: string;
   signingStatus?: HandoverSigningStatus;
+  signingMethod?: 'digital' | 'manual' | '';
   receiverConfirmedOn?: string;
   managerApprovedBy?: User;
   managerApprovedOn?: string;
@@ -130,6 +131,7 @@ export interface HandoverRecord {
   startDate: string;
   endDate?: string;
   receiverConfirmedOn?: string;
+  termsAcceptedOn?: string;
   managerApprovedOn?: string;
   receiverRejectReason?: string;
   managerRejectReason?: string;
@@ -139,6 +141,23 @@ export interface HandoverRecord {
   documentHash?: string;
   canConfirm: boolean;
   canApprove: boolean;
+  /** Ai đang phải duyệt (chỉ có khi signingStatus = pending_manager) */
+  pendingApprovers?: User[];
+}
+
+/** Bản cam kết sử dụng tài sản — chính là các trang phụ của biên bản PDF */
+export interface HandoverTerms {
+  titleVi: string;
+  titleEn: string;
+  version?: number;
+  /** Nội dung dạng dòng — app không render HTML được nên backend dựng sẵn */
+  text?: { vi: string[]; en: string[] } | null;
+  /** Chỉ dùng khi chưa ai xuất bản văn bản */
+  sections: Array<{
+    titleVi: string;
+    titleEn: string;
+    bullets: Array<{ vi: string; en: string }>;
+  }>;
 }
 
 export interface MyHandoversPayload {
@@ -158,6 +177,8 @@ export interface BaseDevice {
   releaseYear?: number;
   assigned?: User[];
   assignmentHistory?: AssignmentHistory[];
+  /** Hồ sơ bàn giao đang mở — backend gửi kèm để dựng tiến độ ký */
+  currentHandover?: AssignmentHistory | null;
   room?: Room;
   status: 'Active' | 'Standby' | 'Broken' | 'PendingDocumentation';
   brokenReason?: string;
