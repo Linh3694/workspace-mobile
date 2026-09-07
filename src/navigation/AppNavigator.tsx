@@ -8,7 +8,6 @@ import { ROUTES } from '../constants/routes';
 import TicketGuestScreen from '../screens/Ticket/TicketGuestScreen';
 import TicketAdminScreen from '../screens/Ticket/TicketAdminScreen';
 import TicketCreate from '../screens/Ticket/TicketCreate';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import TicketAdminDetail from '../screens/Ticket/TicketAdminDetail';
 import TicketGuestDetail from '../screens/Ticket/TicketGuestDetail';
 import AdministrativeTicketGuestScreen from '../screens/AdministrativeTicket/TicketGuestScreen';
@@ -273,7 +272,7 @@ const AppNavigator = () => {
     }
     return false;
   });
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
 
   // DEV: Reset để test lại splash
   // @ts-ignore
@@ -282,42 +281,16 @@ const AppNavigator = () => {
     setShowSplash(true);
   };
 
+  // Đọc role từ state `user` của AuthContext thay vì AsyncStorage: khi refreshUserData
+  // (mở lại app, pull-to-refresh Hồ sơ) đem về role mới thì màn Ticket đổi theo ngay,
+  // không cần đăng xuất/đăng nhập lại. Mobile IT -> Ticket Admin, còn lại -> Ticket Guest.
+  const rolesKey = Array.isArray(user?.roles) ? [...user.roles].sort().join('|') : '';
   useEffect(() => {
-    const checkUserRole = async () => {
-      try {
-        const storedRole = (await AsyncStorage.getItem('userRole'))?.toLowerCase().trim();
-        const storedRolesStr = await AsyncStorage.getItem('userRoles');
-        const storedRoles: string[] = storedRolesStr ? JSON.parse(storedRolesStr) : [];
-        console.log('AppNavigator - userRole:', storedRole, 'userRoles:', storedRoles);
-
-        const userData = await AsyncStorage.getItem('user');
-        if (userData) {
-          const user = JSON.parse(userData);
-          const role = (user.role || storedRole || '').toLowerCase().trim();
-          const roles = Array.isArray(user.roles) ? user.roles : storedRoles;
-
-          // Logic phân quyền theo Mobile roles:
-          // Mobile IT -> Ticket Admin, còn lại -> Ticket Guest
-          const hasMobileIT = roles.includes('Mobile IT');
-
-          if (hasMobileIT) {
-            setTicketComponent(() => TicketAdminScreen);
-          } else {
-            setTicketComponent(() => TicketGuestScreen);
-          }
-        } else {
-          setTicketComponent(() => TicketGuestScreen);
-        }
-      } catch (error) {
-        console.error('Lỗi khi kiểm tra role:', error);
-        setTicketComponent(() => TicketGuestScreen);
-      }
-    };
-
-    if (isAuthenticated) {
-      checkUserRole();
-    }
-  }, [isAuthenticated]);
+    if (!isAuthenticated) return;
+    const roles: string[] = Array.isArray(user?.roles) ? user.roles : [];
+    setTicketComponent(() => (roles.includes('Mobile IT') ? TicketAdminScreen : TicketGuestScreen));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, rolesKey]);
 
   // Show splash screen first
   console.log(

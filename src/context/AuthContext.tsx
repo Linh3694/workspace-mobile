@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import * as SecureStore from 'expo-secure-store';
@@ -8,12 +9,25 @@ import pushNotificationService from '../services/pushNotificationService';
 import { userService } from '../services/userService';
 import { normalizeUserData as normalizeUserName } from '../utils/nameFormatter';
 import { setSessionExpiredHandler } from '../utils/sessionExpiry';
+import { clearCampusStore } from '../utils/campusStore';
+import { toast } from '../components/Toast';
+import i18n from '../config/i18n';
 
 // Khóa cho thông tin đăng nhập sinh trắc học
 const CREDENTIALS_KEY = 'WELLSPRING_SECURE_CREDENTIALS';
 
 /** Trần thời gian chờ gỡ đăng ký push lúc đăng xuất — xem lý do ở `logout`. */
 const PUSH_UNREGISTER_TIMEOUT_MS = 3000;
+
+/**
+ * Khoảng cách tối thiểu giữa hai lần tự đồng bộ hồ sơ khi app quay lại foreground.
+ * Trước đây role/teacher_info chỉ được lấy lúc đăng nhập và lúc mở app lạnh, nên
+ * quản trị vừa cấp quyền là giáo viên phải đăng xuất/đăng nhập lại mới thấy.
+ */
+const FOREGROUND_REFRESH_MIN_INTERVAL_MS = 60 * 1000;
+
+const rolesKeyOf = (roles: unknown): string =>
+  Array.isArray(roles) ? [...roles].map(String).sort().join('|') : '';
 
 /**
  * Bóc payload của get_current_user bất kể lớp bọc.
@@ -101,6 +115,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     userRef.current = user;
   }, [user]);
+  /** Mốc lần refreshUserData gần nhất — để throttle đồng bộ khi quay lại foreground. */
+  const lastUserRefreshAtRef = useRef(0);
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
   console.log('🔄 [AuthProvider] Initial state - user:', user, 'loading:', loading);
 
   // --- Avatar cache-bust helpers ---
@@ -151,8 +168,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // Đồng bộ user data mới nhất từ Frappe (bao gồm roles, teacher_info)
   // QUAN TRỌNG: Hàm này được sử dụng cho cả local login và Microsoft login
   const refreshUserData = useCallback(async () => {
+    // Gộp các lời gọi chồng nhau (mở app + foreground + pull-to-refresh) thành một request.
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const run = async () => {
     try {
       console.log('=== [refreshUserData] Starting ===');
+      lastUserRefreshAtRef.current = Date.now();
       const token = await AsyncStorage.getItem('authToken');
       if (!token) {
         console.warn('[refreshUserData] No token found, skipping');
@@ -218,10 +239,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
 
-      // Giữ nguyên cách bóc dữ liệu cũ cho nhánh thành công (không đổi hành vi ngoài phạm vi 401).
-      const ok = (data && data.success === true) || (data && data.status === 'success');
-      const payload = (data && data.data) || data;
-      const userData = payload && payload.user;
+      // Frappe bọc giá trị trả về trong `message` ({ message: { success, data: { user } } }).
+      // Bản cũ đọc `data.success` ở cấp ngoài cùng nên LUÔN rơi vào "no user data": hồ sơ và
+      // role chưa bao giờ được làm mới sau đăng nhập — cấp thêm role là phải đăng xuất/đăng
+      // nhập lại mới thấy (xác nhận trên prod 07/09/2026: Mobile IT có trên server nhưng app
+      // vẫn dùng bản user cache). Dùng cùng bộ bóc với cờ `authenticated` ở trên.
+      const ok = unwrapped.ok;
+      const userData = unwrapped.user;
 
       if (ok && userData) {
         console.log('[refreshUserData] Raw user data received:', {
@@ -267,6 +291,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           },
         });
 
+        // Role đổi so với bản đang chạy → báo cho người dùng biết vì sao menu vừa thay đổi.
+        // Chỉ so khi đã có user cũ (không báo ở lần đăng nhập đầu).
+        const prevRolesKey = rolesKeyOf(userRef.current?.roles);
+        if (userRef.current && prevRolesKey && prevRolesKey !== rolesKeyOf(normalized.roles)) {
+          console.log('[refreshUserData] Roles changed:', {
+            before: userRef.current?.roles,
+            after: normalized.roles,
+          });
+          toast.info(i18n.t('profile.roles_updated'));
+        }
+
         // Cập nhật state và AsyncStorage
         setUser(normalized);
         await AsyncStorage.setItem('user', JSON.stringify(normalized));
@@ -287,7 +322,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     } catch (error) {
       console.error('[refreshUserData] Error:', error);
     }
+    };
+    const p = run().finally(() => {
+      refreshInFlightRef.current = null;
+    });
+    refreshInFlightRef.current = p;
+    return p;
   }, [user?.provider, attachAvatarCacheBust]);
+
+  // Quay lại foreground → đồng bộ hồ sơ/role (có throttle). Đây là cách "context tự đổi
+  // khi role đổi" mà không bắt đăng xuất: HomeScreen, AppNavigator đọc `user.roles` từ
+  // state này nên menu và màn Ticket đổi theo ngay khi setUser.
+  useEffect(() => {
+    const onChange = (state: AppStateStatus) => {
+      if (state !== 'active') return;
+      if (!userRef.current) return;
+      if (Date.now() - lastUserRefreshAtRef.current < FOREGROUND_REFRESH_MIN_INTERVAL_MS) return;
+      refreshUserData().catch((e) => console.warn('[AuthProvider] foreground refresh lỗi:', e));
+    };
+    const sub = AppState.addEventListener('change', onChange);
+    return () => sub.remove();
+  }, [refreshUserData]);
 
   // Đăng xuất - wrapped in useCallback để ổn định dependency cho các hook khác
   const logout = useCallback(async () => {
@@ -342,6 +397,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       await AsyncStorage.removeItem('userEmployeeCode');
       await AsyncStorage.removeItem('userAvatarUrl');
       await AsyncStorage.removeItem('userRoles');
+      // Campus đang chọn thuộc về phiên này — người khác đăng nhập cùng máy không được kế thừa.
+      await clearCampusStore();
       setUser(null);
     } catch (error) {
       console.error('Lỗi khi đăng xuất:', error);
@@ -496,8 +553,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               setLoading(false);
               return false;
             }
-            if (data.status === 'success' && data.user && data.authenticated) {
-              const userData = data.user;
+            // Cùng lý do với refreshUserData: phải bóc lớp `message` của Frappe, nếu không
+            // nhánh này không bao giờ chạy và rơi xuống frappe.auth.get_logged_user (chỉ trả
+            // email → không có role mobile → bị đăng xuất oan).
+            const fromErp = unwrapCurrentUserResponse(data);
+            if (fromErp.ok && fromErp.user && fromErp.authenticated !== false) {
+              const userData = fromErp.user;
               console.log('✅ [checkAuth] User data fetched from ERP endpoint');
               console.log('User data preview:', {
                 email: userData.email,

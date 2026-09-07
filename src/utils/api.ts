@@ -4,6 +4,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import { API_BASE_URL } from '../config/constants';
 import { notifySessionExpired } from './sessionExpiry';
+import { applyCampusToAxiosConfig } from './campusStore';
+
+declare module 'axios' {
+  export interface AxiosRequestConfig {
+    /** Bỏ qua việc tự gắn campus (X-Campus-Id / campus_id) cho request này. */
+    skipCampus?: boolean;
+  }
+}
 
 // Tạo instance axios — withCredentials: false (mặc định đã set trong axiosDefaults, lặp lại cho rõ ràng)
 const api = axios.create({
@@ -44,7 +52,8 @@ api.interceptors.request.use(
         // Không thêm token nếu không hợp lệ
       }
     }
-    return config;
+    // Campus đang chọn — gắn tập trung một chỗ thay vì từng service tự nhớ.
+    return applyCampusToAxiosConfig(config as any);
   },
   (error) => {
     return Promise.reject(error);

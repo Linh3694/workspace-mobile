@@ -12,7 +12,7 @@
  * Thứ tự ưu tiên:
  *   1) EXPO_PUBLIC_API_BASE_URL / EXPO_PUBLIC_BASE_URL — ghi đè tất cả (máy local, ngrok…)
  *   2) EXPO_PUBLIC_APP_ENV — chọn bảng dưới đây (script `npm run *:staging`, eas.json)
- *   3) Không set gì: __DEV__ → staging, bản release → production
+ *   3) Không set gì: production (kể cả bản dev). Muốn staging thì chạy `npm run start:staging`.
  */
 export const ENVIRONMENT_URLS = {
   staging: 'https://admin.sis.wellspring.edu.vn',
@@ -27,7 +27,9 @@ function resolveAppEnvironment() {
   const raw = (process.env.EXPO_PUBLIC_APP_ENV || '').trim().toLowerCase();
   if (raw === 'staging' || raw === 'stage') return 'staging';
   if (raw === 'production' || raw === 'prod') return 'production';
-  return typeof __DEV__ !== 'undefined' && __DEV__ ? 'staging' : 'production';
+  // Mặc định trỏ production ngay cả khi __DEV__ — staging (42.96.40.246) chạy bản erp khác,
+  // test ở đó cho kết quả không khớp prod. Cần staging: EXPO_PUBLIC_APP_ENV=staging.
+  return 'production';
 }
 
 /** Môi trường app đang trỏ tới */

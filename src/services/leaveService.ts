@@ -1,5 +1,6 @@
 import { API_BASE_URL } from '../config/constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { campusHeaders } from '../utils/campusStore';
 
 export interface LeaveRequest {
   name: string;
@@ -150,6 +151,7 @@ class LeaveService {
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
+      Object.assign(headers, campusHeaders());
 
       const response = await fetch(
         `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.get_leave_request?leave_request_id=${encodeURIComponent(leaveRequestId)}`,
@@ -185,6 +187,7 @@ class LeaveService {
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
+      Object.assign(headers, campusHeaders());
 
       const response = await fetch(
         `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.create_leave_request`,
@@ -226,6 +229,7 @@ class LeaveService {
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
+      Object.assign(headers, campusHeaders());
 
       // Step 1: Get class students (student IDs)
       const classStudentsResponse = await fetch(
@@ -319,6 +323,7 @@ class LeaveService {
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
+      Object.assign(headers, campusHeaders());
 
       const response = await fetch(
         `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.get_class_leave_requests?${queryParams.toString()}`,
@@ -416,6 +421,7 @@ class LeaveService {
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
+      Object.assign(headers, campusHeaders());
 
       const response = await fetch(
         `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.get_student_photo?student_id=${studentId}`,
@@ -445,6 +451,7 @@ class LeaveService {
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
+      Object.assign(headers, campusHeaders());
 
       const response = await fetch(
         `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.get_leave_request_details?leave_request_id=${encodeURIComponent(leaveRequestId)}`,
@@ -488,6 +495,7 @@ class LeaveService {
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
+      Object.assign(headers, campusHeaders());
 
       const response = await fetch(
         `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.update_leave_request`,
@@ -527,6 +535,7 @@ class LeaveService {
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
+      Object.assign(headers, campusHeaders());
 
       const response = await fetch(
         `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.delete_leave_request`,
@@ -566,6 +575,7 @@ class LeaveService {
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
+      Object.assign(headers, campusHeaders());
 
       const response = await fetch(
         `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.get_leave_request_attachments?leave_request_id=${encodeURIComponent(leaveRequestId)}`,
@@ -614,6 +624,7 @@ class LeaveService {
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
+      Object.assign(headers, campusHeaders());
 
       const response = await fetch(
         `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.upload_leave_attachment`,
@@ -653,6 +664,7 @@ class LeaveService {
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
+      Object.assign(headers, campusHeaders());
 
       const response = await fetch(
         `${API_BASE_URL}/api/method/erp.api.erp_sis.leave.delete_leave_attachment`,

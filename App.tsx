@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import { View, StyleSheet, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
-import AppNavigator, { RootStackParamList } from './src/navigation/AppNavigator';
+import AppNavigator from './src/navigation/AppNavigator';
 import {
   navigateFromPushNotificationData,
   consumePendingPushNotificationIfAny,
@@ -13,7 +13,8 @@ import {
 import { useAuth } from './src/context/AuthContext';
 import * as Notifications from 'expo-notifications';
 import { Audio } from 'expo-av';
-import { createNavigationContainerRef, NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
+import { navigationRef } from './src/navigation/navigationRef';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -29,6 +30,7 @@ import * as Font from 'expo-font';
 import './global.css';
 import './src/config/i18n';
 import { AuthProvider } from './src/context/AuthContext';
+import { CampusProvider } from './src/context/CampusContext';
 import { ThemeProvider } from './src/context/ThemeContext';
 import VersionChecker from './src/components/VersionChecker';
 import { ChatMessageNotificationProvider } from './src/providers/ChatMessageNotificationProvider';
@@ -61,8 +63,6 @@ Notifications.setNotificationHandler({
     shouldShowList: true,
   }),
 });
-
-const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 /**
  * Dấu vết cú bấm thông báo đã xử lý ở lần mở app trước — phải BỀN qua các lần
@@ -302,6 +302,8 @@ export default function App() {
           <ToastProvider>
             <ToastInitializer />
             <AuthProvider>
+              {/* CampusProvider nằm trên NavigationContainer: đổi campus reset được cả navigator. */}
+              <CampusProvider>
               <NotificationInboxSocketProvider>
               <ChatMessageNotificationProvider>
                 <VersionChecker>
@@ -321,6 +323,7 @@ export default function App() {
                 </VersionChecker>
               </ChatMessageNotificationProvider>
               </NotificationInboxSocketProvider>
+              </CampusProvider>
             </AuthProvider>
             <StatusBar style="auto" />
           </ToastProvider>

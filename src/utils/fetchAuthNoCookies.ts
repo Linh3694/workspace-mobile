@@ -1,14 +1,21 @@
 import { notifySessionExpired } from './sessionExpiry';
+import { campusHeaders } from './campusStore';
 
 /**
  * Fetch tới API Frappe cho luồng đăng nhập / OAuth mà không gửi cookie session cũ.
  * Tránh lỗi resume session với user=null ("User None is disabled") khi sid trong cookie jar bị hỏng.
+ *
+ * Cũng là chỗ gắn `X-Campus-Id` cho nhóm service dùng fetch thô qua đây (attendance…),
+ * để campus đang chọn áp dụng đồng nhất với nhóm đi qua axios. Header do caller đặt
+ * sẵn luôn thắng.
  */
 export async function fetchAuthNoCookies(
   input: RequestInfo,
   init?: RequestInit
 ): Promise<Response> {
-  const response = await fetch(input, { ...init, credentials: 'omit' });
+  const url = typeof input === 'string' ? input : (input as any)?.url || '';
+  const headers = { ...campusHeaders(url), ...((init?.headers as Record<string, string>) || {}) };
+  const response = await fetch(input, { ...init, headers, credentials: 'omit' });
 
   // Đây là chokepoint DUY NHẤT của màn Điểm danh: `attendanceApiService` và
   // `attendanceService` đi qua đây, còn `AttendanceHome` không có một lời gọi axios nào

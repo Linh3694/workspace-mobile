@@ -5,8 +5,16 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../config/constants';
 import { notifySessionExpired } from './sessionExpiry';
+import { applyCampusToAxiosConfig } from './campusStore';
 
 axios.defaults.withCredentials = false;
+
+/**
+ * Gắn campus đang chọn (X-Campus-Id + campus_id) vào MỌI request axios gọi thẳng
+ * `axios.get/post` tới backend mình. Instance trong utils/api.ts có interceptor riêng
+ * (instance không kế thừa interceptor global). Xem lý do ở utils/campusStore.ts.
+ */
+axios.interceptors.request.use((config) => applyCampusToAxiosConfig(config as any));
 
 /**
  * Bắt 401 ở tầng axios GLOBAL.

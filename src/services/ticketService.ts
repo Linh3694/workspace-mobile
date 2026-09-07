@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL } from '../config/constants';
 import { getAllCategoryMappings } from '../config/ticketConstants';
 import { parseFrappeApiError } from './administrativeTicketService';
+import { campusHeaders } from '../utils/campusStore';
 
 const IT_API = '/api/method/erp.api.erp_it_support.ticket';
 const IT_TEAM_API = '/api/method/erp.api.erp_it_support.support_team';
@@ -68,6 +69,7 @@ async function frappePostFormData<T>(method: string, formData: FormData): Promis
     method: 'POST',
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...campusHeaders(),
       // Không set Content-Type — fetch tự thêm boundary cho multipart
     },
     body: formData as unknown as BodyInit,

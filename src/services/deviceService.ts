@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL } from '../config/constants.js';
+import { campusHeaders } from '../utils/campusStore';
 import {
   Device,
   DeviceType,
@@ -55,6 +56,7 @@ class DeviceService {
       Authorization: `Bearer ${token}`,
       'X-Frappe-CSRF-Token': token,
       'Content-Type': 'application/json',
+      ...campusHeaders(),
     };
   }
 

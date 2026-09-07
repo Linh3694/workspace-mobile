@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL } from '../config/constants';
 import { fetchAuthNoCookies } from '../utils/fetchAuthNoCookies';
+import { campusHeaders } from '../utils/campusStore';
 
 interface AttendanceRecord {
   _id: string;
@@ -64,6 +65,7 @@ class AttendanceService {
     return {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      ...campusHeaders(),
     };
   }
 
