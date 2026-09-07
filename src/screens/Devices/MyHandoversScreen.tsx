@@ -254,6 +254,15 @@ const MyHandoversScreen = () => {
                             {formatDateTime(record.managerApprovedOn)}
                         </Text>
                     ) : null}
+                    {record.signingStatus === 'pending_manager' ? (
+                        <Text className="text-sm text-gray-600 mt-0.5">
+                            {record.pendingApprovers?.length
+                                ? `Chờ duyệt bởi: ${record.pendingApprovers
+                                      .map((u) => normalizeVietnameseName(u.fullname) || u.fullname)
+                                      .join(', ')}`
+                                : 'Chưa xác định được người duyệt — Phòng IT cần có Lãnh đạo khác người nhận trên Sơ đồ tổ chức.'}
+                        </Text>
+                    ) : null}
                     {record.notes ? (
                         <Text className="text-sm text-gray-600 mt-0.5">Ghi chú: {record.notes}</Text>
                     ) : null}

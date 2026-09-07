@@ -140,6 +140,8 @@ export interface HandoverRecord {
   documentHash?: string;
   canConfirm: boolean;
   canApprove: boolean;
+  /** Ai đang phải duyệt (chỉ có khi signingStatus = pending_manager) */
+  pendingApprovers?: User[];
 }
 
 export interface MyHandoversPayload {
