@@ -91,6 +91,11 @@ const MyHandoversScreen = () => {
     const [termsError, setTermsError] = useState(false);
     const [readToEnd, setReadToEnd] = useState(false);
     const [acceptedTerms, setAcceptedTerms] = useState(false);
+    // Chiều cao THẬT của khung cuộn (đã trừ padding). So với hằng 220 là sai: khung
+    // maxHeight 220 nhưng p-3 ăn 24px, nội dung 196–220px vẫn bị cắt dòng cuối mà
+    // lại bị coi là "ngắn hơn khung, đã đọc".
+    const [termsBoxHeight, setTermsBoxHeight] = useState(0);
+    const [termsContentHeight, setTermsContentHeight] = useState(0);
 
     const fetchData = useCallback(async () => {
         try {
@@ -163,6 +168,7 @@ const MyHandoversScreen = () => {
         setReadToEnd(false);
         setAcceptedTerms(false);
         setTermsError(false);
+        setTermsContentHeight(0);
         if (terms) return;
         deviceService
             .getHandoverTerms()
@@ -172,6 +178,13 @@ const MyHandoversScreen = () => {
                 setTermsError(true);
             });
     }, [pendingAction?.type, terms]);
+
+    // Nội dung ngắn hơn khung thì không có gì để cuộn — coi như đã đọc, nếu không
+    // người dùng kẹt vĩnh viễn không tích được. Dùng số đo thật, không dùng hằng.
+    useEffect(() => {
+        if (!termsBoxHeight || !termsContentHeight) return;
+        if (termsContentHeight <= termsBoxHeight - 24 + 2) setReadToEnd(true);
+    }, [termsBoxHeight, termsContentHeight]);
 
     // Không có nội dung thì KHÔNG cho tích: trước đây hộp rỗng vẫn tích được (nội dung
     // ngắn hơn khung -> coi như đã đọc), nên người dùng đồng ý với một tờ giấy trắng.
@@ -496,11 +509,8 @@ const MyHandoversScreen = () => {
                                             setReadToEnd(true);
                                         }
                                     }}
-                                    onContentSizeChange={(_w, h) => {
-                                        // Nội dung ngắn hơn khung thì không có gì để cuộn — coi như
-                                        // đã đọc, nếu không người dùng kẹt vĩnh viễn không tích được.
-                                        if (h <= 220 && hasTerms) setReadToEnd(true);
-                                    }}
+                                    onLayout={(e) => setTermsBoxHeight(e.nativeEvent.layout.height)}
+                                    onContentSizeChange={(_w, h) => setTermsContentHeight(h)}
                                     scrollEventThrottle={16}
                                 >
                                     {termsError ? (
@@ -552,18 +562,17 @@ const MyHandoversScreen = () => {
                                         ))
                                     )}
                                 </ScrollView>
-                                {!readToEnd && !termsError ? (
-                                    <Text className="text-xs text-gray-500 mb-2">
-                                        Vui lòng cuộn xem hết điều khoản để có thể đồng ý.
-                                    </Text>
-                                ) : null}
+                                {/* Ô tích luôn hiện nhưng MỜ và khoá tới khi cuộn hết, rồi sáng
+                                    lên có khung — cùng cách web đang làm. Không kèm câu nhắc:
+                                    trạng thái mờ đã nói đủ. */}
+                                {hasTerms ? (
                                 <TouchableOpacity
-                                    onPress={() =>
-                                        readToEnd && hasTerms && setAcceptedTerms((v) => !v)
-                                    }
-                                    disabled={!readToEnd || !hasTerms}
-                                    className={`flex-row items-start mb-3 ${
-                                        readToEnd && hasTerms ? '' : 'opacity-50'
+                                    onPress={() => readToEnd && setAcceptedTerms((v) => !v)}
+                                    disabled={!readToEnd}
+                                    className={`flex-row items-start mb-3 rounded-lg border p-3 ${
+                                        readToEnd
+                                            ? 'border-[#002855] bg-[#F0F4FA]'
+                                            : 'border-gray-200 opacity-40'
                                     }`}
                                 >
                                     <View
@@ -585,6 +594,7 @@ const MyHandoversScreen = () => {
                                         Tôi đã đọc và đồng ý với Bản cam kết sử dụng tài sản nêu trên.
                                     </Text>
                                 </TouchableOpacity>
+                                ) : null}
                             </>
                         ) : null}
 
