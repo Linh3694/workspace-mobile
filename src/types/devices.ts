@@ -131,6 +131,7 @@ export interface HandoverRecord {
   startDate: string;
   endDate?: string;
   receiverConfirmedOn?: string;
+  termsAcceptedOn?: string;
   managerApprovedOn?: string;
   receiverRejectReason?: string;
   managerRejectReason?: string;
@@ -142,6 +143,17 @@ export interface HandoverRecord {
   canApprove: boolean;
   /** Ai đang phải duyệt (chỉ có khi signingStatus = pending_manager) */
   pendingApprovers?: User[];
+}
+
+/** Bản cam kết sử dụng tài sản — chính là các trang phụ của biên bản PDF */
+export interface HandoverTerms {
+  titleVi: string;
+  titleEn: string;
+  sections: Array<{
+    titleVi: string;
+    titleEn: string;
+    bullets: Array<{ vi: string; en: string }>;
+  }>;
 }
 
 export interface MyHandoversPayload {

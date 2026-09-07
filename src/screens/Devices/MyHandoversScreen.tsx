@@ -25,6 +25,7 @@ import { normalizeVietnameseName } from '../../utils/nameFormatter';
 import type {
     HandoverRecord,
     HandoverSigningStatus,
+    HandoverTerms,
     MyHandoversPayload,
 } from '../../types/devices';
 
@@ -86,6 +87,10 @@ const MyHandoversScreen = () => {
     const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
     const [reason, setReason] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [terms, setTerms] = useState<HandoverTerms | null>(null);
+    const [termsError, setTermsError] = useState(false);
+    const [readToEnd, setReadToEnd] = useState(false);
+    const [acceptedTerms, setAcceptedTerms] = useState(false);
 
     const fetchData = useCallback(async () => {
         try {
@@ -152,6 +157,22 @@ const MyHandoversScreen = () => {
         'to-approve': 'Không có biên bản nào chờ bạn phê duyệt',
     };
 
+    // Chỉ nạp điều khoản khi thực sự mở bước xác nhận — không tải kèm danh sách.
+    useEffect(() => {
+        if (pendingAction?.type !== 'confirm') return;
+        setReadToEnd(false);
+        setAcceptedTerms(false);
+        setTermsError(false);
+        if (terms) return;
+        deviceService
+            .getHandoverTerms()
+            .then(setTerms)
+            .catch((e) => {
+                console.error('Error loading handover terms:', e);
+                setTermsError(true);
+            });
+    }, [pendingAction?.type, terms]);
+
     const needsReason =
         pendingAction?.type === 'receiver-reject' || pendingAction?.type === 'manager-reject';
 
@@ -159,6 +180,10 @@ const MyHandoversScreen = () => {
         if (!pendingAction) return;
         if (needsReason && !reason.trim()) {
             Alert.alert('Thiếu thông tin', 'Vui lòng nhập lý do từ chối.');
+            return;
+        }
+        if (pendingAction.type === 'confirm' && !acceptedTerms) {
+            Alert.alert('Thiếu thông tin', 'Vui lòng đọc và đồng ý Bản cam kết sử dụng tài sản.');
             return;
         }
         setSubmitting(true);
@@ -436,11 +461,99 @@ const MyHandoversScreen = () => {
                         </Text>
 
                         {pendingAction?.type === 'confirm' ? (
-                            <Text className="text-sm text-gray-600 mb-3">
-                                Khi xác nhận, bạn đồng ý đã nhận đúng thiết bị nêu trên và cam kết bảo
-                                quản, sử dụng theo quy định. Xác nhận này thay cho chữ ký trên biên bản
-                                giấy và được lưu vết kèm thời điểm, tài khoản của bạn.
-                            </Text>
+                            <>
+                                <Text className="text-sm text-gray-600 mb-2">
+                                    Khi xác nhận, bạn đồng ý đã nhận đúng thiết bị nêu trên. Xác nhận
+                                    này thay cho chữ ký trên biên bản giấy và được lưu vết kèm thời
+                                    điểm, tài khoản của bạn.
+                                </Text>
+                                <Text className="text-sm font-semibold text-[#002855] mb-1">
+                                    {terms?.titleVi || 'Bản cam kết sử dụng tài sản'}
+                                </Text>
+                                {/* Bắt buộc cuộn hết mới cho tích — tích được ngay thì ô đồng ý
+                                    chỉ là hình thức, không chứng minh được người nhận đã xem. */}
+                                <ScrollView
+                                    className="border border-gray-300 rounded-lg p-3 mb-2"
+                                    style={{ maxHeight: 220 }}
+                                    nestedScrollEnabled
+                                    onScroll={({ nativeEvent: e }) => {
+                                        if (
+                                            e.contentOffset.y + e.layoutMeasurement.height >=
+                                            e.contentSize.height - 12
+                                        ) {
+                                            setReadToEnd(true);
+                                        }
+                                    }}
+                                    onContentSizeChange={(_w, h) => {
+                                        // Nội dung ngắn hơn khung thì không có gì để cuộn — coi như
+                                        // đã đọc, nếu không người dùng kẹt vĩnh viễn không tích được.
+                                        if (h <= 220) setReadToEnd(true);
+                                    }}
+                                    scrollEventThrottle={16}
+                                >
+                                    {termsError ? (
+                                        <Text className="text-sm text-red-600">
+                                            Không tải được điều khoản. Vui lòng đóng và thử lại.
+                                        </Text>
+                                    ) : !terms ? (
+                                        <Text className="text-sm text-gray-500">
+                                            Đang tải điều khoản…
+                                        </Text>
+                                    ) : (
+                                        terms.sections.map((sec) => (
+                                            <View key={sec.titleVi} className="mb-3">
+                                                <Text className="text-sm font-semibold text-gray-800">
+                                                    {sec.titleVi}
+                                                </Text>
+                                                <Text className="text-xs italic text-gray-500 mb-1">
+                                                    {sec.titleEn}
+                                                </Text>
+                                                {sec.bullets.map((b) => (
+                                                    <View key={b.vi} className="mb-1">
+                                                        <Text className="text-sm text-gray-700">
+                                                            • {b.vi}
+                                                        </Text>
+                                                        <Text className="text-xs italic text-gray-500 ml-3">
+                                                            {b.en}
+                                                        </Text>
+                                                    </View>
+                                                ))}
+                                            </View>
+                                        ))
+                                    )}
+                                </ScrollView>
+                                {!readToEnd && !termsError ? (
+                                    <Text className="text-xs text-gray-500 mb-2">
+                                        Vui lòng cuộn xem hết điều khoản để có thể đồng ý.
+                                    </Text>
+                                ) : null}
+                                <TouchableOpacity
+                                    onPress={() => readToEnd && setAcceptedTerms((v) => !v)}
+                                    disabled={!readToEnd}
+                                    className={`flex-row items-start mb-3 ${
+                                        readToEnd ? '' : 'opacity-50'
+                                    }`}
+                                >
+                                    <View
+                                        className={`w-5 h-5 rounded border-2 mr-2 items-center justify-center ${
+                                            acceptedTerms
+                                                ? 'bg-[#002855] border-[#002855]'
+                                                : 'border-gray-400'
+                                        }`}
+                                    >
+                                        {acceptedTerms ? (
+                                            <MaterialCommunityIcons
+                                                name="check"
+                                                size={14}
+                                                color="#ffffff"
+                                            />
+                                        ) : null}
+                                    </View>
+                                    <Text className="text-sm text-gray-700 flex-1">
+                                        Tôi đã đọc và đồng ý với Bản cam kết sử dụng tài sản nêu trên.
+                                    </Text>
+                                </TouchableOpacity>
+                            </>
                         ) : null}
 
                         {needsReason ? (
@@ -469,8 +582,15 @@ const MyHandoversScreen = () => {
                                 onPress={() => void submitAction()}
                                 className={`px-4 py-2 rounded-lg ${
                                     needsReason ? 'bg-red-500' : 'bg-[#002855]'
+                                } ${
+                                    pendingAction?.type === 'confirm' && !acceptedTerms
+                                        ? 'opacity-50'
+                                        : ''
                                 }`}
-                                disabled={submitting}
+                                disabled={
+                                    submitting ||
+                                    (pendingAction?.type === 'confirm' && !acceptedTerms)
+                                }
                             >
                                 {submitting ? (
                                     <ActivityIndicator size="small" color="#ffffff" />

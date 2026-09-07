@@ -14,6 +14,7 @@ import {
   Phone,
   HandoverRecord,
   MyHandoversPayload,
+  HandoverTerms,
 } from '../types/devices';
 
 // API configuration
@@ -656,9 +657,17 @@ class DeviceService {
     return this.unwrapData<HandoverRecord>(payload);
   }
 
+  /** Bản cam kết — cùng nguồn với các trang phụ của PDF, không chép sang app */
+  async getHandoverTerms(): Promise<HandoverTerms> {
+    const payload = await this.invGet<any>('handover_sign.get_handover_terms');
+    return this.unwrapData<HandoverTerms>(payload);
+  }
+
   async confirmHandover(handoverId: string): Promise<HandoverRecord> {
     const payload = await this.invPost<any>('handover_sign.receiver_confirm', {
       handover_id: handoverId,
+      // Server kiểm lại cờ này — khoá nút bên app thôi thì gọi thẳng API là lách được
+      accepted_terms: true,
     });
     return this.unwrapData<HandoverRecord>(payload);
   }
