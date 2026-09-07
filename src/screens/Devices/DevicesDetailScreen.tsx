@@ -651,7 +651,12 @@ const DevicesDetailScreen = () => {
     // Tìm record đang mở (chưa có endDate) trong assignmentHistory
     const openRecord = device.assignmentHistory.find((hist: any) => !hist.endDate);
 
-    if (openRecord && openRecord.document) {
+    // Ưu tiên documentFileUrl (`/files/inventory/handovers/...` trên Frappe — cũng là nơi luồng
+    // ký số ghi PDF). `document` chỉ là tên file trần backend cắt từ URL đó, giữ làm fallback.
+    if (openRecord?.documentFileUrl) {
+      return openRecord.documentFileUrl;
+    }
+    if (openRecord?.document) {
       return openRecord.document;
     }
 
@@ -684,7 +689,20 @@ const DevicesDetailScreen = () => {
 
       const endpoint = getDeviceEndpoint(deviceType);
 
-      // Xử lý đường dẫn file
+      // Đường dẫn Frappe (`/files/...`) hoặc URL tuyệt đối: mở thẳng, file public không cần token.
+      // Đây là đường đi chuẩn từ 2026-09-03 — biên bản (scan lẫn PDF ký số) đều nằm ở
+      // public/files/inventory/handovers/ trên Frappe; /uploads/Handovers/ chỉ còn là alias tương thích.
+      if (documentPath.startsWith('http') || documentPath.startsWith('/files/')) {
+        const directUrl = documentPath.startsWith('http')
+          ? documentPath
+          : `${API_BASE_URL}${documentPath}`;
+        setPreviewFileUrl(directUrl);
+        setAuthToken('');
+        setPreviewModalVisible(true);
+        return;
+      }
+
+      // Payload cũ chỉ có tên file trần: giữ chuỗi dò như trước.
       let fileName = documentPath;
       if (documentPath.includes('/')) {
         // Nếu là đường dẫn đầy đủ, lấy tên file
@@ -697,8 +715,9 @@ const DevicesDetailScreen = () => {
       // Kiểm tra file có tồn tại không trước khi mở modal
       let fileFound = false;
       const urlsToCheck = [
-        `${API_BASE_URL}/uploads/Handovers/${fileName}`, // Frappe uploads (như frappe frontend sử dụng)
-        `${API_BASE_URL}/api/${endpoint}/handover/${fileName}`, // Microservice files
+        `${API_BASE_URL}/files/inventory/handovers/${fileName}`, // Frappe public files (nguồn sự thật)
+        `${API_BASE_URL}/uploads/Handovers/${fileName}`, // alias tương thích trên nginx be-02
+        `${API_BASE_URL}/api/${endpoint}/handover/${fileName}`, // Microservice files (legacy)
       ];
 
       for (const url of urlsToCheck) {
