@@ -417,6 +417,61 @@ export default function ExchangeChatScreen() {
     [teacherEmail, t, showToast]
   );
 
+  /**
+   * Cuộn inverted list tới bubble + nháy viền. Dùng chung cho pill tin ghim và cho deep link
+   * từ thông báo (SIS-180) — đừng viết bản sao thứ hai.
+   *
+   * `alertWhenMissing` chỉ bật cho pill ghim: người dùng vừa chủ động bấm nên cần lời giải
+   * thích. Deep link thì im lặng, đã có toast riêng khi server báo không tới được tin.
+   */
+  const scrollToMessage = useCallback(
+    (messageIdRaw: string, opts?: { alertWhenMissing?: boolean }) => {
+      const mid = normalizeMongoId(messageIdRaw);
+      if (!mid) return false;
+      const idx = reversedChatRows.findIndex(
+        (r) => r.kind === 'message' && normalizeMongoId(r.message._id) === mid
+      );
+      if (idx < 0) {
+        if (opts?.alertWhenMissing) {
+          Alert.alert(
+            'Thông báo',
+            'Không thấy tin ghim trong phần đang tải — thử cuộn lên để tải thêm lịch sử.'
+          );
+        }
+        return false;
+      }
+      if (highlightClearTimerRef.current) {
+        clearTimeout(highlightClearTimerRef.current);
+        highlightClearTimerRef.current = null;
+      }
+      flatListRef.current?.scrollToIndex({ index: idx, viewPosition: 0.35, animated: true });
+      setHighlightedMessageId(mid);
+      highlightClearTimerRef.current = setTimeout(() => {
+        setHighlightedMessageId(null);
+        highlightClearTimerRef.current = null;
+      }, 1200);
+      return true;
+    },
+    [reversedChatRows]
+  );
+
+  /**
+   * Chạm khối trích dẫn → nhảy tới tin gốc. Tin đã nạp thì cuộn ngay; chưa nạp thì nạp lại
+   * thread — `loadExistingThread` tự đọc `pendingFocusMessageIdRef` để gọi kèm `around`, tự
+   * đặt lại con trỏ trang và tự báo khi server không tới được tin.
+   */
+  const handleJumpToReply = useCallback(
+    (messageIdRaw: string) => {
+      const mid = normalizeMongoId(messageIdRaw);
+      if (!mid || scrollToMessage(mid)) return;
+      const cid = normalizeMongoId(conversation?._id || '');
+      if (!cid) return;
+      pendingFocusMessageIdRef.current = mid;
+      void loadExistingThread(cid);
+    },
+    [conversation?._id, loadExistingThread, scrollToMessage]
+  );
+
   const openThread = useCallback(async () => {
     if (isDraftTeacherGuardianThread) {
       if (!draftClassId || !draftSchoolYearId || !draftTeacherId || !draftGuardianId) {
@@ -1268,6 +1323,7 @@ export default function ExchangeChatScreen() {
           replyQuoteContent={replyQuoteContent}
           senderDisplayName={senderDisplayName}
           replySenderDisplayName={replySenderDisplayName}
+          onJumpToReply={handleJumpToReply}
           readReceiptLabel={readReceiptLabel}
           onOpenReaders={(m) => setReadersSheetFor(normalizeMongoId(m._id))}
           onOpenActionMenu={handleOpenActionMenu}
@@ -1295,6 +1351,7 @@ export default function ExchangeChatScreen() {
       handleOpenPollVoters,
       handleEditPoll,
       handleOpenActionMenu,
+      handleJumpToReply,
       highlightedMessageId,
       conversation,
       readReceiptParticipantCount,
@@ -1331,44 +1388,6 @@ export default function ExchangeChatScreen() {
     if (!vals.length) return '';
     return `${vals.join(', ')} đang soạn tin nhắn`;
   }, [typingNames]);
-
-  /**
-   * Cuộn inverted list tới bubble + nháy viền. Dùng chung cho pill tin ghim và cho deep link
-   * từ thông báo (SIS-180) — đừng viết bản sao thứ hai.
-   *
-   * `alertWhenMissing` chỉ bật cho pill ghim: người dùng vừa chủ động bấm nên cần lời giải
-   * thích. Deep link thì im lặng, đã có toast riêng khi server báo không tới được tin.
-   */
-  const scrollToMessage = useCallback(
-    (messageIdRaw: string, opts?: { alertWhenMissing?: boolean }) => {
-      const mid = normalizeMongoId(messageIdRaw);
-      if (!mid) return false;
-      const idx = reversedChatRows.findIndex(
-        (r) => r.kind === 'message' && normalizeMongoId(r.message._id) === mid
-      );
-      if (idx < 0) {
-        if (opts?.alertWhenMissing) {
-          Alert.alert(
-            'Thông báo',
-            'Không thấy tin ghim trong phần đang tải — thử cuộn lên để tải thêm lịch sử.'
-          );
-        }
-        return false;
-      }
-      if (highlightClearTimerRef.current) {
-        clearTimeout(highlightClearTimerRef.current);
-        highlightClearTimerRef.current = null;
-      }
-      flatListRef.current?.scrollToIndex({ index: idx, viewPosition: 0.35, animated: true });
-      setHighlightedMessageId(mid);
-      highlightClearTimerRef.current = setTimeout(() => {
-        setHighlightedMessageId(null);
-        highlightClearTimerRef.current = null;
-      }, 1200);
-      return true;
-    },
-    [reversedChatRows]
-  );
 
   /**
    * Mở từ thông báo: cuộn tới tin nhắn đích ngay khi danh sách đã dựng xong, đúng một lần.

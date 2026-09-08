@@ -155,6 +155,35 @@ const PT_MEETING_EVENTS: readonly string[] = [
 const PT_MEETING_ADMIN_EVENTS: readonly string[] = ['pt_meeting_waitlist'];
 
 /**
+ * Quản lý dự án (PM). Sổ tên gốc: `erp/api/erp_sis/project_management/notify.py`.
+ *
+ * Chia ba nhóm vì ba nhóm mở ba màn khác nhau. Mọi loại `pm_*` KHÔNG có tên ở
+ * đây vẫn được nhận diện qua tiền tố (xem `resolveNotificationTarget`) và mở màn
+ * "Công việc của tôi" — thêm loại mới ở backend mà quên khai ở đây thì nó vẫn đi
+ * tới một chỗ có nghĩa, không chết lặng như trước (SIS-180).
+ */
+const PM_PROJECT_EVENTS: readonly string[] = [
+  'pm_project_invited',
+  'pm_project_invitation_responded',
+  'pm_project_member_removed',
+  'pm_project_role_changed',
+  'pm_project_ownership_transferred',
+];
+
+const PM_MEETING_EVENTS: readonly string[] = [
+  'pm_meeting_invited',
+  'pm_meeting_updated',
+  'pm_meeting_cancelled',
+  'pm_meeting_reminder',
+];
+
+/** Lời mời mở màn Lời mời; các loại còn lại của nhóm dự án mở tab Thành viên. */
+const PM_INVITATION_EVENTS: readonly string[] = [
+  'pm_project_invited',
+  'pm_project_invitation_responded',
+];
+
+/**
  * Wislife đã ẩn khỏi bottom tab (SIS-109) — nhận diện để KHÔNG điều hướng vào tab không còn
  * hiển thị. Giữ danh sách để bật lại khi mở lại module.
  */
@@ -213,6 +242,17 @@ export type PushNotificationPayload = {
   /** Đợt họp PH 1:1 (SIS PT Meeting Event) — dùng cho thông báo cấp đợt (danh sách chờ) */
   eventId?: string;
   event_id?: string;
+  /** Quản lý dự án (PM) */
+  taskId?: string;
+  task_id?: string;
+  projectId?: string;
+  project_id?: string;
+  invitationId?: string;
+  invitation_id?: string;
+  meetingId?: string;
+  meeting_id?: string;
+  requirementId?: string;
+  requirement_id?: string;
 };
 
 /** Màn đích đã phân giải xong; `null` = không có màn riêng, caller tự quyết. */
@@ -266,6 +306,16 @@ const RECOGNIZED_PAYLOAD_KEYS = [
   'slot_id',
   'eventId',
   'event_id',
+  // Quản lý dự án — cùng lý do với slotId ở trên: thiếu ở đây thì cú bấm push
+  // lúc Android cold-start bị coi là extras rác và bỏ qua im lặng.
+  'taskId',
+  'task_id',
+  'projectId',
+  'project_id',
+  'invitationId',
+  'invitation_id',
+  'meetingId',
+  'meeting_id',
 ] as const;
 
 /**
@@ -401,6 +451,62 @@ export async function resolveNotificationTarget(
   data: PushNotificationPayload
 ): Promise<NotificationTarget | null> {
   if (!data) return null;
+
+  // === QUẢN LÝ DỰ ÁN (PM) ===
+  // Nhận theo TIỀN TỐ `pm_` chứ không theo danh sách đóng: backend còn thêm loại,
+  // và một thông báo mở nhầm màn vẫn hơn một thông báo bấm vào không làm gì.
+  if (eventKeys(data).some((key) => /^pm_/i.test(key))) {
+    const projectId = str(data.projectId) || str(data.project_id);
+
+    if (matchesEvent(data, PM_MEETING_EVENTS)) {
+      const meetingId = str(data.meetingId) || str(data.meeting_id);
+      // Huỷ họp: bản ghi đã bị xoá, mở chi tiết chỉ ra lỗi → về danh sách họp.
+      if (meetingId && !matchesEvent(data, ['pm_meeting_cancelled'])) {
+        return { screen: ROUTES.SCREENS.PM_MEETING_DETAIL, params: { meetingId, projectId } };
+      }
+      return projectId
+        ? {
+            screen: ROUTES.SCREENS.PM_PROJECT_DETAIL,
+            params: { projectId, initialTab: 'meetings' },
+          }
+        : { screen: ROUTES.SCREENS.PM_PROJECTS };
+    }
+
+    if (matchesEvent(data, PM_INVITATION_EVENTS)) {
+      return { screen: ROUTES.SCREENS.PM_INVITATIONS };
+    }
+
+    if (matchesEvent(data, PM_PROJECT_EVENTS)) {
+      return projectId
+        ? { screen: ROUTES.SCREENS.PM_PROJECT_DETAIL, params: { projectId, initialTab: 'members' } }
+        : { screen: ROUTES.SCREENS.PM_PROJECTS };
+    }
+
+    if (matchesEvent(data, ['pm_requirement_status_changed'])) {
+      return projectId
+        ? {
+            screen: ROUTES.SCREENS.PM_PROJECT_DETAIL,
+            params: { projectId, initialTab: 'requirements' },
+          }
+        : { screen: ROUTES.SCREENS.PM_PROJECTS };
+    }
+
+    if (matchesEvent(data, ['pm_resource_uploaded'])) {
+      return projectId
+        ? {
+            screen: ROUTES.SCREENS.PM_PROJECT_DETAIL,
+            params: { projectId, initialTab: 'resources' },
+          }
+        : { screen: ROUTES.SCREENS.PM_PROJECTS };
+    }
+
+    // Còn lại là sự kiện cấp task. Có `taskId` thì mở thẳng chi tiết — kể cả
+    // subtask, vốn không nằm trên bảng. Không có id (vd nhắc hạn gộp) thì đưa về
+    // "Công việc của tôi" chứ không phải bảng của một dự án cụ thể.
+    const taskId = str(data.taskId) || str(data.task_id);
+    if (taskId) return { screen: ROUTES.SCREENS.PM_TASK_DETAIL, params: { taskId } };
+    return { screen: ROUTES.SCREENS.PM_MY_WORK };
+  }
 
   // === CHAT / Trao đổi ===
   if (isChatEvent(data)) {

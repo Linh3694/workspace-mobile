@@ -57,6 +57,8 @@ type Props = {
   senderDisplayName?: string;
   /** Tên người gửi tin được trích dẫn (đã resolve). */
   replySenderDisplayName?: string;
+  /** Chạm khối trích dẫn → nhảy tới tin gốc. Bỏ trống = khối trích dẫn không bấm được. */
+  onJumpToReply?: (messageId: string) => void;
   /** Nhãn "Đã đọc N/M" dưới tin của mình — chỉ GV. */
   readReceiptLabel?: string;
   onOpenReaders?: (message: ChatMessage) => void;
@@ -103,6 +105,7 @@ export const ExchangeMessageBubble = memo(
     replyQuoteContent,
     senderDisplayName,
     replySenderDisplayName,
+    onJumpToReply,
     readReceiptLabel,
     onOpenReaders,
     onOpenActionMenu,
@@ -245,7 +248,20 @@ export const ExchangeMessageBubble = memo(
           </Text>
         )}
         {message.replyTo && replyQuoteContent && !recalled ? (
-          <View
+          // `Pressable` lồng trong nuốt chạm của `Pressable` bọc cả bong bóng ⇒ phải nối lại
+          // `handleLongPress` ở đây, nếu không nhấn giữ trên khối trích dẫn sẽ không mở được
+          // bảng hành động.
+          <Pressable
+            onPress={
+              onJumpToReply
+                ? () => {
+                    const targetId = message.replyTo?.messageId;
+                    if (targetId) onJumpToReply(String(targetId));
+                  }
+                : undefined
+            }
+            onLongPress={longPressMenuEnabled ? handleLongPress : undefined}
+            delayLongPress={420}
             className="mb-2 rounded-lg border-l-4 border-[#F97316] bg-white px-3 py-2">
             <Text className="font-mulish-bold text-sm text-[#002855]">
               {replySenderDisplayName || formatChatDisplayName(message.replyTo.senderName)}
@@ -255,7 +271,7 @@ export const ExchangeMessageBubble = memo(
               className="font-mulish-medium text-sm text-gray-500">
               {replyQuoteContent}
             </Text>
-          </View>
+          </Pressable>
         ) : null}
         {recalled ? (
           <Text className="font-mulish-medium text-base italic text-gray-500">

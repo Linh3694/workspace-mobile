@@ -91,6 +91,13 @@ export const ROUTES = {
     PARENT_MEETING_NOTE: 'ParentMeetingNote',
     /** Tổng hợp đợt họp + danh sách chờ (BGH + giáo vụ đọc) — nút xuất bản chỉ giáo vụ/SM */
     PARENT_MEETING_ADMIN: 'ParentMeetingAdmin',
+    /** Quản lý dự án (PM) — cũng là màn đích của mọi thông báo `pm_*` */
+    PM_PROJECTS: 'PMProjects',
+    PM_PROJECT_DETAIL: 'PMProjectDetail',
+    PM_INVITATIONS: 'PMInvitations',
+    PM_TASK_DETAIL: 'PMTaskDetail',
+    PM_MY_WORK: 'PMMyWork',
+    PM_MEETING_DETAIL: 'PMMeetingDetail',
   },
   // Tab names trong bottom navigation
   TABS: {

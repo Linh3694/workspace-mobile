@@ -58,6 +58,7 @@ import ClassActivitySvg from '../../assets/class_activity.svg';
 import RoomBookingIcon from '../../assets/room-booking.svg';
 // Icon tile Họp phụ huynh 1:1 (SIS PT Meeting)
 import ParentMeetingIcon from '../../assets/parent-meeting.svg';
+import ProjectManagementIcon from '../../assets/project-management.svg';
 import MyAssetsIcon from '../../assets/my-assets.svg';
 import { hasCrmAccess } from '../../utils/crmIssuePermissions';
 import {
@@ -407,6 +408,10 @@ const HomeScreen = () => {
     navigation.navigate(ROUTES.SCREENS.PARENT_MEETING);
   };
 
+  const navigateToProjectManagement = () => {
+    navigation.navigate(ROUTES.SCREENS.PM_PROJECTS);
+  };
+
   // Role-based menu configuration
   const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
   const hasMobileTeacher = roles.includes('Mobile Teacher');
@@ -572,6 +577,14 @@ const HomeScreen = () => {
       onPress: navigateToParentMeeting,
       key: 'parent_meeting',
     },
+    {
+      id: 19,
+      title: t('project_management.tile_title'),
+      component: ProjectManagementIcon,
+      description: t('project_management.tile_desc'),
+      onPress: navigateToProjectManagement,
+      key: 'project_management',
+    },
   ];
 
   // Thu thập tất cả các keys được phép dựa trên tất cả roles của user
@@ -601,6 +614,10 @@ const HomeScreen = () => {
       'feedback',
       'menu',
       'calendar',
+      // Quản lý dự án: công cụ nội bộ của đội triển khai. Cố ý KHÔNG mở cho
+      // Mobile Teacher/User — quyền thật nằm ở thành viên từng dự án, nên người
+      // ngoài mở ra chỉ thấy danh sách rỗng (cùng lý do với Họp PH 1:1).
+      'project_management',
     ].forEach((key) => allowedKeys.add(key));
   }
 

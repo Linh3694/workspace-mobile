@@ -77,6 +77,15 @@ import {
   ParentMeetingNoteScreen,
   ParentMeetingAdminScreen,
 } from '../screens/ParentMeeting';
+import {
+  PMProjectListScreen,
+  PMProjectDetailScreen,
+  PMInvitationsScreen,
+  PMTaskDetailScreen,
+  PMMyWorkScreen,
+  PMMeetingDetailScreen,
+  type PMProjectTab,
+} from '../screens/ProjectManagement';
 import type { ChatConversation } from '../types/chat';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -125,6 +134,17 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.PARENT_MEETING]: undefined;
   [ROUTES.SCREENS.PARENT_MEETING_NOTE]: { slotId: string } | undefined;
   [ROUTES.SCREENS.PARENT_MEETING_ADMIN]: undefined;
+  [ROUTES.SCREENS.PM_PROJECTS]: undefined;
+  [ROUTES.SCREENS.PM_PROJECT_DETAIL]: {
+    projectId: string;
+    /** Hiện sẵn trên header trong lúc chờ tải — tránh nháy tiêu đề rỗng. */
+    projectTitle?: string;
+    initialTab?: PMProjectTab;
+  };
+  [ROUTES.SCREENS.PM_INVITATIONS]: undefined;
+  [ROUTES.SCREENS.PM_TASK_DETAIL]: { taskId: string };
+  [ROUTES.SCREENS.PM_MY_WORK]: undefined;
+  [ROUTES.SCREENS.PM_MEETING_DETAIL]: { meetingId: string; projectId?: string };
   [ROUTES.SCREENS.DEVICES]: { refresh?: boolean } | undefined;
   [ROUTES.SCREENS.DEVICES_V2]: { refresh?: boolean } | undefined;
   [ROUTES.SCREENS.DEVICE_CREATE]: { deviceType: DeviceType };
@@ -422,6 +442,36 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.PARENT_MEETING_ADMIN}
             component={ParentMeetingAdminScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.PM_PROJECTS}
+            component={PMProjectListScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.PM_PROJECT_DETAIL}
+            component={PMProjectDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.PM_INVITATIONS}
+            component={PMInvitationsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.PM_TASK_DETAIL}
+            component={PMTaskDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.PM_MY_WORK}
+            component={PMMyWorkScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.PM_MEETING_DETAIL}
+            component={PMMeetingDetailScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen

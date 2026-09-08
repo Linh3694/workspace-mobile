@@ -227,6 +227,42 @@ export type ChatPollPendingMember = {
   studentNames?: string[];
 };
 
+/**
+ * Một phụ huynh trong tab "Học sinh". `optionIds` rỗng = chưa bình chọn (không phải
+ * "chọn phương án rỗng") — hai trạng thái này hiển thị khác nhau.
+ */
+export type ChatPollStudentGuardian = {
+  userId: string;
+  name: string;
+  email?: string;
+  avatarUrl?: string;
+  /**
+   * Mã quan hệ THÔ của snapshot ('mother' / 'father' …), KHÔNG phải nhãn đã dịch.
+   * Phải cho qua `makeRelationshipTranslator` trước khi hiển thị.
+   */
+  relationship?: string;
+  keyPerson?: boolean;
+  optionIds: string[];
+  votedAt?: string | null;
+};
+
+/**
+ * Một học sinh trong tab "Học sinh" — CHỈ giáo viên nhận được (server lược với phụ huynh),
+ * cùng cơ chế với `pending`. Học sinh chưa gia đình nào phản hồi nằm cuối mảng.
+ */
+export type ChatPollStudentRow = {
+  /** Rỗng với snapshot cũ chỉ có `studentNames` — khi đó khoá gom của server là TÊN. */
+  studentId: string;
+  studentName: string;
+  /** Số PH đã bầu; chọn nhiều phương án vẫn tính 1 người, đồng nhất với `totalVoters`. */
+  voterCount: number;
+  /** Tổng PH của em đó trong nhóm — mẫu số cho "M/N". */
+  guardianCount: number;
+  /** Hợp các phương án cả nhà đã chọn, đã bỏ trùng. */
+  optionIds: string[];
+  guardians: ChatPollStudentGuardian[];
+};
+
 export type ChatPollVotersData = {
   messageId: string;
   rev: number;
@@ -236,6 +272,11 @@ export type ChatPollVotersData = {
   pending?: ChatPollPendingMember[];
   /** Tổng thành viên active (đã trừ người tạo) — mẫu số cho "M/N". */
   participantCount?: number;
+  /**
+   * CHỈ có với giáo viên — phiếu gom theo HỌC SINH (một em nhiều PH nên đếm theo người
+   * không quy đổi ra được số học sinh). KHÔNG đi kèm broadcast socket, chỉ có ở REST.
+   */
+  students?: ChatPollStudentRow[];
 };
 
 /**
