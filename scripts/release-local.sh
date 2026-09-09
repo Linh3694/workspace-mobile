@@ -65,6 +65,12 @@ preflight() {
     [ -f ./google-services.json ] || { echo -e "${RED}Thiếu google-services.json${NC}"; ok=false; }
   fi
   $ok || { echo -e "${YELLOW}Chạy ./scripts/setup-local-build.sh trước.${NC}"; exit 1; }
+  # eas build tự viết lại Expo.plist / strings.xml (chỉ khác khoảng trắng) → hoàn lại nếu nội dung không đổi
+  for f in "$EXPO_PLIST" "$STRINGS_XML"; do
+    if [ -f "$f" ] && ! git check-ignore -q "$f" && ! git diff --quiet -- "$f" && git diff -w --quiet -- "$f"; then
+      git checkout -q -- "$f"
+    fi
+  done
   if [ -n "$(git status --porcelain)" ] && [ "$SUBMIT_ONLY" = false ]; then
     echo -e "${RED}Cây git chưa sạch. eas build --local đóng gói từ git nên thay đổi chưa commit sẽ KHÔNG vào build.${NC}"
     git status --short
@@ -150,6 +156,9 @@ if [ "$SUBMIT_ONLY" = false ]; then
     $DO_IOS && { wait "$PID_IOS" || IOS_OK=false; }
     $DO_ANDROID && { wait "$PID_AND" || ANDROID_OK=false; }
   fi
+  for f in "$EXPO_PLIST" "$STRINGS_XML"; do
+    [ -f "$f" ] && ! git check-ignore -q "$f" && git diff -w --quiet -- "$f" && git checkout -q -- "$f"
+  done
   echo -e "${CYAN}⏱  Build mất $(( ($(date +%s) - START) / 60 )) phút${NC}"
 
   if { $DO_IOS && ! $IOS_OK; } || { $DO_ANDROID && ! $ANDROID_OK; }; then
