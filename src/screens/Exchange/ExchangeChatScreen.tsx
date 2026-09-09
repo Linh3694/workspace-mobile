@@ -48,7 +48,6 @@ import {
   CHAT_BUBBLE_MAX_WIDTH_RATIO,
   CHAT_INITIAL_PAGE_LIMIT,
   CHAT_LOAD_MORE_LIMIT,
-  RECALL_WINDOW_MS,
   REMOTE_TYPING_TTL_MS,
   applyLocalReactionToggleViewer,
   applyPollUpdate,
@@ -167,6 +166,8 @@ export default function ExchangeChatScreen() {
   const draftKey = `${draftClassId}|${draftSchoolYearId}|${draftTeacherId}|${draftGuardianId}`;
 
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
+  /** Khai báo ngay cạnh `conversation`: các memo phía dưới đọc `locked` trong deps array. */
+  const locked = conversation?.status === 'locked';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -321,12 +322,6 @@ export default function ExchangeChatScreen() {
     if (overlayMessage.recalledAt) return false;
     return true;
   }, [locked, overlayMessage, overlayIsMine]);
-
-  /** Còn trong 15 phút — BE `RECALL_WINDOW_MS`. */
-  const overlayCanRecall = useMemo(() => {
-    if (!overlayShowRecallButton || !overlayMessage) return false;
-    return Date.now() - new Date(overlayMessage.createdAt).getTime() <= RECALL_WINDOW_MS;
-  }, [overlayShowRecallButton, overlayMessage]);
 
   const overlayIsPinned = useMemo(() => {
     if (!overlayMessage || !conversation?.pinnedMessage?.messageId) return false;
@@ -1137,7 +1132,6 @@ export default function ExchangeChatScreen() {
     }
   };
 
-  const locked = conversation?.status === 'locked';
   const chatChromeIntensity = Platform.OS === 'ios' ? 28 : Platform.OS === 'android' ? 42 : 0;
 
   const teacherGuardianUploadComposer = useMemo(
@@ -1647,7 +1641,6 @@ export default function ExchangeChatScreen() {
             // Tin bình chọn không nhận cảm xúc — ẩn bảng emoji nhưng vẫn giữ hàng hành động.
             reactionsDisabled={locked || Boolean(overlayMessage.poll)}
             showRecallButton={overlayShowRecallButton}
-            canRecall={overlayCanRecall}
             bubbleMaxWidth={overlayBubbleMaxWidth}
             isPinned={overlayIsPinned}
             onPin={locked ? undefined : () => void handleOverlayPin()}

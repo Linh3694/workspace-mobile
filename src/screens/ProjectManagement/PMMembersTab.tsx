@@ -12,6 +12,7 @@ import {
   getProjectInvitations,
   getProjectMembers,
   removeMember,
+  resolveFileUrl,
   updateMemberRole,
 } from '../../services/projectManagementService';
 import type {
@@ -169,7 +170,7 @@ const PMMembersTab: React.FC<PMMembersTabProps> = ({ projectId, myRole }) => {
   if (error && !members.length) {
     return (
       <EmptyState
-        icon="alert-circle"
+        icon="issue"
         title={t('common.error', 'Đã có lỗi')}
         description={error}
         actionLabel={t('common.retry', 'Thử lại')}
@@ -206,7 +207,7 @@ const PMMembersTab: React.FC<PMMembersTabProps> = ({ projectId, myRole }) => {
               <ListRow
                 title={inv.invitee_full_name || inv.invitee_id}
                 subtitle={inv.invitee_email || inv.invitee_id}
-                avatarUri={inv.invitee_image}
+                avatarUri={resolveFileUrl(inv.invitee_image)}
                 avatarName={inv.invitee_full_name || inv.invitee_id}
                 status={{
                   label: t(i18nKey.invitationStatus(inv.status), status.label),
@@ -232,7 +233,7 @@ const PMMembersTab: React.FC<PMMembersTabProps> = ({ projectId, myRole }) => {
             <ListRow
               title={member.full_name || member.user_id}
               subtitle={member.email || member.user_id}
-              avatarUri={member.user_image}
+              avatarUri={resolveFileUrl(member.user_image)}
               avatarName={member.full_name || member.user_id}
               status={{ label: t(i18nKey.role(member.role), role.label), tone: role.tone }}
               footer={
@@ -262,7 +263,7 @@ const PMMembersTab: React.FC<PMMembersTabProps> = ({ projectId, myRole }) => {
         onRefresh={() => load(true)}
         contentPadding={SCREEN_PADDING}
         empty={{
-          icon: 'users',
+          icon: 'contacts',
           title: t('project_management.chua_co_thanh_vien', 'Chưa có thành viên'),
         }}
       />

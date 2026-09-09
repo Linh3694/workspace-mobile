@@ -55,7 +55,9 @@
     "update": "Update",
     "create": "Create",
     "add": "Add",
-    "remove": "Remove"
+    "remove": "Remove",
+    "all": "All",
+    "try_again": "Please try again"
   },
   "auth": {
     "enter_password": "Enter password",
@@ -818,6 +820,7 @@
     "khong_co_viec": "Nothing to do",
     "khong_co_viec_desc": "Tasks assigned to you appear here.",
     "khong_tim_thay_thanh_vien": "No matching member",
+    "loai": "Type",
     "loai_bug": "Bug",
     "loai_story": "Story",
     "loai_task": "Task",
@@ -846,9 +849,11 @@
     "tab_yeu_cau": "Requirements",
     "tham_gia": "Join",
     "thanh_vien": "members",
+    "them_cong_viec": "Add task",
     "thong_tin": "Details",
     "thuoc_task": "Parent",
     "thuoc_yeu_cau": "Requirement",
+    "tieu_de_cong_viec": "Task title",
     "tile_desc": "Manage work by project",
     "tile_title": "Projects",
     "tim_du_an": "Search projects",
@@ -859,6 +864,7 @@
     "trang_thai_review": "In review",
     "trang_thai_todo": "To do",
     "tu_choi": "Decline",
+    "uu_tien": "Priority",
     "uu_tien_critical": "Critical",
     "uu_tien_high": "High",
     "uu_tien_low": "Low",

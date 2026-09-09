@@ -5,7 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useEffect, useMemo, useRef } from 'react';
 import {
-  Alert,
   Animated,
   BackHandler,
   Keyboard,
@@ -66,8 +65,6 @@ type Props = {
   reactionsDisabled?: boolean;
   /** Hiện nút Thu hồi (tin của mình, chưa thu hồi, nhóm không locked). */
   showRecallButton: boolean;
-  /** Còn trong khung 15 phút — nếu false vẫn hiện icon nhưng mờ / bấm báo hết hạn. */
-  canRecall: boolean;
   bubbleMaxWidth: number;
   onClose: () => void;
   onReply: () => void;
@@ -94,7 +91,6 @@ export function MessageActionOverlay({
   locked,
   reactionsDisabled,
   showRecallButton,
-  canRecall,
   bubbleMaxWidth,
   onClose,
   onReply,
@@ -438,7 +434,7 @@ export function MessageActionOverlay({
                       )
                     ) : null}
                     {showRecallButton ? (
-                      <RecallActionCell recallAllowed={canRecall} onRecall={onRecall} />
+                      <RecallActionCell onRecall={onRecall} />
                     ) : null}
                   </View>
                 ) : (
@@ -488,34 +484,19 @@ function ActionCell({
   );
 }
 
-/** Nút Thu hồi: icon revoke.svg; hết hạn vẫn bấm được để hiện Alert. */
-function RecallActionCell({
-  recallAllowed,
-  onRecall,
-}: {
-  recallAllowed: boolean;
-  onRecall: () => void;
-}) {
+/** Nút Thu hồi: icon revoke.svg — người gửi thu hồi được bất kỳ lúc nào. */
+function RecallActionCell({ onRecall }: { onRecall: () => void }) {
   return (
     <Pressable
       onPress={() => {
         Keyboard.dismiss();
-        if (!recallAllowed) {
-          Alert.alert(
-            'Thu hồi tin nhắn',
-            'Tin nhắn đã quá hạn thu hồi (15 phút).',
-            [{ text: 'Đóng', style: 'cancel' }],
-          );
-          return;
-        }
         onRecall();
       }}
-      className="min-h-[68px] flex-1 items-center justify-center px-1 py-2 active:opacity-75"
-      style={{ opacity: recallAllowed ? 1 : 0.45 }}>
-      <RevokeIcon width={24} height={24} fill={recallAllowed ? '#F05023' : '#9CA3AF'} />
+      className="min-h-[68px] flex-1 items-center justify-center px-1 py-2 active:opacity-75">
+      <RevokeIcon width={24} height={24} fill="#F05023" />
       <Text
         numberOfLines={1}
-        className={`mt-1 text-center font-mulish-semibold text-sm ${recallAllowed ? 'text-[#002855]' : 'text-gray-400'}`}>
+        className="mt-1 text-center font-mulish-semibold text-sm text-[#002855]">
         Thu hồi
       </Text>
     </Pressable>

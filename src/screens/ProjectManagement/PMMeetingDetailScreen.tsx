@@ -11,7 +11,7 @@ import { ListScreen, SCREEN_PADDING } from '@templates';
 
 import { ROUTES } from '../../constants/routes';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
-import { getMeeting } from '../../services/projectManagementService';
+import { getMeeting, resolveFileUrl } from '../../services/projectManagementService';
 import type { PMMeeting } from '../../types/projectManagement';
 import { color, space } from '../../theme/tokens';
 import { htmlToMarkdown } from './pmText';
@@ -110,7 +110,7 @@ const PMMeetingDetailScreen: React.FC = () => {
     return (
       <ListScreen header={header}>
         <EmptyState
-          icon="alert-circle"
+          icon="issue"
           title={t('common.error', 'Đã có lỗi')}
           description={error ?? undefined}
           actionLabel={t('common.retry', 'Thử lại')}
@@ -136,7 +136,7 @@ const PMMeetingDetailScreen: React.FC = () => {
           </View>
           {meeting.location ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[6], marginTop: space[6] }}>
-              <Icon name="map-pin" size={15} tone="description" />
+              <Icon name="location" size={15} tone="description" />
               <AppText variant="footnote">{meeting.location}</AppText>
             </View>
           ) : null}
@@ -155,7 +155,7 @@ const PMMeetingDetailScreen: React.FC = () => {
                 <View
                   key={a.user_id}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: space[8] }}>
-                  <Avatar uri={a.user_image} name={a.full_name || a.user_id} size="sm" />
+                  <Avatar uri={resolveFileUrl(a.user_image)} name={a.full_name || a.user_id} size="sm" />
                   <AppText variant="footnote" style={{ flex: 1 }} numberOfLines={1}>
                     {a.full_name || a.user_id}
                   </AppText>

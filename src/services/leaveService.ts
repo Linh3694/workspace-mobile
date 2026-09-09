@@ -2,6 +2,20 @@ import { API_BASE_URL } from '../config/constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { campusHeaders } from '../utils/campusStore';
 
+/**
+ * Một lần đơn bị sửa hoặc huỷ. `summary` là câu tiếng Việt backend dựng sẵn — hiển thị
+ * thẳng, KHÔNG tự ghép lại từ dữ liệu thô để ba client không lệch cách diễn đạt.
+ */
+export interface LeaveEditLog {
+  edited_at: string | null;
+  edited_by?: string;
+  edited_by_name?: string;
+  /** `parent` = phụ huynh sửa trên cổng PH; `staff` = giáo viên/nhân viên sửa trên WIS. */
+  actor_role?: 'parent' | 'staff';
+  action?: 'update' | 'cancel';
+  summary?: string;
+}
+
 export interface LeaveRequest {
   name: string;
   student_name: string;
@@ -23,6 +37,14 @@ export interface LeaveRequest {
   modified: string;
   student_id: string;
   parent_id: string;
+  /**
+   * Lịch sử sửa/huỷ, cũ → mới. Chỉ `get_leave_request_details` trả về.
+   *
+   * Thông báo "Đơn xin nghỉ phép mới" chỉ bắn MỘT lần lúc phụ huynh gửi đơn, mang lý do
+   * tại thời điểm đó; từ 09/2026 phụ huynh sửa được lý do cả SAU ngày nghỉ. Đây là chỗ
+   * duy nhất giáo viên đối chiếu được đơn hiện tại với thông báo đã nhận.
+   */
+  edit_logs?: LeaveEditLog[];
 }
 
 export interface LeaveRequestResponse {

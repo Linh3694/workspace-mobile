@@ -1,4 +1,7 @@
+import type { IconV2Name } from '../../components/ui-v2/level-0-atoms/media/iconRegistry';
 import type { StatusMap } from '@molecules';
+
+import { color } from '../../theme/tokens';
 import type {
   InvitationStatus,
   ProjectRole,
@@ -71,11 +74,18 @@ export const i18nKey = {
   invitationStatus: (s: InvitationStatus) => `project_management.loi_moi_${s}`,
 };
 
-/** Icon (bộ icon-v2, dùng chung với web) cho từng loại issue. */
-export const TASK_TYPE_ICON: Record<TaskType, string> = {
-  task: 'check-square',
-  bug: 'alert-circle',
-  story: 'bookmark',
+/**
+ * Icon cho từng loại issue.
+ *
+ * Kiểu là `IconV2Name` chứ KHÔNG phải `string`: tên không có trong bộ icon-v2 sẽ
+ * rơi xuống Ionicons, và Ionicons vẽ ra một dấu "?" thay vì báo lỗi — sai tên thì
+ * chỉ phát hiện được bằng mắt trên máy thật. Ràng buộc kiểu ở đây để tsc chặn từ
+ * lúc gõ. (Muốn dùng icon của Ionicons thì truyền `set="ion"` ngay tại chỗ render.)
+ */
+export const TASK_TYPE_ICON: Record<TaskType, IconV2Name> = {
+  task: 'list-check',
+  bug: 'issue',
+  story: 'star',
 };
 
 /**
@@ -90,3 +100,32 @@ export const BOARD_COLUMN_ORDER: readonly TaskStatus[] = [
   'review',
   'done',
 ] as const;
+
+
+/**
+ * Tone (token) → mã màu, để vẽ chip/nhãn tự pha nền nhạt.
+ *
+ * `StatusBadge` tự lo phần này, nhưng thẻ trên bảng cần màu THÔ để tô nền ở độ
+ * mờ riêng (khuôn chip của Cloud V), nên phải tra ra giá trị thật. Vẫn đi qua
+ * token, không viết hex.
+ */
+export function toneColor(tone?: string): string {
+  switch (tone) {
+    case 'brand':
+      return color.brand.DEFAULT;
+    case 'brandSecondary':
+      return color.brandSecondary.DEFAULT;
+    case 'accent':
+      return color.accent.DEFAULT;
+    case 'success':
+      return color.success.DEFAULT;
+    case 'danger':
+      return color.danger.DEFAULT;
+    case 'warning':
+      return color.warning.DEFAULT;
+    case 'info':
+      return color.info.DEFAULT;
+    default:
+      return color.neutral[500];
+  }
+}

@@ -195,7 +195,7 @@ const PMMyWorkScreen: React.FC = () => {
         onRefresh={() => load(true)}
         contentPadding={SCREEN_PADDING}
         empty={{
-          icon: 'check-circle',
+          icon: 'check',
           title: error
             ? t('common.error', 'Đã có lỗi')
             : t('project_management.khong_co_viec', 'Không có việc nào'),

@@ -10,13 +10,13 @@ import { RefreshableList } from '@organisms';
 import { SCREEN_PADDING } from '@templates';
 
 import { ROUTES } from '../../constants/routes';
-import { BASE_URL } from '../../config/constants';
 import type { RootStackParamList } from '../../navigation/AppNavigator';
 import {
   getMeetings,
   getProjectLogs,
   getRequirements,
   getResources,
+  resolveFileUrl,
 } from '../../services/projectManagementService';
 import type {
   PMChangeLog,
@@ -115,7 +115,7 @@ export const PMRequirementsTab: React.FC<{ projectId: string }> = ({ projectId }
                 .filter(Boolean)
                 .join(' · ') || null
             }
-            icon="list"
+            icon="list-bullet"
             status={{
               label: t(i18nKey.requirementStatus(item.status), status.label),
               tone: status.tone,
@@ -128,7 +128,7 @@ export const PMRequirementsTab: React.FC<{ projectId: string }> = ({ projectId }
       onRefresh={() => load(true)}
       contentPadding={SCREEN_PADDING}
       empty={{
-        icon: 'list',
+        icon: 'list-bullet',
         title: error ? t('common.error', 'Đã có lỗi') : t('project_management.chua_co_yeu_cau', 'Chưa có yêu cầu nào'),
         description: error ?? undefined,
         actionLabel: t('common.retry', 'Thử lại'),
@@ -210,10 +210,8 @@ export const PMResourcesTab: React.FC<{ projectId: string }> = ({ projectId }) =
    * `BASE_URL` — mở thẳng chuỗi đó thì `Linking` không hiểu và im lặng không làm gì.
    */
   const open = useCallback((resource: PMResource) => {
-    const url = resource.file_url?.startsWith('http')
-      ? resource.file_url
-      : `${BASE_URL}${resource.file_url}`;
-    Linking.openURL(url).catch(() => undefined);
+    const url = resolveFileUrl(resource.file_url);
+    if (url) Linking.openURL(url).catch(() => undefined);
   }, []);
 
   return (
@@ -228,7 +226,7 @@ export const PMResourcesTab: React.FC<{ projectId: string }> = ({ projectId }) =
               .filter(Boolean)
               .join(' · ') || null
           }
-          icon="paperclip"
+          icon="document"
           onPress={() => open(item)}
         />
       )}
@@ -237,7 +235,7 @@ export const PMResourcesTab: React.FC<{ projectId: string }> = ({ projectId }) =
       onRefresh={() => load(true)}
       contentPadding={SCREEN_PADDING}
       empty={{
-        icon: 'paperclip',
+        icon: 'document',
         title: error ? t('common.error', 'Đã có lỗi') : t('project_management.chua_co_tai_lieu', 'Chưa có tài liệu nào'),
         description: error ?? undefined,
         actionLabel: t('common.retry', 'Thử lại'),

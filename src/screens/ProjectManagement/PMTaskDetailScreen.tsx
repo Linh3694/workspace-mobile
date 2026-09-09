@@ -18,6 +18,7 @@ import {
   getTask,
   getTaskComments,
   moveTask,
+  resolveFileUrl,
   updateTask,
 } from '../../services/projectManagementService';
 import type {
@@ -199,7 +200,7 @@ const PMTaskDetailScreen: React.FC = () => {
     return (
       <ListScreen header={{ title: t('project_management.cong_viec_ct', 'Công việc'), onBack: () => navigation.goBack() }}>
         <EmptyState
-          icon="alert-circle"
+          icon="issue"
           title={t('common.error', 'Đã có lỗi')}
           description={error ?? undefined}
           actionLabel={t('common.retry', 'Thử lại')}
@@ -265,7 +266,7 @@ const PMTaskDetailScreen: React.FC = () => {
 
           {task.parent_task_id ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[4], marginTop: space[10] }}>
-              <Icon name="corner-up-left" size={13} tone="description" />
+              <Icon name="hierarchy" size={13} tone="description" />
               <AppText variant="caption" tone="description" numberOfLines={1}>
                 {t('project_management.thuoc_task', 'Thuộc')}: {task.parent_title || task.parent_task_id}
               </AppText>
@@ -279,7 +280,7 @@ const PMTaskDetailScreen: React.FC = () => {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[6], flexWrap: 'wrap' }}>
                 {task.assignees.map((a) => (
                   <View key={a.user_id} style={{ flexDirection: 'row', alignItems: 'center', gap: space[4] }}>
-                    <Avatar uri={a.user_image} name={a.full_name || a.user_id} size="sm" />
+                    <Avatar uri={resolveFileUrl(a.user_image)} name={a.full_name || a.user_id} size="sm" />
                     <AppText variant="footnote">{a.full_name || a.user_id}</AppText>
                   </View>
                 ))}
@@ -337,8 +338,11 @@ const PMTaskDetailScreen: React.FC = () => {
               <View key={sub.name}>
                 {i > 0 ? <Divider /> : null}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[8], paddingVertical: space[8] }}>
+                  {/* Ép Ionicons: bộ icon-v2 không có cặp ô tick / ô trống, mà
+                      đây là chỗ hình dạng phải nói đúng trạng thái. */}
                   <Icon
-                    name={sub.status === 'done' ? 'check-square' : 'square'}
+                    name={sub.status === 'done' ? 'checkbox' : 'square-outline'}
+                    set="ion"
                     size={18}
                     tone={sub.status === 'done' ? 'success' : 'description'}
                   />
@@ -367,7 +371,7 @@ const PMTaskDetailScreen: React.FC = () => {
                 {i > 0 ? <Divider /> : null}
                 <View style={{ paddingVertical: space[8], gap: space[4] }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[6] }}>
-                    <Avatar uri={c.created_by_image} name={c.created_by_full_name || c.created_by} size="sm" />
+                    <Avatar uri={resolveFileUrl(c.created_by_image)} name={c.created_by_full_name || c.created_by} size="sm" />
                     <AppText variant="footnote" tone="emphasized" style={{ flex: 1 }} numberOfLines={1}>
                       {c.created_by_full_name || c.created_by}
                     </AppText>

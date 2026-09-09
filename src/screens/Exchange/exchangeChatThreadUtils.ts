@@ -30,8 +30,6 @@ export const CHAT_BUBBLE_MAX_WIDTH_RATIO = 0.7;
 export const SWIPE_REPLY_THRESHOLD_PX = 52;
 export const SWIPE_REPLY_MAX_DRAG_PX = 72;
 
-export const RECALL_WINDOW_MS = 15 * 60 * 1000;
-
 export const REMOTE_TYPING_TTL_MS = 4500;
 
 export type ChatListRow =

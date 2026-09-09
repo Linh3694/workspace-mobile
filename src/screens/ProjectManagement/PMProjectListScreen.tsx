@@ -139,7 +139,7 @@ const PMProjectListScreen: React.FC = () => {
                 'project_management.loi_moi_cho_desc',
                 'Có lời mời tham gia dự án cần bạn phản hồi'
               )}
-              icon="mail"
+              icon="bell"
               trailing={<Badge label={String(pendingInvites)} tone="brand" />}
               onPress={() => navigation.navigate(ROUTES.SCREENS.PM_INVITATIONS)}
             />

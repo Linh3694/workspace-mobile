@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { AppText, ButtonPrimary, Card } from '@atoms';
 import { ListRow } from '@molecules';
 
+import { resolveFileUrl } from '../../../services/projectManagementService';
 import type { PMProjectMember } from '../../../types/projectManagement';
 import { color, radius, space } from '../../../theme/tokens';
 import { formatMention } from '../pmText';
@@ -95,7 +96,7 @@ const PMMentionInput: React.FC<PMMentionInputProps> = ({
               key={m.user_id}
               title={m.full_name || m.user_id}
               subtitle={m.user_id}
-              avatarUri={m.user_image}
+              avatarUri={resolveFileUrl(m.user_image)}
               avatarName={m.full_name || m.user_id}
               onPress={() => insertMention(m)}
             />

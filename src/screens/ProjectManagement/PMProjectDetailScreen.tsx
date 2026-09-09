@@ -102,18 +102,18 @@ const PMProjectDetailScreen: React.FC = () => {
       {
         value: 'requirements',
         label: t('project_management.tab_yeu_cau', 'Yêu cầu'),
-        icon: 'list',
+        icon: 'list-bullet',
       },
       { value: 'meetings', label: t('project_management.tab_hop', 'Họp'), icon: 'calendar' },
       {
         value: 'resources',
         label: t('project_management.tab_tai_lieu', 'Tài liệu'),
-        icon: 'paperclip',
+        icon: 'document',
       },
       {
         value: 'members',
         label: t('project_management.tab_thanh_vien', 'Thành viên'),
-        icon: 'users',
+        icon: 'contacts',
         count: project?.member_count,
       },
       { value: 'logs', label: t('project_management.tab_nhat_ky', 'Nhật ký'), icon: 'clock' },
@@ -132,7 +132,7 @@ const PMProjectDetailScreen: React.FC = () => {
     if (error || !project) {
       return (
         <EmptyState
-          icon="alert-circle"
+          icon="issue"
           title={t('common.error', 'Đã có lỗi')}
           description={error ?? undefined}
           actionLabel={t('common.retry', 'Thử lại')}

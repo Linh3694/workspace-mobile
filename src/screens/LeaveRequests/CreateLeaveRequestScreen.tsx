@@ -70,6 +70,17 @@ const DateField = ({
   </TouchableOpacity>
 );
 
+/**
+ * `dd/MM/yyyy HH:mm` từ chuỗi datetime của Frappe (`2026-09-09 14:05:00.123456`).
+ * Không dùng `parseServerDate` — hàm đó chỉ nhận ngày thuần, mất phần giờ.
+ */
+const formatEditedAt = (value?: string | null) => {
+  if (!value) return '';
+  const parsed = new Date(value.includes('T') ? value : value.replace(' ', 'T'));
+  if (Number.isNaN(parsed.getTime())) return value;
+  return format(parsed, 'dd/MM/yyyy HH:mm', { locale: vi });
+};
+
 const CreateLeaveRequestScreen = () => {
   const navigation = useNavigation<CreateLeaveRequestNavigationProp>();
   const route = useRoute();
@@ -96,6 +107,8 @@ const CreateLeaveRequestScreen = () => {
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [endDate, setEndDate] = useState<Date>(new Date());
   const [showDateModal, setShowDateModal] = useState(false);
+  /** Lịch sử sửa/huỷ đơn — chỉ mode sửa mới có, chỉ để đọc. */
+  const [editLogs, setEditLogs] = useState<any[]>([]);
   const [tempStartDate, setTempStartDate] = useState<Date>(new Date());
   const [tempEndDate, setTempEndDate] = useState<Date>(new Date());
 
@@ -158,6 +171,7 @@ const CreateLeaveRequestScreen = () => {
             // ghi lại bằng getDate() local sẽ làm đơn tự dịch 1 ngày
             setStartDate(parseServerDate(leaveData.start_date) ?? new Date());
             setEndDate(parseServerDate(leaveData.end_date) ?? new Date());
+            setEditLogs(leaveData.edit_logs ?? []);
 
             // Check if can edit (within 24 hours)
             if (leaveData.submitted_at) {
@@ -896,6 +910,42 @@ const CreateLeaveRequestScreen = () => {
               </View>
             </TouchableWithoutFeedback>
           </Modal>
+
+          {/* Lịch sử chỉnh sửa — phụ huynh sửa được lý do/ghi chú/tài liệu cả SAU ngày
+              nghỉ, nên thông báo nhận lúc đầu và đơn hiện tại có thể nói hai chuyện khác
+              nhau. `summary` do backend dựng sẵn bằng tiếng Việt. */}
+          {isEditMode && editLogs.length > 0 && (
+            <View className="border-t border-gray-100 pt-6">
+              <Text className="mb-3 text-sm font-medium text-gray-600">Lịch sử chỉnh sửa</Text>
+              <View className="gap-3">
+                {editLogs.map((log, index) => (
+                  <View
+                    key={`${log?.edited_at ?? 'log'}-${index}`}
+                    className="border-l-2 border-gray-200 py-1 pl-3">
+                    <View className="flex-row flex-wrap items-baseline justify-between">
+                      <Text className="text-sm font-semibold text-gray-900">
+                        {log?.edited_by_name || 'Không rõ người thực hiện'}
+                        <Text className="text-xs font-normal text-gray-500">
+                          {'  '}
+                          {log?.actor_role === 'staff' ? 'Nhà trường' : 'Phụ huynh'}
+                        </Text>
+                      </Text>
+                      {log?.edited_at ? (
+                        <Text className="text-xs text-gray-500">
+                          {formatEditedAt(log.edited_at)}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text className="mt-1 text-sm text-gray-700">
+                      {log?.action === 'cancel'
+                        ? 'Đã huỷ đơn nghỉ phép'
+                        : log?.summary || 'Đã cập nhật đơn'}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
 
           {/* Action Buttons */}
           <View className="border-t border-gray-100 pb-8 pt-6">

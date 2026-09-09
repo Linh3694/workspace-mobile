@@ -114,7 +114,7 @@ const PMInvitationsScreen: React.FC = () => {
           ]
             .filter(Boolean)
             .join(' · ')}
-          icon="mail"
+          icon="bell"
           footer={
             <View style={{ flexDirection: 'row', gap: space[8] }}>
               <ButtonSecondary
@@ -153,7 +153,7 @@ const PMInvitationsScreen: React.FC = () => {
         onRefresh={() => load(true)}
         contentPadding={SCREEN_PADDING}
         empty={{
-          icon: 'mail',
+          icon: 'bell',
           title: error
             ? t('common.error', 'Đã có lỗi')
             : t('project_management.khong_co_loi_moi', 'Không có lời mời nào'),

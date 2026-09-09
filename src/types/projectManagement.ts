@@ -392,6 +392,17 @@ export interface PMResult<T> {
   message?: string;
 }
 
+/**
+ * Vai trò được phép sửa task / quản lý dự án.
+ *
+ * Ở lại file types chứ không sang `pmStatus.ts`: đây là DỮ LIỆU phân quyền, không
+ * phải cấu hình hiển thị. Backend vẫn là chốt chặn thật (`check_task_permission`,
+ * `check_project_edit_permission`); hai hằng này chỉ để không hiện nút mà bấm vào
+ * chỉ nhận 403.
+ */
+export const EDIT_ROLES: readonly ProjectRole[] = ['owner', 'manager', 'member'] as const;
+export const MANAGE_ROLES: readonly ProjectRole[] = ['owner', 'manager'] as const;
+
 export const emptyTasksByStatus = (): TasksByStatus => ({
   backlog: [],
   todo: [],

@@ -55,7 +55,9 @@
     "update": "Cập nhật",
     "create": "Tạo",
     "add": "Thêm",
-    "remove": "Xóa bỏ"
+    "remove": "Xóa bỏ",
+    "all": "Tất cả",
+    "try_again": "Vui lòng thử lại"
   },
   "auth": {
     "enter_password": "Nhập mật khẩu",
@@ -831,6 +833,7 @@
     "khong_co_viec": "Không có việc nào",
     "khong_co_viec_desc": "Việc được giao cho bạn sẽ hiện ở đây.",
     "khong_tim_thay_thanh_vien": "Không có thành viên nào khớp",
+    "loai": "Loại",
     "loai_bug": "Lỗi",
     "loai_story": "Tính năng",
     "loai_task": "Công việc",
@@ -859,9 +862,11 @@
     "tab_yeu_cau": "Yêu cầu",
     "tham_gia": "Tham gia",
     "thanh_vien": "thành viên",
+    "them_cong_viec": "Thêm công việc",
     "thong_tin": "Thông tin",
     "thuoc_task": "Thuộc",
     "thuoc_yeu_cau": "Thuộc yêu cầu",
+    "tieu_de_cong_viec": "Tiêu đề công việc",
     "tile_desc": "Quản lý công việc theo dự án",
     "tile_title": "Dự án",
     "tim_du_an": "Tìm dự án",
@@ -872,6 +877,7 @@
     "trang_thai_review": "Đang review",
     "trang_thai_todo": "Cần làm",
     "tu_choi": "Từ chối",
+    "uu_tien": "Độ ưu tiên",
     "uu_tien_critical": "Khẩn cấp",
     "uu_tien_high": "Cao",
     "uu_tien_low": "Thấp",

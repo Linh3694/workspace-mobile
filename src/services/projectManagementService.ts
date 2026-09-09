@@ -193,6 +193,21 @@ async function postForm<T>(path: string, fields: Params): Promise<PMResult<T>> {
   }
 }
 
+/**
+ * Ghép `BASE_URL` cho đường dẫn tệp/ảnh của Frappe.
+ *
+ * Frappe trả đường dẫn TƯƠNG ĐỐI (`/files/Avatar/...`). Trên web trình duyệt tự
+ * hiểu, nhưng `<Image source={{ uri: '/files/...' }}>` của React Native thì
+ * không — nó không báo lỗi, chỉ vẽ ra một vòng tròn xám. Mọi chỗ nhận
+ * `user_image` / `file_url` từ server đều phải đi qua hàm này.
+ */
+export function resolveFileUrl(path?: string | null): string | undefined {
+  const value = (path ?? '').trim();
+  if (!value) return undefined;
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${BASE_URL}${value.startsWith('/') ? '' : '/'}${value}`;
+}
+
 // ==================== DỰ ÁN ====================
 
 export const getMyProjects = (filters?: { status?: string; visibility?: string }) =>

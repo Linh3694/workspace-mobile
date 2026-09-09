@@ -578,7 +578,7 @@ const HomeScreen = () => {
       key: 'parent_meeting',
     },
     {
-      id: 19,
+      id: 20,
       title: t('project_management.tile_title'),
       component: ProjectManagementIcon,
       description: t('project_management.tile_desc'),
