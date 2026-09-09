@@ -23,3 +23,16 @@ export EAS_LOCAL_BUILD_SKIP_CLEANUP="${EAS_LOCAL_BUILD_SKIP_CLEANUP:-0}"
 # fastlane / CocoaPods yêu cầu locale UTF-8
 export LANG="${LANG:-en_US.UTF-8}"
 export LC_ALL="${LC_ALL:-en_US.UTF-8}"
+
+# Prebuilt React Native (core + dependencies) lấy từ cache local nếu có.
+# Lý do: 2026-09-10 Maven Central chuyển hướng sang repo.reactnative.dev và tarball 0.81.5 trả 404,
+# RN quay về build từ source và fmt 11.0.2 không compile được với clang 21 (Xcode 26.6).
+# Tarball lấy từ ios/Pods/ReactNativeDependencies-artifacts + ReactNativeCore-artifacts của một lần
+# pod install thành công, copy vào ~/.rn-prebuilt/<rn-version>/. Chỉ dùng bản release (không hoán đổi debug/release).
+_RN_VER=$(node -p "try{require('react-native/package.json').version}catch(e){''}" 2>/dev/null)
+_RN_PRE="$HOME/.rn-prebuilt/$_RN_VER"
+if [ -n "$_RN_VER" ] && [ -f "$_RN_PRE/reactnative-dependencies-$_RN_VER-release.tar.gz" ] && [ -f "$_RN_PRE/reactnative-core-$_RN_VER-release.tar.gz" ]; then
+  export RCT_USE_LOCAL_RN_DEP="$_RN_PRE/reactnative-dependencies-$_RN_VER-release.tar.gz"
+  export RCT_TESTONLY_RNCORE_TARBALL_PATH="$_RN_PRE/reactnative-core-$_RN_VER-release.tar.gz"
+fi
+unset _RN_VER _RN_PRE
