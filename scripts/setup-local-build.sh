@@ -20,6 +20,16 @@ echo "▶ Android SDK: platform $COMPILE_SDK, NDK $NDK…"
 yes | sdkmanager --licenses >/dev/null 2>&1 || true
 sdkmanager "platform-tools" "platforms;android-${COMPILE_SDK}" "build-tools;${COMPILE_SDK}.0.0" "ndk;${NDK}" "cmake;3.22.1"
 
+# Chứng chỉ trung gian Apple WWDR (G3+). Thiếu thì `security find-identity -v` báo 0 identity
+# và eas build --local lỗi "Distribution certificate ... hasn't been imported successfully".
+echo "▶ Apple WWDR intermediate certificates…"
+TMPC=$(mktemp -d)
+for c in AppleWWDRCAG3 AppleWWDRCAG4 AppleWWDRCAG5 AppleWWDRCAG6 AppleWWDRCAG7 AppleWWDRCAG8; do
+  curl -sSfLo "$TMPC/$c.cer" "https://www.apple.com/certificateauthority/$c.cer" \
+    && security add-certificates -k ~/Library/Keychains/login.keychain-db "$TMPC/$c.cer" >/dev/null 2>&1 || true
+done
+rm -rf "$TMPC"
+
 echo "▶ Kiểm tra:"
 java -version 2>&1 | head -1
 fastlane --version 2>/dev/null | tail -1
