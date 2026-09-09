@@ -91,7 +91,11 @@ const compressImage = async (
 };
 
 /** Trần media một bài viết — khớp social-service. */
-const MAX_MEDIA = 30;
+// 2026-09-09: 30 → 50, khớp `CDN_PRESIGN_MAX_FILES` bên social-service.
+const MAX_MEDIA = 50;
+// Trần VIDEO mỗi bài — khớp `CDN_POST_MAX_VIDEOS` (server trả 400 TOO_MANY_VIDEOS).
+// Chặn ngay lúc chọn để không upload xong cả bài rồi mới bị từ chối.
+const MAX_VIDEOS = 5;
 
 interface CreatePostModalProps {
   visible: boolean;
@@ -191,13 +195,21 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({
           height: asset.height,
         }));
 
-        // Trần media bài đăng — khớp social-service (30). Chế độ sửa tính cả media cũ giữ lại.
+        // Trần media bài đăng — khớp social-service (50). Chế độ sửa tính cả media cũ giữ lại.
         const totalFiles = keptMediaCount + selectedFiles.length + newFiles.length;
         if (totalFiles > MAX_MEDIA) {
           Alert.alert(
             'Giới hạn file',
             `Chỉ có thể chọn tối đa ${MAX_MEDIA} file cho một bài viết`
           );
+          return;
+        }
+        const totalVideos =
+          keptVideos.length
+          + selectedFiles.filter((f) => f.type.startsWith('video/')).length
+          + newFiles.filter((f) => f.type.startsWith('video/')).length;
+        if (totalVideos > MAX_VIDEOS) {
+          Alert.alert('Giới hạn video', `Mỗi bài viết chỉ gắn được tối đa ${MAX_VIDEOS} video`);
           return;
         }
 
