@@ -36,7 +36,12 @@
     "generate-icons": "node scripts/generate-app-icons.js",
     "brand-lint": "node tools/brand-lint/brand-lint.mjs",
     "brand-lint:count": "node tools/brand-lint/brand-lint.mjs --mode=count",
-    "brand-lint:full": "node tools/brand-lint/brand-lint.mjs --mode=full"
+    "brand-lint:full": "node tools/brand-lint/brand-lint.mjs --mode=full",
+    "release:local": "./scripts/release-local.sh",
+    "release:local:build-only": "./scripts/release-local.sh --no-submit",
+    "release:local:ios": "./scripts/release-local.sh --only ios",
+    "release:local:android": "./scripts/release-local.sh --only android",
+    "setup:local-build": "./scripts/setup-local-build.sh"
   },
   "dependencies": {
     "@callstack/liquid-glass": "^0.6.0",
