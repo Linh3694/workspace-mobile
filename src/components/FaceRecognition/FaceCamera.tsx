@@ -49,7 +49,9 @@ const CHO_GIUA_HAI_LAN_CHUP_MS = 800;
 export type FaceScanUiResult =
   | { kind: 'checked_in'; studentName: string; message: string }
   | { kind: 'already'; studentName: string; message: string }
-  | { kind: 'confirm'; student: FaceScanStudent; photoUrl?: string }
+  | { kind: 'confirm'; student: FaceScanStudent; photoUrl?: string; photoSource?: 'Bus' | 'FaceID' | 'SIS' | null }
+  /** Sau khi xác nhận một em chưa có ảnh bus: hỏi có lưu khung hình vừa quét không. */
+  | { kind: 'offer_photo'; student: FaceScanStudent; message: string }
   | { kind: 'unknown'; message: string }
   | { kind: 'no_face'; message: string }
   /** Dịch vụ hỏng hoặc mất mạng — chuyển sang điểm danh tay */
@@ -67,6 +69,8 @@ interface FaceCameraProps {
   isConfirming?: boolean;
   onConfirm: () => void;
   onRejectSuggestion: () => void;
+  onSavePhoto?: () => void;
+  isSavingPhoto?: boolean;
   onManualFallback: () => void;
 }
 
@@ -79,6 +83,8 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
   isConfirming = false,
   onConfirm,
   onRejectSuggestion,
+  onSavePhoto,
+  isSavingPhoto,
   onManualFallback,
 }) => {
   const cameraRef = useRef<CameraView>(null);
@@ -224,6 +230,8 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
             isConfirming={isConfirming}
             onConfirm={onConfirm}
             onRejectSuggestion={onRejectSuggestion}
+            onSavePhoto={onSavePhoto}
+            isSavingPhoto={isSavingPhoto}
             onManualFallback={onManualFallback}
           />
         ) : null}
@@ -296,8 +304,38 @@ const ResultCard: React.FC<{
   isConfirming: boolean;
   onConfirm: () => void;
   onRejectSuggestion: () => void;
+  onSavePhoto?: () => void;
+  isSavingPhoto?: boolean;
   onManualFallback: () => void;
-}> = ({ result, confirmLabel, isConfirming, onConfirm, onRejectSuggestion, onManualFallback }) => {
+}> = ({ result, confirmLabel, isConfirming, onConfirm, onRejectSuggestion, onManualFallback, onSavePhoto, isSavingPhoto }) => {
+  if (result.kind === 'offer_photo') {
+    return (
+      <View style={[styles.resultCard, styles.resultSuccess]}>
+        <View style={styles.simpleRow}>
+          <Ionicons name="camera" size={24} color="#FFFFFF" />
+          <View style={styles.simpleContent}>
+            <Text style={styles.resultStudentName}>{result.student.student_name}</Text>
+            <Text style={styles.simpleText}>{result.message}</Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={styles.confirmButton}
+          onPress={onSavePhoto}
+          disabled={isSavingPhoto}
+          activeOpacity={0.85}>
+          {isSavingPhoto ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.confirmButtonText}>Lưu làm ảnh bus của em</Text>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.rejectButton} onPress={onRejectSuggestion} disabled={isSavingPhoto}>
+          <Text style={styles.rejectButtonText}>Bỏ qua</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (result.kind === 'confirm') {
     const { student, photoUrl } = result;
     return (

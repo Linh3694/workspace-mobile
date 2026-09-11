@@ -19,6 +19,7 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   busService,
@@ -162,6 +163,44 @@ const BusAttendanceScreen: React.FC = () => {
       setIsUpdating(false);
       setSelectedStudent(null);
       setAbsentReasonText('');
+    }
+  };
+
+  /**
+   * Chụp ảnh bus cho em đang chọn ngay trong màn điểm danh tay (PM-TASK-6711341):
+   * tên và lớp hiện sẵn nên không nhầm cháu. Server nhận diện lại ảnh rồi quyết
+   * định thay ngay hay đưa vào hàng chờ duyệt trên web.
+   */
+  const handleTakeBusPhoto = async () => {
+    if (!selectedStudent?.student_id) return;
+    const student = selectedStudent;
+    setShowStatusModal(false);
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      toast.error('Không có quyền truy cập camera');
+      return;
+    }
+    const picked = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+      base64: true,
+      cameraType: ImagePicker.CameraType.back,
+    });
+    const base64 = picked.canceled ? null : picked.assets?.[0]?.base64;
+    if (!base64) return;
+    setIsUpdating(true);
+    try {
+      const res = await busService.submitScanPhoto(tripId, student.student_id, base64, 'manual');
+      const outcome = res.data?.outcome;
+      if (res.success && outcome === 'applied') {
+        toast.success(`Đã cập nhật ảnh bus của ${student.student_name}`);
+      } else if (res.success && outcome === 'queued') {
+        toast.info('Đã gửi ảnh, bộ phận bus sẽ duyệt');
+      } else {
+        toast.error(res.message || 'Không lưu được ảnh');
+      }
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -490,6 +529,13 @@ const BusAttendanceScreen: React.FC = () => {
                 onPress={openAbsentReasonModal}>
                 <Ionicons name="close-circle" size={24} color="#FFFFFF" />
                 <Text style={styles.statusOptionText}>Vắng</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.statusOption, styles.statusOptionPhoto]}
+                onPress={handleTakeBusPhoto}>
+                <Ionicons name="camera" size={24} color="#FFFFFF" />
+                <Text style={styles.statusOptionText}>Chụp ảnh bus cho em</Text>
               </TouchableOpacity>
             </View>
 
@@ -1013,6 +1059,9 @@ const styles = StyleSheet.create({
   },
   statusOptionAbsent: {
     backgroundColor: '#EF4444',
+  },
+  statusOptionPhoto: {
+    backgroundColor: '#3B82F6',
   },
   statusOptionText: {
     fontSize: 16,
