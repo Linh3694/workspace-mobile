@@ -3,7 +3,7 @@
  * Shows daily trips for monitor grouped by date
  */
 // @ts-nocheck
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -44,8 +44,11 @@ const BusHomeScreen: React.FC = () => {
   const roles: string[] = Array.isArray(user?.roles) ? user?.roles : [];
   const hasMobileMonitor = roles.includes('Mobile Monitor');
 
+  // Ref để tránh nạp hai lần khi mount (useEffect + useFocusEffect đều chạy)
+  const isInitialMount = useRef(true);
+
   const loadTrips = useCallback(
-    async (showRefresh = false) => {
+    async (showRefresh = false, preserveSelection = false) => {
       // Don't load if user is not a Monitor
       if (!hasMobileMonitor) {
         setIsLoading(false);
@@ -72,9 +75,12 @@ const BusHomeScreen: React.FC = () => {
 
         if (response.success && response.data) {
           setTripsByDate(response.data);
-          // Reset to first date (today) and first trip when data loads
-          setSelectedDateIndex(0);
-          setSelectedTripIndex(0);
+          // Reset to first date (today) and first trip when data loads.
+          // Nạp lại khi quay về màn (sau điểm danh) thì giữ nguyên ngày/chuyến đang xem.
+          if (!preserveSelection) {
+            setSelectedDateIndex(0);
+            setSelectedTripIndex(0);
+          }
         } else {
           setError(response.message || 'Không thể tải danh sách chuyến xe');
         }
@@ -91,6 +97,20 @@ const BusHomeScreen: React.FC = () => {
   useEffect(() => {
     loadTrips();
   }, [loadTrips]);
+
+  // Nạp lại khi màn được focus trở lại (quay về từ chi tiết chuyến / điểm danh).
+  // Trước đây chỉ nạp lúc mount nên số học sinh chưa quét đứng yên cho tới khi
+  // thoát app vào lại (PM-TASK-6709362). Nạp "im lặng": không hiện spinner toàn màn,
+  // không đổi ngày/chuyến đang chọn.
+  useFocusEffect(
+    useCallback(() => {
+      if (isInitialMount.current) {
+        isInitialMount.current = false;
+        return;
+      }
+      loadTrips(true, true);
+    }, [loadTrips])
+  );
 
   // Reset selected trip when date changes
   useEffect(() => {
