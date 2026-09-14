@@ -43,7 +43,31 @@ import type { FaceScanStudent } from '../../services/busService';
 const { width: screenWidth } = Dimensions.get('window');
 
 /** Khớp `recognize_max_px` của dịch vụ nhận diện. */
-const MAX_ANH_PX = 1280;
+/** Cạnh dài tối đa của ảnh gửi lên. Service dò mặt ở 640px và giới hạn nhận diện ở
+ *  1280px, còn mặt học sinh ở cửa xe chiếm phần lớn khung hình — 800px là thừa cho
+ *  dò mặt mà dung lượng chỉ ~100KB. Trước đây 1280px từ bản chụp 12MP: mỗi lượt quét
+ *  tốn 3–6s ở điện thoại trong khi máy chủ chỉ mất ~0,3s (đo 14/09/2026). */
+const MAX_ANH_PX = 800;
+
+/** Cạnh dài tối thiểu khi chọn `pictureSize` cho camera: đủ để thu về 800px mà
+ *  không phải chụp ở độ phân giải gốc 12MP rồi mới thu nhỏ. */
+const CANH_DAI_CHUP_TOI_THIEU = 960;
+
+/** Chọn kích thước chụp nhỏ nhất vẫn đủ lớn từ danh sách camera hỗ trợ ("1280x720"…).
+ *  Không parse được cái nào thì trả undefined để expo-camera dùng mặc định. */
+export function chonKichThuocChup(sizes: string[], toiThieu = CANH_DAI_CHUP_TOI_THIEU): string | undefined {
+  let tot: { size: string; dienTich: number } | null = null;
+  for (const size of sizes) {
+    const m = /^(\d+)x(\d+)$/.exec(size.trim());
+    if (!m) continue;
+    const w = Number(m[1]);
+    const h = Number(m[2]);
+    if (Math.max(w, h) < toiThieu) continue;
+    const dienTich = w * h;
+    if (!tot || dienTich < tot.dienTich) tot = { size: size.trim(), dienTich };
+  }
+  return tot?.size;
+}
 const CHO_GIUA_HAI_LAN_CHUP_MS = 800;
 
 export type FaceScanUiResult =
@@ -93,6 +117,18 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
   const [facing, setFacing] = useState<CameraType>('back');
   const [isCapturing, setIsCapturing] = useState(false);
   const lastCaptureTimeRef = useRef(0);
+  const [pictureSize, setPictureSize] = useState<string | undefined>(undefined);
+
+  // Chụp nhỏ ngay từ cảm biến thay vì chụp 12MP rồi thu nhỏ — bước tốn nhất của
+  // cả lượt quét. Danh sách kích thước phụ thuộc máy nên phải hỏi camera.
+  const handleCameraReady = useCallback(async () => {
+    try {
+      const sizes = await cameraRef.current?.getAvailablePictureSizesAsync();
+      if (sizes?.length) setPictureSize(chonKichThuocChup(sizes));
+    } catch {
+      /* giữ mặc định của expo-camera */
+    }
+  }, []);
 
   // Đang chờ giám sát trả lời thì không cho chụp đè lên câu hỏi.
   const dangHoiXacNhan = result?.kind === 'confirm';
@@ -109,8 +145,13 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
 
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.9,
+        // Ảnh này sẽ thu về 800px và nén lại ngay bên dưới, nén cao ở đây là phí.
+        quality: 0.7,
+        // Giữ xử lý hướng ảnh: tắt (`skipProcessing`) thì ảnh xoay sai và service
+        // không thấy mặt. Tốc độ lấy ở kích thước chụp nhỏ + fastMode + tắt màn trập.
         skipProcessing: false,
+        fastMode: true,
+        shutterSound: false,
         exif: false,
       });
 
@@ -132,7 +173,7 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
       }
 
       const anh = await ImageManipulator.manipulateAsync(photo.uri, actions, {
-        compress: 0.85,
+        compress: 0.75,
         format: ImageManipulator.SaveFormat.JPEG,
         base64: true,
       });
@@ -189,7 +230,14 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
 
   return (
     <View style={styles.container}>
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} />
+      <CameraView
+        ref={cameraRef}
+        style={StyleSheet.absoluteFill}
+        facing={facing}
+        pictureSize={pictureSize}
+        animateShutter={false}
+        onCameraReady={() => void handleCameraReady()}
+      />
 
       {/* Overlay tách khỏi CameraView — xem chú thích đầu file.
           `box-none` để các khoảng trống không nuốt chạm của lớp dưới. */}
