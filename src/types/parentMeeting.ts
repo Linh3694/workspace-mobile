@@ -34,11 +34,16 @@ export type PTTeacherGroup = 'homeroom' | 'international' | 'subject' | 'psychol
 /**
  * Trạng thái một ca họp.
  *
- * Bốn trạng thái huỷ được tách riêng chứ không gộp thành `cancelled` vì hệ quả
+ * Năm trạng thái huỷ được tách riêng chứ không gộp thành `cancelled` vì hệ quả
  * khác hẳn nhau: `cancelled_by_parent` nhả ca cho hàng chờ, `cancelled_by_teacher`
  * và `auto_cancelled_no_show` thì KHÔNG (giáo viên vắng — mời gia đình khác tới
  * là hẹn họ tới gặp một cái ghế trống). Màn hình phải nói đúng lý do, nếu không
  * giáo vụ không giải thích nổi khi phụ huynh gọi lên.
+ *
+ * ⚠️ `auto_cancelled_no_show` và `no_show_parent` NGƯỢC NGHĨA NHAU dù tên nghe
+ * giống: cái trước là GIÁO VIÊN không bấm «Bắt đầu» đúng hạn (hệ thống tự huỷ),
+ * cái sau là GIA ĐÌNH không tới (giáo viên tự đánh dấu). Gộp nhãn hai cái này là
+ * đổ lỗi nhầm người ngay trên màn hình của giáo viên.
  */
 export type PTSlotStatus =
   | 'open'
@@ -48,7 +53,8 @@ export type PTSlotStatus =
   | 'cancelled_by_parent'
   | 'cancelled_by_teacher'
   | 'auto_cancelled_no_show'
-  | 'cancelled_by_school';
+  | 'cancelled_by_school'
+  | 'no_show_parent';
 
 /** Trạng thái đơn đăng ký của một học sinh trong đợt. */
 export type PTRegistrationStatus = 'registered' | 'waitlisted' | 'scheduled' | 'cancelled';

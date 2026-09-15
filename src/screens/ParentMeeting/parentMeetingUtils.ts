@@ -86,6 +86,10 @@ export function getSlotStatusInfo(status?: PTSlotStatus | null): PTSlotStatusInf
         description:
           'Hệ thống huỷ ca này vì quá hạn mà chưa bấm "Bắt đầu họp" — không phải phụ huynh huỷ.',
       };
+    // NGƯỢC HẲN nhánh trên: ở đây giáo viên đã có mặt, gia đình mới là bên vắng.
+    // Không có `description` vì chính giáo viên là người bấm nút này — họ đã biết.
+    case 'no_show_parent':
+      return { label: 'Phụ huynh không đến', tone: 'neutral' };
     default:
       return { label: 'Không xác định', tone: 'neutral' };
   }
@@ -93,7 +97,11 @@ export function getSlotStatusInfo(status?: PTSlotStatus | null): PTSlotStatusInf
 
 /** Ca đã kết thúc theo hướng huỷ (mọi biến thể) — dùng để tắt nút thao tác. */
 export function isSlotCancelled(status?: PTSlotStatus | null): boolean {
-  return String(status || '').startsWith('cancelled_') || status === 'auto_cancelled_no_show';
+  return (
+    String(status || '').startsWith('cancelled_') ||
+    status === 'auto_cancelled_no_show' ||
+    status === 'no_show_parent'
+  );
 }
 
 /** Riêng ca bị hệ thống tự huỷ — phải hiển thị khác hẳn ca huỷ thường. */
