@@ -14,7 +14,7 @@ import { useAuth } from './src/context/AuthContext';
 import * as Notifications from 'expo-notifications';
 import { Audio } from 'expo-av';
 import { LinkingOptions, NavigationContainer } from '@react-navigation/native';
-import type { RootStackParamList } from './src/navigation/AppNavigatorx';
+import type { RootStackParamList } from './src/navigation/AppNavigator';
 import { navigationRef } from './src/navigation/navigationRef';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';

@@ -39,7 +39,8 @@ unset _RN_VER _RN_PRE
 
 # Xcode: SDK iOS 27 bắt buộc UIScene lifecycle (Expo SDK 54 chưa hỗ trợ → crash khi mở app).
 # Nếu có Xcode 26 cài song song (vd /Applications/Xcode-26.6.app) thì dùng nó cho build iOS local.
-for _xc in /Applications/Xcode-26*.app /Applications/Xcode_26*.app; do
+# (dùng find thay glob: khi source từ zsh, glob không khớp sẽ báo lỗi "no matches found")
+for _xc in $(find /Applications -maxdepth 1 \( -name "Xcode-26*.app" -o -name "Xcode_26*.app" \) 2>/dev/null); do
   [ -d "$_xc/Contents/Developer" ] && export DEVELOPER_DIR="$_xc/Contents/Developer" && break
 done
 unset _xc
