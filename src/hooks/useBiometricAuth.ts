@@ -191,10 +191,12 @@ export const useBiometricAuth = () => {
           const parsed = JSON.parse(credentialsString) as Credentials;
           return { email: parsed.email, password: parsed.password };
         }
-      } else if (result.error) {
-        console.log('Lỗi xác thực:', result.error);
+      } else {
+        // expo-local-authentication 17: kết quả là union {success:true} | {success:false,error}
+        const authError = (result as { error?: string }).error;
+        console.log('Lỗi xác thực:', authError);
         // Xử lý các loại lỗi cụ thể
-        switch (result.error) {
+        switch (authError) {
           case 'not_enrolled':
             console.log('Thiết bị chưa cấu hình biometric');
             break;
@@ -205,7 +207,7 @@ export const useBiometricAuth = () => {
             console.log('Người dùng hủy xác thực');
             break;
           default:
-            console.log('Lỗi không xác định:', result.error);
+            console.log('Lỗi không xác định:', authError);
         }
       }
       return null;

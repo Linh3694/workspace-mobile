@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { View, Text, Image, Modal } from 'react-native';
 import { TouchableOpacity, ZoomableImage } from '../../../components/Common';
 import { Ionicons } from '@expo/vector-icons';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode } from '~/components/media/AvVideo';
 import { useTranslation } from 'react-i18next';
 import { BASE_URL } from '../../../config/constants';
 import { formatIssuePersonDisplayName } from '../../../utils/nameUtils';

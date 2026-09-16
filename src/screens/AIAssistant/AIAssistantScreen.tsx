@@ -228,7 +228,7 @@ const glassStyles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     pointerEvents: 'none',
   },
   content: {
@@ -1607,7 +1607,7 @@ const styles = StyleSheet.create({
   },
   // Overlay Premium khi user không có role Mobile BOD - zIndex cao để phủ cả role selector
   premiumOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 9999,
     justifyContent: 'center',
     alignItems: 'center',

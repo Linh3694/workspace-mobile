@@ -78,6 +78,8 @@ class PushNotificationService {
 
         return {
           shouldShowAlert: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
           shouldPlaySound: true,
           shouldSetBadge: true,
           priority: Notifications.AndroidNotificationPriority.HIGH,

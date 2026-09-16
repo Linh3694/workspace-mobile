@@ -25,7 +25,7 @@ import type { AdminTicketMessage } from '../../../services/administrativeTicketS
 import { getFullImageUrl } from '../../../utils/imageUtils';
 import Modal from 'react-native-modal';
 import { normalizeVietnameseName } from '../../../utils/nameFormatter';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode } from '~/components/media/AvVideo';
 
 // Helper: URL có phải video không
 const isVideoUrl = (url: string): boolean => {

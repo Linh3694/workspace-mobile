@@ -12,8 +12,9 @@ import {
 } from './src/utils/pushNotificationNavigation';
 import { useAuth } from './src/context/AuthContext';
 import * as Notifications from 'expo-notifications';
-import { Audio } from 'expo-av';
-import { NavigationContainer } from '@react-navigation/native';
+import { setAudioModeAsync } from 'expo-audio';
+import { LinkingOptions, NavigationContainer } from '@react-navigation/native';
+import type { RootStackParamList } from './src/navigation/AppNavigator';
 import { navigationRef } from './src/navigation/navigationRef';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -37,7 +38,8 @@ import { ChatMessageNotificationProvider } from './src/providers/ChatMessageNoti
 import { NotificationInboxSocketProvider } from './src/providers/NotificationInboxSocketProvider';
 
 // Cấu hình linking cho deep links
-const linking = {
+// react-navigation 7 + TS 6: PathConfig lồng nhau không suy được từ RootStackParamList → khai báo lỏng.
+const linking: LinkingOptions<RootStackParamList> = {
   prefixes: [Linking.createURL('/'), 'staffportal://'],
   config: {
     screens: {
@@ -48,7 +50,7 @@ const linking = {
         screens: {
           Home: 'home',
         },
-      },
+      } as any,
     },
   },
 };
@@ -116,11 +118,11 @@ export default function App() {
    * nên video không bao giờ hưởng cấu hình đó.
    */
   useEffect(() => {
-    Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
+    setAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
+      interruptionMode: 'duckOthers',
+      shouldRouteThroughEarpiece: false,
     }).catch((e) => console.warn('[App] không đặt được audio mode:', e));
   }, []);
 

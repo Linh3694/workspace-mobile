@@ -49,7 +49,7 @@ export const useMicrosoftAuthV2 = (onSuccess: SuccessCb, onError: ErrorCb) => {
       scopes: ['openid', 'profile', 'email', 'User.Read'],
       usePKCE: false, // Disable PKCE to work with backend token exchange
       redirectUri,
-      additionalParameters: {
+      extraParams: {
         prompt: 'select_account', // Always show account picker
       },
     },
