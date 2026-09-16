@@ -56,5 +56,15 @@ target 'Wis' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+
+    # Xcode 27 chỉ chấp nhận deployment target 15.0+; nhiều pod cũ khai báo 9.0-13.4
+    # (SDWebImage, ReachabilitySwift, RNSVG, lottie...) làm archive lỗi. Nâng lên mức của app.
+    min_ios = podfile_properties['ios.deploymentTarget'] || '15.1'
+    installer.pods_project.targets.each do |t|
+      t.build_configurations.each do |c|
+        cur = c.build_settings['IPHONEOS_DEPLOYMENT_TARGET']
+        c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = min_ios if cur.nil? || Gem::Version.new(cur) < Gem::Version.new(min_ios)
+      end
+    end
   end
 end
