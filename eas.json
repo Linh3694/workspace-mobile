@@ -66,6 +66,13 @@
         "EXPO_PUBLIC_APP_ENV": "production",
         "EXPO_PUBLIC_APP_UPDATE_FORCE": "false"
       }
+    },
+    "production-sim": {
+      "extends": "production",
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      }
     }
   },
   "submit": {
