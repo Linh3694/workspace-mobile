@@ -235,7 +235,7 @@ const Snowfall: React.FC<SnowfallProps> = ({ count = 50, color = '#FFFFFF' }) =>
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 1,
     overflow: 'hidden',
   },

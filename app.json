@@ -59,14 +59,21 @@
           "photosPermission": "Ứng dụng cần quyền truy cập thư viện ảnh để lưu ảnh chat.",
           "savePhotosPermission": "Ứng dụng cần quyền lưu ảnh chat vào album của bạn."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-sharing",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./src/assets/icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFCF5"
+        }
+      ],
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "orientation": "portrait",
-    "splash": {
-      "image": "./src/assets/icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FFFCF5"
-    },
     "icon": "./src/assets/icon.png",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": [

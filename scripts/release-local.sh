@@ -61,7 +61,15 @@ preflight() {
     # SDK iOS 27 (Xcode 27) bắt buộc UIScene lifecycle; Expo SDK 54 / RN 0.81 chưa hỗ trợ → app crash ngay khi mở
     # (đã dính ở admin 1.5.50). Chỉ cho build iOS local với Xcode <= 26; đặt DEVELOPER_DIR trỏ Xcode 26 trong local-env.sh.
     XC_MAJOR=$(xcodebuild -version 2>/dev/null | awk '/^Xcode/{print int($2)}')
-    if [ -n "$XC_MAJOR" ] && [ "$XC_MAJOR" -ge 27 ]; then
+    # App đã bật UIScene (expo >= 57.0.23 + scene manifest trong Info.plist hoặc plugin withIosUISceneLifecycle) thì Xcode 27 OK.
+    HAS_UISCENE=false
+    if node -e "const v=require('expo/package.json').version.split('.').map(Number);process.exit((v[0]>57||(v[0]===57&&v[2]>=23))?0:1)" 2>/dev/null; then
+      { [ -f "$INFO_PLIST" ] && grep -q "EXExpoAppSceneDelegate" "$INFO_PLIST"; } \
+        || grep -q "withIosUISceneLifecycle" app.json 2>/dev/null \
+        || node -e "const v=require('expo/package.json').version.split('.').map(Number);process.exit(v[0]>=58?0:1)" 2>/dev/null \
+        && HAS_UISCENE=true
+    fi
+    if [ -n "$XC_MAJOR" ] && [ "$XC_MAJOR" -ge 27 ] && [ "$HAS_UISCENE" = false ]; then
       echo -e "${RED}Xcode $XC_MAJOR: SDK iOS 27 yêu cầu UIScene, app sẽ crash khi mở. Cài Xcode 26.x và đặt DEVELOPER_DIR, hoặc build iOS trên EAS cloud (npm run build:ios).${NC}"
       ok=false
     fi

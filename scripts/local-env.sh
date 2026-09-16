@@ -43,3 +43,9 @@ for _xc in /Applications/Xcode-26*.app /Applications/Xcode_26*.app; do
   [ -d "$_xc/Contents/Developer" ] && export DEVELOPER_DIR="$_xc/Contents/Developer" && break
 done
 unset _xc
+
+# Node: metro 0.84 (Expo SDK 57) cần Node >= 24.3. Dùng bản 24 mới nhất qua nvm nếu có.
+if [ -s "$HOME/.nvm/nvm.sh" ]; then
+  . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1
+  nvm use 24 >/dev/null 2>&1 || true
+fi
