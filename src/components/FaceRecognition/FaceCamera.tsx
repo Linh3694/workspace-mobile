@@ -148,9 +148,10 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
         // Ảnh này sẽ thu về 800px và nén lại ngay bên dưới, nén cao ở đây là phí.
         quality: 0.7,
         // Giữ xử lý hướng ảnh: tắt (`skipProcessing`) thì ảnh xoay sai và service
-        // không thấy mặt. Tốc độ lấy ở kích thước chụp nhỏ + fastMode + tắt màn trập.
+        // không thấy mặt. Tốc độ lấy ở kích thước chụp nhỏ + tắt màn trập.
+        // KHÔNG bật `fastMode`: ở expo-camera 17 nó chỉ dùng kèm `onPictureSaved` —
+        // iOS ném "Image could not be captured", Android văng app (options.id null).
         skipProcessing: false,
-        fastMode: true,
         shutterSound: false,
         exif: false,
       });
