@@ -58,6 +58,13 @@ preflight() {
   for t in eas node git; do command -v $t >/dev/null || { echo -e "${RED}Thiếu $t${NC}"; ok=false; }; done
   if $DO_IOS; then
     for t in xcodebuild fastlane pod; do command -v $t >/dev/null || { echo -e "${RED}Thiếu $t (iOS)${NC}"; ok=false; }; done
+    # SDK iOS 27 (Xcode 27) bắt buộc UIScene lifecycle; Expo SDK 54 / RN 0.81 chưa hỗ trợ → app crash ngay khi mở
+    # (đã dính ở admin 1.5.50). Chỉ cho build iOS local với Xcode <= 26; đặt DEVELOPER_DIR trỏ Xcode 26 trong local-env.sh.
+    XC_MAJOR=$(xcodebuild -version 2>/dev/null | awk '/^Xcode/{print int($2)}')
+    if [ -n "$XC_MAJOR" ] && [ "$XC_MAJOR" -ge 27 ]; then
+      echo -e "${RED}Xcode $XC_MAJOR: SDK iOS 27 yêu cầu UIScene, app sẽ crash khi mở. Cài Xcode 26.x và đặt DEVELOPER_DIR, hoặc build iOS trên EAS cloud (npm run build:ios).${NC}"
+      ok=false
+    fi
   fi
   if $DO_ANDROID; then
     [ -d "$ANDROID_HOME/platforms" ] || { echo -e "${RED}Thiếu Android SDK tại $ANDROID_HOME${NC}"; ok=false; }

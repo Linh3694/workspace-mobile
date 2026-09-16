@@ -36,3 +36,10 @@ if [ -n "$_RN_VER" ] && [ -f "$_RN_PRE/reactnative-dependencies-$_RN_VER-release
   export RCT_TESTONLY_RNCORE_TARBALL_PATH="$_RN_PRE/reactnative-core-$_RN_VER-release.tar.gz"
 fi
 unset _RN_VER _RN_PRE
+
+# Xcode: SDK iOS 27 bắt buộc UIScene lifecycle (Expo SDK 54 chưa hỗ trợ → crash khi mở app).
+# Nếu có Xcode 26 cài song song (vd /Applications/Xcode-26.6.app) thì dùng nó cho build iOS local.
+for _xc in /Applications/Xcode-26*.app /Applications/Xcode_26*.app; do
+  [ -d "$_xc/Contents/Developer" ] && export DEVELOPER_DIR="$_xc/Contents/Developer" && break
+done
+unset _xc
