@@ -2,7 +2,7 @@
  * Ảnh / video / file trong bubble chat Trao đổi — RN Image + modal (đồng bộ Guardian attachments).
  */
 import { Ionicons } from '@expo/vector-icons';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode } from '~/components/media/AvVideo';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,

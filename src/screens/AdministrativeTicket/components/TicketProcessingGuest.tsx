@@ -16,7 +16,7 @@ import {
 import { TouchableOpacity, ZoomableImage } from '../../../components/Common';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode } from '~/components/media/AvVideo';
 
 // Store & Hooks
 import {

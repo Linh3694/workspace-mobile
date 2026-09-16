@@ -18,7 +18,7 @@ import { TouchableOpacity, ZoomableImage } from '../../../components/Common';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode } from '~/components/media/AvVideo';
 
 // Store & Hooks
 import { useTicketStore, useCanSendMessage, useTicketData } from '../../../hooks/useTicketStore';

@@ -15,7 +15,7 @@ import {
 import { TouchableOpacity, ZoomableImage } from '../../../components/Common';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode } from '~/components/media/AvVideo';
 import { normalizeVietnameseName } from '../../../utils/nameFormatter';
 import { getStatusLabel, getStatusColor } from '../../../config/feedbackConstants';
 import { useFeedbackData, useFeedbackActions } from '../../../hooks/useFeedbackStore';

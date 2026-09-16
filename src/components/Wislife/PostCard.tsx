@@ -20,7 +20,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TouchableOpacity, ZoomableImage } from '../Common';
 import { Ionicons } from '@expo/vector-icons';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode } from '~/components/media/AvVideo';
 import LottieView from 'lottie-react-native';
 import { Post, Reaction } from '../../types/post';
 import { postService } from '../../services/postService';

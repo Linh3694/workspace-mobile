@@ -17,7 +17,7 @@ import {
 import { TouchableOpacity } from '../../components/Common';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode } from '~/components/media/AvVideo';
 import LottieView from 'lottie-react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Post, Comment, Reaction } from '../../types/post';

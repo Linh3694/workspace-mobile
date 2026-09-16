@@ -71,7 +71,9 @@
         }
       ],
       "expo-status-bar",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-video",
+      "expo-audio"
     ],
     "orientation": "portrait",
     "icon": "./src/assets/icon.png",

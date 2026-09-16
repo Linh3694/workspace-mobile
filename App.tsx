@@ -12,7 +12,7 @@ import {
 } from './src/utils/pushNotificationNavigation';
 import { useAuth } from './src/context/AuthContext';
 import * as Notifications from 'expo-notifications';
-import { Audio } from 'expo-av';
+import { setAudioModeAsync } from 'expo-audio';
 import { LinkingOptions, NavigationContainer } from '@react-navigation/native';
 import type { RootStackParamList } from './src/navigation/AppNavigator';
 import { navigationRef } from './src/navigation/navigationRef';
@@ -118,11 +118,11 @@ export default function App() {
    * nên video không bao giờ hưởng cấu hình đó.
    */
   useEffect(() => {
-    Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
+    setAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
+      interruptionMode: 'duckOthers',
+      shouldRouteThroughEarpiece: false,
     }).catch((e) => console.warn('[App] không đặt được audio mode:', e));
   }, []);
 
