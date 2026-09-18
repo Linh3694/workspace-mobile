@@ -190,6 +190,21 @@ export interface PTTeacherSlot extends PTTeacherGroupLabels {
   completed_at?: string | null;
 
   /**
+   * NHỮNG NGƯỜI CÒN LẠI ngồi cùng ca — đã bỏ chính người đang đăng nhập ra ở máy chủ.
+   *
+   * Vai «cả nhóm cùng ngồi» và ca dạy đôi có nhiều hơn một giáo viên, nhưng cột
+   * `teacher_id` của ca chỉ giữ được người ĐẠI DIỆN. Không hiện danh sách này thì thầy
+   * cô mở lịch ra tưởng mình ngồi một mình cả buổi.
+   *
+   * Lọc ở máy chủ vì app không biết `teacher_id` của chính mình (chỉ có tài khoản đăng
+   * nhập), và so bằng TÊN thì hai người trùng tên là mất một người.
+   */
+  co_teacher_names?: string[];
+  /** ĐỦ người ngồi trong ca, kể cả mình — cùng hợp đồng với các endpoint lưới/lớp. */
+  teacher_ids?: string[];
+  teacher_names?: string[];
+
+  /**
    * KHÔNG có trong response của `get_my_teacher_slots` (endpoint chỉ trả các
    * field của đợt mà màn hình lịch cần). Để optional vì ngưỡng huỷ no-show là
    * cấu hình của ĐỢT: màn nào muốn đếm ngược "còn N phút trước khi ca tự huỷ"
@@ -314,4 +329,45 @@ export interface PTPublishScheduleResult {
   status: PTEventStatus;
   notified_scheduled: number;
   notified_waitlisted: number;
+}
+
+/**
+ * Một đoạn ghi âm của biên bản ca họp.
+ *
+ * Ghi âm được CHIA ĐOẠN chứ không một file: máy chủ không có `ffmpeg` để cắt ghép, nên
+ * mỗi đoạn phải là một file hợp lệ độc lập. Gọi lại `upload_meeting_audio_part` với cùng
+ * `part_index` là GHI ĐÈ, nhờ đó client thử lại được đoạn upload hỏng mà không sinh bản trùng.
+ */
+export interface PTMeetingAudioPart {
+  part_index: number;
+  /** Giây. Do client đo và gửi lên — máy chủ không giải mã file để tự tính. */
+  duration: number;
+  file_size: number;
+  /**
+   * Đường dẫn TƯƠNG ĐỐI tới endpoint phát lại, máy chủ dựng sẵn — đừng tự ghép.
+   *
+   * KHÔNG trỏ thẳng vào `/private/files/...`: quyền của doctype File lỏng hơn luật biên
+   * bản nhiều. Mọi lượt phát phải đi qua `stream_meeting_audio_part`, và endpoint đó đòi
+   * `Authorization` (xem `getMeetingAudioPartSource`).
+   */
+  playback_url: string;
+}
+
+/** Tệp đính kèm của biên bản. App chưa có màn quản lý, nhưng payload luôn trả kèm. */
+export interface PTMeetingAttachment {
+  file_url: string;
+  filename: string;
+  file_size: number;
+  content_type: string;
+  uploaded_by?: string | null;
+  uploaded_at?: string | null;
+}
+
+/** Kết quả `get_meeting_media` — tư liệu treo trên BIÊN BẢN của ca, không phải trên ca. */
+export interface PTMeetingMedia {
+  note_id: string;
+  /** Tổng giây của mọi đoạn, máy chủ cộng — đừng cộng lại ở client. */
+  audio_duration: number;
+  audio_parts: PTMeetingAudioPart[];
+  attachments: PTMeetingAttachment[];
 }

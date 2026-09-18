@@ -107,12 +107,25 @@ export interface PMTask {
   status: TaskStatus;
   priority: TaskPriority;
   created_by?: string;
+  /** MỘT người thực hiện. Trước 09/2026 là mảng `assignees` (bảng nối nhiều người). */
+  assignee?: string | null;
+  /** Người kiểm tra (tester). */
+  reviewer?: string | null;
   due_date?: string;
   tags?: string;
   order_index: number;
   creation: string;
   modified: string;
   // Field server enrich thêm
+  assignee_full_name?: string;
+  assignee_image?: string;
+  reviewer_full_name?: string;
+  reviewer_image?: string;
+  /**
+   * @deprecated Mảng CŨ, luôn 0–1 phần tử. Server còn trả để các bản app đã cài trên
+   * máy người dùng không hiện "Chưa giao" cho mọi task. Code mới đọc `assignee`,
+   * nhưng vẫn nên fallback về mảng này để chạy được với backend chưa cập nhật.
+   */
   assignees?: PMTaskAssignee[];
   created_by_full_name?: string;
   created_by_image?: string;

@@ -12,7 +12,12 @@ import StandardHeader from '../../components/Common/StandardHeader';
 import BottomSheetModal from '../../components/Common/BottomSheetModal';
 import ConfirmModal from '../../components/ConfirmModal';
 import { toast } from '../../utils/toast';
-import { getBookableRooms, getRoomBookings, cancelRoomBooking } from '../../services/roomBookingService';
+import {
+  getBookableRooms,
+  getRoomBookings,
+  cancelRoomBooking,
+  getPendingRoomBookingsForMe,
+} from '../../services/roomBookingService';
 import type { BookableRoom, RoomBooking } from '../../types/roomBooking';
 import {
   groupBookingsByDay,
@@ -23,6 +28,9 @@ import {
   getRoomBuildingLabel,
   matchesRoomQuery,
   getPersonLabel,
+  getBookingStatusLabel,
+  getBookingStatusTone,
+  isPendingApproval,
 } from './roomBookingUtils';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -99,6 +107,22 @@ export default function RoomBookingScreen() {
     [rooms, search]
   );
 
+  // Số phiếu đang chờ CHÍNH TÔI duyệt — dùng để quyết có hiện lối vào hàng chờ hay
+  // không. Người không duyệt gì thì không thấy nút, khỏi tưởng mình bỏ sót việc.
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      getPendingRoomBookingsForMe().then((rows) => {
+        if (alive) setPendingCount(rows.length);
+      });
+      return () => {
+        alive = false;
+      };
+    }, [])
+  );
+
   const canCancel = useCallback(
     (b: RoomBooking): boolean =>
       !!user?.email &&
@@ -106,7 +130,9 @@ export default function RoomBookingScreen() {
       b.booked_by_email.toLowerCase() === user.email.toLowerCase() &&
       b.source !== 'admin_ticket' &&
       !b.source_ticket &&
-      b.status !== 'Cancelled',
+      // Yêu cầu CHỜ DUYỆT vẫn huỷ được — nó đang giữ chỗ, người đặt đổi ý thì phải
+      // nhả ra. Chỉ ba trạng thái đã đóng là hết đường huỷ.
+      !['Cancelled', 'Rejected', 'Expired'].includes(b.status),
     [user?.email]
   );
 
@@ -141,6 +167,22 @@ export default function RoomBookingScreen() {
           <Text className="text-lg font-bold" style={{ color: PRIMARY }}>
             Đặt phòng
           </Text>
+        }
+        rightButton={
+          pendingCount > 0 ? (
+            <TouchableOpacity
+              onPress={() => navigation.navigate(ROUTES.SCREENS.ROOM_BOOKING_APPROVAL)}
+              className="h-11 w-11 items-center justify-center">
+              <Ionicons name="checkmark-done-outline" size={24} color={PRIMARY} />
+              <View
+                className="absolute right-1 top-1 min-w-[18px] items-center justify-center rounded-full px-1"
+                style={{ backgroundColor: SECONDARY }}>
+                <Text className="text-[10px] font-bold text-white">
+                  {pendingCount > 9 ? '9+' : pendingCount}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : undefined
         }
       />
 
@@ -204,6 +246,10 @@ export default function RoomBookingScreen() {
               </Text>
               {group.items.map((b) => {
                 const owned = canCancel(b);
+                const statusTone = getBookingStatusTone(b.status);
+                const pendingStep = isPendingApproval(b.status)
+                  ? (b.pending_step_label || '').trim()
+                  : '';
                 return (
                   <View
                     key={b.name}
@@ -214,9 +260,27 @@ export default function RoomBookingScreen() {
                       </Text>
                     </View>
                     <View className="flex-1 border-l border-gray-100 pl-3">
-                      <Text className="text-base font-semibold text-gray-900" numberOfLines={2}>
-                        {b.title || '(Không tiêu đề)'}
-                      </Text>
+                      <View className="flex-row items-center">
+                        <Text
+                          className="flex-1 text-base font-semibold text-gray-900"
+                          numberOfLines={2}>
+                          {b.title || '(Không tiêu đề)'}
+                        </Text>
+                        {statusTone ? (
+                          <View
+                            className="ml-2 rounded-full px-2 py-0.5"
+                            style={{ backgroundColor: statusTone.bg }}>
+                            <Text className="text-[11px] font-bold" style={{ color: statusTone.fg }}>
+                              {getBookingStatusLabel(b.status)}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      {pendingStep ? (
+                        <Text className="mt-0.5 text-[11px] font-medium" style={{ color: '#B45309' }}>
+                          Đang chờ bước {pendingStep}
+                        </Text>
+                      ) : null}
                       <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={1}>
                         {[
                           getPersonLabel({ full_name: b.booked_by, email: b.booked_by_email }),

@@ -591,7 +591,18 @@ const DevicesScreen = () => {
           <Text className="flex-1 text-center font-bold text-2xl text-[#0A2240]">
             Quản lý thiết bị
           </Text>
-          <View style={{ width: 40 }} />
+          {/* Nút quét tem QR — CỐ Ý có mặt ở cả bản V1 này, không chỉ V2.
+              `devicesRoute()` chỉ đưa sang V2 khi người dùng vừa có role
+              System Manager vừa tự bật công tắc V2 trong màn Hồ sơ, mà mặc định
+              là tắt. Để riêng ở V2 thì đúng nhân viên IT — người đứng trước máy
+              cần quét — lại không thấy nút ở đâu cả. Xoá cùng lúc xoá file này
+              khi V1 bị khai tử. */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate(ROUTES.SCREENS.DEVICE_SCAN)}
+            className="p-2"
+            accessibilityLabel="Quét tem QR thiết bị">
+            <Ionicons name="qr-code-outline" size={24} color="#0A2240" />
+          </TouchableOpacity>
         </View>
 
         <View className="flex-1">

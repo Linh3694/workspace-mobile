@@ -50,6 +50,49 @@ function htmlToPlainText(html: string): string {
     .trim();
 }
 
+/**
+ * Chiều ngược lại: text trần của ô nhập -> HTML để lưu vào `SIS PT Meeting Note.content`.
+ *
+ * BẮT BUỘC, không phải trang trí. Bên đọc là `ParentMeetingNoteViewModal` của web, nó đổ
+ * nội dung bằng `dangerouslySetInnerHTML` — mà HTML thì nuốt sạch ký tự xuống dòng. Gửi text
+ * trần nghĩa là biên bản gõ trên điện thoại tới tay BGH thành MỘT KHỐI chữ liền, đúng lúc
+ * người đọc cần lướt nhanh giữa nhiều ca.
+ *
+ * ESCAPE TRƯỚC, bọc thẻ SAU. Giáo viên gõ "<" hay "&" trong câu là chuyện bình thường
+ * ("phụ huynh hỏi A&B", "điểm < 5"); để nguyên thì trình duyệt đọc phần sau đó thành thẻ và
+ * nuốt mất một đoạn. Web có sanitize ở đường đọc nhưng sanitize chỉ bỏ thẻ nguy hiểm, không
+ * trả lại được chữ đã bị hiểu nhầm thành thẻ.
+ *
+ * Dòng trắng = đoạn mới, xuống dòng đơn = `<br>` — khớp với cách `htmlToPlainText` đọc ngược
+ * lại, nên nội dung soạn từ app lưu rồi mở lại vẫn y nguyên.
+ */
+function plainTextToHtml(text: string): string {
+  const escaped = String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return escaped
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => `<p>${block.replace(/\n/g, '<br>')}</p>`)
+    .join('');
+}
+
+/**
+ * Bản ghi chú đang có mang định dạng mà ô nhập của app KHÔNG giữ được (danh sách, in đậm,
+ * tiêu đề, bảng, ảnh) — tức là nó được soạn trên web bằng trình soạn thảo đầy đủ.
+ *
+ * Cần biết để CẢNH BÁO trước: app hạ nội dung về text trần lúc nạp, nên bấm lưu ở đây là
+ * ghi đè mất định dạng của bản web, và không có bước hoàn tác nào. Chỉ đếm thẻ có ý nghĩa
+ * trình bày — `<p>`/`<br>` thì chính app cũng sinh ra, cảnh báo vì chúng là báo động giả.
+ */
+function hasRichFormatting(html: string): boolean {
+  return /<(ul|ol|li|strong|b|em|i|u|h[1-6]|table|img|a|blockquote|pre|code)\b/i.test(
+    String(html || '')
+  );
+}
+
 export default function ParentMeetingNoteScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<ScreenRoute>();
@@ -62,6 +105,8 @@ export default function ParentMeetingNoteScreen() {
   const [content, setContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  /** Bản đang có được soạn trên web và có định dạng — lưu từ app sẽ làm phẳng nó. */
+  const [richNoteWarning, setRichNoteWarning] = useState(false);
 
   /**
    * Màn này còn được mở từ push notification (payload chỉ có slotId), nên thông tin ca phải
@@ -85,6 +130,7 @@ export default function ParentMeetingNoteScreen() {
       const existing = notes.find((n) => n.slot_id === slotId);
       if (existing) {
         setContent(htmlToPlainText(existing.content));
+        setRichNoteWarning(hasRichFormatting(existing.content));
         setIsEditing(true);
       }
     }
@@ -120,7 +166,9 @@ export default function ParentMeetingNoteScreen() {
     }
     setSubmitting(true);
     try {
-      await submitMeetingNote(slotId, body);
+      // Kiểm độ dài trên TEXT TRẦN ở trên, gửi đi bản HTML: đếm ký tự sau khi bọc thẻ thì
+      // `<p></p>` tự nó đã qua ngưỡng tối thiểu.
+      await submitMeetingNote(slotId, plainTextToHtml(body));
       toast.success('Đã gửi meeting note tới Ban Giám hiệu');
       navigation.goBack();
     } catch (e) {
@@ -173,6 +221,13 @@ export default function ParentMeetingNoteScreen() {
                   {subtitle}
                 </Text>
               ) : null}
+              {/* Ai cùng dự ca này — biên bản gửi BGH nên phải rõ đây là ghi chép của một
+                  cuộc gặp có mấy thầy cô, không phải cuộc trao đổi tay đôi. */}
+              {slot.co_teacher_names?.length ? (
+                <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={2}>
+                  Cùng dự: {slot.co_teacher_names.join(', ')}
+                </Text>
+              ) : null}
               {slot.note ? (
                 <View className="mt-2.5 rounded-lg bg-gray-50 px-2.5 py-2">
                   <Text className="text-[11px] font-semibold text-gray-500">
@@ -201,6 +256,19 @@ export default function ParentMeetingNoteScreen() {
               dung này. Hãy ghi trung thực những điều nhà trường cần biết sau buổi họp.
             </Text>
           </View>
+
+          {/* Bản trên web có định dạng mà ô nhập này không giữ được. Báo TRƯỚC khi gõ:
+              lưu từ app là làm phẳng bản cũ, và không có bước hoàn tác nào. */}
+          {richNoteWarning ? (
+            <View className="mb-4 flex-row rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
+              <Ionicons name="alert-circle-outline" size={18} color="#B45309" />
+              <Text className="ml-2 flex-1 text-xs leading-5" style={{ color: '#92400E' }}>
+                Biên bản này được soạn trên web và có định dạng (danh sách, in đậm…). Ứng dụng chỉ
+                hiển thị được phần chữ, nên nếu lưu ở đây thì định dạng cũ sẽ mất. Muốn giữ nguyên
+                thì hãy sửa trên web.
+              </Text>
+            </View>
+          ) : null}
 
           <Text className="mb-1.5 text-sm font-semibold text-gray-700">
             Nội dung trao đổi <Text className="text-red-500">*</Text>

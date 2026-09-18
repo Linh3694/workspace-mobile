@@ -25,6 +25,8 @@ export const ROUTES = {
     DEVICE_CREATE: 'DeviceCreate',
     DEVICE_DETAIL: 'DeviceDetail',
     DEVICE_ASSIGNMENT_HISTORY: 'DeviceAssignmentHistory',
+    /** Quét tem QR dán trên máy để mở thẳng hồ sơ thiết bị. */
+    DEVICE_SCAN: 'DeviceScan',
     /** "Tài sản của tôi" — xác nhận / phê duyệt biên bản bàn giao điện tử */
     MY_HANDOVERS: 'MyHandovers',
     WISLIFE: 'Social',
@@ -85,6 +87,8 @@ export const ROUTES = {
     /** Đặt phòng (ERP Room Booking) */
     ROOM_BOOKING: 'RoomBooking',
     ROOM_BOOKING_CREATE: 'RoomBookingCreate',
+    /** Hàng chờ duyệt đặt phòng — chỉ hiện với người thực sự có phiếu chờ */
+    ROOM_BOOKING_APPROVAL: 'RoomBookingApproval',
     /** Họp phụ huynh 1:1 (SIS PT Meeting) — lịch ca của giáo viên */
     PARENT_MEETING: 'ParentMeeting',
     /** Ghi meeting note sau ca họp (chỉ BGH đọc được nội dung) */

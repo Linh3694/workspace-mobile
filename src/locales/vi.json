@@ -893,6 +893,8 @@
     "xoa_thanh_vien_hoi": "Xoá {{name}} khỏi dự án?",
     "yeu_cau_approved": "Đã duyệt",
     "yeu_cau_new": "Mới",
-    "yeu_cau_rejected": "Từ chối"
+    "yeu_cau_rejected": "Từ chối",
+    "nguoi_kiem_tra": "Người kiểm tra",
+    "chua_chon": "Chưa chọn"
   }
 }

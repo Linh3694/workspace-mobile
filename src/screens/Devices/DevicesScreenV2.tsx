@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { AppText, Badge } from '@atoms';
+import { AppText, Badge, IconButton } from '@atoms';
 import { FilterChipRow, InlineAlert, ListRow, SearchBar, resolveStatus } from '@molecules';
 import { FAB_CLEARANCE, Fab, RefreshableList, useSheetQueue } from '@organisms';
 import { ListScreen, SCREEN_PADDING } from '@templates';
@@ -320,6 +320,14 @@ const DevicesScreenV2 = () => {
         title: 'Quản lý thiết bị',
         subtitle: pagination.total > 0 ? `${pagination.total} thiết bị` : undefined,
         onBack: () => navigation.goBack(),
+        action: (
+          <IconButton
+            name="qrcode-scan"
+            iconSet="mci"
+            accessibilityLabel="Quét tem QR thiết bị"
+            onPress={() => navigation.navigate(ROUTES.SCREENS.DEVICE_SCAN)}
+          />
+        ),
       }}
       toolbar={
         <>

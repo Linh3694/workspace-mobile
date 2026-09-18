@@ -260,3 +260,35 @@ export function groupBookingsByDay(bookings: RoomBooking[]): BookingDayGroup[] {
   }
   return order.map((k) => groups[k]);
 }
+
+/* ------------------------------------------------------------------ */
+/* Trạng thái lượt đặt                                                 */
+/* ------------------------------------------------------------------ */
+
+const STATUS_LABELS: Record<string, string> = {
+  'Pending Approval': 'Chờ duyệt',
+  Rejected: 'Bị từ chối',
+  Expired: 'Hết hạn',
+  Cancelled: 'Đã huỷ',
+};
+
+/** Màu nền / chữ cho huy hiệu trạng thái. `Booked` không có huy hiệu — đó là mặc định. */
+const STATUS_TONES: Record<string, { bg: string; fg: string }> = {
+  'Pending Approval': { bg: '#FEF3C7', fg: '#B45309' },
+  Rejected: { bg: '#FEE2E2', fg: '#B91C1C' },
+  Expired: { bg: '#F3F4F6', fg: '#6B7280' },
+  Cancelled: { bg: '#F3F4F6', fg: '#6B7280' },
+};
+
+export function isPendingApproval(status?: string | null): boolean {
+  return (status || '').trim() === 'Pending Approval';
+}
+
+/** Nhãn tiếng Việt; `Booked` trả '' vì lượt đã chốt không cần gắn nhãn gì. */
+export function getBookingStatusLabel(status?: string | null): string {
+  return STATUS_LABELS[(status || '').trim()] || '';
+}
+
+export function getBookingStatusTone(status?: string | null): { bg: string; fg: string } | null {
+  return STATUS_TONES[(status || '').trim()] || null;
+}

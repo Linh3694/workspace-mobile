@@ -76,6 +76,30 @@ const INVENTORY_HANDOVER_EVENTS: readonly string[] = [
   'inventory_handover_rejected',
 ];
 
+/**
+ * Đặt phòng — hai nhóm sự kiện khác nhau:
+ *  - `room_booking_*` do module đặt phòng phát, luôn là chuyện của đặt phòng;
+ *  - `approval_*` là sự kiện CHUNG của engine duyệt, dùng cho cả phiếu mua sắm,
+ *    biểu mẫu, báo cáo hướng nghiệp. Phải soi `doc_doctype` mới biết có phải đặt
+ *    phòng không — route thẳng theo tên sự kiện là đẩy người duyệt phiếu mua sắm
+ *    vào màn đặt phòng.
+ */
+const ROOM_BOOKING_EVENTS: readonly string[] = [
+  'room_booking_created',
+  'room_booking_expired',
+  'room_booking_cancelled',
+];
+
+const APPROVAL_EVENTS: readonly string[] = [
+  'approval_step_pending',
+  'approval_approved',
+  'approval_rejected',
+  'approval_returned',
+  'approval_overdue',
+];
+
+const ROOM_BOOKING_DOCTYPE = 'ERP Room Booking';
+
 const FEEDBACK_EVENTS: readonly string[] = [
   'feedback_created',
   'feedback_new',
@@ -131,8 +155,17 @@ const TEACHER_HEALTH_ONLY_EVENTS: readonly string[] = [
 /**
  * Họp phụ huynh 1:1 (SIS PT Meeting).
  *
- * Ba nhóm người nhận rất khác nhau nên một danh sách phẳng là đủ, việc rẽ nhánh để ở
- * `resolveNotificationTarget`:
+ * ⚠️ `pt_meeting` TRƠN LÀ TÊN THẬT BACKEND ĐANG GỬI, và là tên duy nhất.
+ * `pt_meeting._notify_teacher` gọi `emit_staff_notify(..., "pt_meeting", ...)`, mà
+ * `emit_staff_notify` đóng dấu `data.type = event_type` — nên MỌI tin của module
+ * (phụ huynh huỷ ca, giáo vụ huỷ ca, lịch thay đổi, thu hồi lịch, huỷ đợt, ca được
+ * gán cho gia đình khác) đều tới đây với đúng một chữ `pt_meeting`. Thiếu nó trong
+ * danh sách thì `matchesEvent` (so khớp CHÍNH XÁC, không có nhánh `data.url`) trượt
+ * hết và cả module rơi xuống fallback Trung tâm thông báo.
+ *
+ * Mấy tên `pt_meeting_*` bên dưới giữ lại cho chiều tương lai — backend chưa gửi tên
+ * nào trong số đó, nhưng giữ thì rẻ mà xoá đi là lần sau ai thêm mốc mới lại phải
+ * đọc lại toàn bộ chuỗi này:
  *   - `pt_meeting_published`            — lịch vừa xuất bản, gửi cho GV lẫn PH
  *   - `pt_meeting_cancelled_by_parent`  — PH huỷ ca, gửi GV của ca đó
  *   - `pt_meeting_waitlist`             — có PH vào danh sách chờ, gửi BGH/giáo vụ/GVCN
@@ -141,12 +174,24 @@ const TEACHER_HEALTH_ONLY_EVENTS: readonly string[] = [
  * Tập này được so với CẢ `type` LẪN `action` (xem `eventKeys`) vì backend không thống nhất.
  */
 const PT_MEETING_EVENTS: readonly string[] = [
+  'pt_meeting',
   'pt_meeting_published',
   'pt_meeting_cancelled_by_parent',
   'pt_meeting_waitlist',
   'pt_meeting_no_show',
   'pt_meeting_note_required',
 ];
+
+/**
+ * Sự kiện nghĩa là «ca đã họp xong, vào ghi biên bản đi» — CHỈ những tên này mới được
+ * đưa thẳng vào màn ghi biên bản khi payload có `slot_id`.
+ *
+ * Tách ra vì gần như mọi tin của module đều mang `slot_id`, nhưng phần lớn nói về một
+ * ca vừa bị HUỶ hoặc vừa ĐỔI gia đình. Đưa giáo viên vào ô soạn biên bản cho một cuộc
+ * gặp không hề diễn ra vừa vô nghĩa vừa mời họ ghi nhầm — mà `submit_meeting_note`
+ * chặn ở server (ca chưa `in_progress`) nên họ gõ xong mới biết là không lưu được.
+ */
+const PT_MEETING_NOTE_EVENTS: readonly string[] = ['pt_meeting_note_required'];
 
 /**
  * Sự kiện của luồng điều hành đợt họp, KHÔNG gắn với một ca cụ thể: người nhận cần thấy bức
@@ -242,6 +287,15 @@ export type PushNotificationPayload = {
   /** Đợt họp PH 1:1 (SIS PT Meeting Event) — dùng cho thông báo cấp đợt (danh sách chờ) */
   eventId?: string;
   event_id?: string;
+  /**
+   * Engine duyệt dùng chung — `emit_staff_notify` đóng dấu `doc_doctype`/`doc_name`
+   * cho mọi loại phiếu (đặt phòng, mua sắm, biểu mẫu…). Phải có doctype mới biết tin
+   * thuộc module nào, vì tên sự kiện `approval_*` thì loại nào cũng giống loại nào.
+   */
+  doc_doctype?: string;
+  docDoctype?: string;
+  doc_name?: string;
+  docName?: string;
   /** Quản lý dự án (PM) */
   taskId?: string;
   task_id?: string;
@@ -541,6 +595,22 @@ export async function resolveNotificationTarget(
     return { screen: ROUTES.SCREENS.MY_HANDOVERS, params: { handoverId: handoverId || undefined } };
   }
 
+  // === ĐẶT PHÒNG — lịch phòng, và hàng chờ duyệt khi tin là lời mời duyệt ===
+  if (matchesEvent(data, ROOM_BOOKING_EVENTS)) {
+    return { screen: ROUTES.SCREENS.ROOM_BOOKING, params: undefined };
+  }
+  if (matchesEvent(data, APPROVAL_EVENTS)) {
+    const doctype = str(data.doc_doctype) || str(data.docDoctype);
+    // Loại phiếu khác chưa có màn nào trên app -> trả null để rơi về trung tâm thông
+    // báo, thay vì mở nhầm một màn không liên quan.
+    if (doctype !== ROOM_BOOKING_DOCTYPE) return null;
+    const isPending = eventKeys(data).some((key) => key === 'approval_step_pending');
+    return {
+      screen: isPending ? ROUTES.SCREENS.ROOM_BOOKING_APPROVAL : ROUTES.SCREENS.ROOM_BOOKING,
+      params: undefined,
+    };
+  }
+
   // === FEEDBACK / Góp ý ===
   if (matchesEvent(data, FEEDBACK_EVENTS)) {
     const feedbackId = str(data.feedbackId) || str(data.feedback_id);
@@ -604,11 +674,13 @@ export async function resolveNotificationTarget(
       return { screen: ROUTES.SCREENS.PARENT_MEETING };
     }
 
-    // Chỉ các sự kiện gắn với một ca cụ thể (`pt_meeting_note_required`, và no-show/huỷ ca khi
-    // backend kèm id) mới mang `slot_id`. Có id thì đi thẳng màn ghi note — đây là hành động
-    // GV phải làm ngay, bắt họ tự dò lại ca trong danh sách là mất luôn cái note.
+    // Chỉ lời NHẮC GHI BIÊN BẢN mới đi thẳng màn note — đây là hành động GV phải làm
+    // ngay, bắt họ tự dò lại ca trong danh sách là mất luôn cái note. Các tin khác cũng
+    // mang `slot_id` (huỷ ca, đổi gia đình) nhưng ca đó không có gì để ghi: xem
+    // `PT_MEETING_NOTE_EVENTS`. Chúng về danh sách ca của chính mình, nơi giáo viên thấy
+    // được ca vừa đổi nằm ở đâu trong buổi.
     const slotId = str(data.slotId) || str(data.slot_id);
-    if (slotId) {
+    if (slotId && matchesEvent(data, PT_MEETING_NOTE_EVENTS)) {
       return { screen: ROUTES.SCREENS.PARENT_MEETING_NOTE, params: { slotId } };
     }
     return { screen: ROUTES.SCREENS.PARENT_MEETING };

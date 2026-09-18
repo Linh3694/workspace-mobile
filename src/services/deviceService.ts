@@ -422,6 +422,32 @@ class DeviceService {
     }
   }
 
+  /**
+   * Tra thiết bị từ mã quét được trên tem QR.
+   *
+   * Dùng endpoint riêng chứ không phải `getDeviceById` vì cái đó BẮT BUỘC có
+   * `device_type` (backend `normalize_device_type(None)` ném lỗi), mà tem chỉ in
+   * mã `INV-DEV-xxxxx` — chưa quét xong thì chưa biết đó là máy loại gì.
+   *
+   * Trả về null khi không tìm thấy hoặc thiết bị thuộc campus khác; lỗi mạng thì
+   * ném ra để màn quét phân biệt được "mã lạ" với "mất mạng".
+   */
+  async resolveDeviceByCode(
+    code: string
+  ): Promise<{ id: string; deviceType: DeviceType; nameDisplay?: string; serial?: string; status?: string } | null> {
+    const payload = await this.invGet<any>('qr.resolve_device_by_code', { code });
+    if (payload && typeof payload === 'object' && payload.success === false) return null;
+    const data = payload?.data ?? payload;
+    if (!data?.id || !data?.deviceType) return null;
+    return {
+      id: data.id,
+      deviceType: data.deviceType as DeviceType,
+      nameDisplay: data.nameDisplay,
+      serial: data.serial,
+      status: data.status,
+    };
+  }
+
   // Create new device
   async createDevice(
     deviceType: DeviceType,

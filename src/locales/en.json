@@ -880,6 +880,8 @@
     "xoa_thanh_vien_hoi": "Remove {{name}} from the project?",
     "yeu_cau_approved": "Approved",
     "yeu_cau_new": "New",
-    "yeu_cau_rejected": "Rejected"
+    "yeu_cau_rejected": "Rejected",
+    "nguoi_kiem_tra": "Reviewer",
+    "chua_chon": "Not set"
   }
 }

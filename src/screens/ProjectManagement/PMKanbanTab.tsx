@@ -87,15 +87,17 @@ const PMKanbanTab: React.FC<PMKanbanTabProps> = ({ projectId, canEdit, onOpenTas
     load();
   }, [load]);
 
-  /** Người được gán, gom từ mọi cột — nguồn cho dải chip lọc. */
+  /** Người được gán, gom từ mọi cột — nguồn cho dải chip lọc.
+   *  Một task một người; `assignees` chỉ còn là fallback cho backend cũ. */
   const assignees = useMemo(() => {
     const seen = new Map<string, string>();
     BOARD_COLUMN_ORDER.forEach((s) =>
-      (grouped[s] ?? []).forEach((task) =>
-        (task.assignees ?? []).forEach((a) => {
-          if (!seen.has(a.user_id)) seen.set(a.user_id, a.full_name || a.user_id);
-        })
-      )
+      (grouped[s] ?? []).forEach((task) => {
+        const id = task.assignee || task.assignees?.[0]?.user_id;
+        if (!id) return;
+        const label = task.assignee_full_name || task.assignees?.[0]?.full_name || id;
+        if (!seen.has(id)) seen.set(id, label);
+      })
     );
     return Array.from(seen, ([value, label]) => ({ value, label }));
   }, [grouped]);
@@ -104,11 +106,10 @@ const PMKanbanTab: React.FC<PMKanbanTabProps> = ({ projectId, canEdit, onOpenTas
     if (assigneeFilter === 'all') return grouped;
     const out = emptyTasksByStatus();
     BOARD_COLUMN_ORDER.forEach((s) => {
-      out[s] = (grouped[s] ?? []).filter((task) =>
-        assigneeFilter === 'none'
-          ? !task.assignees?.length
-          : task.assignees?.some((a) => a.user_id === assigneeFilter)
-      );
+      out[s] = (grouped[s] ?? []).filter((task) => {
+        const id = task.assignee || task.assignees?.[0]?.user_id;
+        return assigneeFilter === 'none' ? !id : id === assigneeFilter;
+      });
     });
     return out;
   }, [grouped, assigneeFilter]);

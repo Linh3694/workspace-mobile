@@ -212,6 +212,16 @@ const PMTaskDetailScreen: React.FC = () => {
 
   const subtasks = task.subtasks ?? [];
 
+  // Một task chỉ có MỘT người thực hiện (`assignee`). Fallback về mảng `assignees`
+  // để bản app này vẫn chạy đúng với backend chưa deploy field mới.
+  const assignee = task.assignee
+    ? {
+        user_id: task.assignee,
+        full_name: task.assignee_full_name,
+        user_image: task.assignee_image,
+      }
+    : task.assignees?.[0];
+
   return (
     <ListScreen
       header={{
@@ -276,18 +286,36 @@ const PMTaskDetailScreen: React.FC = () => {
 
         <SectionCard title={t('project_management.thong_tin', 'Thông tin')}>
           <InfoLine label={t('project_management.nguoi_thuc_hien', 'Người thực hiện')}>
-            {task.assignees?.length ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[6], flexWrap: 'wrap' }}>
-                {task.assignees.map((a) => (
-                  <View key={a.user_id} style={{ flexDirection: 'row', alignItems: 'center', gap: space[4] }}>
-                    <Avatar uri={resolveFileUrl(a.user_image)} name={a.full_name || a.user_id} size="sm" />
-                    <AppText variant="footnote">{a.full_name || a.user_id}</AppText>
-                  </View>
-                ))}
+            {assignee ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[4] }}>
+                <Avatar
+                  uri={resolveFileUrl(assignee.user_image)}
+                  name={assignee.full_name || assignee.user_id}
+                  size="sm"
+                />
+                <AppText variant="footnote">{assignee.full_name || assignee.user_id}</AppText>
               </View>
             ) : (
               <AppText variant="footnote" tone="description">
                 {t('project_management.chua_giao', 'Chưa giao')}
+              </AppText>
+            )}
+          </InfoLine>
+
+          {/* Người kiểm tra (tester). Màn này chỉ ĐỌC — gán/đổi làm trên web. */}
+          <InfoLine label={t('project_management.nguoi_kiem_tra', 'Người kiểm tra')}>
+            {task.reviewer ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: space[4] }}>
+                <Avatar
+                  uri={resolveFileUrl(task.reviewer_image)}
+                  name={task.reviewer_full_name || task.reviewer}
+                  size="sm"
+                />
+                <AppText variant="footnote">{task.reviewer_full_name || task.reviewer}</AppText>
+              </View>
+            ) : (
+              <AppText variant="footnote" tone="description">
+                {t('project_management.chua_chon', 'Chưa chọn')}
               </AppText>
             )}
           </InfoLine>

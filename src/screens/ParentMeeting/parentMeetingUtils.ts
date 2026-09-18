@@ -302,6 +302,17 @@ export function canCancelSlot(slot: PTTeacherSlot): boolean {
 }
 
 /**
+ * «Phụ huynh không đến» — CHỈ ở `booked`, đúng cổng của bản web.
+ *
+ * `in_progress` nghĩa là cuộc gặp ĐÃ bắt đầu, nên thứ cần bấm lúc đó là «Kết thúc họp»:
+ * đánh dấu vắng mặt một gia đình đang ngồi trước mặt là ghi sai lịch sử, mà trạng thái
+ * `no_show_parent` thì giáo viên không tự gỡ lại được.
+ */
+export function canMarkNoShow(slot: PTTeacherSlot): boolean {
+  return slot.status === 'booked';
+}
+
+/**
  * Ghi chú sau họp: backend chỉ nhận ca `in_progress` hoặc `completed`, và đợt phải bật
  * `allow_meeting_note`. Mở nút sớm hơn thì giáo viên gõ xong mới ăn lỗi 417.
  */

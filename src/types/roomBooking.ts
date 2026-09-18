@@ -38,6 +38,20 @@ export interface BookableRoom {
   availability: RoomAvailabilityDay[];
 }
 
+/**
+ * Trạng thái một lượt đặt phòng.
+ *
+ * `Pending Approval` GIỮ CHỖ y như lượt đã chốt (backend tính là trùng giờ), nên vẫn
+ * phải vẽ trên lịch — nhưng vẽ khác hẳn, nếu không người đặt tưởng đã xong còn người
+ * khác tưởng phòng đã bị lấy mất hẳn.
+ */
+export type RoomBookingStatus =
+  | 'Booked'
+  | 'Pending Approval'
+  | 'Rejected'
+  | 'Expired'
+  | 'Cancelled';
+
 /** Người tham dự của một booking */
 export interface RoomBookingAttendee {
   user?: string;
@@ -60,7 +74,12 @@ export interface RoomBooking {
   booked_by_employee_code?: string;
   event_start_time: string; // MySQL "YYYY-MM-DD HH:mm:ss"
   event_end_time: string;
-  status: string; // "Booked" | "Cancelled"
+  status: RoomBookingStatus | string;
+  /** Trạng thái của engine duyệt — `status` mới là nguồn sự thật cho lịch */
+  workflow_state?: string;
+  /** Tên bước đang chờ, vd "Phòng IT" — chỉ có khi status = Pending Approval */
+  pending_step_label?: string;
+  submitted_by?: string;
   source?: string; // "room_booking_page" | "admin_ticket"
   source_ticket?: string | null;
   attendees?: RoomBookingAttendee[];
@@ -75,4 +94,28 @@ export interface CreateRoomBookingPayload {
   start_time: string; // MySQL "YYYY-MM-DD HH:mm:ss"
   end_time: string;
   attendees?: string[]; // danh sách email
+}
+
+/** Một yêu cầu đang chờ CHÍNH TÔI duyệt — get_pending_room_bookings_for_me */
+export interface PendingRoomBooking {
+  name: string;
+  title: string;
+  description?: string;
+  building_id?: string;
+  room_id: string;
+  room_title: string;
+  start_time: string; // MySQL "YYYY-MM-DD HH:mm:ss"
+  end_time: string;
+  requested_by: string;
+  requested_by_email?: string;
+  requested_by_department?: string;
+  submitted_at?: string;
+  /** Bước đang chờ tôi, vd "Phòng IT" */
+  step_label?: string;
+  step_node_id?: string;
+  deadline_at?: string;
+  /** 1 = đã quá hạn xử lý; hệ thống chỉ gắn cờ, không tự quyết thay ai */
+  overdue?: number;
+  source?: string;
+  source_ticket?: string;
 }

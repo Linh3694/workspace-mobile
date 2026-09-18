@@ -74,7 +74,15 @@ const PMTaskCard: React.FC<PMTaskCardProps> = ({ task, onPress, onMove }) => {
   const overdue = !!due && task.status !== 'done' && due < todayISO();
   const typeInfo = TASK_TYPE[task.type];
   const priorityInfo = TASK_PRIORITY[task.priority];
-  const assignees = task.assignees ?? [];
+  // Một task chỉ có MỘT người thực hiện (`assignee`). Fallback về mảng `assignees`
+  // để bản app này vẫn chạy đúng với backend chưa deploy field mới.
+  const assignee = task.assignee
+    ? {
+        user_id: task.assignee,
+        full_name: task.assignee_full_name,
+        user_image: task.assignee_image,
+      }
+    : task.assignees?.[0];
   const subtaskTotal = task.subtask_count ?? 0;
 
   return (
@@ -135,21 +143,13 @@ const PMTaskCard: React.FC<PMTaskCardProps> = ({ task, onPress, onMove }) => {
 
         <View style={{ flex: 1 }} />
 
-        {/* Tối đa 3 avatar rồi "+n": nhiều hơn là tràn ngang trong cột 280pt. */}
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {assignees.slice(0, 3).map((a, i) => (
+          {assignee ? (
             <Avatar
-              key={a.user_id}
-              uri={resolveFileUrl(a.user_image)}
-              name={a.full_name || a.user_id}
+              uri={resolveFileUrl(assignee.user_image)}
+              name={assignee.full_name || assignee.user_id}
               size="sm"
-              style={i > 0 ? { marginLeft: -space[8] } : undefined}
             />
-          ))}
-          {assignees.length > 3 ? (
-            <AppText variant="caption" tone="description" style={{ marginLeft: space[4] }}>
-              +{assignees.length - 3}
-            </AppText>
           ) : null}
         </View>
       </View>

@@ -20,6 +20,7 @@ import DevicesScreenV2 from '../screens/Devices/DevicesScreenV2';
 import DeviceCreateScreen from '../screens/Devices/DeviceCreateScreen';
 import type { DeviceType } from '../types/devices';
 import DevicesDetailScreen from '../screens/Devices/DevicesDetailScreen';
+import DeviceScanScreen from '../screens/Devices/DeviceScanScreen';
 import DeviceAssignmentHistoryScreen from '../screens/Devices/DeviceAssignmentHistoryScreen';
 import MyHandoversScreen from '../screens/Devices/MyHandoversScreen';
 import { useAuth } from '../context/AuthContext';
@@ -71,7 +72,11 @@ import ExchangeChatScreen from '../screens/Exchange/ExchangeChatScreen';
 import ExchangeChatInfoScreen from '../screens/Exchange/ExchangeChatInfoScreen';
 import ExchangeChatMembersScreen from '../screens/Exchange/ExchangeChatMembersScreen';
 import ExchangeChatAttachmentsScreen from '../screens/Exchange/ExchangeChatAttachmentsScreen';
-import { RoomBookingScreen, RoomBookingCreateScreen } from '../screens/RoomBooking';
+import {
+  RoomBookingScreen,
+  RoomBookingCreateScreen,
+  RoomBookingApprovalScreen,
+} from '../screens/RoomBooking';
 import {
   ParentMeetingScreen,
   ParentMeetingNoteScreen,
@@ -131,6 +136,7 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.ADMINISTRATIVE_TICKET_GUEST]: undefined;
   [ROUTES.SCREENS.ROOM_BOOKING]: undefined;
   [ROUTES.SCREENS.ROOM_BOOKING_CREATE]: { roomId?: string; buildingId?: string } | undefined;
+  [ROUTES.SCREENS.ROOM_BOOKING_APPROVAL]: undefined;
   [ROUTES.SCREENS.PARENT_MEETING]: undefined;
   [ROUTES.SCREENS.PARENT_MEETING_NOTE]: { slotId: string } | undefined;
   [ROUTES.SCREENS.PARENT_MEETING_ADMIN]: undefined;
@@ -150,8 +156,11 @@ export type RootStackParamList = {
   [ROUTES.SCREENS.DEVICE_CREATE]: { deviceType: DeviceType };
   [ROUTES.SCREENS.DEVICE_DETAIL]: {
     deviceId: string;
-    deviceType: 'laptop' | 'monitor' | 'printer' | 'projector' | 'tool';
+    // 'phone' từng bị bỏ sót ở đây dù kho có 92 điện thoại và màn danh sách vẫn
+    // lọc được loại này — quét tem một chiếc điện thoại sẽ không điều hướng nổi.
+    deviceType: 'laptop' | 'monitor' | 'printer' | 'projector' | 'tool' | 'phone';
   };
+  [ROUTES.SCREENS.DEVICE_SCAN]: undefined;
   [ROUTES.SCREENS.DEVICE_ASSIGNMENT_HISTORY]: {
     deviceId: string;
     deviceType: 'laptop' | 'monitor' | 'printer' | 'projector' | 'tool';
@@ -430,6 +439,11 @@ const AppNavigator = () => {
             options={{ headerShown: false }}
           />
           <Stack.Screen
+            name={ROUTES.SCREENS.ROOM_BOOKING_APPROVAL}
+            component={RoomBookingApprovalScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
             name={ROUTES.SCREENS.PARENT_MEETING}
             component={ParentMeetingScreen}
             options={{ headerShown: false }}
@@ -494,6 +508,11 @@ const AppNavigator = () => {
           <Stack.Screen
             name={ROUTES.SCREENS.DEVICE_DETAIL}
             component={DevicesDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name={ROUTES.SCREENS.DEVICE_SCAN}
+            component={DeviceScanScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen

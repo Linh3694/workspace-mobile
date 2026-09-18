@@ -18,6 +18,7 @@ import {
   startMeeting,
   completeMeeting,
   teacherCancelSlot,
+  teacherMarkNoShow,
 } from '../../services/parentMeetingService';
 import type { PTMeetingEventListItem, PTTeacherSlot } from '../../types/parentMeeting';
 import {
@@ -35,6 +36,7 @@ import {
   canStartSlot,
   canCompleteSlot,
   canCancelSlot,
+  canMarkNoShow,
   canWriteNote,
   canViewParentMeetingAdmin,
   type PTStatusTone,
@@ -83,6 +85,9 @@ export default function ParentMeetingScreen() {
   const [cancelReason, setCancelReason] = useState('');
   const [cancelConfirmVisible, setCancelConfirmVisible] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+
+  /** Ca đang chờ xác nhận «phụ huynh không đến» — thao tác này giáo viên không tự gỡ lại được. */
+  const [noShowTarget, setNoShowTarget] = useState<PTTeacherSlot | null>(null);
 
   // Danh sách đợt phục vụ 2 việc: bộ lọc phạm vi, và tra ngưỡng tự huỷ của từng đợt.
   // Giáo viên không có quyền đọc danh sách đợt thì service trả [] — màn hình vẫn chạy,
@@ -166,6 +171,23 @@ export default function ParentMeetingScreen() {
     }
   };
 
+  const handleMarkNoShow = async () => {
+    const slot = noShowTarget;
+    if (!slot) return;
+    setNoShowTarget(null);
+    setActingId(slot.slot_id);
+    try {
+      await teacherMarkNoShow(slot.slot_id);
+      // KHÔNG nói "đã báo phụ huynh": backend cố ý không gửi gì cho gia đình vắng mặt.
+      toast.success('Đã ghi nhận phụ huynh không đến');
+      await loadSlots();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Không thể ghi nhận phụ huynh không đến');
+    } finally {
+      setActingId('');
+    }
+  };
+
   const openCancelSheet = (slot: PTTeacherSlot) => {
     setCancelReason('');
     setCancelTarget(slot);
@@ -226,6 +248,17 @@ export default function ParentMeetingScreen() {
             <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={2}>
               {[slot.class_title, groupLabel, slot.location].filter(Boolean).join(' · ')}
             </Text>
+
+            {/* Ai ngồi cùng ca — ca dạy đôi và vai «cả nhóm cùng ngồi» có nhiều người,
+                mà trước đây màn này không nói gì nên giáo viên tưởng mình ngồi một mình. */}
+            {slot.co_teacher_names?.length ? (
+              <View className="mt-1 flex-row items-center">
+                <Ionicons name="people-outline" size={13} color="#6B7280" />
+                <Text className="ml-1 flex-1 text-xs text-gray-500" numberOfLines={2}>
+                  Cùng dự: {slot.co_teacher_names.join(', ')}
+                </Text>
+              </View>
+            ) : null}
 
             {slot.need_interpreter === 1 ? (
               <View className="mt-1.5 flex-row items-center self-start rounded-full bg-amber-50 px-2 py-0.5">
@@ -315,6 +348,24 @@ export default function ParentMeetingScreen() {
               </TouchableOpacity>
             ) : null}
           </View>
+        ) : null}
+
+        {/*
+          Hàng RIÊNG bên dưới, không chen vào hàng thao tác chính: ca `booked` đã có
+          «Bắt đầu họp» + nút huỷ, nhét thêm nút thứ ba vào cùng một hàng trên màn hẹp
+          là ba nút cụt chữ. Đây cũng không phải thao tác thường ngày — nó chỉ dùng khi
+          gia đình đã lỡ hẹn.
+        */}
+        {canMarkNoShow(slot) ? (
+          <TouchableOpacity
+            disabled={busy}
+            onPress={() => setNoShowTarget(slot)}
+            className="mt-2 flex-row items-center justify-center rounded-xl border border-gray-200 py-2.5">
+            <Ionicons name="person-remove-outline" size={16} color="#6B7280" />
+            <Text className="ml-1.5 text-sm font-semibold text-gray-600">
+              Phụ huynh không đến
+            </Text>
+          </TouchableOpacity>
         ) : null}
       </View>
     );
@@ -542,6 +593,25 @@ export default function ParentMeetingScreen() {
         }
         onCancel={() => (cancelling ? null : setCancelConfirmVisible(false))}
         onConfirm={handleCancel}
+      />
+
+      {/* Xác nhận vắng mặt: ca chuyển `no_show_parent` và giáo viên không tự gỡ lại được,
+          nên nói thẳng điều đó trong câu hỏi thay vì để người bấm tự đoán. */}
+      <ConfirmModal
+        visible={!!noShowTarget}
+        title="Ghi nhận phụ huynh không đến?"
+        message={
+          noShowTarget
+            ? `Ca ${formatTimeRange(
+                noShowTarget.start_time,
+                noShowTarget.end_time
+              )} với phụ huynh của ${getStudentLabel(
+                noShowTarget
+              )} sẽ được đánh dấu là phụ huynh không đến. Ca không mở lại cho ai khác và thao tác này không hoàn tác được.`
+            : ''
+        }
+        onCancel={() => setNoShowTarget(null)}
+        onConfirm={handleMarkNoShow}
       />
     </View>
   );

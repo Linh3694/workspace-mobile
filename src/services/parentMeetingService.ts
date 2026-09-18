@@ -23,6 +23,7 @@ import type {
   PTCancelSlotResult,
   PTMeetingEventListItem,
   PTMeetingEventQuery,
+  PTMeetingMedia,
   PTMeetingNote,
   PTPublishScheduleResult,
   PTSlotActionResult,
@@ -341,6 +342,25 @@ export async function teacherCancelSlot(slotId: string, reason: string): Promise
 }
 
 /**
+ * Giáo viên ghi nhận PHỤ HUYNH KHÔNG ĐẾN ca của mình.
+ *
+ * Lối thoát cho ca mà gia đình vừa không tới vừa không huỷ: không có nó thì ca nằm
+ * `booked` vĩnh viễn — giáo viên không ghi nhận được gì, còn báo cáo vẫn đếm đó là
+ * một cuộc gặp đã hẹn.
+ *
+ * Ca mang trạng thái `no_show_parent`, KHÁC `auto_cancelled_no_show` (thứ mang nghĩa
+ * NGƯỢC LẠI: giáo viên chưa bấm «Bắt đầu» đúng hạn nên cron tự huỷ). Không nhả ghế
+ * cho hàng chờ — giờ hẹn đã trôi qua.
+ *
+ * KHÔNG nhận lý do, và backend CỐ Ý không gửi gì cho phụ huynh: họ là bên vắng nên
+ * đã biết, một push «quý phụ huynh không đến» là lời trách móc tự động không thu hồi
+ * được. Vì thế màn hình cũng đừng hứa là "đã báo phụ huynh".
+ */
+export async function teacherMarkNoShow(slotId: string): Promise<PTSlotActionResult> {
+  return writeRequest<PTSlotActionResult>('teacher_mark_no_show', { slot_id: slotId });
+}
+
+/**
  * Gửi ghi chú sau họp tới BGH.
  *
  * Gọi lần hai trên cùng một ca là SỬA, không phải tạo mới (`slot_id` là unique ở
@@ -357,6 +377,112 @@ export async function submitMeetingNote(slotId: string, content: string): Promis
     slot_id: slotId,
     content: trimmed,
   });
+}
+
+// ----------------------------------------------------------------------
+// GHI ÂM CA HỌP
+// ----------------------------------------------------------------------
+//
+// CHỖ CHỨA LÀ BIÊN BẢN, KHÔNG PHẢI CA HỌP — quyết định về QUYỀN chứ không phải mô hình
+// dữ liệu (xem docstring cùng tên ở backend). Ghi âm một cuộc trao đổi riêng phải theo
+// đúng bộ quyền của biên bản (tác giả + BGH); treo file vào ca là để giáo vụ nghe được
+// mọi cuộc nói chuyện.
+
+/**
+ * Tư liệu (ghi âm + đính kèm) của biên bản một ca.
+ *
+ * Trả `null` khi hỏng thay vì `[]`: màn hình phân biệt «chưa ghi gì» với «không đọc
+ * được» — nhầm hai cái này là mời giáo viên bấm ghi đè lên bản đã có.
+ */
+export async function getMeetingMedia(slotId: string): Promise<PTMeetingMedia | null> {
+  try {
+    const config = await getAxiosConfig();
+    const response = await axios.post(
+      `${PARENT_MEETING}.get_meeting_media`,
+      { slot_id: slotId },
+      config
+    );
+    const out = unwrap<PTMeetingMedia>(response);
+    return out.success && out.data ? out.data : null;
+  } catch (e) {
+    console.error('getMeetingMedia', e);
+    return null;
+  }
+}
+
+/**
+ * Gửi MỘT đoạn ghi âm.
+ *
+ * `uri` là đường dẫn file cục bộ do `expo-av` trả sau `stopAndUnloadAsync()`. Đẩy thẳng
+ * bằng `FormData` với `{ uri, name, type }` — RN tự đọc file, KHÔNG được `fetch` file
+ * thành blob trước: một đoạn 5 phút nằm gọn trong bộ nhớ là vài MB, và trên máy yếu thì
+ * đó là cú OOM ngay giữa buổi họp.
+ *
+ * `type: 'audio/m4a'` khớp `AUDIO_CONTENT_TYPES` của backend; tên file cũng để đuôi
+ * `.m4a` vì `extension_for` rơi về đuôi tên file khi không nhận ra content-type.
+ *
+ * KHÔNG `Content-Type: multipart/form-data` đặt tay — để axios/RN tự sinh kèm `boundary`;
+ * đặt tay là mất boundary và máy chủ đọc ra body rỗng.
+ */
+export async function uploadMeetingAudioPart(params: {
+  slotId: string;
+  partIndex: number;
+  durationSec: number;
+  uri: string;
+}): Promise<{ part_index: number; parts_count: number; audio_duration: number }> {
+  const { slotId, partIndex, durationSec, uri } = params;
+  const token = await AsyncStorage.getItem('authToken');
+  const form = new FormData();
+  form.append('slot_id', slotId);
+  form.append('part_index', String(partIndex));
+  form.append('duration', String(Math.round(durationSec)));
+  form.append('file', {
+    uri,
+    name: `ca-${slotId}-part${String(partIndex).padStart(3, '0')}.m4a`,
+    type: 'audio/m4a',
+  } as unknown as Blob);
+
+  const response = await axios.post(`${PARENT_MEETING}.upload_meeting_audio_part`, form, {
+    baseURL: BASE_URL,
+    // Rộng hơn 120s mặc định: đoạn 5 phút qua 4G của trường có thể lâu, mà hỏng ở đây
+    // là mất hẳn đoạn đó — người dùng không ghi lại được cuộc gặp đã trôi qua.
+    timeout: 180000,
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    validateStatus: (status) => status >= 200 && status < 600,
+  });
+  if (response.status >= 400) {
+    throw new Error(parseFrappeApiError(response.data));
+  }
+  const out = unwrap<{ part_index: number; parts_count: number; audio_duration: number }>(response);
+  if (!out.success || !out.data) {
+    throw new Error(out.message || parseFrappeApiError(response.data));
+  }
+  return out.data;
+}
+
+/** Xoá TOÀN BỘ ghi âm của một ca. Không có đường xoá lẻ từng đoạn — backend cũng vậy. */
+export async function deleteMeetingAudio(slotId: string): Promise<{ note_id: string }> {
+  return writeRequest<{ note_id: string }>('delete_meeting_audio', { slot_id: slotId });
+}
+
+/**
+ * Nguồn phát cho `Audio.Sound.createAsync` — URL tuyệt đối + header xác thực.
+ *
+ * Trên WEB thì `playback_url` không dùng thẳng được: thẻ `<audio>` không mang được
+ * `Authorization`, mà giáo viên đăng nhập SSO thì không có cookie session Frappe nên
+ * request tới nơi dưới danh nghĩa `Guest` và ăn 403. Trên RN thì KHÔNG dính: `expo-av`
+ * nhận `{ uri, headers }` nên token đi kèm bình thường.
+ *
+ * `playback_url` do máy chủ dựng, chỉ ghép thêm origin — đừng tự đoán đường dẫn.
+ */
+export async function getMeetingAudioPartSource(
+  playbackUrl: string
+): Promise<{ uri: string; headers: Record<string, string> }> {
+  const token = await AsyncStorage.getItem('authToken');
+  return {
+    uri: `${BASE_URL}${playbackUrl}`,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  };
 }
 
 /**
