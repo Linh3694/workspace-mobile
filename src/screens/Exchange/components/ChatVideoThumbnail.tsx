@@ -13,7 +13,7 @@
  * nhiều video một lúc thì nên chuyển sang sinh ảnh tĩnh (expo-video-thumbnails) rồi cache lại.
  */
 import { Ionicons } from '@expo/vector-icons';
-import { ResizeMode, Video } from 'expo-av';
+import { ResizeMode, Video, type VideoHandle } from '~/components/media/AvVideo';
 import React, { memo, useCallback, useRef } from 'react';
 import { View } from 'react-native';
 
@@ -37,7 +37,7 @@ export const ChatVideoThumbnail = memo(function ChatVideoThumbnail({
   playIconSize = 48,
   dimmed = true,
 }: Props) {
-  const videoRef = useRef<Video>(null);
+  const videoRef = useRef<VideoHandle>(null);
 
   /**
    * ExoPlayer (Android) có lúc chưa vẽ khung hình nào nếu chỉ đặt `positionMillis` lúc khởi tạo —

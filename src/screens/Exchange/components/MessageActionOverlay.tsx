@@ -505,7 +505,7 @@ function RecallActionCell({ onRecall }: { onRecall: () => void }) {
 
 const styles = StyleSheet.create({
   fill: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   highlightBubble: {
     position: 'absolute',

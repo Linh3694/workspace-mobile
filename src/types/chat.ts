@@ -157,7 +157,7 @@ export type AddableTeacher = {
  * Đặt cao hơn server thì phần dư bị `sanitizeIncomingAttachments` **cắt im lặng**:
  * upload xong hết, tin nhắn chỉ lưu một phần, không lỗi nào nổi lên.
  */
-export const CHAT_MAX_ATTACHMENTS = 30;
+export const CHAT_MAX_ATTACHMENTS = 40; // 2026-09-09: 30 → 40, server đã nâng cùng lúc
 
 export type ChatAttachmentKind = 'image' | 'file' | 'video';
 

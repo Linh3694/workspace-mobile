@@ -27,52 +27,9 @@ declare namespace React {
   }
 }
 
-// For NativeWind className support
-declare module 'react-native' {
-  interface ViewProps {
-    className?: string;
-  }
-  
-  interface TextProps {
-    className?: string;
-  }
-  
-  interface ScrollViewProps {
-    className?: string;
-  }
-  
-  interface TouchableOpacityProps {
-    className?: string;
-  }
-  
-  interface SafeAreaViewProps {
-    className?: string;
-  }
-  
-  interface FlatListProps<ItemT> {
-    className?: string;
-  }
-  
-  interface TextInputProps {
-    className?: string;
-  }
-  
-  interface ImageProps {
-    className?: string;
-  }
-  
-  interface ModalProps {
-    className?: string;
-  }
-  
-  interface ActivityIndicatorProps {
-    className?: string;
-  }
-  
-  interface RefreshControlProps {
-    className?: string;
-  }
-}
+// className cho component RN đã có sẵn qua /// <reference types="nativewind/types" /> ở đầu file.
+// Không khai báo `declare module 'react-native'` trong file script: với TS 6 nó thành ambient module
+// thay thế toàn bộ type của react-native (mọi import View/Text... đều lỗi 'no exported member').
 
 // NativeWind global types
 declare global {
@@ -82,3 +39,5 @@ declare global {
     }
   }
 } 
+// TS 6: import side-effect './global.css' cần khai báo module
+declare module '*.css';

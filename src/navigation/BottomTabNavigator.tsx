@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   glassOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
   tabBarContent: {
@@ -313,7 +313,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
   },
   focusedBackground: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: 22,
     backgroundColor: 'rgba(255, 255, 255, 0.8)',
   },

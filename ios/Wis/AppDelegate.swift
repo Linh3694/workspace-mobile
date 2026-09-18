@@ -1,9 +1,9 @@
-import Expo
+internal import Expo
 import React
 import ReactAppDependencyProvider
 
-@UIApplicationMain
-public class AppDelegate: ExpoAppDelegate {
+@main
+class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {
   var window: UIWindow?
 
   var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
@@ -19,15 +19,9 @@ public class AppDelegate: ExpoAppDelegate {
 
     reactNativeDelegate = delegate
     reactNativeFactory = factory
-    bindReactNativeFactory(factory)
 
-#if os(iOS) || os(tvOS)
-    window = UIWindow(frame: UIScreen.main.bounds)
-    factory.startReactNative(
-      withModuleName: "main",
-      in: window,
-      launchOptions: launchOptions)
-#endif
+    // UIScene lifecycle (SDK iOS 27 bắt buộc): window + startReactNative do EXExpoAppSceneDelegate (expo >= 57.0.23)
+    // đảm nhiệm trong scene(_:willConnectTo:options:). Xem Info.plist UIApplicationSceneManifest.
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }

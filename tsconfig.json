@@ -50,6 +50,10 @@
     "lib": [
       "es2020",
       "dom"
+    ],
+    "ignoreDeprecations": "6.0",
+    "types": [
+      "node"
     ]
   },
   "include": [

@@ -40,6 +40,7 @@ const TU_TAN_MS: Partial<Record<FaceScanUiResult['kind'], number>> = {
   no_face: 2000,
   retake: 2500,
   unknown: 4000,
+  offer_photo: 6000,
 };
 
 const FaceCameraScreen: React.FC = () => {
@@ -53,6 +54,10 @@ const FaceCameraScreen: React.FC = () => {
   // Ảnh học sinh không nằm trong kết quả quét (backend chỉ trả tên, mã, lớp), nên lấy
   // một lần lúc mở màn thay vì gọi thêm mỗi lượt quét — lúc quét là lúc cần nhanh.
   const [anhTheoHocSinh, setAnhTheoHocSinh] = useState<Record<string, string>>({});
+  const [isSavingPhoto, setIsSavingPhoto] = useState(false);
+  // Khung hình của lượt quét gần nhất — để gửi làm ảnh bus sau khi giám sát xác nhận
+  // (PM-TASK-6711341). Chỉ giữ trong bộ nhớ, không ghi ra đĩa.
+  const anhVuaQuetRef = useRef<string | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -94,9 +99,19 @@ const FaceCameraScreen: React.FC = () => {
     };
   }, [tripId]);
 
+  /** Gửi ảnh làm ảnh bus; server tự nhận diện lại rồi quyết định thay ngay hay chờ duyệt. */
+  const guiAnhBus = useCallback(
+    async (studentId: string, origin: 'scan_auto' | 'scan_confirm', imageBase64: string | null) => {
+      if (!imageBase64) return null;
+      return busService.submitScanPhoto(tripId, studentId, imageBase64, origin);
+    },
+    [tripId]
+  );
+
   const handleCapture = useCallback(
     async (imageBase64: string) => {
       setIsProcessing(true);
+      anhVuaQuetRef.current = imageBase64;
       try {
         const res = await busService.scanCheckin(tripId, imageBase64);
 
@@ -124,6 +139,12 @@ const FaceCameraScreen: React.FC = () => {
               studentName: student?.student_name || '',
               message: res.message || 'Đã điểm danh',
             });
+            // Máy tự điểm danh chỉ khi em đã có ảnh bus và điểm cao: cập nhật ảnh mới
+            // nhất trong im lặng để ảnh đăng ký theo kịp trẻ đang lớn. Không chờ,
+            // không báo — hàng học sinh ở cửa xe không đợi được.
+            if (student?.student_id && data?.photo_source === 'Bus') {
+              void guiAnhBus(student.student_id, 'scan_auto', imageBase64);
+            }
             break;
           case 'already':
             hienKetQua({
@@ -138,6 +159,7 @@ const FaceCameraScreen: React.FC = () => {
                 kind: 'confirm',
                 student,
                 photoUrl: anhTheoHocSinh[student.student_id],
+                photoSource: data?.photo_source ?? null,
               });
             } else {
               hienKetQua({ kind: 'unknown', message: 'Không nhận ra em nào trong chuyến' });
@@ -159,7 +181,7 @@ const FaceCameraScreen: React.FC = () => {
         setIsProcessing(false);
       }
     },
-    [anhTheoHocSinh, hienKetQua, tripId]
+    [anhTheoHocSinh, guiAnhBus, hienKetQua, tripId]
   );
 
   const handleConfirm = useCallback(async () => {
@@ -171,10 +193,21 @@ const FaceCameraScreen: React.FC = () => {
       const res = await busService.confirmScanCheckin(tripId, student.student_id);
       if (res.success) {
         toast.success(`Đã điểm danh ${student.student_name}`);
-        // Xoá thẻ ngay để camera sẵn sàng cho em kế tiếp — không hỏi lại, không
-        // quay về màn danh sách. Hàng học sinh ở cửa xe không chờ được.
-        xoaTimer();
-        setResult(null);
+        // Em chưa có ảnh bus (máy phải hỏi vì ảnh đăng ký là ảnh hồ sơ/FaceID): hỏi
+        // một câu có lưu khung hình vừa quét không. Thẻ tự tan sau 6s, camera vẫn
+        // chụp được em kế tiếp — không chặn hàng ở cửa xe.
+        if (result.photoSource && result.photoSource !== 'Bus' && anhVuaQuetRef.current) {
+          hienKetQua({
+            kind: 'offer_photo',
+            student,
+            message: 'Em chưa có ảnh bus. Lưu ảnh vừa quét làm ảnh bus?',
+          });
+        } else {
+          // Xoá thẻ ngay để camera sẵn sàng cho em kế tiếp — không hỏi lại, không
+          // quay về màn danh sách. Hàng học sinh ở cửa xe không chờ được.
+          xoaTimer();
+          setResult(null);
+        }
       } else {
         hienKetQua({
           kind: 'service_down',
@@ -185,6 +218,28 @@ const FaceCameraScreen: React.FC = () => {
       setIsConfirming(false);
     }
   }, [hienKetQua, result, tripId, xoaTimer]);
+
+  const handleSavePhoto = useCallback(async () => {
+    if (result?.kind !== 'offer_photo') return;
+    const student = result.student;
+    setIsSavingPhoto(true);
+    try {
+      const res = await guiAnhBus(student.student_id, 'scan_confirm', anhVuaQuetRef.current);
+      if (!res) return;
+      const outcome = res.data?.outcome;
+      if (res.success && outcome === 'applied') {
+        toast.success(`Đã cập nhật ảnh bus của ${student.student_name}`);
+      } else if (res.success && outcome === 'queued') {
+        toast.info('Đã gửi ảnh, bộ phận bus sẽ duyệt');
+      } else {
+        toast.error(res.message || 'Không lưu được ảnh');
+      }
+    } finally {
+      setIsSavingPhoto(false);
+      xoaTimer();
+      setResult(null);
+    }
+  }, [guiAnhBus, result, xoaTimer]);
 
   const handleReject = useCallback(() => {
     xoaTimer();
@@ -208,6 +263,8 @@ const FaceCameraScreen: React.FC = () => {
         isConfirming={isConfirming}
         onConfirm={handleConfirm}
         onRejectSuggestion={handleReject}
+        onSavePhoto={handleSavePhoto}
+        isSavingPhoto={isSavingPhoto}
         onManualFallback={handleClose}
       />
     </View>

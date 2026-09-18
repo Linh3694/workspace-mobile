@@ -1,43 +1,37 @@
-import { Audio } from 'expo-av';
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 
 // Sound files
 const SOUNDS = {
   ticketCreated: require('../assets/sound/ticket_create.wav'),
 };
 
+/** expo-audio thay cho expo-av (ngừng ở SDK 54). */
 class SoundService {
-  private soundObject: Audio.Sound | null = null;
+  private player: AudioPlayer | null = null;
 
   async playTicketCreatedSound(): Promise<void> {
     try {
-      // Unload any existing sound first
-      if (this.soundObject) {
-        await this.soundObject.unloadAsync();
-        this.soundObject = null;
-      }
+      this.unloadSound();
 
-      // Set audio mode for playback
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
+      // Phát được cả khi iPhone gạt Silent
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        interruptionMode: 'duckOthers',
+        shouldRouteThroughEarpiece: false,
       });
 
-      // Load and play the sound
-      const { sound } = await Audio.Sound.createAsync(SOUNDS.ticketCreated, {
-        shouldPlay: true,
-        volume: 1.0,
+      const player = createAudioPlayer(SOUNDS.ticketCreated);
+      this.player = player;
+      player.volume = 1.0;
+      // AudioPlayer kế thừa SharedObject (có addListener) nhưng type public không lộ ra → ép kiểu.
+      const emitter = player as unknown as {
+        addListener?: (event: 'playbackStatusUpdate', cb: (status: { didJustFinish: boolean }) => void) => void;
+      };
+      emitter.addListener?.('playbackStatusUpdate', (status) => {
+        if (status.didJustFinish) this.unloadSound();
       });
-
-      this.soundObject = sound;
-
-      // Set up completion listener to unload sound
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          this.unloadSound();
-        }
-      });
+      player.play();
 
       console.log('🔔 Playing ticket created sound');
     } catch (error) {
@@ -45,11 +39,11 @@ class SoundService {
     }
   }
 
-  private async unloadSound(): Promise<void> {
+  private unloadSound(): void {
     try {
-      if (this.soundObject) {
-        await this.soundObject.unloadAsync();
-        this.soundObject = null;
+      if (this.player) {
+        this.player.remove();
+        this.player = null;
       }
     } catch (error) {
       console.error('Error unloading sound:', error);
@@ -59,16 +53,3 @@ class SoundService {
 
 export const soundService = new SoundService();
 export default soundService;
-
-
-
-
-
-
-
-
-
-
-
-
-

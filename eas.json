@@ -45,7 +45,8 @@
         "gradleCommand": ":app:bundleRelease -x lint"
       },
       "ios": {
-        "autoIncrement": true
+        "autoIncrement": true,
+        "image": "macos-sequoia-15.6-xcode-16.4"
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
@@ -65,6 +66,13 @@
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
         "EXPO_PUBLIC_APP_UPDATE_FORCE": "false"
+      }
+    },
+    "production-sim": {
+      "extends": "production",
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
       }
     }
   },

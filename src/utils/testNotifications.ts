@@ -40,7 +40,7 @@ export const sendDelayedTestNotification = async (seconds: number = 5) => {
         data: { type: 'delayed_test' },
         sound: 'default',
       },
-      trigger: { seconds },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds },
     });
     console.log(`✅ Notification scheduled for ${seconds} seconds`);
     return true;

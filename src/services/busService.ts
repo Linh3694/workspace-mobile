@@ -202,6 +202,14 @@ function busErrorToResult(
   };
 }
 
+export interface SubmitScanPhotoData {
+  outcome: 'applied' | 'queued' | 'rejected' | 'quota';
+  reason?: string;
+  request_id?: string;
+  student_id: string;
+  detail?: string;
+}
+
 export interface LoginResponse {
   success: boolean;
   message: string;
@@ -533,6 +541,36 @@ class BusService {
       return normalizeBusResponse(response.data, 'Không điểm danh được');
     } catch (error) {
       return busErrorToResult(error, 'Không điểm danh được');
+    }
+  }
+
+  /**
+   * Gửi ảnh vừa chụp ở cửa xe làm ảnh bus của em (PM-TASK-6711341).
+   *
+   * Server nhận diện LẠI ảnh trong phạm vi chuyến rồi mới quyết định: `applied`
+   * (đã thay ảnh), `queued` (chờ web duyệt), `rejected` (không thấy mặt / giống em
+   * khác), `quota` (hôm nay đã gửi). Kết quả quét mà app có chỉ để quyết định có
+   * HỎI giám sát hay không, không được gửi lên làm bằng chứng.
+   */
+  async submitScanPhoto(
+    tripId: string,
+    studentId: string,
+    imageBase64: string,
+    origin: 'scan_auto' | 'scan_confirm' | 'manual'
+  ): Promise<{ success: boolean; message?: string; data?: SubmitScanPhotoData; code?: string }> {
+    try {
+      const config = await getAxiosConfig();
+      const response = await axios.post(
+        `${config.baseURL}${BUS_API}.face_photo.submit_scan_photo`,
+        { trip_id: tripId, student_id: studentId, image: imageBase64, origin },
+        config
+      );
+      return normalizeBusResponse(response.data, 'Không gửi được ảnh');
+    } catch (error) {
+      // busErrorToResult gõ theo FaceScanData; phần dùng ở đây (success/message/code) giống nhau.
+      return busErrorToResult(error, 'Không gửi được ảnh') as unknown as {
+        success: boolean; message?: string; data?: SubmitScanPhotoData; code?: string;
+      };
     }
   }
 

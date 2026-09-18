@@ -68,19 +68,20 @@ export interface IconProps {
 
 const Icon: React.FC<IconProps> = ({
   name,
-  set = 'auto',
+  // Hermes V1 (RN 0.86) không parse được `{ set = ... }` trong destructuring → đổi tên biến cục bộ.
+  set: iconSet = 'auto',
   size = 20,
   tone = 'default',
   colorOverride,
 }) => {
   const resolved = colorOverride ?? TONE_COLOR[tone];
 
-  if (set === 'auto') {
+  if (iconSet === 'auto') {
     const SvgIcon = ICON_V2[name as IconV2Name];
     if (SvgIcon) return <SvgIcon width={size} height={size} color={resolved} />;
   }
 
-  const Component = set === 'mci' ? MaterialCommunityIcons : Ionicons;
+  const Component = iconSet === 'mci' ? MaterialCommunityIcons : Ionicons;
   return <Component name={name as never} size={size} color={resolved} />;
 };
 
