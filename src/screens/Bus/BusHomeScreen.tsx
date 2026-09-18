@@ -68,8 +68,12 @@ const BusHomeScreen: React.FC = () => {
         const endDate = new Date(today);
         endDate.setDate(endDate.getDate() + 7);
 
-        const startDateStr = today.toISOString().split('T')[0];
-        const endDateStr = endDate.toISOString().split('T')[0];
+        // Ngày theo giờ máy (VN), không dùng toISOString(): trước 7h sáng UTC vẫn là
+        // hôm qua nên app lấy nhầm chuyến chiều hôm trước làm "chuyến tiếp theo".
+        const toLocalDateStr = (d: Date) =>
+          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const startDateStr = toLocalDateStr(today);
+        const endDateStr = toLocalDateStr(endDate);
 
         const response = await busService.getDailyTripsByDateRange(startDateStr, endDateStr);
 
