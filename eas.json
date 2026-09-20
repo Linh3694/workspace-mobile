@@ -34,7 +34,8 @@
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "staging",
-        "EXPO_PUBLIC_APP_UPDATE_FORCE": "false"
+        "EXPO_PUBLIC_APP_UPDATE_FORCE": "false",
+        "EXPO_PUBLIC_USE_RN_FETCH": "1"
       }
     },
     "production": {
@@ -50,7 +51,8 @@
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
-        "EXPO_PUBLIC_APP_UPDATE_FORCE": "false"
+        "EXPO_PUBLIC_APP_UPDATE_FORCE": "false",
+        "EXPO_PUBLIC_USE_RN_FETCH": "1"
       }
     },
     "production-apk": {
@@ -65,7 +67,8 @@
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
-        "EXPO_PUBLIC_APP_UPDATE_FORCE": "false"
+        "EXPO_PUBLIC_APP_UPDATE_FORCE": "false",
+        "EXPO_PUBLIC_USE_RN_FETCH": "1"
       }
     },
     "production-sim": {
