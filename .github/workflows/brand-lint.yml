@@ -1,0 +1,34 @@
+# Chặn chuỗi thương hiệu MỚI (tên trường, domain, mã trường, màu brand) — nợ cũ không làm đỏ.
+# Trên push, công cụ tự soi đúng các commit của lượt push (payload `before`); trên PR, soi so
+# với nhánh đích. Repo không có CI build nên job này đứng riêng, chỉ cần node, không cài gói.
+#
+# Chuỗi có chủ đích: dòng trên đặt `// brand-lint-disable-next-line <rule>` kèm lý do.
+# Màu brand đặt trong src/theme/tokens.js (được phép), component dùng token.
+# Công cụ: tools/brand-lint — bản sao, nguồn ở thư mục gốc chứa các repo, đồng bộ bằng sync.mjs.
+name: brand-lint
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: brand-lint-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  brand-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Chặn chuỗi thương hiệu mới
+        env:
+          # PR: so với nhánh đích. Push: để trống, công cụ tự lấy `before` của lượt push.
+          BRAND_LINT_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
+        run: node tools/brand-lint/brand-lint.mjs

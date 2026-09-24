@@ -1,9 +1,4 @@
 #!/usr/bin/env node
-// ─────────────────────────────────────────────────────────────────────────────
-// ⚠️  BẢN SAO. Nguồn: tools/brand-lint/brand-lint.mjs (thư mục gốc Codebase).
-//     SỬA Ở NGUỒN rồi chạy `node tools/brand-lint/sync.mjs` để đồng bộ 5 bản.
-//     Đừng sửa trực tiếp file này — lần sync sau sẽ ghi đè.
-// ─────────────────────────────────────────────────────────────────────────────
 /**
  * brand-lint — chặn hardcode thương hiệu lọt vào codebase (GD2-01 · PLAN-03 §2).
  *
@@ -31,7 +26,8 @@ const args = Object.fromEntries(
   }),
 );
 const MODE = args.mode || 'diff';
-const BASE = args.base || process.env.BRAND_LINT_BASE || 'origin/main';
+const EXPLICIT_BASE = args.base || process.env.BRAND_LINT_BASE || '';
+const BASE = EXPLICIT_BASE || 'origin/main';
 const AS_JSON = Boolean(args.json);
 const ROOT = resolve(args.root || process.cwd());
 
@@ -76,15 +72,50 @@ function sh(cmd) {
   return execSync(cmd, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 }
 
+/**
+ * Khoảng commit của MỘT lượt push trong GitHub Actions, hoặc null.
+ *
+ * Vì sao cần: CI chạy trên nhánh main sau khi push thì `origin/main...HEAD` RỖNG (HEAD
+ * chính là origin/main), nên bước chặn không soi gì — mà phần lớn commit đẩy thẳng main.
+ * Lấy `before` trong payload sự kiện (commit đầu nhánh trước lượt push) làm mốc.
+ * Diff hai chấm `before HEAD` (không cần merge-base, chạy được cả với checkout nông khi
+ * đã fetch được `before`). Nhánh mới (`before` = 000…) hoặc không lấy được `before` thì
+ * trả null → dùng BASE như cũ.
+ */
+function pushedRange() {
+  if (process.env.GITHUB_EVENT_NAME !== 'push' || !process.env.GITHUB_EVENT_PATH) return null;
+  let before;
+  try {
+    before = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')).before;
+  } catch {
+    return null;
+  }
+  if (!/^[0-9a-f]{40}$/.test(before || '') || /^0+$/.test(before)) return null;
+  const has = () => {
+    try { sh(`git cat-file -e ${before}^{commit}`); return true; } catch { return false; }
+  };
+  if (!has()) {
+    try { sh(`git fetch --no-tags --quiet --depth=1 origin ${before}`); } catch { /* xét lại bên dưới */ }
+  }
+  if (!has()) {
+    console.error(`[brand-lint] Không lấy được commit trước lượt push (${before.slice(0, 8)}); so với ${BASE}.`);
+    return null;
+  }
+  return `${before} HEAD`;
+}
+
 /** mode=diff: chỉ lấy dòng THÊM MỚI so với BASE — nợ cũ không chặn PR */
 function collectDiffLines() {
   let raw;
+  const pushed = EXPLICIT_BASE ? null : pushedRange();
+  const range = pushed || `${BASE}...HEAD`;
   try {
-    raw = sh(`git diff --unified=0 ${BASE}...HEAD -- .`);
+    raw = sh(`git diff --unified=0 ${range} -- .`);
   } catch {
-    console.error(`[brand-lint] Không diff được với "${BASE}". Thử: git fetch origin`);
+    console.error(`[brand-lint] Không diff được "${range}". Thử: git fetch origin`);
     process.exit(2);
   }
+  if (pushed) console.error(`[brand-lint] Sự kiện push: soi các commit của lượt push (${range}).`);
   const out = [];
   let file = null;
   let lineNo = 0;
