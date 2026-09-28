@@ -1,7 +1,8 @@
 /**
  * Thẻ đối tượng lớp - hiển thị trong danh sách đối tượng vi phạm (scroll ngang).
  * Chuẩn hóa giống frappe-sis-frontend DisciplineClassTargetCard: Lần vi phạm, Cấp độ,
- * và điểm trừ CHỈ HIỂN THỊ do bậc thang `class_points` của vi phạm quyết định.
+ * và điểm trừ CHỈ HIỂN THỊ do bậc thang `class_points` của vi phạm quyết định
+ * (lấy qua get_class_discipline_context — cùng hàm server dùng lúc lưu).
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
@@ -15,7 +16,6 @@ import {
   formatOccurrenceDisplay,
   levelLabelFromSeverity,
   resolveOccurrenceLevelView,
-  violationStatsRangeFromRecordDate,
 } from './disciplineLevel';
 
 const MULISH = 'Mulish';
@@ -27,7 +27,9 @@ export interface ClassTargetCardProps {
   violationId: string;
   /** Ngày ghi nhận form: khoảng đếm đầu tháng → ngày này */
   referenceDate?: string;
-  /** Điểm trừ đã lưu trên bản ghi; trống nghĩa là chưa lưu nên chưa có số để hiện */
+  /** Khi sửa bản ghi — loại trừ khỏi đếm tháng */
+  excludeRecordId?: string;
+  /** Điểm trừ đã lưu trên bản ghi; trống = lượt mới, hiện điểm theo bậc thang cấu hình */
   deductionPoints?: string;
   onRemove?: () => void;
   showRemove?: boolean;
@@ -39,6 +41,7 @@ export const ClassTargetCard: React.FC<ClassTargetCardProps> = ({
   classSubtitle,
   violationId,
   referenceDate,
+  excludeRecordId,
   deductionPoints,
   onRemove,
   showRemove = true,
@@ -46,51 +49,53 @@ export const ClassTargetCard: React.FC<ClassTargetCardProps> = ({
   const [priorCount, setPriorCount] = useState<number | null>(null);
   const [tierLevel, setTierLevel] = useState<string | undefined>();
   const [tierLevelLabel, setTierLevelLabel] = useState<string | undefined>();
+  /** Điểm trừ do bậc thang Điểm lớp của vi phạm quyết định — chỉ hiển thị, không sửa tay */
+  const [configuredDp, setConfiguredDp] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!classId || !violationId) {
+    const date = referenceDate?.split('T')[0];
+    if (!classId || !violationId || !date) {
       setPriorCount(0);
       setTierLevel('1');
       setTierLevelLabel(levelLabelFromSeverity('1'));
+      setConfiguredDp(undefined);
       setLoading(false);
       return;
     }
     let cancelled = false;
     setLoading(true);
-    const range = violationStatsRangeFromRecordDate(referenceDate);
-
-    (async () => {
-      try {
-        const res = await disciplineRecordService.getClassViolationStats(
-          classId,
-          violationId,
-          range
+    setConfiguredDp(undefined);
+    // Cùng hàm server dùng lúc lưu (giống web) ⇒ lần, cấp độ, điểm hiện ra đúng là số sẽ được lưu.
+    // get_class_violation_stats không dùng được: backend bỏ qua tier_count, khớp bậc theo số lần đã có.
+    disciplineRecordService
+      .getClassDisciplineContext(classId, violationId, date, excludeRecordId)
+      .then((res) => {
+        if (cancelled || !res.success || !res.data) return;
+        setPriorCount(res.data.prior_same_violation_count_month);
+        setTierLevel(res.data.suggested_level);
+        setTierLevelLabel(res.data.level_label);
+        setConfiguredDp(
+          res.data.suggested_deduction_points == null
+            ? undefined
+            : String(res.data.suggested_deduction_points)
         );
-        if (cancelled || !res.data) return;
-        const prior = res.data.count;
-        setPriorCount(prior);
-        // Tier tính trên lượt vi phạm sau khi lưu bản ghi này (giống web)
-        const occurrence = computeOccurrenceCount(prior, { addCurrentInList: true });
-        const tierRes = await disciplineRecordService.getClassViolationStats(classId, violationId, {
-          ...range,
-          tier_count: occurrence,
-        });
-        if (!cancelled && tierRes.data) {
-          setTierLevel(tierRes.data.level);
-          setTierLevelLabel(tierRes.data.level_label);
-        }
-      } finally {
+      })
+      .finally(() => {
         if (!cancelled) setLoading(false);
-      }
-    })();
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [classId, violationId, referenceDate]);
+  }, [classId, violationId, referenceDate, excludeRecordId]);
 
-  const dpVal = deductionPoints == null ? '' : String(deductionPoints);
+  /**
+   * Điểm đã lưu (đang sửa bản ghi cũ) đứng trước: khi lưu, form gửi lại đúng số đó nên phải
+   * hiện đúng số đó. Lượt mới chưa có điểm thì hiện điểm theo bậc thang — server lưu đúng số này.
+   */
+  const storedDp = deductionPoints == null ? '' : String(deductionPoints);
+  const dpVal = storedDp !== '' ? storedDp : configuredDp ?? '';
   const occurrence = computeOccurrenceCount(priorCount, { addCurrentInList: true });
   const levelView = resolveOccurrenceLevelView(occurrence, {
     statsLevel: tierLevel,

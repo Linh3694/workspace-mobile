@@ -643,7 +643,15 @@ const DisciplineAddEditScreen: React.FC = () => {
   >([]);
   const [formOptions, setFormOptions] = useState<{ name: string; title?: string }[]>([]);
   const [timeSlotOptions, setTimeSlotOptions] = useState<{ name: string; title?: string }[]>([]);
-  const [classOptions, setClassOptions] = useState<{ name: string; title?: string }[]>([]);
+  /** Mọi lớp của năm học — tra tên lớp cho đối tượng đã lưu (bản ghi cũ có thể trỏ lớp CLB/ghép) */
+  const [classOptions, setClassOptions] = useState<
+    { name: string; title?: string; class_type?: string | null }[]
+  >([]);
+  /** Ô chọn lớp chỉ cho lớp chính quy; class_type trống tính là chính quy như backend */
+  const regularClassOptions = useMemo(
+    () => classOptions.filter((c) => (c.class_type || 'regular') === 'regular'),
+    [classOptions]
+  );
   /** Chi tiết học sinh (tên, mã, ảnh, lớp) - dùng cho card đã chọn */
   const [studentDetailsMap, setStudentDetailsMap] = useState<
     Record<
@@ -1219,7 +1227,7 @@ const DisciplineAddEditScreen: React.FC = () => {
           <MultiClassPicker
             label="Chọn lớp"
             values={formData.target_class_ids}
-            options={classOptions}
+            options={regularClassOptions}
             onChange={(v) => {
               setFormData((p) => ({ ...p, target_class_ids: v }));
               setTargetClassPoints((prev) => {
@@ -1285,6 +1293,7 @@ const DisciplineAddEditScreen: React.FC = () => {
                       classTitle={item?.title || item?.name || classId}
                       violationId={formData.violation}
                       referenceDate={formData.date}
+                      excludeRecordId={recordId}
                       deductionPoints={targetClassPoints[classId] ?? DEFAULT_DP}
                       onRemove={() => {
                         setFormData((p) => ({

@@ -130,6 +130,14 @@ export interface StudentMonthlyDisciplineContext {
   escalation_highlight: boolean;
 }
 
+/** Kết quả get_class_discipline_context — bậc điểm lớp của lượt đang soạn (form ghi nhận) */
+export interface ClassDisciplineContext {
+  prior_same_violation_count_month: number;
+  suggested_level: string;
+  suggested_deduction_points: number;
+  level_label: string;
+}
+
 /** Thống kê vi phạm trả về từ get_student/class_violation_stats */
 export interface DisciplineViolationStats {
   count: number;
@@ -247,7 +255,10 @@ class DisciplineRecordService {
   async getAllClasses(
     schoolYearId: string,
     campusId?: string
-  ): Promise<{ success: boolean; data?: { name: string; title?: string }[] }> {
+  ): Promise<{
+    success: boolean;
+    data?: { name: string; title?: string; class_type?: string | null }[];
+  }> {
     try {
       const params: Record<string, string> = { school_year_id: schoolYearId };
       const normalizedCampus = normalizeCampusIdForBackend(campusId);
@@ -268,7 +279,12 @@ class DisciplineRecordService {
       }
       const data = rows
         .filter((r): r is { name: string; title?: string } => r != null && typeof (r as any)?.name === 'string')
-        .map((r) => ({ name: (r as any).name, title: (r as any).title }));
+        .map((r) => ({
+          name: (r as any).name,
+          title: (r as any).title,
+          // regular / mixed / club — form ghi nhận chỉ cho chọn lớp chính quy
+          class_type: (r as any).class_type ?? null,
+        }));
       return {
         success: (raw?.message?.success ?? raw?.success) !== false,
         data,
@@ -482,6 +498,31 @@ class DisciplineRecordService {
       return { success: false, message: res?.message || 'Không thể lấy ngữ cảnh tháng' };
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Không thể lấy ngữ cảnh tháng';
+      return { success: false, message: msg };
+    }
+  }
+
+  /** Bậc điểm lớp của lượt đang soạn — cùng hàm server dùng lúc lưu (form ghi nhận) */
+  async getClassDisciplineContext(
+    classId: string,
+    violationId: string,
+    date: string,
+    excludeRecord?: string
+  ): Promise<{ success: boolean; data?: ClassDisciplineContext; message?: string }> {
+    try {
+      const response = await api.post(`${BASE_URL}.get_class_discipline_context`, {
+        class_id: classId,
+        violation_id: violationId,
+        date,
+        ...(excludeRecord ? { exclude_record: excludeRecord } : {}),
+      });
+      const res = response.data?.message ?? response.data;
+      if (res?.success && res.data) {
+        return { success: true, data: res.data };
+      }
+      return { success: false, message: res?.message || 'Không thể lấy bậc điểm lớp' };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Không thể lấy bậc điểm lớp';
       return { success: false, message: msg };
     }
   }
