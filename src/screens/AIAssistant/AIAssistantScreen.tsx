@@ -1,7 +1,8 @@
 // @ts-nocheck
 /**
- * AI Assistant Screen - Mobile
- * Giống AIAssistant bản web, khác duy nhất: Role selector đặt ở góc trên bên trái màn hình
+ * AI Assistant Screen - Mobile — Agent TUYỂN SINH (từ 30/09/2026, giống web /applications/ai-assistant):
+ * router `receptionist` của ai-agent — RAG tài liệu tuyển sinh + đặt lịch tham quan (tạo CRM Lead).
+ * Không có tra cứu số liệu (SQL) — trợ lý nhân viên chỉ còn trên web /applications/ai-assistant/wisers.
  */
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
@@ -84,9 +85,9 @@ function extractSuggestions(content: string): { cleanContent: string; suggestion
 }
 
 const GUEST_NAME_STORAGE_KEY = 'ai_assistant_guest_name';
-// Cùng router trợ lý nhân viên với web (WisersAgent) — /api/wisers
-const CHAT_STREAM_URL = `${AI_BACKEND_URL}/wisers/chat/stream`;
-const CHAT_URL = `${AI_BACKEND_URL}/wisers/chat`;
+// Cùng router agent tuyển sinh với web (AdmissionsAgent) — /api/receptionist
+const CHAT_STREAM_URL = `${AI_BACKEND_URL}/receptionist/chat/stream`;
+const CHAT_URL = `${AI_BACKEND_URL}/receptionist/chat`;
 
 // Dark mode tự động sau 18:30
 const DARK_MODE_HOUR = 18;
@@ -262,9 +263,11 @@ interface Message {
   suggestions?: string[];
   /** Phản hồi đã gửi: like / dislike */
   feedback?: 'like' | 'dislike' | null;
+  /** Luồng đặt lịch tham quan: backend báo đã tạo hồ sơ CRM (giống web) */
+  appointment?: { created: boolean; leadCode?: string; duplicateWarning?: boolean };
 }
 
-type UserRole = 'wisers';
+type UserRole = 'parent';
 
 // Helper: gửi tin nhắn qua endpoint non-streaming (dự phòng khi response không đọc được theo luồng)
 async function sendMessageNonStreaming(
@@ -348,6 +351,13 @@ async function sendMessageNonStreaming(
                     sources: data.sources?.length ? data.sources : undefined,
                     attachments: data.attachments?.length ? data.attachments : undefined,
                     suggestions: suggestions.length > 0 ? suggestions : undefined,
+                    appointment: data.appointment_created
+                      ? {
+                          created: true,
+                          leadCode: data.lead_info?.crm_code || data.lead_info?.name || undefined,
+                          duplicateWarning: Boolean(data.lead_info?.duplicate_warning),
+                        }
+                      : undefined,
                     isLoading: false,
                   }
                 : msg
@@ -366,13 +376,14 @@ async function sendMessageNonStreaming(
   }
 }
 
+// Bám tài liệu tuyển sinh đã nạp (documents/manifest.yaml nhãn tuyen_sinh)
 const SUGGESTED_QUESTIONS: string[] = [
-  'Bao nhiêu học sinh vắng hôm nay?',
-  'Thống kê vi phạm kỷ luật tháng này?',
-  'Quy trình bảo trì CSVC như thế nào?',
-  'Quy định sử dụng phòng lab và thư viện?',
-  'Tỷ lệ điểm danh theo lớp hôm nay?',
-  'Chính sách an toàn PCCC của trường?',
+  'Học phí và chính sách ưu đãi tài chính năm học 2026-2027?',
+  'Trường có những hệ đào tạo nào, khác nhau ra sao?',
+  'Học bổng Tài năng cho học sinh mới năm học 2027-2028 xét như thế nào?',
+  'Khóa Hành trang vào lớp 1 học phí bao nhiêu?',
+  'Xe đưa đón có những tuyến nào và phí bao nhiêu?',
+  'Tôi muốn đặt lịch tham quan trường',
 ];
 
 /** Modal chọn lý do dislike — dùng BottomSheetModal giống Y tế / Kỷ luật */
@@ -669,6 +680,23 @@ function MessageBubble({
           </View>
         )}
       </View>
+      {/* Thẻ xác nhận đặt lịch tham quan — chỉ khi backend báo đã tạo hồ sơ CRM */}
+      {!isUser && !message.isLoading && message.appointment?.created && (
+        <View style={styles.appointmentCard}>
+          <Ionicons name="calendar-outline" size={20} color="#0F766E" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.appointmentTitle}>Đã ghi nhận lịch tham quan vào CRM</Text>
+            {!!message.appointment.leadCode && (
+              <Text style={styles.appointmentText}>Mã hồ sơ: {message.appointment.leadCode}</Text>
+            )}
+            {message.appointment.duplicateWarning && (
+              <Text style={styles.appointmentWarn}>
+                Số điện thoại có thể trùng hồ sơ đã có — đội tuyển sinh kiểm tra trước khi gọi.
+              </Text>
+            )}
+          </View>
+        </View>
+      )}
       {/* Attachments */}
       {message.attachments && message.attachments.length > 0 && (
         <View style={styles.attachmentsContainer}>
@@ -805,7 +833,7 @@ const AIAssistantScreen = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const selectedRole: UserRole = 'wisers';
+  const selectedRole: UserRole = 'parent';
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -1026,6 +1054,7 @@ const AIAssistantScreen = () => {
         let accumulatedContent = '';
         let sources: any[] = [];
         let attachments: FormAttachment[] = [];
+        let appointment: Message['appointment'];
         const ending = 'Anh/chị cần tôi hỗ trợ thêm điều gì không ạ?';
         let flushTimer: ReturnType<typeof setTimeout> | null = null;
         const flushContent = () => {
@@ -1069,6 +1098,14 @@ const AIAssistantScreen = () => {
               if (type === 'metadata') {
                 sources = (data.sources as any[]) ?? [];
                 attachments = (data.attachments as FormAttachment[]) ?? [];
+                // Luồng đặt lịch tham quan báo về qua metadata
+                if (data.appointment_flow) {
+                  appointment = {
+                    created: Boolean(data.appointment_created),
+                    leadCode: typeof data.lead_code === 'string' ? data.lead_code : undefined,
+                    duplicateWarning: Boolean(data.duplicate_warning),
+                  };
+                }
               } else if (type === 'token') {
                 accumulatedContent += (data.token as string) ?? '';
                 scheduleFlush();
@@ -1107,6 +1144,7 @@ const AIAssistantScreen = () => {
           sources: sources.length > 0 ? sources : undefined,
           attachments: attachments.length > 0 ? attachments : undefined,
           suggestions: streamSuggestions.length > 0 ? streamSuggestions : undefined,
+          appointment,
           isLoading: false,
         };
 
@@ -1158,7 +1196,7 @@ const AIAssistantScreen = () => {
           }
         }
 
-        const agentType = 'WISers';
+        const agentType = 'Receptionist';
         const res = await aiChatFeedbackService.submitFeedback({
           message_id: messageId,
           agent_type: agentType,
@@ -1239,7 +1277,7 @@ const AIAssistantScreen = () => {
             <Ionicons name="arrow-back" size={24} color={theme.text} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={[styles.headerTitle, { color: theme.text }]}>Trợ lý LIAVI</Text>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>WISELY · Tuyển sinh</Text>
           </View>
           <TouchableOpacity
             onPress={() => {
@@ -1460,7 +1498,7 @@ const AIAssistantScreen = () => {
                     style={[styles.input, { color: theme.text }]}
                     value={input}
                     onChangeText={setInput}
-                    placeholder="Bạn muốn hỏi gì?"
+                    placeholder="Phụ huynh muốn tìm hiểu điều gì về nhà trường?"
                     placeholderTextColor={theme.inputPlaceholder}
                     cursorColor={theme.text}
                     selectionColor={
@@ -1501,6 +1539,21 @@ const AIAssistantScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  appointmentCard: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#99F6E4',
+    backgroundColor: '#F0FDFA',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  appointmentTitle: { fontSize: 14, fontWeight: '600', color: '#134E4A' },
+  appointmentText: { marginTop: 2, fontSize: 13, color: '#115E59' },
+  appointmentWarn: { marginTop: 2, fontSize: 12, color: '#B45309' },
   container: {
     flex: 1,
     backgroundColor: '#F2F2F2',
