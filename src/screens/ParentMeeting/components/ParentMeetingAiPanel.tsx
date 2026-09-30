@@ -35,7 +35,7 @@ import type {
 /*
   Lấy từ `src/theme/tokens` chứ không viết hex thẳng như các file cũ cùng thư mục.
   `tokens.js` tự nhận là nguồn sự thật của màu và dặn code MỚI chỉ dùng nhóm `brand-*`;
-  các file lân cận khai `const PRIMARY = '#002855'` là dấu vết trước khi có bộ token đó
+  các file lân cận viết thẳng mã hex navy vào `const PRIMARY` là dấu vết trước khi có bộ token đó
   (và đang bị eslint cảnh báo). File này viết mới nên theo luật mới.
 */
 const PRIMARY = color.brandSecondary.DEFAULT;

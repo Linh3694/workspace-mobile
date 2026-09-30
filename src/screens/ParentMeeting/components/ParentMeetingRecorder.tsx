@@ -80,9 +80,10 @@ import {
   type PTLiveLine,
   type PTLiveStatus,
 } from './useParentMeetingLiveTranscribe';
+import { color } from '../../../theme/tokens';
 import type { PTMeetingAudioPart, PTMeetingMedia } from '../../../types/parentMeeting';
 
-const PRIMARY = '#002855';
+const PRIMARY = color.brandSecondary.DEFAULT;
 const DANGER = '#DC2626';
 
 /** Độ dài một đoạn. 5 phút: đủ ngắn để mất ít khi sập, đủ dài để không băm nhỏ một ca 15 phút. */
