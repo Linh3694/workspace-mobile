@@ -144,6 +144,18 @@ export default function ParentMeetingScreen() {
     try {
       await startMeeting(slot.slot_id);
       toast.success('Đã bắt đầu buổi họp');
+      // VÀO THẲNG màn biên bản, đúng như bản web (`startSlot` -> `openSlot`).
+      //
+      // Đứng lại ở danh sách thì chỗ ghi âm và ô ghi biên bản nằm sau một nút tên là «Ghi
+      // meeting note» — không có chữ nào nói tới ghi âm, nên giáo viên vừa bấm Bắt đầu sẽ
+      // kết luận là app không ghi âm được. Đây cũng là lúc duy nhất họ rảnh tay để bấm.
+      //
+      // Chỉ nhảy khi đợt có bật biên bản: tắt thì màn kia không làm được gì, đá người dùng
+      // sang một trang khoá cứng còn khó hiểu hơn là ở lại.
+      if (slot.allow_meeting_note !== 0) {
+        navigation.navigate(ROUTES.SCREENS.PARENT_MEETING_NOTE, { slotId: slot.slot_id });
+        return;
+      }
       await loadSlots();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Không thể bắt đầu buổi họp');
@@ -293,7 +305,7 @@ export default function ParentMeetingScreen() {
         {/* Hạn bấm "Bắt đầu họp" gắn ngay trên ca sắp diễn ra, không bắt GV tự cộng nhẩm */}
         {canStartSlot(slot) && deadline ? (
           <Text className="mt-2.5 text-xs font-semibold" style={{ color: '#B45309' }}>
-            Bấm "Bắt đầu họp" trước {deadline}, nếu không ca sẽ tự huỷ.
+            Bấm «Bắt đầu họp» trước {deadline}, nếu không ca sẽ tự huỷ.
           </Text>
         ) : null}
 

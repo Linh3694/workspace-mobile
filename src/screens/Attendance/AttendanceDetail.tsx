@@ -15,6 +15,9 @@ import { TouchableOpacity } from '../../components/Common';
 // Attendance status type aligned with web
 type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
 
+/** Nguồn quyết định trạng thái điểm danh — xem `getStatusSource` */
+type StatusSource = 'teacher' | 'health' | 'event' | 'leave' | 'homeroom' | 'default';
+
 const statusLabel: Record<AttendanceStatus, string> = {
   present: 'Có mặt',
   absent: 'Vắng không phép',
@@ -43,8 +46,6 @@ function attendanceRowsToMap(rows: any[] | undefined): Record<string, Attendance
 interface StudentCardProps {
   student: any;
   finalStatus: AttendanceStatus;
-  hasOverride: boolean;
-  hasEventOverride: boolean;
   badge: string | null;
   checkInTime?: string;
   checkOutTime?: string;
@@ -56,20 +57,17 @@ const StudentCard = React.memo(
   ({
     student,
     finalStatus,
-    hasOverride,
-    hasEventOverride,
     badge,
     checkInTime,
     checkOutTime,
     onSetStatus,
   }: StudentCardProps) => {
     const studentId = student.name;
-    const dimmed = finalStatus === 'excused' ? 0.6 : 1;
 
     return (
       <View
         className="mx-auto mb-3 w-full rounded-2xl"
-        style={{ backgroundColor: cardBgByStatus[finalStatus], opacity: dimmed }}>
+        style={{ backgroundColor: cardBgByStatus[finalStatus] }}>
         <View className="mb-2 flex-row items-start gap-4 p-4">
           <View className="shrink-0">
             <StudentAvatar
@@ -110,7 +108,6 @@ const StudentCard = React.memo(
         <View className="flex-row justify-center">
           <TouchableOpacity
             onPress={() => onSetStatus(studentId, 'present')}
-            disabled={hasEventOverride}
             style={{
               flex: 1,
               height: 44,
@@ -118,7 +115,6 @@ const StudentCard = React.memo(
               justifyContent: 'center',
               backgroundColor: finalStatus === 'present' ? '#3DB838' : '#EBEBEB',
               borderBottomLeftRadius: 12,
-              opacity: hasEventOverride ? 0.5 : 1,
             }}>
             <Ionicons
               name="checkmark"
@@ -128,14 +124,12 @@ const StudentCard = React.memo(
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => onSetStatus(studentId, 'absent')}
-            disabled={hasEventOverride}
             style={{
               flex: 1,
               height: 44,
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: finalStatus === 'absent' ? '#DC0909' : '#EBEBEB',
-              opacity: hasEventOverride ? 0.5 : 1,
             }}>
             <Ionicons
               name="close"
@@ -145,14 +139,12 @@ const StudentCard = React.memo(
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => onSetStatus(studentId, 'late')}
-            disabled={hasEventOverride}
             style={{
               flex: 1,
               height: 44,
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: finalStatus === 'late' ? '#F5AA1E' : '#EBEBEB',
-              opacity: hasEventOverride ? 0.5 : 1,
             }}>
             <Ionicons
               name="time-outline"
@@ -162,7 +154,6 @@ const StudentCard = React.memo(
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => onSetStatus(studentId, 'excused')}
-            disabled={hasEventOverride}
             style={{
               flex: 1,
               height: 44,
@@ -170,7 +161,6 @@ const StudentCard = React.memo(
               justifyContent: 'center',
               backgroundColor: finalStatus === 'excused' ? '#3F4246' : '#EBEBEB',
               borderBottomRightRadius: 12,
-              opacity: hasEventOverride ? 0.5 : 1,
             }}>
             <Ionicons
               name="close-circle-outline"
@@ -244,8 +234,17 @@ const AttendanceDetail = () => {
   } = params;
 
   const [students, setStudents] = useState<any[]>([]);
-  /** Điểm danh nền từ server: tiết học nếu đã có bản ghi, không thì homeroom (đồng bộ LessonLog) */
-  const [serverAttendanceMap, setServerAttendanceMap] = useState<
+  /**
+   * Bản ghi điểm danh ĐÃ LƯU của đúng tiết này — chính là quyết định của giáo viên đứng
+   * lớp (backend đánh `source = 'teacher'` cho nó). Phải tách khỏi nền tiết chủ nhiệm:
+   * nền chỉ là điểm danh đầu ngày của GVCN nên đứng DƯỚI đơn nghỉ, còn bản ghi của tiết
+   * đứng TRÊN đơn nghỉ.
+   */
+  const [savedAttendanceMap, setSavedAttendanceMap] = useState<
+    Record<string, AttendanceStatus>
+  >({});
+  /** Nền tiết chủ nhiệm — chỉ dùng khi tiết này chưa có bản ghi điểm danh nào */
+  const [homeroomAttendanceMap, setHomeroomAttendanceMap] = useState<
     Record<string, AttendanceStatus>
   >({});
   /** Chỉnh tay của GV trên màn hình (tách khỏi nền để overlay Y tế không bị chặn bởi present) */
@@ -254,6 +253,8 @@ const AttendanceDetail = () => {
   >({});
   const [eventStatuses, setEventStatuses] = useState<Record<string, AttendanceStatus>>({});
   const [leaveStatuses, setLeaveStatuses] = useState<Record<string, AttendanceStatus>>({});
+  /** Đơn nghỉ đang áp cho tiết này — giữ lại để ghi chú lúc lưu nêu đúng lý do như web */
+  const [leaveInfos, setLeaveInfos] = useState<Record<string, any>>({});
   const [checkInOutTimes, setCheckInOutTimes] = useState<
     Record<string, { checkInTime?: string; checkOutTime?: string }>
   >({});
@@ -373,10 +374,12 @@ const AttendanceDetail = () => {
 
       if (studentsData.length === 0) {
         setStudents([]);
-        setServerAttendanceMap({});
+        setSavedAttendanceMap({});
+        setHomeroomAttendanceMap({});
         setUserAttendanceOverrides({});
         setEventStatuses({});
         setLeaveStatuses({});
+        setLeaveInfos({});
         setHealthStatus({});
         setCheckInOutTimes({});
         return;
@@ -449,17 +452,24 @@ const AttendanceDetail = () => {
       const periodMap = attendanceRowsToMap(periodRows);
       const homeroomMap = attendanceRowsToMap(homeroomRows);
 
-      const serverBase: Record<string, AttendanceStatus> = {};
+      // Bản ghi của ĐÚNG tiết này là quyết định của giáo viên đứng lớp → xếp trên đơn nghỉ.
+      // Nền tiết chủ nhiệm chỉ được dùng khi tiết này chưa ai điểm danh → xếp dưới đơn nghỉ.
+      const savedBase: Record<string, AttendanceStatus> = {};
+      const homeroomBase: Record<string, AttendanceStatus> = {};
       if (isHomeroomOnly) {
-        Object.assign(serverBase, periodMap);
+        Object.assign(savedBase, periodMap);
       } else {
         for (const s of studentsData) {
           const sid = s.name;
-          const st = hasPeriodAttendance ? periodMap[sid] : homeroomMap[sid];
-          if (st) serverBase[sid] = st;
+          if (hasPeriodAttendance) {
+            if (periodMap[sid]) savedBase[sid] = periodMap[sid];
+          } else if (homeroomMap[sid]) {
+            homeroomBase[sid] = homeroomMap[sid];
+          }
         }
       }
-      setServerAttendanceMap(serverBase);
+      setSavedAttendanceMap(savedBase);
+      setHomeroomAttendanceMap(homeroomBase);
 
       // Xử lý check-in/out times
       if (dayMapResult.success && dayMapResult.data) {
@@ -517,17 +527,23 @@ const AttendanceDetail = () => {
       // Đơn nghỉ cả ngày (hoặc đơn cũ không có `leave_scope`) vẫn áp cho mọi tiết.
       if (leavesResult.success && leavesResult.data) {
         const leaveMap: Record<string, AttendanceStatus> = {};
+        const leaveInfoMap: Record<string, any> = {};
         Object.entries(leavesResult.data).forEach(([studentId, leaves]) => {
-          const applies = (leaves as any[])?.some((leave) => {
+          const applied = (leaves as any[])?.find((leave) => {
             if ((leave?.leave_scope ?? 'full_day') !== 'by_period') return true;
             const periods: string[] = leave?.periods ?? [];
             return periods.some((p) => periodNameMatches(p, lessonPeriod));
           });
-          if (applies) leaveMap[studentId] = 'excused';
+          if (applied) {
+            leaveMap[studentId] = 'excused';
+            leaveInfoMap[studentId] = applied;
+          }
         });
         setLeaveStatuses(leaveMap);
+        setLeaveInfos(leaveInfoMap);
       } else {
         setLeaveStatuses({});
+        setLeaveInfos({});
       }
 
       // Xử lý trạng thái Y tế (học sinh báo xuống y tế)
@@ -539,10 +555,12 @@ const AttendanceDetail = () => {
     } catch (e) {
       console.error('AttendanceDetail error:', e);
       setStudents([]);
-      setServerAttendanceMap({});
+      setSavedAttendanceMap({});
+      setHomeroomAttendanceMap({});
       setUserAttendanceOverrides({});
       setEventStatuses({});
       setLeaveStatuses({});
+      setLeaveInfos({});
       setHealthStatus({});
       setCheckInOutTimes({});
     } finally {
@@ -586,60 +604,76 @@ const AttendanceDetail = () => {
     return !!h && ['left_class', 'at_clinic', 'examining', 'picked_up', 'transferred'].includes(h.status || '');
   };
 
-  // Thứ tự ưu tiên (đồng bộ với web `useClassAttendancePage`):
-  //   GV sửa tay > Y tế > sự kiện > đơn nghỉ phép (đã lọc theo tiết) > nền server (tiết/homeroom)
+  // Nguồn ĐANG quyết định trạng thái của một học sinh. Hiển thị, badge và lúc lưu đều
+  // phải hỏi cùng một hàm này — trước đây mỗi chỗ chép lại một chuỗi if riêng nên lệch
+  // nhau, và đó chính là cách lỗi "chấm điểm danh xong vào lại là mất" lọt ra production.
   //
-  // Việc ĐANG diễn ra thắng dự kiến từ trước: học sinh có đơn nghỉ buổi chiều nhưng
-  // sáng đang ở phòng Y tế thì tiết sáng phải hiện theo Y tế, không phải theo đơn.
+  // Thứ tự ưu tiên lấy NGUYÊN của web `useClassAttendancePage` (biến `manualStatus`),
+  // cũng là thứ tự backend ghi ở `erp/utils/attendance_period.py`:
+  //   GV sửa tay > Y tế > sự kiện > đơn nghỉ phép (đã lọc theo tiết) > nền tiết chủ nhiệm
   //
-  // Sự kiện đứng dưới "GV sửa tay" ở đây chỉ là hình thức: `hasEventOverrideStatus`
-  // khoá thao tác sửa khi học sinh có sự kiện, nên trên thực tế không tồn tại đồng thời
-  // cả hai — trừ trường hợp sự kiện được tạo SAU khi giáo viên đã sửa tay, và khi đó
-  // quyết định của giáo viên đứng lớp là cái đúng.
+  // "GV sửa tay" gồm CẢ thao tác đang làm trên màn hình LẪN bản ghi đã lưu của đúng tiết
+  // này — hai thứ đó là một quyết định, chỉ khác lúc đọc ra (web gộp chung vào `statusMap`).
+  // Đây là điểm mấu chốt: mọi nguồn tự động (Y tế, sự kiện, đơn nghỉ) chỉ là ĐỀ XUẤT khi
+  // giáo viên chưa chốt. Giáo viên đứng lớp là người nhìn thấy ai thực sự có mặt, nên khi
+  // đã chốt thì không nguồn nào được lật ngược — backend cũng vậy: `save_class_attendance`
+  // đánh dấu `source='teacher'` và các luồng tự động không ghi đè lên bản ghi đó.
+  const getStatusSource = (studentId: string): StatusSource => {
+    if (Object.prototype.hasOwnProperty.call(userAttendanceOverrides, studentId)) return 'teacher';
+    if (savedAttendanceMap[studentId]) return 'teacher';
+    if (isAtHealthForStudent(studentId)) return 'health';
+    if (eventStatuses[studentId]) return 'event';
+    if (leaveStatuses[studentId]) return 'leave';
+    if (homeroomAttendanceMap[studentId]) return 'homeroom';
+    return 'default';
+  };
+
   const getFinalStatus = (studentId: string): AttendanceStatus => {
-    if (Object.prototype.hasOwnProperty.call(userAttendanceOverrides, studentId)) {
-      return userAttendanceOverrides[studentId];
+    switch (getStatusSource(studentId)) {
+      case 'teacher':
+        return Object.prototype.hasOwnProperty.call(userAttendanceOverrides, studentId)
+          ? userAttendanceOverrides[studentId]
+          : savedAttendanceMap[studentId];
+      case 'health':
+        // Y tế còn trong luồng → ép excused kể cả khi nền tiết chủ nhiệm là present
+        return 'excused';
+      case 'event':
+        return eventStatuses[studentId];
+      case 'leave':
+        return leaveStatuses[studentId];
+      case 'homeroom':
+        return homeroomAttendanceMap[studentId];
+      default:
+        return 'present';
     }
-    // Y tế còn trong luồng → ép excused kể cả khi nền server là present (DB chưa kịp excused)
-    if (isAtHealthForStudent(studentId)) return 'excused';
-    if (eventStatuses[studentId]) return eventStatuses[studentId];
-    if (leaveStatuses[studentId]) return leaveStatuses[studentId];
-    return serverAttendanceMap[studentId] || 'present';
   };
 
-  // Chỉ block khi có event status (không block leave)
-  const hasEventOverrideStatus = (studentId: string): boolean => {
-    return !!eventStatuses[studentId];
-  };
-
-  // Vẫn giữ hàm này để check có override nào không (dùng cho UI badge)
-  const hasOverrideStatus = (studentId: string): boolean => {
-    return !!(
-      eventStatuses[studentId] ||
-      Object.prototype.hasOwnProperty.call(userAttendanceOverrides, studentId) ||
-      leaveStatuses[studentId] ||
-      isAtHealthForStudent(studentId)
-    );
-  };
-
-  // Badge phải chỉ đúng nguồn đã THẮNG ở `getFinalStatus`, nên giữ cùng thứ tự với nó.
+  // Badge chỉ đúng nguồn đã THẮNG, nên đi qua `getStatusSource` thay vì chép lại thứ tự.
   // Ngược lại giáo viên sẽ thấy nhãn "Nghỉ phép" trong khi trạng thái thật đến từ Y tế.
   const getOverrideBadge = (studentId: string): string | null => {
-    // Học sinh đang ở Y tế (chưa về lớp)
-    if (isAtHealthForStudent(studentId)) return 'Y tế';
-    if (eventStatuses[studentId]) return 'Sự kiện';
-    // Nếu có leave nhưng đã manual override thì hiện badge đặc biệt
+    const source = getStatusSource(studentId);
+    if (source === 'health') return 'Y tế';
+    if (source === 'event') return 'Sự kiện';
+    if (source === 'leave') return 'Nghỉ phép';
+
+    // Tới đây trạng thái là do giáo viên chốt. Nguồn tự động vẫn còn thì phải nói ra —
+    // giáo viên cần biết học sinh này VẪN có đơn nghỉ / VẪN đang ở sự kiện, chỉ là trạng
+    // thái điểm danh đã được chốt khác đi (web: `isLeaveOverridden`).
+    const finalStatus = getFinalStatus(studentId);
+    if (isAtHealthForStudent(studentId)) {
+      return finalStatus === 'excused' ? 'Y tế' : 'Y tế (đã thay đổi)';
+    }
+    if (eventStatuses[studentId]) {
+      return finalStatus === eventStatuses[studentId] ? 'Sự kiện' : 'Sự kiện (đã thay đổi)';
+    }
     if (leaveStatuses[studentId]) {
-      if (Object.prototype.hasOwnProperty.call(userAttendanceOverrides, studentId)) {
-        return 'Nghỉ phép (đã thay đổi)';
-      }
-      return 'Nghỉ phép';
+      return finalStatus === 'excused' ? 'Nghỉ phép' : 'Nghỉ phép (đã thay đổi)';
     }
     return null;
   };
 
+  // Không khoá theo nguồn nào cả — giống web, giáo viên luôn sửa được mọi học sinh.
   const setStatus = (id: string, status: AttendanceStatus) => {
-    if (hasEventOverrideStatus(id)) return;
     setUserAttendanceOverrides((prev) => ({ ...prev, [id]: status }));
   };
 
@@ -654,31 +688,32 @@ const AttendanceDetail = () => {
         const studentId = s.name;
         const finalStatus = getFinalStatus(studentId);
 
+        // Ghi chú phải khớp NGUỒN đã thắng, nên đi qua cùng `getStatusSource` với lúc
+        // hiển thị — y như web. Trạng thái do giáo viên chốt thì KHÔNG gắn ghi chú của
+        // đơn nghỉ / sự kiện / Y tế: lúc đó chúng không còn là lý do của trạng thái nữa.
         let remarks = undefined;
-        const eventStatus = eventStatuses[studentId];
-        const leaveStatus = leaveStatuses[studentId];
+        const source = getStatusSource(studentId);
 
-        if (eventStatus && eventStatus !== 'present') {
-          const eventInfo = events.find((e) => e.studentIds.includes(studentId));
-          if (eventInfo) {
-            if (eventStatus === 'excused') {
-              remarks = `Tham gia sự kiện: ${eventInfo.eventTitle}`;
-            } else if (eventStatus === 'absent') {
-              remarks = `Vắng sự kiện: ${eventInfo.eventTitle}`;
-            } else {
-              remarks = `Sự kiện: ${eventInfo.eventTitle}`;
+        if (source === 'health') {
+          remarks = `Xuống Y tế`;
+        } else if (source === 'event') {
+          const eventStatus = eventStatuses[studentId];
+          if (eventStatus !== 'present') {
+            const eventInfo = events.find((e) => e.studentIds.includes(studentId));
+            if (eventInfo) {
+              if (eventStatus === 'excused') {
+                remarks = `Tham gia sự kiện: ${eventInfo.eventTitle}`;
+              } else if (eventStatus === 'absent') {
+                remarks = `Vắng sự kiện: ${eventInfo.eventTitle}`;
+              } else {
+                remarks = `Sự kiện: ${eventInfo.eventTitle}`;
+              }
             }
           }
-        } else if (
-          leaveStatus &&
-          !Object.prototype.hasOwnProperty.call(userAttendanceOverrides, studentId)
-        ) {
-          remarks = `Nghỉ phép`;
-        } else if (
-          isAtHealthForStudent(studentId) &&
-          !Object.prototype.hasOwnProperty.call(userAttendanceOverrides, studentId)
-        ) {
-          remarks = `Xuống Y tế`;
+        } else if (source === 'leave') {
+          const leave = leaveInfos[studentId];
+          remarks = leave?.reason_display ? `Nghỉ có phép: ${leave.reason_display}` : 'Nghỉ có phép';
+          if (leave?.other_reason) remarks += ` - ${leave.other_reason}`;
         }
 
         return {
@@ -803,8 +838,6 @@ const AttendanceDetail = () => {
           renderItem={({ item: s }) => {
             const studentId = s.name;
             const finalStatus = getFinalStatus(studentId);
-            const hasOverride = hasOverrideStatus(studentId);
-            const hasEventOverride = !!eventStatuses[studentId];
             const badge = getOverrideBadge(studentId);
             const checkInOut = checkInOutTimes[studentId];
 
@@ -812,8 +845,6 @@ const AttendanceDetail = () => {
               <StudentCard
                 student={s}
                 finalStatus={finalStatus}
-                hasOverride={hasOverride}
-                hasEventOverride={hasEventOverride}
                 badge={badge}
                 checkInTime={checkInOut?.checkInTime}
                 checkOutTime={checkInOut?.checkOutTime}

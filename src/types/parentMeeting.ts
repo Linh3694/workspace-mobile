@@ -370,4 +370,37 @@ export interface PTMeetingMedia {
   audio_duration: number;
   audio_parts: PTMeetingAudioPart[];
   attachments: PTMeetingAttachment[];
+  /**
+   * Máy chủ có phiên âm trực tiếp được không — backend THỬ cấp token thật rồi nhớ kết
+   * quả, chứ không chỉ xét «đã khai khoá chưa». Sai chỗ này thì app mời giáo viên tick
+   * một ô hỏng rồi mới báo lỗi giữa buổi gặp phụ huynh.
+   */
+  live_available?: boolean;
+}
+
+/** Trạng thái xử lý phiên âm / tóm tắt của một ca — cùng bộ giá trị với bản web. */
+export type PTMeetingProcessingStatus =
+  | 'idle'
+  | 'uploaded'
+  | 'live'
+  | 'queued'
+  | 'transcribing'
+  | 'rate_limited'
+  | 'summarizing'
+  | 'done'
+  | 'failed';
+
+export interface PTMeetingProcessingState {
+  processing_status: PTMeetingProcessingStatus;
+  processing_error?: string | null;
+  parts_total: number;
+  parts_done: number;
+  has_transcript: boolean;
+  has_summary: boolean;
+  /** Bản đã làm sạch nếu có, không thì bản thô. */
+  transcript?: string;
+  /** HTML do LLM sinh — app không có bộ render HTML, xem `parseSummarySections`. */
+  ai_summary?: string;
+  live_available?: boolean;
+  has_live_transcript?: boolean;
 }

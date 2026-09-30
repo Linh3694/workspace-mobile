@@ -73,7 +73,13 @@
       "expo-status-bar",
       "expo-web-browser",
       "expo-video",
-      "expo-audio"
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Ứng dụng cần quyền truy cập microphone để ghi âm",
+          "enableBackgroundRecording": true
+        }
+      ]
     ],
     "orientation": "portrait",
     "icon": "./src/assets/icon.png",
@@ -88,7 +94,8 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
-          "remote-notification"
+          "remote-notification",
+          "audio"
         ],
         "NSCameraUsageDescription": "Ứng dụng cần quyền truy cập camera để chụp ảnh và gửi trong tin nhắn",
         "NSPhotoLibraryUsageDescription": "Ứng dụng cần quyền truy cập thư viện ảnh và video để gửi media trong tin nhắn",
@@ -108,7 +115,8 @@
       "permissions": [
         "NOTIFICATIONS",
         "VIBRATE",
-        "CAMERA"
+        "CAMERA",
+        "RECORD_AUDIO"
       ]
     },
     "scheme": "staffportal",

@@ -16,6 +16,7 @@
  */
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Directory, File, FileMode, Paths } from 'expo-file-system';
 import { BASE_URL } from '../config/constants';
 import { parseFrappeApiError } from './administrativeTicketService';
 import { normalizeVietnameseName } from '../utils/nameFormatter';
@@ -25,6 +26,8 @@ import type {
   PTMeetingEventQuery,
   PTMeetingMedia,
   PTMeetingNote,
+  PTMeetingProcessingState,
+  PTMeetingProcessingStatus,
   PTPublishScheduleResult,
   PTSlotActionResult,
   PTSubmitNoteResult,
@@ -221,13 +224,21 @@ async function readListStrict<T>(
  * ngay trước cửa phòng họp; một danh sách gộp mọi đợt trong lịch sử thì giáo
  * viên phải cuộn đi tìm ca sắp tới. Muốn xem trọn một đợt thì truyền `eventId`
  * — khi có `event_id`, backend bỏ qua bộ lọc ngày.
+ *
+ * `slotId` lấy ĐÚNG MỘT ca, không phụ thuộc ngày. Bắt buộc cho màn biên bản: nó mở được
+ * từ thông báo đẩy, mà ca trong thông báo có thể thuộc ngày khác — mặc định "hôm nay" thì
+ * tra không ra, màn hình mất cả thông tin ca lẫn nút ghi âm mà không nói được vì sao.
+ * Phạm vi giáo viên vẫn do backend chặn, nên đoán `slot_id` của người khác cũng vô ích.
  */
-export async function getMyTeacherSlots(params: { eventId?: string; date?: string } = {}): Promise<
-  PTTeacherSlot[]
-> {
+export async function getMyTeacherSlots(
+  params: { eventId?: string; date?: string; slotId?: string } = {}
+): Promise<PTTeacherSlot[]> {
   const payload: Record<string, unknown> = {};
-  if (params.eventId) payload.event_id = params.eventId;
-  if (params.date) payload.date = params.date;
+  // Thứ tự xét của backend: `slot_id` -> `event_id` -> khoảng ngày -> `date`. Giữ nguyên
+  // thứ tự đó ở đây để không có tổ hợp nào nghĩa một đằng ở client, một nẻo ở máy chủ.
+  if (params.slotId) payload.slot_id = params.slotId;
+  else if (params.eventId) payload.event_id = params.eventId;
+  else if (params.date) payload.date = params.date;
   return readList<PTTeacherSlot>('get_my_teacher_slots', payload, 'getMyTeacherSlots');
 }
 
@@ -429,8 +440,16 @@ export async function uploadMeetingAudioPart(params: {
   partIndex: number;
   durationSec: number;
   uri: string;
+  /**
+   * Định dạng của đoạn. Mặc định `m4a` — đường ghi âm thường.
+   *
+   * `wav` dành cho đường PHIÊN ÂM TRỰC TIẾP: lúc đó chỉ mở được một luồng micro nên bản
+   * ghi âm phải tự dựng từ chính luồng PCM ấy (xem `utils/wavFile.ts`). Cả hai đuôi đều
+   * nằm sẵn trong `AUDIO_CONTENT_TYPES` của backend, không phải sửa máy chủ.
+   */
+  format?: 'm4a' | 'wav';
 }): Promise<{ part_index: number; parts_count: number; audio_duration: number }> {
-  const { slotId, partIndex, durationSec, uri } = params;
+  const { slotId, partIndex, durationSec, uri, format = 'm4a' } = params;
   const token = await AsyncStorage.getItem('authToken');
   const form = new FormData();
   form.append('slot_id', slotId);
@@ -438,8 +457,8 @@ export async function uploadMeetingAudioPart(params: {
   form.append('duration', String(Math.round(durationSec)));
   form.append('file', {
     uri,
-    name: `ca-${slotId}-part${String(partIndex).padStart(3, '0')}.m4a`,
-    type: 'audio/m4a',
+    name: `ca-${slotId}-part${String(partIndex).padStart(3, '0')}.${format}`,
+    type: format === 'wav' ? 'audio/wav' : 'audio/m4a',
   } as unknown as Blob);
 
   const response = await axios.post(`${PARENT_MEETING}.upload_meeting_audio_part`, form, {
@@ -463,6 +482,138 @@ export async function uploadMeetingAudioPart(params: {
 /** Xoá TOÀN BỘ ghi âm của một ca. Không có đường xoá lẻ từng đoạn — backend cũng vậy. */
 export async function deleteMeetingAudio(slotId: string): Promise<{ note_id: string }> {
   return writeRequest<{ note_id: string }>('delete_meeting_audio', { slot_id: slotId });
+}
+
+// ----- Phiên âm trực tiếp & tóm tắt AI --------------------------------------
+//
+// Cùng ba endpoint với bản web, cùng cách đánh số mẻ — một ca ghi dở trên điện thoại rồi
+// mở tiếp trên web vẫn nối đúng chỗ.
+//
+// ⚠️ Chỉ gọi khi giáo viên đã TỰ TICK «Ghi biên bản trực tiếp» ở ca đó. Backend không có
+// cách nào biết người dùng đã tick hay chưa nên cổng opt-in nằm trọn ở phía client —
+// đừng gọi chúng từ một effect tự chạy.
+
+export interface PTLiveToken {
+  access_token: string;
+  expires_in: number;
+  model: string;
+  language: string;
+  /** Mẻ chữ cuối máy chủ đã lưu — client đánh số TIẾP từ đây, không về 1. */
+  live_chunk_index: number;
+}
+
+export async function getMeetingLiveToken(slotId: string): Promise<PTLiveToken> {
+  return writeRequest<PTLiveToken>('get_meeting_live_token', { slot_id: slotId });
+}
+
+export async function appendMeetingLiveTranscript(
+  slotId: string,
+  chunkIndex: number,
+  text: string
+): Promise<{ live_chunk_index: number; chars: number }> {
+  return writeRequest<{ live_chunk_index: number; chars: number }>(
+    'append_meeting_live_transcript',
+    { slot_id: slotId, chunk_index: chunkIndex, text }
+  );
+}
+
+export async function finishMeetingLiveTranscript(
+  slotId: string
+): Promise<{ processing_status: string; transcript_raw: string }> {
+  return writeRequest<{ processing_status: string; transcript_raw: string }>(
+    'finish_meeting_live_transcript',
+    { slot_id: slotId }
+  );
+}
+
+/**
+ * Đưa ca vào hàng đợi tóm tắt.
+ *
+ * `force` = phiên âm LẠI từ file ghi âm thay vì dùng chữ đã ghi trực tiếp. Client tự
+ * quyết: đã có chữ trực tiếp thì đừng force, vì phiên âm lại là nhân đôi nội dung biên bản
+ * (và đốt hai lần hạn mức).
+ */
+export async function startMeetingAiProcessing(
+  slotId: string,
+  force = false
+): Promise<{ processing_status: PTMeetingProcessingStatus }> {
+  return writeRequest<{ processing_status: PTMeetingProcessingStatus }>(
+    'start_meeting_ai_processing',
+    force ? { slot_id: slotId, force: '1' } : { slot_id: slotId }
+  );
+}
+
+/** Trạng thái + kết quả. Trả kèm transcript và tóm tắt để khỏi gọi thêm lượt nữa. */
+export async function getMeetingProcessingStatus(
+  slotId: string
+): Promise<PTMeetingProcessingState | null> {
+  try {
+    const config = await getAxiosConfig();
+    const response = await axios.post(
+      `${PARENT_MEETING}.get_meeting_processing_status`,
+      { slot_id: slotId },
+      config
+    );
+    const out = unwrap<PTMeetingProcessingState>(response);
+    return out.success && out.data ? out.data : null;
+  } catch (e) {
+    // Đây là đường POLL, chạy lại sau vài giây. Ném lỗi ra là mỗi lần sóng yếu lại hiện
+    // một toast đỏ giữa lúc giáo viên đang nói chuyện với phụ huynh.
+    console.error('getMeetingProcessingStatus', e);
+    return null;
+  }
+}
+
+/**
+ * Tải biên bản .docx về máy và trả `uri` local để mở bảng chia sẻ.
+ *
+ * Phải đi qua `downloadFileAsync` CÓ HEADER chứ không `Linking.openURL`: endpoint đòi
+ * `Authorization`, mà trình duyệt ngoài thì không mang token đi — mở thẳng URL chỉ ra một
+ * trang 403.
+ *
+ * ⚠️ Frappe trả LỖI NGHIỆP VỤ dưới dạng JSON kèm HTTP 200 (`forbidden_response`,
+ * `validation_error_response` đều không đổi status), nên `downloadFileAsync` sẽ vui vẻ lưu
+ * khối JSON đó thành một file `.docx` hỏng. Phải tự kiểm: mọi file Office đều là zip, bắt
+ * đầu bằng hai byte `PK`. Không kiểm thì giáo viên mở ra thấy "file hỏng" và không biết vì
+ * sao.
+ */
+export async function downloadMeetingMinutesDocx(slotId: string): Promise<string> {
+  const token = await AsyncStorage.getItem('authToken');
+  const dir = new Directory(Paths.cache, 'pt-meeting-docx');
+  if (!dir.exists) dir.create({ intermediates: true });
+
+  const target = new File(dir, `bien-ban-${slotId}-${Date.now()}.docx`);
+  const file = await File.downloadFileAsync(
+    `${BASE_URL}${PARENT_MEETING}.download_meeting_minutes_docx?slot_id=${encodeURIComponent(slotId)}`,
+    target,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {}, idempotent: true }
+  );
+
+  const handle = file.open(FileMode.ReadOnly);
+  let magic: Uint8Array;
+  try {
+    magic = handle.readBytes(2);
+  } finally {
+    handle.close();
+  }
+  if (magic[0] !== 0x50 || magic[1] !== 0x4b) {
+    // Không phải zip ⇒ là JSON lỗi. Bóc thông điệp thật ra cho người dùng rồi dọn file rác.
+    let message = 'Không tải được biên bản';
+    try {
+      const payload = JSON.parse(file.textSync());
+      message = payload?.message?.message || payload?.message || message;
+    } catch {
+      // Không phải JSON nốt — giữ thông điệp chung.
+    }
+    try {
+      file.delete();
+    } catch {
+      // Cache, hệ điều hành sẽ dọn.
+    }
+    throw new Error(typeof message === 'string' ? message : 'Không tải được biên bản');
+  }
+
+  return file.uri;
 }
 
 /**
