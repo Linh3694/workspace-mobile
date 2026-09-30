@@ -29,7 +29,8 @@ import Markdown from 'react-native-markdown-display';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../context/AuthContext';
 import { AI_BACKEND_URL } from '../../config/constants';
-import { ROUTES } from '../../constants/routes';
+// fetch của RN (EXPO_PUBLIC_USE_RN_FETCH=1) không đọc được body theo luồng — expo/fetch thì có
+import { fetch as expoFetch } from 'expo/fetch';
 import { toast } from '../../components/Toast';
 import {
   aiChatFeedbackService,
@@ -48,8 +49,10 @@ try {
   // Expo Go hoặc chưa prebuild
 }
 
-// React Native không hỗ trợ response.body.getReader() - dùng endpoint non-streaming
-const USE_NON_STREAMING = Platform.OS !== 'web';
+// Stream bằng expo/fetch trên iOS/Android; web dùng fetch của trình duyệt
+const streamFetch: typeof fetch = Platform.OS === 'web' ? fetch : (expoFetch as unknown as typeof fetch);
+// Gom token rồi mới cập nhật UI — tránh re-render mỗi token trên máy yếu
+const STREAM_FLUSH_MS = 60;
 
 // Loại bỏ emoji trên mobile — tránh hiển thị [?] khi font không hỗ trợ
 function stripEmojiForMobile(text: string): string {
@@ -81,11 +84,9 @@ function extractSuggestions(content: string): { cleanContent: string; suggestion
 }
 
 const GUEST_NAME_STORAGE_KEY = 'ai_assistant_guest_name';
-const CHAT_STREAM_URL = `${AI_BACKEND_URL}/chat/stream`;
-const CHAT_URL = `${AI_BACKEND_URL}/chat`;
-
-// Chỉ user có role Mobile BOD mới được dùng AI Assistant
-const REQUIRED_AI_ROLE = 'Mobile BOD';
+// Cùng router trợ lý nhân viên với web (WisersAgent) — /api/wisers
+const CHAT_STREAM_URL = `${AI_BACKEND_URL}/wisers/chat/stream`;
+const CHAT_URL = `${AI_BACKEND_URL}/wisers/chat`;
 
 // Dark mode tự động sau 18:30
 const DARK_MODE_HOUR = 18;
@@ -265,7 +266,7 @@ interface Message {
 
 type UserRole = 'wisers';
 
-// Helper: gửi tin nhắn qua endpoint non-streaming (dùng khi React Native không hỗ trợ getReader)
+// Helper: gửi tin nhắn qua endpoint non-streaming (dự phòng khi response không đọc được theo luồng)
 async function sendMessageNonStreaming(
   question: string,
   conversationHistory: { role: string; content: string }[],
@@ -800,8 +801,6 @@ const AIAssistantScreen = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  // Chỉ user có role Mobile BOD mới được dùng AI Assistant
-  const hasAccess = !!(user?.roles ?? []).includes(REQUIRED_AI_ROLE);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -875,10 +874,17 @@ const AIAssistantScreen = () => {
           setGuestName(saved.trim());
           setNameInput(saved.trim());
         } else if (user?.fullname) {
-          setNameInput(user.fullname.split(' ').pop() || user.fullname);
+          // Tài khoản CBNV đã có họ tên → xưng hô theo tên, không bắt nhập lại
+          const given = user.fullname.split(' ').pop() || user.fullname;
+          setGuestName(given);
+          setNameInput(given);
         }
       } catch {
-        if (user?.fullname) setNameInput(user.fullname.split(' ').pop() || user.fullname);
+        if (user?.fullname) {
+          const given = user.fullname.split(' ').pop() || user.fullname;
+          setGuestName(given);
+          setNameInput(given);
+        }
       }
       setNameLoaded(true);
     };
@@ -887,13 +893,13 @@ const AIAssistantScreen = () => {
 
   // Tự động mở bàn phím ngay khi vào trang - chờ animation chuyển màn hình xong rồi focus
   useEffect(() => {
-    if (hasAccess && guestName && nameLoaded) {
+    if (guestName && nameLoaded) {
       const task = InteractionManager.runAfterInteractions(() => {
         inputRef.current?.focus();
       });
       return () => task.cancel();
     }
-  }, [hasAccess, guestName, nameLoaded]);
+  }, [guestName, nameLoaded]);
 
   // Cập nhật trạng thái follow: user gần cuối = đang follow, user cuộn lên = không follow
   const updateFollowState = useCallback(
@@ -950,8 +956,10 @@ const AIAssistantScreen = () => {
         timestamp: new Date(),
       };
 
+      // Backend chỉ dùng 10 tin gần nhất — không gửi cả lịch sử dài qua mạng di động
       const conversationHistory = messages
         .filter((m) => !m.isLoading && m.content)
+        .slice(-10)
         .map((m) => ({ role: m.role, content: m.content }));
 
       setMessages((prev) => [...prev, userMessage]);
@@ -969,24 +977,7 @@ const AIAssistantScreen = () => {
       setMessages((prev) => [...prev, loadingMessage]);
 
       try {
-        // React Native không hỗ trợ response.body.getReader() - dùng endpoint non-streaming
-        if (USE_NON_STREAMING) {
-          await sendMessageNonStreaming(
-            content.trim(),
-            conversationHistory,
-            loadingMessage,
-            setMessages,
-            setIsLoading,
-            setError,
-            guestName,
-            user,
-            selectedRole,
-            messages.length === 0
-          );
-          return;
-        }
-
-        const response = await fetch(CHAT_STREAM_URL, {
+        const response = await streamFetch(CHAT_STREAM_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1014,7 +1005,21 @@ const AIAssistantScreen = () => {
         }
 
         const reader = response.body?.getReader?.();
-        if (!reader) throw new Error('Stream not supported');
+        if (!reader) {
+          await sendMessageNonStreaming(
+            content.trim(),
+            conversationHistory,
+            loadingMessage,
+            setMessages,
+            setIsLoading,
+            setError,
+            guestName,
+            user,
+            selectedRole,
+            messages.length === 0
+          );
+          return;
+        }
 
         const decoder = new TextDecoder();
         let buffer = '';
@@ -1022,6 +1027,17 @@ const AIAssistantScreen = () => {
         let sources: any[] = [];
         let attachments: FormAttachment[] = [];
         const ending = 'Anh/chị cần tôi hỗ trợ thêm điều gì không ạ?';
+        let flushTimer: ReturnType<typeof setTimeout> | null = null;
+        const flushContent = () => {
+          flushTimer = null;
+          const snapshot = accumulatedContent;
+          setMessages((prev) =>
+            prev.map((msg) => (msg.id === loadingMessage.id ? { ...msg, content: snapshot } : msg))
+          );
+        };
+        const scheduleFlush = () => {
+          if (!flushTimer) flushTimer = setTimeout(flushContent, STREAM_FLUSH_MS);
+        };
 
         const appendSuggestion = (text: string) => {
           if (!text) return;
@@ -1054,13 +1070,8 @@ const AIAssistantScreen = () => {
                 sources = (data.sources as any[]) ?? [];
                 attachments = (data.attachments as FormAttachment[]) ?? [];
               } else if (type === 'token') {
-                const token = (data.token as string) ?? '';
-                accumulatedContent += token;
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === loadingMessage.id ? { ...msg, content: accumulatedContent } : msg
-                  )
-                );
+                accumulatedContent += (data.token as string) ?? '';
+                scheduleFlush();
               } else if (type === 'answer') {
                 const answer = (data.answer as string) ?? '';
                 accumulatedContent = answer;
@@ -1084,6 +1095,7 @@ const AIAssistantScreen = () => {
           }
           if (done) break;
         }
+        if (flushTimer) clearTimeout(flushTimer);
 
         const { cleanContent: streamClean, suggestions: streamSuggestions } =
           extractSuggestions(accumulatedContent || '');
@@ -1245,9 +1257,9 @@ const AIAssistantScreen = () => {
         </View>
       </View>
 
-      {/* Dialog nhập tên - Modal (chỉ hiện khi có quyền truy cập) */}
+      {/* Dialog nhập tên - chỉ hiện khi tài khoản không có họ tên */}
       <Modal
-        visible={hasAccess && !guestName}
+        visible={nameLoaded && !guestName}
         transparent
         animationType="fade"
         onRequestClose={() => {}}>
@@ -1308,8 +1320,8 @@ const AIAssistantScreen = () => {
         locations={[0, 0.25, 0.5, 0.75, 1]}
         style={[styles.chatContentWrapper, { paddingTop: insets.top }]}>
         <View
-          style={[styles.chatContent, (!guestName || !hasAccess) && styles.chatContentBlurred]}
-          pointerEvents={!guestName || !hasAccess ? 'none' : 'auto'}>
+          style={[styles.chatContent, !guestName && styles.chatContentBlurred]}
+          pointerEvents={!guestName ? 'none' : 'auto'}>
           {messages.length === 0 ? (
             /* Empty state - Greeting tạm ẩn, suggestions và input dùng chung bên dưới */
             <View style={styles.emptyState}>
@@ -1398,7 +1410,7 @@ const AIAssistantScreen = () => {
             </>
           )}
           {/* Câu hỏi gợi ý - hàng ngang, chỉ hiện ban đầu, bên trên ô input */}
-          {messages.length === 0 && hasAccess && guestName && (
+          {messages.length === 0 && guestName && (
             <View
               style={[
                 styles.suggestionsBar,
@@ -1427,7 +1439,7 @@ const AIAssistantScreen = () => {
             </View>
           )}
           {/* Thanh input - luôn hiện khi có quyền và tên (dùng chung cho empty state và có tin nhắn) */}
-          {hasAccess && guestName && (
+          {guestName && (
             <View
               style={[
                 styles.inputFooter,
@@ -1484,54 +1496,6 @@ const AIAssistantScreen = () => {
         </View>
       </LinearGradient>
 
-      {/* Overlay Premium - phủ toàn màn hình (header + content) khi user không có role Mobile BOD */}
-      {!hasAccess && (
-        <View style={styles.premiumOverlay} pointerEvents="auto">
-          <BlurView
-            intensity={40}
-            tint={isDarkMode ? 'dark' : 'light'}
-            {...({ style: StyleSheet.absoluteFill } as any)}
-          />
-          <View style={[styles.premiumCard, { backgroundColor: theme.modalContent }]}>
-            <View
-              style={[
-                styles.premiumIconWrap,
-                {
-                  backgroundColor: isDarkMode ? 'rgba(251,191,36,0.2)' : 'rgba(245,158,11,0.15)',
-                  borderWidth: 1,
-                  borderColor: isDarkMode ? 'rgba(251,191,36,0.4)' : 'rgba(245,158,11,0.35)',
-                  ...(Platform.OS === 'ios' && {
-                    shadowColor: isDarkMode ? '#FCD34D' : '#D97706',
-                  }),
-                },
-              ]}>
-              <Ionicons name="lock-closed" size={44} color={isDarkMode ? '#FCD34D' : '#D97706'} />
-            </View>
-            <Text style={[styles.premiumTitle, { color: theme.text }]}>
-              Tính năng giới hạn{'\n'}
-            </Text>
-            <Text style={[styles.premiumDesc, { color: theme.textMuted }]}>
-              Nâng cấp tài khoản để mở khoá AI Assistant và trải nghiệm trợ lý thông minh.
-            </Text>
-            <Text style={[styles.premiumCta, { color: theme.textSecondary }]}>
-              Liên hệ quản trị viên để nâng cấp
-            </Text>
-            <TouchableOpacity
-              onPress={() =>
-                navigation.navigate(ROUTES.SCREENS.MAIN as any, {
-                  screen: ROUTES.MAIN.HOME,
-                })
-              }
-              style={[styles.premiumHomeButton, { backgroundColor: theme.text }]}
-              activeOpacity={0.8}>
-              <Ionicons name="home-outline" size={20} color={theme.bg} />
-              <Text style={[styles.premiumHomeButtonText, { color: theme.bg }]}>
-                Quay về trang chủ
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
     </View>
   );
 };
@@ -1604,83 +1568,6 @@ const styles = StyleSheet.create({
   },
   chatContentBlurred: {
     opacity: 0.75,
-  },
-  // Overlay Premium khi user không có role Mobile BOD - zIndex cao để phủ cả role selector
-  premiumOverlay: {
-    ...StyleSheet.absoluteFill,
-    zIndex: 9999,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  premiumCard: {
-    borderRadius: 16,
-    padding: 28,
-    width: '100%',
-    maxWidth: 320,
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.1,
-        shadowRadius: 16,
-      },
-      android: { elevation: 12 },
-    }),
-  },
-  premiumIconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#D97706',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: { elevation: 6 },
-    }),
-  },
-  premiumTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  premiumTitleVip: {
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  premiumDesc: {
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  premiumCta: {
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  premiumHomeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    width: '100%',
-  },
-  premiumHomeButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
   },
   nameModalOverlay: {
     flex: 1,
