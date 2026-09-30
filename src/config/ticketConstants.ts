@@ -7,12 +7,17 @@
  * Ticket Category Mappings (EN -> VI)
  */
 export const TICKET_CATEGORY_MAP: Record<string, string> = {
-  Overall: 'Vấn đề chung',
+  Overall: 'Hỗ trợ người dùng',
   Camera: 'Hệ thống camera',
+  FaceID: 'Hệ thống FaceID',
   Network: 'Hệ thống mạng',
   'Bell System': 'Hệ thống chuông báo',
+  'Event Support': 'Hỗ trợ setup họp / sự kiện',
+  Telephony: 'Tổng đài điện thoại',
   Software: 'Hệ thống phần mềm',
   Account: 'Tài khoản',
+  Onboarding: 'Onboarding nhân sự',
+  'Email Ticket': 'Email (chờ phân loại)',
 };
 
 /**

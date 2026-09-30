@@ -98,6 +98,8 @@ const TicketCreate = () => {
   const [ticketData, setTicketData] = useState({
     title: '',
     category: '',
+    // Công việc cụ thể của hạng mục — bắt buộc khi hạng mục có (bảng «Quy đổi ticket» phòng CNTT)
+    workItem: '',
     description: '',
     images: [] as ImageItem[],
     notes: '',
@@ -143,9 +145,16 @@ const TicketCreate = () => {
     }
   };
 
+  const selectedCategory = ticketCategories.find((c) => c.value === ticketData.category);
+  const needsWorkItem = !!selectedCategory?.workItems?.length && !ticketData.workItem;
+
   const handleContinue = () => {
     if (step === 1 && !ticketData.category) {
       Alert.alert('Thông báo', 'Vui lòng chọn hạng mục');
+      return;
+    }
+    if (step === 1 && needsWorkItem) {
+      Alert.alert('Thông báo', 'Vui lòng chọn công việc cụ thể');
       return;
     }
 
@@ -166,6 +175,10 @@ const TicketCreate = () => {
       }
       if (!ticketData.category) {
         Alert.alert('Thông báo', 'Vui lòng chọn hạng mục');
+        return;
+      }
+      if (needsWorkItem) {
+        Alert.alert('Thông báo', 'Vui lòng chọn công việc cụ thể');
         return;
       }
       submitTicket();
@@ -219,6 +232,7 @@ const TicketCreate = () => {
         title: ticketData.title,
         description: ticketData.description,
         category: ticketData.category,
+        workItem: ticketData.workItem || undefined,
         notes: ticketData.notes || '',
         priority: ticketData.priority,
         files: files.length > 0 ? files : undefined,
@@ -248,13 +262,13 @@ const TicketCreate = () => {
   const renderStepOne = () => {
     return (
       <View className="flex-1 items-center justify-center">
-        <Text className="mb-2 w-[80%] text-center font-bold text-xl text-gray-800">
+        <Text className="mb-2 w-[80%] text-center text-xl font-bold text-gray-800">
           Xin chào WISer <Text className="text-[#FF5733]">{userName}</Text>, bạn cần chúng tớ{' '}
           <Text className="font-bold text-[#002147]">hỗ trợ</Text> gì ạ? ^^
         </Text>
 
         <View className="my-10 w-full px-4">
-          <Text className="mb-4 text-center font-semibold text-base text-[#002147]">
+          <Text className="mb-4 text-center text-base font-semibold text-[#002147]">
             Chọn hạng mục hỗ trợ <Text className="text-red-500">*</Text>
           </Text>
 
@@ -268,10 +282,15 @@ const TicketCreate = () => {
                     : 'border-gray-200 bg-white'
                 }`}
                 onPress={() => {
-                  setTicketData((prev) => ({ ...prev, category: category.value }));
+                  // Đổi hạng mục thì chọn lại công việc của hạng mục mới
+                  setTicketData((prev) =>
+                    prev.category === category.value
+                      ? prev
+                      : { ...prev, category: category.value, workItem: '' }
+                  );
                 }}>
                 <Text
-                  className={`font-medium text-base ${
+                  className={`text-base font-medium ${
                     ticketData.category === category.value ? 'text-[#FF5733]' : 'text-gray-800'
                   }`}>
                   {category.label}
@@ -279,6 +298,33 @@ const TicketCreate = () => {
               </TouchableOpacity>
             ))}
           </View>
+
+          {selectedCategory?.workItems?.length ? (
+            <View className="mt-6">
+              <Text className="mb-4 text-center text-base font-semibold text-[#002147]">
+                Chọn công việc cụ thể <Text className="text-red-500">*</Text>
+              </Text>
+              {selectedCategory.workItems.map((item) => {
+                const active = ticketData.workItem === item.value;
+                return (
+                  <TouchableOpacity
+                    key={item.value}
+                    className={`mb-2 rounded-xl border-2 p-4 ${
+                      active ? 'border-[#FF5733] bg-[#FFF5F3]' : 'border-gray-200 bg-white'
+                    }`}
+                    onPress={() => setTicketData((prev) => ({ ...prev, workItem: item.value }))}>
+                    <Text
+                      className={`text-base font-medium ${active ? 'text-[#FF5733]' : 'text-gray-800'}`}>
+                      {item.label}
+                    </Text>
+                    {item.description ? (
+                      <Text className="mt-1 text-sm text-gray-500">{item.description}</Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : null}
         </View>
       </View>
     );
@@ -288,7 +334,7 @@ const TicketCreate = () => {
     return (
       <View className="w-full">
         <View className="mb-5">
-          <Text className="mb-1.5 font-semibold text-base text-[#002147]">
+          <Text className="mb-1.5 text-base font-semibold text-[#002147]">
             Tiêu đề <Text className="text-red-500">*</Text>
           </Text>
           <TextInput
@@ -304,7 +350,7 @@ const TicketCreate = () => {
         </View>
 
         <View className="mb-5">
-          <Text className="mb-1.5 font-semibold text-base text-[#002147]">
+          <Text className="mb-1.5 text-base font-semibold text-[#002147]">
             Mô tả chi tiết <Text className="text-red-500">*</Text>
           </Text>
           <View className="relative">
@@ -444,7 +490,7 @@ const TicketCreate = () => {
       <View className="w-full">
         {/* Notes section */}
         <View className="mb-5">
-          <Text className="mb-1.5 font-semibold text-base text-[#002147]">Ghi chú</Text>
+          <Text className="mb-1.5 text-base font-semibold text-[#002147]">Ghi chú</Text>
           <TextInput
             className="min-h-[120px] rounded-xl border border-gray-200 bg-gray-50 p-3"
             placeholder="Ghi chú thêm (không bắt buộc)..."
@@ -458,7 +504,7 @@ const TicketCreate = () => {
 
         {/* File upload section */}
         <View className="mb-5">
-          <Text className="mb-3 font-semibold text-base text-[#002147]">File đính kèm</Text>
+          <Text className="mb-3 text-base font-semibold text-[#002147]">File đính kèm</Text>
           <TouchableOpacity
             className="mb-4 items-center justify-center rounded-xl border-2 border-dashed border-gray-300 p-6"
             onPress={() => actionSheetRef.current?.setModalVisible(true)}>
@@ -473,7 +519,7 @@ const TicketCreate = () => {
 
           {ticketData.images.length > 0 && (
             <View className="mt-5">
-              <Text className="mb-2.5 font-bold text-base text-[#002147]">Ảnh đã tải lên</Text>
+              <Text className="mb-2.5 text-base font-bold text-[#002147]">Ảnh đã tải lên</Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -505,14 +551,14 @@ const TicketCreate = () => {
     return (
       <View className="mt-10 flex h-full items-center justify-center p-5">
         <Image source={require('../../assets/final.png')} className="mb-5 h-[220px] w-[158px]" />
-        <Text className="mb-3 font-bold text-2xl text-gray-800">Cám ơn WISer {userName}!</Text>
+        <Text className="mb-3 text-2xl font-bold text-gray-800">Cám ơn WISer {userName}!</Text>
         <Text className="mb-6 text-center text-base text-gray-600">
           Yêu cầu của bạn đã được ghi nhận, chúng tôi sẽ xử lý trong thời gian sớm nhất.
         </Text>
         {ticketCreatedId && (
           <View className="mb-6 w-[60%] items-center rounded-xl bg-[#E6EEF6] p-4">
             <Text className="mb-1 text-base text-[#002147]">Mã Ticket của bạn:</Text>
-            <Text className="font-bold text-xl text-[#FF5733]">{ticketCreatedId}</Text>
+            <Text className="text-xl font-bold text-[#FF5733]">{ticketCreatedId}</Text>
           </View>
         )}
       </View>
@@ -542,12 +588,12 @@ const TicketCreate = () => {
           {step > 1 && step < 4 && (
             <>
               {step === 2 && (
-                <Text className="mb-3 text-center font-bold text-xl text-[#002147]">
+                <Text className="mb-3 text-center text-xl font-bold text-[#002147]">
                   Nhập thông tin chi tiết
                 </Text>
               )}
               {step === 3 && (
-                <Text className="mb-3 text-center font-bold text-xl text-[#002147]">
+                <Text className="mb-3 text-center text-xl font-bold text-[#002147]">
                   Xác nhận và tạo ticket
                 </Text>
               )}
@@ -569,20 +615,20 @@ const TicketCreate = () => {
             <>
               <TouchableOpacity
                 className={`w-full rounded-full bg-[#FF5733] px-6 py-2.5 ${
-                  (step === 1 && !ticketData.category) ||
+                  (step === 1 && (!ticketData.category || needsWorkItem)) ||
                   (step === 2 && (!ticketData.title || !ticketData.description))
                     ? 'opacity-50'
                     : 'opacity-100'
                 }`}
                 onPress={handleContinue}>
-                <Text className="text-center font-bold text-lg text-white">
+                <Text className="text-center text-lg font-bold text-white">
                   {step === 3 ? 'Tạo ticket' : 'Tiếp tục'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 className="w-full rounded-full bg-gray-200 px-5 py-2.5"
                 onPress={handleGoBack}>
-                <Text className="text-center font-semibold text-lg text-[#757575]">Quay lại</Text>
+                <Text className="text-center text-lg font-semibold text-[#757575]">Quay lại</Text>
               </TouchableOpacity>
             </>
           )}
@@ -590,7 +636,7 @@ const TicketCreate = () => {
             <TouchableOpacity
               className="w-full rounded-full bg-[#FF5733] px-6 py-2.5"
               onPress={() => navigation.goBack()}>
-              <Text className="text-center font-bold text-lg text-white">Quay về trang chính</Text>
+              <Text className="text-center text-lg font-bold text-white">Quay về trang chính</Text>
             </TouchableOpacity>
           )}
         </View>

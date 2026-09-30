@@ -37,7 +37,10 @@ function unwrap<T>(response: {
     };
   }
   const fallback =
-    (msg && typeof msg === 'object' && 'message' in msg && typeof (msg as { message?: string }).message === 'string'
+    (msg &&
+    typeof msg === 'object' &&
+    'message' in msg &&
+    typeof (msg as { message?: string }).message === 'string'
       ? (msg as { message: string }).message
       : null) || parseFrappeApiError(response?.data);
   return {
@@ -179,9 +182,19 @@ export interface Ticket {
   }[];
 }
 
+/** Công việc cụ thể trong hạng mục — người tạo ticket phải chọn nếu hạng mục có */
+export interface TicketWorkItemOption {
+  value: string;
+  label: string;
+  /** Ví dụ / cách tính — hiện dưới tên */
+  description?: string;
+}
+
 export interface TicketCategory {
   value: string;
   label: string;
+  /** Rỗng = hạng mục không cần chọn công việc (vd Tài khoản, Chuông) */
+  workItems?: TicketWorkItemOption[];
 }
 
 export interface TicketResponse {
@@ -247,6 +260,8 @@ export const createTicket = async (ticketData: {
   title: string;
   description: string;
   category: string;
+  /** Công việc cụ thể — bắt buộc khi hạng mục có loại việc */
+  workItem?: string;
   notes?: string;
   priority?: string;
   files?: any[];
@@ -258,6 +273,7 @@ export const createTicket = async (ticketData: {
     title: ticketData.title,
     description: ticketData.description,
     category: ticketData.category,
+    work_item: ticketData.workItem || '',
     notes: ticketData.notes || '',
     priority: ticketData.priority || 'Medium',
     source: 'mobile',
@@ -268,6 +284,7 @@ export const createTicket = async (ticketData: {
     formData.append('title', ticketData.title);
     formData.append('description', ticketData.description);
     formData.append('category', ticketData.category);
+    formData.append('work_item', ticketData.workItem || '');
     formData.append('notes', ticketData.notes || '');
     formData.append('priority', ticketData.priority || 'Medium');
     formData.append('source', 'mobile');
@@ -306,7 +323,10 @@ export const createTicket = async (ticketData: {
 };
 
 /** Cập nhật ticket */
-export const updateTicket = async (ticketId: string, updates: Partial<Ticket> & { status?: string }): Promise<Ticket> => {
+export const updateTicket = async (
+  ticketId: string,
+  updates: Partial<Ticket> & { status?: string }
+): Promise<Ticket> => {
   try {
     const payload: Record<string, unknown> = { ticket_id: ticketId };
     if (updates.title) payload.title = updates.title;
@@ -372,7 +392,10 @@ export const sendMessage = async (
       }
     });
 
-    const data = await frappePostFormData<{ messageData?: Message } | Message>('send_comment', formData);
+    const data = await frappePostFormData<{ messageData?: Message } | Message>(
+      'send_comment',
+      formData
+    );
     if (data && typeof data === 'object' && 'messageData' in data && data.messageData?._id) {
       return data.messageData;
     }
