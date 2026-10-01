@@ -301,20 +301,14 @@ export interface PTSlotActionResult {
 /**
  * Kết quả `teacher_cancel_slot`.
  *
- * `promoted` luôn `null` ở đường này: ca mang dấu `cancelled_by_teacher` nghĩa
- * là NGƯỜI VẮNG LÀ GIÁO VIÊN, nên lõi không mời gia đình nào khác vào khung giờ
- * đó. Field vẫn có mặt vì cùng một hàm lõi phục vụ cả đường huỷ của phụ huynh.
+ * Ca mang dấu `cancelled_by_teacher` nghĩa là NGƯỜI VẮNG LÀ GIÁO VIÊN — ghế chết, không
+ * xếp được gia đình nào vào nữa. Không còn `promoted`: từ 01/10/2026 máy chủ không tự
+ * chuyển ca vừa nhả cho ai ở BẤT KỲ đường huỷ nào — giáo vụ tự xếp.
  */
 export interface PTCancelSlotResult {
   slot_id: string;
   status: PTSlotStatus;
   registration_id?: string | null;
-  promoted: {
-    slot_id: string;
-    registration_id: string;
-    target_row_id: string;
-    student_id: string;
-  } | null;
 }
 
 /** Kết quả `submit_meeting_note` — lần gọi thứ hai trên cùng ca là SỬA, `note_id` giữ nguyên. */
